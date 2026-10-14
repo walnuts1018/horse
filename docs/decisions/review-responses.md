@@ -358,6 +358,28 @@ AnalysisとHomeのGraphQL取得を画面単位のRelay queryへまとめ、予�
 
 世帯内の画面はTanStack Startのfile-based routingでpathを切り替え、取り込みフィルターはTanStack Routerのsearch stateから読み書きします。未保存状態は世帯とページをscopeとするregistryに集約し、画面遷移は`useBlocker`、ブラウザー離脱は`enableBeforeUnload`で確認します。モバイル幅では`html`とdrawerに`overscroll-behavior-y: none`を設定し、drawer背景はBase UI Dialogのmodal scroll lockで固定します。registryはページ内の複数フォームを個別登録しないため、共有callbackを使う画面は各フォームの状態を内部で集約します。route contextの対象test、型検査、対象oxlint、Steiger、format検査が成功しました。ブラウザー更新・タブ終了時の離脱確認は未解決です。
 
+### 2026年10月14日の商品catalog cache
+
+商品catalogのページ取得と商品候補検索は、Relay `fetchQuery`のfetch policyを`store-or-network`にしてcache済みoperationを再利用します。商品concept・variant・aliasの作成成功後にRelay Root recordを無効化し、次回取得で更新を読み込みます。Relayにfield単位の公開invalidatorがないためRootを無効化し、次回にRootを読むqueryはnetwork fetchになります。全ページの取得範囲、候補検索条件、表示変換は維持しました。Frontend型検査と対象ファイルのoxlintが成功したため、解決した項目を`docs/reviews/code.md`から削除しました。
+
+### 2026年10月14日のIndexedDBとMutation共通処理
+
+`purchase-storage.ts`のIndexedDB request・transaction処理を既存依存`idb`へ移し、すべてのtransactionで`transaction.done`を待つようにしました。複数store transaction、legacy data migration、lease、冪等性キー、複数tab間のclaimを維持しました。既存テスト3件、Frontend型検査、対象oxlintとformat検査が成功したため、`docs/reviews/code.md`から該当項目を削除しました。
+
+Importsの8 Mutationで繰り返していたsuccess union判定を`shared/api`の`commitGraphQLMutationSuccess`へまとめました。category managementは既存の共通`readGraphQLMutationResult`を利用済みのため変更していません。新規依存はなく、変更ファイルのoxlint、format、差分検査が成功しました。
+
+### 2026年10月14日のApp責務分割
+
+世帯セッション、購入Outboxのleaseと再送、招待tokenのstorage同期・受け入れを`web/src/app/model`のhookへ分けました。招待成功後の世帯一覧更新・メニュー閉じ・現在ページへの遷移、未保存変更確認、送信完了後の遷移条件は維持しました。対象oxlint、oxfmt、`horse-app.test.ts`の2件、Frontend型検査が成功しました。Appには画面構成・遷移・未保存変更の管理が残るため、指摘全体は`docs/reviews/code.md`に残しています。
+
+### 2026年10月14日の購入既定値
+
+購入保存後も店名と決済元を次の入力に引き継ぎ、memberIdとhouseholdIdの組み合わせごとにlocalStorageへ保存します。保存先口座が削除されていれば、その家計簿の先頭口座へ戻します。異なるmember/householdへ切り替えると入力pageをkey付きで再生成するため、前のスコープの値は表示されません。既定値のテスト2件、Frontend型検査、対象oxlint、format検査が成功したため、この指摘を`docs/reviews/ux.md`から削除しました。店舗別の既定値と初回利用時の口座選択は未解決項目として残しています。
+
+### 2026年10月14日の共有Gemini cooldown
+
+Gemini 429の`Retry-After`または既存のjob retry delayを、DBの`(project_route, model)`単位の`blocked_until`へ保存します。全Workerが呼び出し前に共有状態を確認し、短いcooldownで長いcooldownを上書きしません。根拠のないRPM・TPM・RPD上限値や無料枠回復時刻は設定せず、既存の有料切替とSpend Cap判断も変更しません。migration checksum生成、取り込みテスト、Testcontainers PostgreSQL統合テスト、差分lintが成功しました。実際のquota上限値がないため、429前の予約制御と回復予測は未解決として`docs/reviews/gemini.md`に残しています。
+
 ### 2026年10月14日のSettings tab URL
 
 Settingsの選択中tabはTanStack Routerの`tab` search valueで管理します。直接URL、再読み込み、Back/Forwardで同じtabを復元し、未指定・不正値は`accounts`にします。設定導線で使う既存hashからのtab選択は維持し、Pages sliceからApp routeへのimportを作らないようrouteがtab値と変更callbackを渡します。

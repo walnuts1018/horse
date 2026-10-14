@@ -4,6 +4,7 @@ export {
   assertGraphQLMutationSuccess,
   commitGraphQLMutation,
   commitGraphQLMutationResult,
+  commitGraphQLMutationSuccess,
   readGraphQLMutationResult,
 } from "./commit-mutation";
 export type { HouseholdQuery, HouseholdQuery$data } from "./__generated__/HouseholdQuery.graphql";

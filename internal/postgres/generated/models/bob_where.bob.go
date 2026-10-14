@@ -35,6 +35,7 @@ func Where[Q psql.Filterable]() struct {
 	ExtractionJobs                  extractionJobWhere[Q]
 	FundingObligations              fundingObligationWhere[Q]
 	FundingSchedules                fundingScheduleWhere[Q]
+	GeminiQuotaCooldowns            geminiQuotaCooldownWhere[Q]
 	HouseholdEvents                 householdEventWhere[Q]
 	HouseholdInvitations            householdInvitationWhere[Q]
 	HouseholdMailForwardings        householdMailForwardingWhere[Q]
@@ -90,6 +91,7 @@ func Where[Q psql.Filterable]() struct {
 		ExtractionJobs                  extractionJobWhere[Q]
 		FundingObligations              fundingObligationWhere[Q]
 		FundingSchedules                fundingScheduleWhere[Q]
+		GeminiQuotaCooldowns            geminiQuotaCooldownWhere[Q]
 		HouseholdEvents                 householdEventWhere[Q]
 		HouseholdInvitations            householdInvitationWhere[Q]
 		HouseholdMailForwardings        householdMailForwardingWhere[Q]
@@ -144,6 +146,7 @@ func Where[Q psql.Filterable]() struct {
 		ExtractionJobs:                  buildExtractionJobWhere[Q](ExtractionJobs.Columns),
 		FundingObligations:              buildFundingObligationWhere[Q](FundingObligations.Columns),
 		FundingSchedules:                buildFundingScheduleWhere[Q](FundingSchedules.Columns),
+		GeminiQuotaCooldowns:            buildGeminiQuotaCooldownWhere[Q](GeminiQuotaCooldowns.Columns),
 		HouseholdEvents:                 buildHouseholdEventWhere[Q](HouseholdEvents.Columns),
 		HouseholdInvitations:            buildHouseholdInvitationWhere[Q](HouseholdInvitations.Columns),
 		HouseholdMailForwardings:        buildHouseholdMailForwardingWhere[Q](HouseholdMailForwardings.Columns),

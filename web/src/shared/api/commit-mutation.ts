@@ -34,6 +34,23 @@ export function commitGraphQLMutation<TOperation extends MutationParameters, TRe
   );
 }
 
+export function commitGraphQLMutationSuccess<TOperation extends MutationParameters>(
+  mutation: GraphQLTaggedNode,
+  variables: TOperation["variables"],
+  readMutation: (response: TOperation["response"]) => MutationResponse,
+  successType: string,
+  failureMessage: string,
+): Promise<void> {
+  return commitGraphQLMutation<TOperation, void>(mutation, variables, (response) => {
+    assertGraphQLMutationSuccess(
+      readMutation(response),
+      successType,
+      failureMessage,
+      failureMessage,
+    );
+  });
+}
+
 export function assertGraphQLMutationSuccess(
   response: MutationResponse,
   successType: string,

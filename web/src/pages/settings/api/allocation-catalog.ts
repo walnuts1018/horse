@@ -2,6 +2,7 @@ import { fetchQuery } from "react-relay";
 
 import {
   readProductCatalog,
+  invalidateProductQueries,
   createProductConceptMutation,
   createProductVariantMutation,
   setProductAliasMutation,
@@ -87,40 +88,53 @@ export function setAllocationRule(input: SetAllocationRuleMutation["variables"][
 }
 
 export function createCatalogConcept(input: CreateProductConceptMutation["variables"]["input"]) {
-  return commitGraphQLMutationResult<
-    CreateProductConceptMutation,
-    NonNullable<CreateProductConceptMutation["response"]["createProductConcept"]["result"]>
-  >(
-    createProductConceptMutation,
-    { input },
-    (response) => response.createProductConcept,
-    "CreateProductConceptSuccess",
-    "商品分類を作成できませんでした",
+  return invalidateAfterProductMutation(
+    commitGraphQLMutationResult<
+      CreateProductConceptMutation,
+      NonNullable<CreateProductConceptMutation["response"]["createProductConcept"]["result"]>
+    >(
+      createProductConceptMutation,
+      { input },
+      (response) => response.createProductConcept,
+      "CreateProductConceptSuccess",
+      "商品分類を作成できませんでした",
+    ),
   );
 }
 
 export function createCatalogVariant(input: CreateProductVariantMutation["variables"]["input"]) {
-  return commitGraphQLMutationResult<
-    CreateProductVariantMutation,
-    NonNullable<CreateProductVariantMutation["response"]["createProductVariant"]["result"]>
-  >(
-    createProductVariantMutation,
-    { input },
-    (response) => response.createProductVariant,
-    "CreateProductVariantSuccess",
-    "商品バリエーションを作成できませんでした",
+  return invalidateAfterProductMutation(
+    commitGraphQLMutationResult<
+      CreateProductVariantMutation,
+      NonNullable<CreateProductVariantMutation["response"]["createProductVariant"]["result"]>
+    >(
+      createProductVariantMutation,
+      { input },
+      (response) => response.createProductVariant,
+      "CreateProductVariantSuccess",
+      "商品バリエーションを作成できませんでした",
+    ),
   );
 }
 
 export function createCatalogAlias(input: SetProductAliasMutation["variables"]["input"]) {
-  return commitGraphQLMutationResult<
-    SetProductAliasMutation,
-    NonNullable<SetProductAliasMutation["response"]["setProductAlias"]["result"]>
-  >(
-    setProductAliasMutation,
-    { input },
-    (response) => response.setProductAlias,
-    "SetProductAliasSuccess",
-    "商品別名を保存できませんでした",
+  return invalidateAfterProductMutation(
+    commitGraphQLMutationResult<
+      SetProductAliasMutation,
+      NonNullable<SetProductAliasMutation["response"]["setProductAlias"]["result"]>
+    >(
+      setProductAliasMutation,
+      { input },
+      (response) => response.setProductAlias,
+      "SetProductAliasSuccess",
+      "商品別名を保存できませんでした",
+    ),
   );
+}
+
+function invalidateAfterProductMutation<TResult>(mutation: Promise<TResult>): Promise<TResult> {
+  return mutation.then((result) => {
+    invalidateProductQueries();
+    return result;
+  });
 }

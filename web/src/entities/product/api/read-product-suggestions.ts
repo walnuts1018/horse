@@ -36,7 +36,7 @@ export async function readProductSuggestions(
       getRelayEnvironment(),
       productSuggestionsQuery,
       { householdId, query, merchant, first },
-      { fetchPolicy: "network-only" },
+      { fetchPolicy: "store-or-network" },
     ).toPromise();
   if (!result) throw new Error("商品候補を取得できませんでした");
   return result.productSuggestions.map(mapProductSuggestion);

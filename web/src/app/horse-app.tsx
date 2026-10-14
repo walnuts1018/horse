@@ -37,23 +37,9 @@ import {
   type SubmitEvent,
 } from "react";
 
-import {
-  acceptHouseholdInvitation,
-  createHousehold,
-  readHousehold,
-  readHouseholds,
-} from "../entities/household";
+import { createHousehold } from "../entities/household";
 import { useCreateAndPostPurchase } from "../entities/purchase";
-import { ApiError, getViewer, type Household } from "../shared/api";
-import {
-  claimPurchaseOutbox,
-  completePurchaseOutbox,
-  errorMessage,
-  markPurchaseOutboxFailed,
-  renewPurchaseOutboxLease,
-  toError,
-  usePurchaseOutbox,
-} from "../shared/lib";
+import { errorMessage, usePurchaseOutbox } from "../shared/lib";
 import { Notice, type NoticeKind } from "../shared/ui";
 import { isAppPage, type AppPage } from "./app-page";
 import { GraphQLErrorBoundary } from "./graphql-error-boundary";
@@ -62,6 +48,14 @@ import {
   hasSameNavigationTarget,
   householdRouteContext,
 } from "./household-route-context";
+import { useHouseholdSession } from "./model/use-household-session";
+import { usePendingInvitation } from "./model/use-pending-invitation";
+import {
+  shouldAutoNavigateAfterPurchase,
+  usePurchaseOutboxSender,
+} from "./model/use-purchase-outbox-sender";
+
+export { shouldAutoNavigateAfterPurchase };
 
 const mobileViewportQuery = "(width <= 760px)";
 
@@ -79,52 +73,6 @@ function getServerMobileViewport(): null {
   return null;
 }
 
-const pendingInvitationStorageKey = "horse:pending-household-invitation";
-const pendingInvitationChangeEvent = "horse:pending-household-invitation-change";
-
-export function shouldAutoNavigateAfterPurchase(input: {
-  queuedKey: string | null;
-  completedKey: string;
-  currentPage: AppPage;
-  hasUnsavedChanges: boolean;
-}) {
-  return (
-    input.queuedKey === input.completedKey &&
-    input.currentPage === "new" &&
-    !input.hasUnsavedChanges
-  );
-}
-
-function subscribeToPendingInvitation(onStoreChange: () => void) {
-  window.addEventListener(pendingInvitationChangeEvent, onStoreChange);
-  window.addEventListener("storage", onStoreChange);
-  return () => {
-    window.removeEventListener(pendingInvitationChangeEvent, onStoreChange);
-    window.removeEventListener("storage", onStoreChange);
-  };
-}
-
-function getPendingInvitationSnapshot() {
-  return (
-    new URLSearchParams(window.location.hash.slice(1)).get("invite") ??
-    window.sessionStorage.getItem(pendingInvitationStorageKey) ??
-    ""
-  );
-}
-
-function getServerPendingInvitationSnapshot() {
-  return "";
-}
-
-function clearPendingInvitation() {
-  window.sessionStorage.removeItem(pendingInvitationStorageKey);
-  window.dispatchEvent(new Event(pendingInvitationChangeEvent));
-}
-
-function dismissPendingInvitation() {
-  clearPendingInvitation();
-}
-
 export function App() {
   const navigate = useNavigate({ from: "/" });
   const params = useParams({ strict: false });
@@ -135,17 +83,7 @@ export function App() {
   });
   const page = appPageFromPath(pathname);
   const createAndPostPurchase = useCreateAndPostPurchase();
-  const [viewer, setViewer] = useState<{ id: string; displayName: string; email?: string } | null>(
-    null,
-  );
-  const outbox = usePurchaseOutbox(viewer?.id);
-  const [households, setHouseholds] = useState<Array<{ id: string; name: string }>>([]);
-  const [household, setHousehold] = useState<Household | null>(null);
-  const [householdLoading, setHouseholdLoading] = useState(false);
-  const activeHousehold = household?.id === householdId ? household : null;
   const [unsavedChangesRegistry] = useState(createUnsavedChangesRegistry);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
   const isMobileViewport = useSyncExternalStore(
     subscribeToMobileViewport,
@@ -153,32 +91,17 @@ export function App() {
     getServerMobileViewport,
   );
   const [householdMenu, setHouseholdMenu] = useState(false);
-  const householdMenuOpen = householdMenu && households.length > 1;
   const [notice, setNotice] = useState<{ message: string; kind: NoticeKind } | null>(null);
   const noticeTimeout = useRef<number | undefined>(undefined);
   const [loggingOut, setLoggingOut] = useState(false);
-  const pendingInvitation = useSyncExternalStore(
-    subscribeToPendingInvitation,
-    getPendingInvitationSnapshot,
-    getServerPendingInvitationSnapshot,
-  );
-  const [acceptingInvitation, setAcceptingInvitation] = useState(false);
-  const activeSends = useRef(new Set<string>());
-  const senderId = useRef("");
   const currentPage = useRef(page);
   const purchaseCreatePreviousPage = useRef<AppPage>("home");
-  const currentHouseholdId = useRef(household?.id);
-  const autoNavigateKey = useRef<string | null>(null);
   const appShellRef = useRef<HTMLDivElement>(null);
 
   // レンダー中のref書き込みは並行レンダーで壊れるため、コミット後に最新値を反映する
   useEffect(() => {
     currentPage.current = page;
   }, [page]);
-  useEffect(() => {
-    currentHouseholdId.current = household?.id;
-  }, [household?.id]);
-
   const previousPage = useRef(page);
   useEffect(() => {
     if (previousPage.current === page) return;
@@ -196,19 +119,6 @@ export function App() {
     },
     enableBeforeUnload: () => unsavedChangesRegistry.hasUnsavedChanges(),
   });
-
-  const unsavedChangesRegistrationId = `household:${householdId ?? "none"}:page:${page}`;
-  const reportUnsavedChanges = useCallback(
-    (unsaved: boolean) => {
-      unsavedChangesRegistry.report(unsavedChangesRegistrationId, unsaved);
-      if (unsaved && currentPage.current === "new") autoNavigateKey.current = null;
-    },
-    [unsavedChangesRegistrationId, unsavedChangesRegistry],
-  );
-  useEffect(
-    () => () => unsavedChangesRegistry.clear(unsavedChangesRegistrationId),
-    [unsavedChangesRegistrationId, unsavedChangesRegistry],
-  );
 
   const navigateToHouseholdPage = useCallback(
     (id: string, nextPage: AppPage, replace = false) => {
@@ -242,168 +152,90 @@ export function App() {
     [page, householdId, navigateToHouseholdPage],
   );
 
-  const refreshHousehold = useCallback(async (id: string) => {
-    setHousehold(await readHousehold(id));
-  }, []);
-
-  useEffect(() => {
-    const inviteToken = new URLSearchParams(window.location.hash.slice(1)).get("invite");
-    if (!inviteToken) return;
-    window.sessionStorage.setItem(pendingInvitationStorageKey, inviteToken);
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    void Promise.all([getViewer(), readHouseholds()])
-      .then(([session, householdList]) => {
-        if (!active) return;
-        setViewer(session);
-        setHouseholdMenu(false);
-        setHouseholds(householdList);
-      })
-      .catch((reason: unknown) => {
-        if (!active) return;
-        const err = toError(reason);
-        if (err instanceof ApiError && err.status === 401) setError("ログインして家計簿を開く");
-        else setError(err.message || "データを読み込めませんでした");
-      })
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, []);
-
   const showNotice = useCallback((message: string, kind: NoticeKind = "info") => {
     if (noticeTimeout.current !== undefined) window.clearTimeout(noticeTimeout.current);
     setNotice({ message, kind });
     noticeTimeout.current = window.setTimeout(() => setNotice(null), 3200);
   }, []);
 
-  useEffect(() => {
-    if (!households.length) return;
-    const requestedHousehold = households.find((item) => item.id === householdId);
-    if (!requestedHousehold) {
-      const target = households[0];
-      navigateToHouseholdPage(target.id, "home", true);
-      return;
-    }
-    const target = requestedHousehold;
-    if (currentHouseholdId.current === target.id) {
-      setHouseholdLoading(false);
-      return;
-    }
-    let active = true;
-    setHouseholdLoading(true);
-    void readHousehold(target.id)
-      .then((data) => {
-        if (!active) return;
-        setHousehold(data);
-      })
-      .catch((reason: unknown) => {
-        if (!active) return;
-        showNotice(errorMessage(reason) || "家計簿を読み込めませんでした", "error");
-        const currentId = currentHouseholdId.current;
-        if (currentId && currentId !== target.id)
-          navigateToHouseholdPage(currentId, currentPage.current, true);
-      })
-      .finally(() => {
-        if (active) setHouseholdLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [households, householdId, navigateToHouseholdPage, showNotice]);
-
-  const onPurchaseQueued = useCallback(
-    (idempotencyKey: string) => {
-      autoNavigateKey.current = idempotencyKey;
-      showNotice("送信待ちに保存しました", "info");
+  const getCurrentPage = useCallback(() => currentPage.current, []);
+  const session = useHouseholdSession({
+    householdId,
+    page,
+    currentPage: getCurrentPage,
+    navigateToHouseholdPage,
+    showNotice,
+  });
+  const {
+    viewer,
+    households,
+    setHouseholds,
+    household,
+    redirectHouseholdId,
+    householdLoading,
+    loading,
+    error,
+    refreshHousehold,
+    selectHousehold,
+  } = session;
+  const onInvitationAccepted = useCallback(
+    (acceptedHousehold: { id: string; name: string }) => {
+      setHouseholdMenu(false);
+      setHouseholds((current) => [
+        acceptedHousehold,
+        ...current.filter((item) => item.id !== acceptedHousehold.id),
+      ]);
+      navigateToHouseholdPage(acceptedHousehold.id, page);
+      showNotice("家計簿に参加しました", "success");
     },
-    [showNotice],
+    [setHouseholds, navigateToHouseholdPage, page, showNotice],
+  );
+  const { pendingInvitation, acceptingInvitation, acceptInvitation, dismissPendingInvitation } =
+    usePendingInvitation({
+      unsavedChangesRegistry,
+      onAccepted: onInvitationAccepted,
+      showNotice,
+    });
+  useEffect(() => {
+    if (redirectHouseholdId) navigateToHouseholdPage(redirectHouseholdId, "home", true);
+  }, [redirectHouseholdId, navigateToHouseholdPage]);
+  const householdMenuOpen = householdMenu && households.length > 1;
+  const activeHousehold = household?.id === householdId ? household : null;
+  const outbox = usePurchaseOutbox(viewer?.id);
+  const getCurrentHouseholdId = useCallback(() => household?.id, [household?.id]);
+  const hasUnsavedChanges = useCallback(
+    () => unsavedChangesRegistry.hasUnsavedChanges(),
+    [unsavedChangesRegistry],
+  );
+  const navigateToLedger = useCallback(() => navigateToPage("ledger"), [navigateToPage]);
+  const { onQueued: onPurchaseQueued, clearAutoNavigate } = usePurchaseOutboxSender({
+    viewerId: viewer?.id,
+    households,
+    outbox,
+    createAndPostPurchase,
+    currentPage: getCurrentPage,
+    currentHouseholdId: getCurrentHouseholdId,
+    hasUnsavedChanges,
+    refreshHousehold,
+    navigateToLedger,
+    showNotice,
+  });
+  const unsavedChangesRegistrationId = `household:${householdId ?? "none"}:page:${page}`;
+  const reportUnsavedChanges = useCallback(
+    (unsaved: boolean) => {
+      unsavedChangesRegistry.report(unsavedChangesRegistrationId, unsaved);
+      if (unsaved && currentPage.current === "new") clearAutoNavigate();
+    },
+    [unsavedChangesRegistrationId, unsavedChangesRegistry, clearAutoNavigate],
+  );
+  useEffect(
+    () => () => unsavedChangesRegistry.clear(unsavedChangesRegistrationId),
+    [unsavedChangesRegistrationId, unsavedChangesRegistry],
   );
   const onBackFromPurchase = useCallback(
     () => navigateToPage(purchaseCreatePreviousPage.current),
     [navigateToPage],
   );
-  useEffect(() => {
-    if (!viewer || !outbox.ready || !outbox.online) return;
-    if (!senderId.current) senderId.current = crypto.randomUUID();
-    const owner = senderId.current;
-    const availableHouseholds = new Set(households.map((item) => item.id));
-    for (const entry of outbox.entries) {
-      const key = entry.input.idempotencyKey;
-      if (
-        entry.status !== "PENDING" ||
-        !availableHouseholds.has(entry.input.householdId) ||
-        activeSends.current.has(key)
-      )
-        continue;
-      activeSends.current.add(key);
-      void (async () => {
-        let claimed = false;
-        let leaseRenewal: number | undefined;
-        try {
-          const request = await claimPurchaseOutbox(viewer.id, entry.input.householdId, key, owner);
-          if (!request) return;
-          claimed = true;
-          leaseRenewal = window.setInterval(() => {
-            void renewPurchaseOutboxLease(viewer.id, entry.input.householdId, key, owner).catch(
-              () => {},
-            );
-          }, 10_000);
-          await createAndPostPurchase(request.input);
-          await completePurchaseOutbox(viewer.id, entry.input.householdId, key, owner);
-          if (currentHouseholdId.current === request.input.householdId) {
-            await refreshHousehold(request.input.householdId);
-            showNotice("買い物を帳簿に追加しました", "success");
-          }
-          if (
-            shouldAutoNavigateAfterPurchase({
-              queuedKey: autoNavigateKey.current,
-              completedKey: key,
-              currentPage: currentPage.current,
-              hasUnsavedChanges: unsavedChangesRegistry.hasUnsavedChanges(),
-            })
-          ) {
-            autoNavigateKey.current = null;
-            navigateToPage("ledger");
-          }
-        } catch (reason) {
-          if (claimed) {
-            const message =
-              reason instanceof ApiError
-                ? reason.message
-                : reason instanceof TypeError ||
-                    (reason instanceof DOMException &&
-                      ["AbortError", "NetworkError"].includes(reason.name))
-                  ? "接続を確認してから再送してください"
-                  : "買い物を送信できませんでした。再送または破棄してください";
-            await markPurchaseOutboxFailed(
-              viewer.id,
-              entry.input.householdId,
-              key,
-              owner,
-              message,
-            ).catch(() => {});
-          }
-        } finally {
-          if (leaseRenewal !== undefined) window.clearInterval(leaseRenewal);
-          activeSends.current.delete(key);
-          if (claimed) await outbox.refresh();
-        }
-      })();
-    }
-  }, [
-    viewer,
-    households,
-    outbox,
-    createAndPostPurchase,
-    navigateToPage,
-    refreshHousehold,
-    showNotice,
-    unsavedChangesRegistry,
-  ]);
   const currentOutbox = outbox.entries.filter(
     (entry) => entry.input.householdId === activeHousehold?.id,
   );
@@ -436,48 +268,6 @@ export function App() {
       setLoggingOut(false);
     }
   };
-  const acceptInvitation = async () => {
-    if (!pendingInvitation || acceptingInvitation) return;
-    const dirtyIds = unsavedChangesRegistry.getDirtyIds();
-    const hadUnsavedChanges = dirtyIds.length > 0;
-    if (hadUnsavedChanges && !window.confirm("未保存の変更を破棄して招待を受け入れますか？"))
-      return;
-    if (hadUnsavedChanges) unsavedChangesRegistry.clearAll();
-    setAcceptingInvitation(true);
-    try {
-      const result = await acceptHouseholdInvitation({ token: pendingInvitation });
-      clearPendingInvitation();
-      setHouseholdMenu(false);
-      setHouseholds((current) => [
-        { id: result.id, name: result.name },
-        ...current.filter((item) => item.id !== result.id),
-      ]);
-      navigateToHouseholdPage(result.id, page);
-      showNotice("家計簿に参加しました", "success");
-    } catch (reason) {
-      for (const id of dirtyIds) unsavedChangesRegistry.report(id, true);
-      showNotice(errorMessage(reason), "error");
-    } finally {
-      setAcceptingInvitation(false);
-    }
-  };
-  const selectHousehold = (id: string) => {
-    if (!households.some((item) => item.id === id)) return;
-    if (id === activeHousehold?.id) return;
-    if (id === householdId) {
-      // 同じ家計簿を選び直したときは読み込みをやり直す
-      setHouseholdLoading(true);
-      void readHousehold(id)
-        .then((data) => setHousehold(data))
-        .catch((reason: unknown) => {
-          showNotice(errorMessage(reason) || "家計簿を読み込めませんでした", "error");
-        })
-        .finally(() => setHouseholdLoading(false));
-      return;
-    }
-    navigateToHouseholdPage(id, page);
-  };
-
   const onNavigateToPurchase = useCallback(() => {
     if (page !== "new") purchaseCreatePreviousPage.current = page;
   }, [page]);

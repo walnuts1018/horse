@@ -1,10 +1,10 @@
 # Gemini連携の未解決項目
 
-## 1. 共有quota管理とレート制御
+## 1. RPM・TPM・RPDの予約制御と回復予測
 
-共有quota状態を持たないため、Worker間でモデル別RPM・TPM・RPDを調整できず、無料枠の回復時刻も予測しません。AI Studioで確認した実際の上限を用いる共有レート制御や、急がないjobの再試行時刻を設けると、quotaを超える呼び出しと不要な失敗を減らせます。
+Worker間で共有する429 cooldownをDBへ記録し、`Retry-After`または既存jobの再試行バックオフが切れるまで同じproject routeとmodelへの呼び出しを待つようにしました。quota上限前にRPM・TPM・RPDを調整する予約制御と、無料枠の回復時刻予測はありません。
 
-現行コードでは、通常の抽出は無料Projectから開始し、無料Projectの429では有料Projectへ切り替えず、APIの`Retry-After`をWorkerのjob再試行へ渡します。成功した呼び出し後に無料枠の使用量を集計したり、モデルごとのRPM・TPM・RPDを共有状態で管理したりする機能はありません。
+実際のモデル別上限値を確認できた場合は、その値と`Retry-After`実測に基づく分散制御を検討してください。無料Projectの429で有料Projectへ切り替えない既存方針は維持します。
 
 ## 2. Flex tierとBatch APIの到達経路
 

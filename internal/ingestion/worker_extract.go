@@ -8,6 +8,10 @@ import (
 )
 
 func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
+	router := w.Router
+	if w.DB != nil && router.RateControl == nil {
+		router.RateControl = postgresGeminiRateControl{db: w.DB}
+	}
 	document, err := w.Store.Get(ctx, j.ObjectKey, j.MIMEType)
 	if err != nil {
 		return Verification{}, err
@@ -51,7 +55,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	if err != nil {
 		return Verification{}, fmt.Errorf("load receipt history hints: %w", err)
 	}
-	receipt, runs, err := w.Router.Generate(ctx, j.SourceKind, document, hints, GeminiRouteOptions{Purpose: request.Purpose, Reason: geminiReasonInitialExtraction})
+	receipt, runs, err := router.Generate(ctx, j.SourceKind, document, hints, GeminiRouteOptions{Purpose: request.Purpose, Reason: geminiReasonInitialExtraction, Attempt: j.Attempt})
 	if err != nil {
 		return Verification{Runs: runs}, err
 	}
@@ -80,7 +84,9 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		guidance := evidenceGuidance(verified.Issues, verified.OCRLines)
 		lastRun := latestSuccessfulRun(verified.Runs)
 		if lastRun != nil {
-			alternative, qualityRuns, qualityErr := w.Router.Generate(ctx, j.SourceKind, document, hints, w.Router.QualityOptions(j.SourceKind, *lastRun, guidance))
+			qualityOptions := router.QualityOptions(j.SourceKind, *lastRun, guidance)
+			qualityOptions.Attempt = j.Attempt
+			alternative, qualityRuns, qualityErr := router.Generate(ctx, j.SourceKind, document, hints, qualityOptions)
 			verified.Runs = append(verified.Runs, qualityRuns...)
 			if qualityErr == nil {
 				second, verifyErr := verifyExtraction(j.SourceKind, alternative)
@@ -100,7 +106,9 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			}
 		}
 		if !verified.Balanced && supportsProReview(document.MIMEType) && needsProReview(verified.Issues) && w.Router.Paid.APIKey != "" {
-			proReceipt, proRuns, proErr := w.Router.Generate(ctx, j.SourceKind, document, hints, w.Router.ProOptions(request.Purpose, evidenceGuidance(verified.Issues, verified.OCRLines)))
+			proOptions := router.ProOptions(request.Purpose, evidenceGuidance(verified.Issues, verified.OCRLines))
+			proOptions.Attempt = j.Attempt
+			proReceipt, proRuns, proErr := router.Generate(ctx, j.SourceKind, document, hints, proOptions)
 			verified.Runs = append(verified.Runs, proRuns...)
 			if proErr == nil {
 				proVerification, verifyErr := verifyExtraction(j.SourceKind, proReceipt)

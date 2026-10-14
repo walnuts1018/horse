@@ -22,7 +22,7 @@ export async function readProductCatalog(householdId: string): Promise<ProductCo
       getRelayEnvironment(),
       productCatalogQuery,
       { householdId, first: 100, after },
-      { fetchPolicy: "network-only" },
+      { fetchPolicy: "store-or-network" },
     ).toPromise();
     if (!result) throw new Error("商品一覧を取得できませんでした");
     products.push(...result.productCatalog.edges.map(({ node }) => mapProductConcept(node)));

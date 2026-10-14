@@ -10,8 +10,7 @@ import {
   linkStatementAccountIncomeMutation,
 } from "../../../entities/ledger";
 import {
-  assertGraphQLMutationSuccess,
-  commitGraphQLMutation,
+  commitGraphQLMutationSuccess,
   type RecordAccountMovementMutation,
   type RecordExternalIncomeMutation,
   type RecordRepaymentMutation,
@@ -68,129 +67,89 @@ export const importIdempotencyKey = async (documentId: string, sourceReference: 
 export function recordStatementAccountMovement(
   input: RecordAccountMovementMutation["variables"]["input"],
 ) {
-  return commitGraphQLMutation<RecordAccountMovementMutation, void>(
+  return commitGraphQLMutationSuccess<RecordAccountMovementMutation>(
     recordAccountMovementMutation,
     { input },
-    (response) => {
-      assertGraphQLMutationSuccess(
-        response.recordAccountMovement,
-        "RecordAccountMovementSuccess",
-        "口座間振替を記録できませんでした",
-        () => "口座間振替を記録できませんでした",
-      );
-    },
+    (response) => response.recordAccountMovement,
+    "RecordAccountMovementSuccess",
+    "口座間振替を記録できませんでした",
   );
 }
 
 export function linkStatementRefundCorrection(
   input: LinkStatementRefundCorrectionMutation["variables"]["input"],
 ) {
-  return commitGraphQLMutation<LinkStatementRefundCorrectionMutation, void>(
+  return commitGraphQLMutationSuccess<LinkStatementRefundCorrectionMutation>(
     linkStatementRefundCorrectionMutation,
     { input },
-    (response) => {
-      assertGraphQLMutationSuccess(
-        response.linkStatementRefundCorrection,
-        "LinkStatementRefundCorrectionSuccess",
-        "返金記録に紐付けられませんでした",
-        () => "返金記録に紐付けられませんでした",
-      );
-    },
+    (response) => response.linkStatementRefundCorrection,
+    "LinkStatementRefundCorrectionSuccess",
+    "返金記録に紐付けられませんでした",
   );
 }
 
 export function recordStatementExternalIncome(
   input: RecordExternalIncomeMutation["variables"]["input"],
 ) {
-  return commitGraphQLMutation<RecordExternalIncomeMutation, void>(
+  return commitGraphQLMutationSuccess<RecordExternalIncomeMutation>(
     recordExternalIncomeMutation,
     { input },
-    (response) => {
-      assertGraphQLMutationSuccess(
-        response.recordExternalIncome,
-        "RecordExternalIncomeSuccess",
-        "外部入金を記録できませんでした",
-        () => "外部入金を記録できませんでした",
-      );
-    },
+    (response) => response.recordExternalIncome,
+    "RecordExternalIncomeSuccess",
+    "外部入金を記録できませんでした",
   );
 }
 
 export function recordStatementLoan(input: RecordTransferMutation["variables"]["input"]) {
-  return commitGraphQLMutation<RecordTransferMutation, void>(
+  return commitGraphQLMutationSuccess<RecordTransferMutation>(
     recordTransferMutation,
     { input },
-    (response) => {
-      assertGraphQLMutationSuccess(
-        response.recordTransfer,
-        "RecordTransferSuccess",
-        "貸付を記録できませんでした",
-        () => "貸付を記録できませんでした",
-      );
-    },
+    (response) => response.recordTransfer,
+    "RecordTransferSuccess",
+    "貸付を記録できませんでした",
   );
 }
 
 export function recordStatementRepayment(input: RecordRepaymentMutation["variables"]["input"]) {
-  return commitGraphQLMutation<RecordRepaymentMutation, void>(
+  return commitGraphQLMutationSuccess<RecordRepaymentMutation>(
     recordRepaymentMutation,
     { input },
-    (response) => {
-      assertGraphQLMutationSuccess(
-        response.recordRepayment,
-        "RecordRepaymentSuccess",
-        "返済を記録できませんでした",
-        () => "返済を記録できませんでした",
-      );
-    },
+    (response) => response.recordRepayment,
+    "RecordRepaymentSuccess",
+    "返済を記録できませんでした",
   );
 }
 
 export function linkStatementTransfer(input: LinkStatementTransferMutation["variables"]["input"]) {
-  return commitGraphQLMutation<LinkStatementTransferMutation, void>(
+  return commitGraphQLMutationSuccess<LinkStatementTransferMutation>(
     linkStatementTransferMutation,
     { input },
-    (response) => {
-      assertGraphQLMutationSuccess(
-        response.linkStatementTransfer,
-        "LinkStatementTransferSuccess",
-        "明細を既存取引に紐付けできませんでした",
-        () => "明細を既存取引に紐付けできませんでした",
-      );
-    },
+    (response) => response.linkStatementTransfer,
+    "LinkStatementTransferSuccess",
+    "明細を既存取引に紐付けできませんでした",
   );
 }
 
 export function linkStatementAccountMovement(
   input: LinkStatementAccountMovementMutation["variables"]["input"],
 ) {
-  return commitGraphQLMutation<LinkStatementAccountMovementMutation, void>(
+  return commitGraphQLMutationSuccess<LinkStatementAccountMovementMutation>(
     linkStatementAccountMovementMutation,
     { input },
-    (response) => {
-      assertGraphQLMutationSuccess(
-        response.linkStatementAccountMovement,
-        "LinkStatementAccountMovementSuccess",
-        "口座移動に紐付けできませんでした",
-        () => "口座移動に紐付けできませんでした",
-      );
-    },
+    (response) => response.linkStatementAccountMovement,
+    "LinkStatementAccountMovementSuccess",
+    "口座移動に紐付けできませんでした",
   );
 }
 
 export function linkStatementAccountIncome(
   input: LinkStatementAccountIncomeMutation["variables"]["input"],
 ) {
-  return commitGraphQLMutation<LinkStatementAccountIncomeMutation, void>(
+  return commitGraphQLMutationSuccess<LinkStatementAccountIncomeMutation>(
     linkStatementAccountIncomeMutation,
     { input },
-    (response) => {
-      assertGraphQLMutationSuccess(
-        response.linkStatementAccountIncome,
-        "LinkStatementAccountIncomeSuccess",
-        "入金明細を既存の入金に紐付けできませんでした",
-        () => "入金明細を既存の入金に紐付けできませんでした",
-      );
-    },
+    (response) => response.linkStatementAccountIncome,
+    "LinkStatementAccountIncomeSuccess",
+    "入金明細を既存の入金に紐付けできませんでした",
   );
 }

@@ -1,3 +1,4 @@
+import { openDB, unwrap, type IDBPDatabase, type IDBPTransaction } from "idb";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import type { CreatePurchaseInput } from "../api";
@@ -170,25 +171,26 @@ function normalizePurchaseInput(input: CreatePurchaseInput): CreatePurchaseInput
   };
 }
 
-function openDatabase() {
+function openDatabase(): Promise<IDBPDatabase> {
   if (typeof indexedDB === "undefined")
     return Promise.reject(new Error("このブラウザでは下書きを保存できません"));
-  return new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(databaseName, databaseVersion);
-    let settled = false;
-    request.onupgradeneeded = (event) => {
-      const database = request.result;
-      const transaction = request.transaction;
-      if (!transaction) return;
-      if (event.oldVersion < 2) {
+  let rejectBlocked: ((reason: Error) => void) | undefined;
+  let wasBlocked = false;
+  const blocked = new Promise<never>((_, reject) => {
+    rejectBlocked = reject;
+  });
+  const opening = openDB(databaseName, databaseVersion, {
+    upgrade(database, oldVersion, _newVersion, transaction) {
+      if (oldVersion < 2) {
         if (!database.objectStoreNames.contains(unscopedDraftsStore))
           database.createObjectStore(unscopedDraftsStore, { keyPath: "householdId" });
         if (!database.objectStoreNames.contains(unscopedOutboxStore))
           database.createObjectStore(unscopedOutboxStore, { keyPath: "idempotencyKey" });
-        migrateStore(transaction, legacyDraftsStore, unscopedDraftsStore, migrateDraft);
-        migrateStore(transaction, legacyOutboxStore, unscopedOutboxStore, migrateOutbox);
+        const nativeTransaction = unwrap(transaction);
+        migrateStore(nativeTransaction, legacyDraftsStore, unscopedDraftsStore, migrateDraft);
+        migrateStore(nativeTransaction, legacyOutboxStore, unscopedOutboxStore, migrateOutbox);
       }
-      if (event.oldVersion < 3) {
+      if (oldVersion < 3) {
         if (!database.objectStoreNames.contains(draftsStore))
           database.createObjectStore(draftsStore, { keyPath: "storageKey" });
         if (!database.objectStoreNames.contains(outboxStore)) {
@@ -197,10 +199,17 @@ function openDatabase() {
           store.createIndex("memberHousehold", ["memberId", "householdId"]);
         }
       }
-    };
-    request.onsuccess = () => {
-      const database = request.result;
-      if (settled) {
+    },
+    blocked() {
+      wasBlocked = true;
+      const message = "別のhorseタブを再読み込みしてください";
+      requestDatabaseReload(message);
+      rejectBlocked?.(new Error(message));
+    },
+  });
+  void opening.then(
+    (database) => {
+      if (wasBlocked) {
         database.close();
         return;
       }
@@ -208,21 +217,12 @@ function openDatabase() {
         database.close();
         requestDatabaseReload("保存データが更新されました。再読み込みしてください");
       };
-      settled = true;
-      resolve(database);
-    };
-    request.onerror = () => {
-      if (settled) return;
-      settled = true;
-      reject(request.error ?? new Error("下書きデータベースを開けません"));
-    };
-    request.onblocked = () => {
-      if (settled) return;
-      settled = true;
-      const message = "別のhorseタブを再読み込みしてください";
-      requestDatabaseReload(message);
-      reject(new Error(message));
-    };
+    },
+    () => {},
+  );
+  return Promise.race([opening, blocked]).catch((reason: unknown) => {
+    if (reason instanceof Error) throw reason;
+    throw new Error("下書きデータベースを開けません", { cause: reason });
   });
 }
 
@@ -239,91 +239,43 @@ function notifyOutboxChanged() {
 
 let outboxBroadcast: BroadcastChannel | undefined;
 
+async function withTransaction<T, Mode extends "readonly" | "readwrite">(
+  storeNames: string | string[],
+  mode: Mode,
+  operation: (transaction: IDBPTransaction<unknown, string[], Mode>) => Promise<T>,
+): Promise<T> {
+  const database = await openDatabase();
+  const transaction = database.transaction(storeNames, mode);
+  try {
+    const operationResult = operation(transaction);
+    const [result] = await Promise.all([operationResult, transaction.done]);
+    return result;
+  } finally {
+    database.close();
+  }
+}
+
 function writeValue(storeName: string, value: unknown) {
-  return openDatabase().then(
-    (database) =>
-      new Promise<void>((resolve, reject) => {
-        const transaction = database.transaction(storeName, "readwrite");
-        transaction.objectStore(storeName).put(value);
-        transaction.oncomplete = () => {
-          database.close();
-          resolve();
-        };
-        transaction.onerror = () => {
-          database.close();
-          reject(transaction.error ?? new Error("ローカル保存に失敗しました"));
-        };
-        transaction.onabort = () => {
-          database.close();
-          reject(transaction.error ?? new Error("ローカル保存に失敗しました"));
-        };
-      }),
-  );
+  return withTransaction(storeName, "readwrite", async (transaction) => {
+    await transaction.objectStore(storeName).put(value);
+  });
 }
 
 function deleteValue(storeName: string, key: IDBValidKey) {
-  return openDatabase().then(
-    (database) =>
-      new Promise<void>((resolve, reject) => {
-        const transaction = database.transaction(storeName, "readwrite");
-        transaction.objectStore(storeName).delete(key);
-        transaction.oncomplete = () => {
-          database.close();
-          resolve();
-        };
-        transaction.onerror = () => {
-          database.close();
-          reject(transaction.error ?? new Error("ローカルデータを削除できません"));
-        };
-        transaction.onabort = () => {
-          database.close();
-          reject(transaction.error ?? new Error("ローカルデータを削除できません"));
-        };
-      }),
-  );
+  return withTransaction(storeName, "readwrite", async (transaction) => {
+    await transaction.objectStore(storeName).delete(key);
+  });
 }
 
 function readValue(storeName: string, key: IDBValidKey) {
-  return openDatabase().then(
-    (database) =>
-      new Promise<unknown>((resolve, reject) => {
-        const transaction = database.transaction(storeName, "readonly");
-        const request = transaction.objectStore(storeName).get(key);
-        let value: unknown;
-        request.onsuccess = () => {
-          value = request.result;
-        };
-        transaction.oncomplete = () => {
-          database.close();
-          resolve(value);
-        };
-        transaction.onerror = () => {
-          database.close();
-          reject(transaction.error ?? new Error("ローカルデータを読み込めません"));
-        };
-      }),
+  return withTransaction(storeName, "readonly", (transaction) =>
+    transaction.objectStore(storeName).get(key),
   );
 }
 
 function readAllByIndex(storeName: string, indexName: string, key: IDBValidKey) {
-  return openDatabase().then(
-    (database) =>
-      new Promise<unknown[]>((resolve, reject) => {
-        const transaction = database.transaction(storeName, "readonly");
-        const request = transaction.objectStore(storeName).index(indexName).getAll(key);
-        let values: unknown[] = [];
-        request.onsuccess = () => {
-          values = request.result;
-        };
-        transaction.oncomplete = () => {
-          database.close();
-          resolve(values);
-        };
-        transaction.onerror = () => {
-          database.close();
-          reject(transaction.error ?? new Error("ローカルデータを読み込めません"));
-        };
-      }),
+  return withTransaction(storeName, "readonly", (transaction) =>
+    transaction.objectStore(storeName).index(indexName).getAll(key),
   );
 }
 
@@ -362,10 +314,8 @@ export async function enqueuePurchase(input: CreatePurchaseInput, memberId: stri
   input = normalizePurchaseInput(input);
   const now = Date.now();
   const storageKey = outboxStorageKey(memberId, input.householdId, input.idempotencyKey);
-  const database = await openDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction([draftsStore, outboxStore], "readwrite");
+  await withTransaction([draftsStore, outboxStore], "readwrite", async (transaction) => {
+    await Promise.all([
       transaction.objectStore(outboxStore).put({
         storageKey,
         memberId,
@@ -375,20 +325,13 @@ export async function enqueuePurchase(input: CreatePurchaseInput, memberId: stri
         status: "PENDING",
         createdAt: now,
         updatedAt: now,
-      } satisfies PurchaseOutboxEntry);
+      } satisfies PurchaseOutboxEntry),
       transaction.objectStore(draftsStore).put({
         storageKey: draftStorageKey(memberId, input.householdId),
         cleared: true,
-      });
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () =>
-        reject(transaction.error ?? new Error("送信待ちを保存できません"));
-      transaction.onabort = () =>
-        reject(transaction.error ?? new Error("送信待ちを保存できません"));
-    });
-  } finally {
-    database.close();
-  }
+      }),
+    ]);
+  });
   notifyOutboxChanged();
 }
 
@@ -398,46 +341,32 @@ export async function claimPurchaseOutbox(
   idempotencyKey: string,
   owner: string,
 ): Promise<PurchaseOutboxEntry | undefined> {
-  const database = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(outboxStore, "readwrite");
+  const claimed = await withTransaction(outboxStore, "readwrite", async (transaction) => {
     const store = transaction.objectStore(outboxStore);
-    const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
-    let claimed: PurchaseOutboxEntry | undefined;
-    request.onsuccess = () => {
-      const result: unknown = request.result;
-      const entry = isPurchaseOutboxEntry(result) ? result : undefined;
-      if (
-        !entry ||
-        entry.memberId !== memberId ||
-        entry.householdId !== householdId ||
-        entry.status !== "PENDING" ||
-        (entry.leaseUntil ?? 0) > Date.now()
-      )
-        return;
-      claimed = {
-        ...entry,
-        input: normalizePurchaseInput(entry.input),
-        leaseOwner: owner,
-        leaseUntil: Date.now() + leaseMilliseconds,
-        updatedAt: Date.now(),
-      };
-      store.put(claimed);
+    const result: unknown = await store.get(
+      outboxStorageKey(memberId, householdId, idempotencyKey),
+    );
+    const entry = isPurchaseOutboxEntry(result) ? result : undefined;
+    if (
+      !entry ||
+      entry.memberId !== memberId ||
+      entry.householdId !== householdId ||
+      entry.status !== "PENDING" ||
+      (entry.leaseUntil ?? 0) > Date.now()
+    )
+      return undefined;
+    const claimedEntry = {
+      ...entry,
+      input: normalizePurchaseInput(entry.input),
+      leaseOwner: owner,
+      leaseUntil: Date.now() + leaseMilliseconds,
+      updatedAt: Date.now(),
     };
-    transaction.oncomplete = () => {
-      database.close();
-      if (claimed) notifyOutboxChanged();
-      resolve(claimed);
-    };
-    transaction.onerror = () => {
-      database.close();
-      reject(transaction.error ?? new Error("送信待ちを確認できません"));
-    };
-    transaction.onabort = () => {
-      database.close();
-      reject(transaction.error ?? new Error("送信待ちを確認できません"));
-    };
+    await store.put(claimedEntry);
+    return claimedEntry;
   });
+  if (claimed) notifyOutboxChanged();
+  return claimed;
 }
 
 export async function markPurchaseOutboxFailed(
@@ -447,40 +376,28 @@ export async function markPurchaseOutboxFailed(
   owner: string,
   message: string,
 ) {
-  const database = await openDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction(outboxStore, "readwrite");
-      const store = transaction.objectStore(outboxStore);
-      const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
-      request.onsuccess = () => {
-        const result: unknown = request.result;
-        const entry = isPurchaseOutboxEntry(result) ? result : undefined;
-        if (
-          !entry ||
-          entry.memberId !== memberId ||
-          entry.householdId !== householdId ||
-          entry.leaseOwner !== owner
-        )
-          return;
-        store.put({
-          ...entry,
-          status: "FAILED",
-          lastError: message,
-          leaseOwner: undefined,
-          leaseUntil: undefined,
-          updatedAt: Date.now(),
-        });
-      };
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () =>
-        reject(transaction.error ?? new Error("送信結果を保存できません"));
-      transaction.onabort = () =>
-        reject(transaction.error ?? new Error("送信結果を保存できません"));
+  await withTransaction(outboxStore, "readwrite", async (transaction) => {
+    const store = transaction.objectStore(outboxStore);
+    const result: unknown = await store.get(
+      outboxStorageKey(memberId, householdId, idempotencyKey),
+    );
+    const entry = isPurchaseOutboxEntry(result) ? result : undefined;
+    if (
+      !entry ||
+      entry.memberId !== memberId ||
+      entry.householdId !== householdId ||
+      entry.leaseOwner !== owner
+    )
+      return;
+    await store.put({
+      ...entry,
+      status: "FAILED",
+      lastError: message,
+      leaseOwner: undefined,
+      leaseUntil: undefined,
+      updatedAt: Date.now(),
     });
-  } finally {
-    database.close();
-  }
+  });
   notifyOutboxChanged();
 }
 
@@ -490,31 +407,19 @@ export async function completePurchaseOutbox(
   idempotencyKey: string,
   owner: string,
 ) {
-  const database = await openDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction(outboxStore, "readwrite");
-      const store = transaction.objectStore(outboxStore);
-      const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
-      request.onsuccess = () => {
-        const result: unknown = request.result;
-        const entry = isPurchaseOutboxEntry(result) ? result : undefined;
-        if (
-          entry?.memberId === memberId &&
-          entry.householdId === householdId &&
-          entry.leaseOwner === owner
-        )
-          store.delete(outboxStorageKey(memberId, householdId, idempotencyKey));
-      };
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () =>
-        reject(transaction.error ?? new Error("送信済み記録を削除できません"));
-      transaction.onabort = () =>
-        reject(transaction.error ?? new Error("送信済み記録を削除できません"));
-    });
-  } finally {
-    database.close();
-  }
+  await withTransaction(outboxStore, "readwrite", async (transaction) => {
+    const store = transaction.objectStore(outboxStore);
+    const result: unknown = await store.get(
+      outboxStorageKey(memberId, householdId, idempotencyKey),
+    );
+    const entry = isPurchaseOutboxEntry(result) ? result : undefined;
+    if (
+      entry?.memberId === memberId &&
+      entry.householdId === householdId &&
+      entry.leaseOwner === owner
+    )
+      await store.delete(outboxStorageKey(memberId, householdId, idempotencyKey));
+  });
   notifyOutboxChanged();
 }
 
@@ -524,34 +429,26 @@ export async function renewPurchaseOutboxLease(
   idempotencyKey: string,
   owner: string,
 ) {
-  const database = await openDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction(outboxStore, "readwrite");
-      const store = transaction.objectStore(outboxStore);
-      const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
-      request.onsuccess = () => {
-        const result: unknown = request.result;
-        const entry = isPurchaseOutboxEntry(result) ? result : undefined;
-        if (
-          !entry ||
-          entry.memberId !== memberId ||
-          entry.householdId !== householdId ||
-          entry.status !== "PENDING" ||
-          entry.leaseOwner !== owner
-        )
-          return;
-        store.put({ ...entry, leaseUntil: Date.now() + leaseMilliseconds, updatedAt: Date.now() });
-      };
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () =>
-        reject(transaction.error ?? new Error("送信状態を更新できません"));
-      transaction.onabort = () =>
-        reject(transaction.error ?? new Error("送信状態を更新できません"));
+  await withTransaction(outboxStore, "readwrite", async (transaction) => {
+    const store = transaction.objectStore(outboxStore);
+    const result: unknown = await store.get(
+      outboxStorageKey(memberId, householdId, idempotencyKey),
+    );
+    const entry = isPurchaseOutboxEntry(result) ? result : undefined;
+    if (
+      !entry ||
+      entry.memberId !== memberId ||
+      entry.householdId !== householdId ||
+      entry.status !== "PENDING" ||
+      entry.leaseOwner !== owner
+    )
+      return;
+    await store.put({
+      ...entry,
+      leaseUntil: Date.now() + leaseMilliseconds,
+      updatedAt: Date.now(),
     });
-  } finally {
-    database.close();
-  }
+  });
   notifyOutboxChanged();
 }
 
@@ -560,34 +457,22 @@ export async function retryPurchaseOutbox(
   householdId: string,
   idempotencyKey: string,
 ) {
-  const database = await openDatabase();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction(outboxStore, "readwrite");
-      const store = transaction.objectStore(outboxStore);
-      const request = store.get(outboxStorageKey(memberId, householdId, idempotencyKey));
-      request.onsuccess = () => {
-        const result: unknown = request.result;
-        const entry = isPurchaseOutboxEntry(result) ? result : undefined;
-        if (!entry || entry.memberId !== memberId || entry.householdId !== householdId) return;
-        store.put({
-          ...entry,
-          status: "PENDING",
-          lastError: undefined,
-          leaseOwner: undefined,
-          leaseUntil: undefined,
-          updatedAt: Date.now(),
-        });
-      };
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () =>
-        reject(transaction.error ?? new Error("再送の準備に失敗しました"));
-      transaction.onabort = () =>
-        reject(transaction.error ?? new Error("再送の準備に失敗しました"));
+  await withTransaction(outboxStore, "readwrite", async (transaction) => {
+    const store = transaction.objectStore(outboxStore);
+    const result: unknown = await store.get(
+      outboxStorageKey(memberId, householdId, idempotencyKey),
+    );
+    const entry = isPurchaseOutboxEntry(result) ? result : undefined;
+    if (!entry || entry.memberId !== memberId || entry.householdId !== householdId) return;
+    await store.put({
+      ...entry,
+      status: "PENDING",
+      lastError: undefined,
+      leaseOwner: undefined,
+      leaseUntil: undefined,
+      updatedAt: Date.now(),
     });
-  } finally {
-    database.close();
-  }
+  });
   notifyOutboxChanged();
 }
 

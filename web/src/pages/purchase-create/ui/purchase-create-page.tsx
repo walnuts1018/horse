@@ -7,6 +7,7 @@ import { readHouseholdPurchases } from "../../../entities/purchase";
 import { type Household, type Purchase } from "../../../shared/api";
 import { errorMessage, usePurchaseOutbox } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
+import { loadPurchaseDefaults, savePurchaseDefaults } from "../model/purchase-defaults";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
 import { usePurchasePayments } from "../model/purchase-payments";
 import { usePurchaseDraft } from "../model/use-purchase-draft";
@@ -31,20 +32,33 @@ const localDateTime = () => {
 };
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
 
-export function PurchaseCreatePage({
-  household,
-  memberId,
-  onBack,
-  onQueued,
-  onUnsavedChanges,
-}: {
+type PurchaseCreatePageProps = {
   household: Household;
   memberId: string;
   onBack: () => void;
   onQueued: (idempotencyKey: string) => void;
   onUnsavedChanges: (unsaved: boolean) => void;
-}) {
-  const [merchant, setMerchant] = useState("");
+};
+
+export function PurchaseCreatePage(props: PurchaseCreatePageProps) {
+  const scope = JSON.stringify([props.memberId, props.household.id]);
+  return <PurchaseCreatePageContent key={scope} {...props} />;
+}
+
+function PurchaseCreatePageContent({
+  household,
+  memberId,
+  onBack,
+  onQueued,
+  onUnsavedChanges,
+}: PurchaseCreatePageProps) {
+  const accountIdsKey = household.accounts.map((account) => account.id).join("\u0000");
+  const purchaseDefaults = useMemo(
+    () =>
+      loadPurchaseDefaults(memberId, household.id, accountIdsKey.split("\u0000").filter(Boolean)),
+    [memberId, household.id, accountIdsKey],
+  );
+  const [merchant, setMerchant] = useState(purchaseDefaults.merchant);
   const [occurredAt, setOccurredAt] = useState(localDateTime);
   const [itemsValue, setItemsValue] = useState<PurchaseItemsValue>(emptyPurchaseItemsValue);
   const [undoAvailable, setUndoAvailable] = useState(false);
@@ -70,7 +84,13 @@ export function PurchaseCreatePage({
     Boolean(id && enabledCategories.some((category) => category.id === id));
   const { itemName, itemAmount, items } = itemsValue;
   const itemTotal = sum(items.map((item) => Number(item.amount) || 0));
-  const payments = usePurchasePayments(household, itemTotal, markUnsaved);
+  const payments = usePurchasePayments(
+    household,
+    itemTotal,
+    markUnsaved,
+    purchaseDefaults.paymentAccountId,
+  );
+  const resetPayments = payments.reset;
   const { rows: paymentRows, autoTotal: paymentAutoTotal } = payments;
   const draft = useMemo(
     () => ({
@@ -173,10 +193,15 @@ export function PurchaseCreatePage({
     cancelScheduledSave,
     onQueued,
     onSaved: () => {
+      const paymentAccountId = paymentRows[0].paymentAccountId;
+      savePurchaseDefaults(memberId, household.id, {
+        merchant: merchant.trim(),
+        paymentAccountId,
+      });
       queued();
-      setMerchant("");
+      setMerchant(merchant.trim());
       setOccurredAt(localDateTime());
-      payments.reset();
+      resetPayments(paymentAccountId);
       setItemsValue(emptyPurchaseItemsValue());
       itemsCommands.current?.reset();
     },

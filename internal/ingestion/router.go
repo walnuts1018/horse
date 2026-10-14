@@ -55,6 +55,7 @@ func (e *GeminiAPIError) Is(target error) bool {
 type GeminiRouter struct {
 	Free             Gemini
 	Paid             Gemini
+	RateControl      GeminiRateControl
 	FlashModel       string
 	LiteModel        string
 	ProModel         string
@@ -70,6 +71,7 @@ type GeminiRouteOptions struct {
 	ProjectPreferred string
 	Purpose          string
 	Reason           string
+	Attempt          int
 	Guidance         []string
 	PaidOnly         bool
 	FreeOnly         bool
@@ -210,7 +212,26 @@ func (r GeminiRouter) extractWithClient(ctx context.Context, client Gemini, mode
 	if client.ProjectRoute == ProjectPaid {
 		routeTier = tier
 	}
-	return client.ExtractRun(ctx, document, hints, GeminiRequestOptions{ThinkingLevel: thinking, ServiceTier: routeTier, Guidance: options.Guidance, Reason: options.Reason, SourceKind: sourceKind})
+	if r.RateControl != nil {
+		if err := r.RateControl.Wait(ctx, client.ProjectRoute, model); err != nil {
+			return Receipt{}, ExtractionRun{}, fmt.Errorf("wait for shared Gemini cooldown: %w", err)
+		}
+	}
+	receipt, run, err := client.ExtractRun(ctx, document, hints, GeminiRequestOptions{ThinkingLevel: thinking, ServiceTier: routeTier, Guidance: options.Guidance, Reason: options.Reason, SourceKind: sourceKind})
+	if r.RateControl != nil {
+		apiErr, ok := errors.AsType[*GeminiAPIError](err)
+		if ok && apiErr.Kind == GeminiFailureQuota {
+			delay := apiErr.RetryAfter
+			if delay <= 0 {
+				delay = retryDelay(apiErr, options.Attempt)
+			}
+			if recordErr := r.RateControl.RecordCooldown(ctx, client.ProjectRoute, model, delay); recordErr != nil {
+				return receipt, run, errors.Join(err, fmt.Errorf("record shared Gemini cooldown: %w", recordErr))
+			}
+		}
+	}
+
+	return receipt, run, err
 }
 
 func (r GeminiRouter) QualityOptions(sourceKind string, previous ExtractionRun, guidance []string) GeminiRouteOptions {

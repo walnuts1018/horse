@@ -1,11 +1,18 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import type { Household } from "../../../shared/api";
 
 export type PaymentDraft = { key: string; paymentAccountId: string; amountYen: string };
 
-export function usePurchasePayments(household: Household, itemTotal: number, onDirty: () => void) {
-  const [rows, setRows] = useState<PaymentDraft[]>(() => [createPayment(household)]);
+export function usePurchasePayments(
+  household: Household,
+  itemTotal: number,
+  onDirty: () => void,
+  initialPaymentAccountId?: string,
+) {
+  const [rows, setRows] = useState<PaymentDraft[]>(() => [
+    createPayment(household, initialPaymentAccountId),
+  ]);
   const [autoTotal, setAutoTotal] = useState(true);
   const amount = (payment: PaymentDraft) =>
     Number(autoTotal && rows.length === 1 ? itemTotal : payment.amountYen) || 0;
@@ -34,10 +41,13 @@ export function usePurchasePayments(household: Household, itemTotal: number, onD
     onDirty();
     setRows((current) => current.filter((payment) => payment.key !== key));
   };
-  const reset = () => {
-    setRows([createPayment(household)]);
-    setAutoTotal(true);
-  };
+  const reset = useCallback(
+    (paymentAccountId?: string) => {
+      setRows([createPayment(household, paymentAccountId)]);
+      setAutoTotal(true);
+    },
+    [household],
+  );
 
   return {
     rows,
@@ -54,10 +64,10 @@ export function usePurchasePayments(household: Household, itemTotal: number, onD
   };
 }
 
-function createPayment(household: Household): PaymentDraft {
+function createPayment(household: Household, paymentAccountId?: string): PaymentDraft {
   return {
     key: crypto.randomUUID(),
-    paymentAccountId: household.accounts[0]?.id ?? "",
+    paymentAccountId: paymentAccountId || household.accounts[0]?.id || "",
     amountYen: "",
   };
 }
