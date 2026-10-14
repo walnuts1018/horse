@@ -117,7 +117,6 @@ func calculatePeriodsAccounting(ctx context.Context, db bob.Executor, householdI
 	}
 	schedules, err := models.FundingSchedules.Query(sm.Where(psql.And(
 		models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.FundingSchedules.Columns.Cadence.EQ(psql.Arg("MONTHLY")),
 		psql.Or(
 			models.FundingSchedules.Columns.Active.EQ(psql.Arg(true)),
 			models.FundingSchedules.Columns.EndsOn.IsNotNull(),
@@ -228,9 +227,13 @@ func addFundingAmountsFromRows(start, end time.Time, obligations models.FundingO
 		if !schedule.Active && !schedule.EndsOn.Valid || !schedule.StartsOn.Before(end) || schedule.EndsOn.Valid && schedule.EndsOn.V.Before(start) {
 			continue
 		}
+		amount, err := fundingScheduleAmount(start, end, schedule)
+		if err != nil {
+			return err
+		}
 		key := fundingKey{memberID: schedule.MemberID.String(), poolID: schedule.PoolID.String()}
 		var ok bool
-		scheduleAmounts[key], ok = checkedAdd(scheduleAmounts[key], schedule.AmountYen)
+		scheduleAmounts[key], ok = checkedAdd(scheduleAmounts[key], amount)
 		if !ok {
 			return domain.ErrInvalidSettlement
 		}
@@ -279,6 +282,48 @@ func addFundingAmountsFromRows(start, end time.Time, obligations models.FundingO
 		}
 	}
 	return nil
+}
+
+func fundingScheduleAmount(start, end time.Time, schedule *models.FundingSchedule) (int64, error) {
+	date := func(value time.Time) time.Time {
+		return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
+	}
+	periodStart, periodEnd := date(start), date(end)
+	startsOn := date(schedule.StartsOn)
+	endsOn := time.Time{}
+	if schedule.EndsOn.Valid {
+		endsOn = date(schedule.EndsOn.V)
+	}
+	switch schedule.Cadence {
+	case "MONTHLY":
+		if !startsOn.Before(periodEnd) || !endsOn.IsZero() && endsOn.Before(periodStart) {
+			return 0, nil
+		}
+		return schedule.AmountYen, nil
+	case "CUSTOM":
+		if startsOn.Before(periodStart) || !startsOn.Before(periodEnd) || !endsOn.IsZero() && startsOn.After(endsOn) {
+			return 0, nil
+		}
+		return schedule.AmountYen, nil
+	case "WEEKLY":
+		firstDate := startsOn
+		if firstDate.Before(periodStart) {
+			days := int(periodStart.Sub(firstDate).Hours() / 24)
+			weeks := (days + 6) / 7
+			firstDate = firstDate.AddDate(0, 0, weeks*7)
+		}
+		var total int64
+		for occurrence := firstDate; occurrence.Before(periodEnd) && (endsOn.IsZero() || !occurrence.After(endsOn)); occurrence = occurrence.AddDate(0, 0, 7) {
+			var ok bool
+			total, ok = checkedAdd(total, schedule.AmountYen)
+			if !ok {
+				return 0, domain.ErrInvalidSettlement
+			}
+		}
+		return total, nil
+	default:
+		return 0, domain.ErrInvalidSettlement
+	}
 }
 
 func checkedAdd(left, right int64) (int64, bool) {

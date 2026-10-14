@@ -255,7 +255,6 @@ func materializeFundingObligations(ctx context.Context, executor bob.Executor, h
 	schedules, err := models.FundingSchedules.Query(sm.Where(psql.And(
 		models.FundingSchedules.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		psql.Or(models.FundingSchedules.Columns.Active.EQ(psql.Arg(true)), models.FundingSchedules.Columns.EndsOn.IsNotNull()),
-		models.FundingSchedules.Columns.Cadence.EQ(psql.Arg("MONTHLY")),
 		models.FundingSchedules.Columns.StartsOn.LT(psql.Arg(end)),
 		psql.Or(models.FundingSchedules.Columns.EndsOn.IsNull(), models.FundingSchedules.Columns.EndsOn.GTE(psql.Arg(start))),
 	))).All(ctx, executor)
@@ -263,6 +262,10 @@ func materializeFundingObligations(ctx context.Context, executor bob.Executor, h
 		return err
 	}
 	for _, schedule := range schedules {
+		amountYen, err := fundingScheduleAmount(start, end, schedule)
+		if err != nil {
+			return err
+		}
 		scheduleID := sql.Null[gofrsuuid.UUID]{V: schedule.ID, Valid: true}
 		obligationID, err := gofrsuuid.NewV7()
 		if err != nil {
@@ -270,7 +273,7 @@ func materializeFundingObligations(ctx context.Context, executor bob.Executor, h
 		}
 		if _, err := models.FundingObligations.Insert(&models.FundingObligationSetter{
 			ID: &obligationID, HouseholdID: &householdID, ScheduleID: &scheduleID, MemberID: &schedule.MemberID,
-			PoolID: &schedule.PoolID, Period: &period, AmountYen: &schedule.AmountYen,
+			PoolID: &schedule.PoolID, Period: &period, AmountYen: &amountYen,
 		}, im.OnConflict("household_id", "member_id", "pool_id", "period").DoUpdate(
 			im.SetCol("schedule_id").To(im.Excluded("schedule_id")),
 			im.SetCol("amount_yen").To(im.Excluded("amount_yen")),

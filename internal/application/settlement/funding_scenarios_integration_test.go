@@ -2,6 +2,7 @@ package settlement
 
 import (
 	"crypto/sha256"
+	"database/sql"
 	"os"
 	"testing"
 	"time"
@@ -140,5 +141,56 @@ func TestIrregularFundingOverpaymentCarriesAcrossClosedPeriod(t *testing.T) {
 	}
 	if nextLines[memberA.String()] != 2000 || nextLines[memberB.String()] != 8000 {
 		t.Fatalf("closed overpayment credit and unpaid contribution should carry once: %#v", nextLines)
+	}
+
+	for _, schedule := range []struct {
+		memberID gofrsuuid.UUID
+		amount   int64
+		cadence  string
+		startsOn time.Time
+		endsOn   time.Time
+	}{{
+		memberID: memberA, amount: 1500, cadence: "WEEKLY",
+		startsOn: time.Date(2026, time.August, 5, 0, 0, 0, 0, time.FixedZone("JST", 9*60*60)),
+		endsOn:   time.Date(2026, time.August, 26, 0, 0, 0, 0, time.FixedZone("JST", 9*60*60)),
+	}, {
+		memberID: memberB, amount: 500, cadence: "CUSTOM",
+		startsOn: time.Date(2026, time.August, 17, 0, 0, 0, 0, time.FixedZone("JST", 9*60*60)),
+		endsOn:   time.Date(2026, time.September, 30, 0, 0, 0, 0, time.FixedZone("JST", 9*60*60)),
+	}} {
+		scheduleID, err := gofrsuuid.NewV7()
+		if err != nil {
+			t.Fatal(err)
+		}
+		active := true
+		endsOn := sql.Null[time.Time]{V: schedule.endsOn, Valid: true}
+		if _, err := models.FundingSchedules.Insert(&models.FundingScheduleSetter{
+			ID: &scheduleID, HouseholdID: &householdID, MemberID: &schedule.memberID, PoolID: &poolID,
+			AmountYen: &schedule.amount, Cadence: &schedule.cadence, StartsOn: &schedule.startsOn, EndsOn: &endsOn, Active: &active,
+		}).Exec(ctx, executor); err != nil {
+			t.Fatal(err)
+		}
+	}
+	august, err := CalculatePeriod(ctx, executor, householdID.String(), "2026-08")
+	if err != nil {
+		t.Fatal(err)
+	}
+	augustScheduled := make(map[string]int64, len(august))
+	for _, line := range august {
+		augustScheduled[line.MemberID] = line.ScheduledYen
+	}
+	if augustScheduled[memberA.String()] != 12000 || augustScheduled[memberB.String()] != 4500 {
+		t.Fatalf("weekly occurrences and custom date should be included in August: %#v", augustScheduled)
+	}
+	closedAugust, err := settlements.Close(ctx, CloseCommand{ActorID: memberA.String(), HouseholdID: householdID.String(), Period: "2026-08"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedScheduled := make(map[string]int64, len(closedAugust.Lines))
+	for _, line := range closedAugust.Lines {
+		closedScheduled[line.MemberID] = line.ScheduledYen
+	}
+	if closedScheduled[memberA.String()] != 12000 || closedScheduled[memberB.String()] != 4500 {
+		t.Fatalf("materialized weekly and custom obligations should match preview: %#v", closedScheduled)
 	}
 }
