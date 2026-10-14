@@ -116,19 +116,19 @@ export function usePurchaseDraft({
       setStorageReady(false);
       setDraftScope(null);
       void loadPurchaseDraft(memberId, householdId)
-      .then((loaded) => {
-        if (!active) return;
-        if (loaded) {
-          hasLocalDraft.current = true;
-          restoreRef.current(loaded);
-          setSavedAt(new Date());
-        }
-        setDraftScope(scope);
-      })
-      .catch((reason) => active && onLoadErrorRef.current(toError(reason)))
-      .finally(() => {
-        if (active) setStorageReady(true);
-      });
+        .then((loaded) => {
+          if (!active) return;
+          if (loaded) {
+            hasLocalDraft.current = true;
+            restoreRef.current(loaded);
+            setSavedAt(new Date());
+          }
+          setDraftScope(scope);
+        })
+        .catch((reason) => active && onLoadErrorRef.current(toError(reason)))
+        .finally(() => {
+          if (active) setStorageReady(true);
+        });
     });
     return () => {
       active = false;

@@ -65,7 +65,9 @@ export function ManageHouseholdInvitations({
     queueMicrotask(() => {
       setInvitationLink("");
       setIssuedInvitationId("");
-      void refreshInvitations().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
+      void refreshInvitations().catch((reason) =>
+        onNoticeRef.current(errorMessage(reason), "error"),
+      );
     });
   }, [refreshInvitations]);
 

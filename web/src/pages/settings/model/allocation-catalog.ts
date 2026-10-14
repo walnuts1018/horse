@@ -40,10 +40,14 @@ export function useAllocationCatalog({
   );
 
   // pools変更時はruleWeightsを即時導出し、effectでの同期setStateを廃止
-  const ruleWeightsDerived = household.pools.length === 0
-    ? {}
-    : Object.fromEntries(household.pools.map((pool) => [pool.id, String(pool.defaultShareWeight || 1)]));
-  const effectiveRuleWeights = Object.keys(ruleWeights).length === 0 ? ruleWeightsDerived : ruleWeights;
+  const ruleWeightsDerived =
+    household.pools.length === 0
+      ? {}
+      : Object.fromEntries(
+          household.pools.map((pool) => [pool.id, String(pool.defaultShareWeight || 1)]),
+        );
+  const effectiveRuleWeights =
+    Object.keys(ruleWeights).length === 0 ? ruleWeightsDerived : ruleWeights;
   const [catalog, setCatalog] = useState<ProductConcept[]>([]);
   const [conceptName, setConceptName] = useState("");
   const [conceptCategoryId, setConceptCategoryId] = useState("");
@@ -102,7 +106,10 @@ export function useAllocationCatalog({
   const saveRule = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const allocations = household.pools
-      .map((pool) => ({ poolId: pool.id, weight: Math.max(0, Number(effectiveRuleWeights[pool.id]) || 0) }))
+      .map((pool) => ({
+        poolId: pool.id,
+        weight: Math.max(0, Number(effectiveRuleWeights[pool.id]) || 0),
+      }))
       .filter((allocation) => allocation.weight > 0);
     if (
       !allocations.length ||

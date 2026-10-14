@@ -26,7 +26,7 @@ export function ManageAccountSettings({
   onRefreshBalances,
   onNotice,
   onFormClean,
-  pending,
+  pending: _pending,
 }: {
   household: Household;
   balances: AccountBalance[];

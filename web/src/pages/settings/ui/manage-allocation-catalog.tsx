@@ -13,7 +13,7 @@ export function ManageAllocationCatalog({
   catalogHidden,
   onNotice,
   onFormClean,
-  pending,
+  pending: _pending,
 }: {
   household: Household;
   allocationHidden: boolean;

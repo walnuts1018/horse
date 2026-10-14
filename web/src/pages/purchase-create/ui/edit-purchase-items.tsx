@@ -2,7 +2,6 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -96,21 +95,37 @@ export function EditPurchaseItems({
     [enabledCategories],
   );
 
+  // 実効カテゴリ：ユーザー明示選択 > 自動推測 > 空
+  const suggestedCategoryFromHistory = useMemo(() => {
+    const query = draft.itemName.trim();
+    if (!query || userCategoryId !== "") return null;
+    const match = history
+      .flatMap((purchase) => purchase.items)
+      .find((item) => item.name.toLocaleLowerCase() === query.toLocaleLowerCase());
+    if (match && isEnabledCategory(match.categoryId)) return match.categoryId;
+    return null;
+  }, [draft.itemName, history, isEnabledCategory, userCategoryId]);
+
+  const effectiveCategoryId = userCategoryId || suggestedCategoryFromHistory || "";
+
   // コールバックはref経由で参照し、副作用の依存が毎回変わって延々と再実行されるのを避ける
   useEffect(() => {
     onChangeRef.current = onChange;
   });
 
-  const update = useCallback((next: PurchaseItemsValue) => {
-    // 実効カテゴリを反映して親へ通知
-    const withEffectiveCategory = {
-      ...next,
-      categoryId: effectiveCategoryRef.current,
-    };
-    draftRef.current = withEffectiveCategory;
-    setDraft(withEffectiveCategory);
-    onChangeRef.current(withEffectiveCategory);
-  }, []);
+  const update = useCallback(
+    (next: PurchaseItemsValue) => {
+      // 実効カテゴリを反映して親へ通知
+      const withEffectiveCategory = {
+        ...next,
+        categoryId: effectiveCategoryId,
+      };
+      draftRef.current = withEffectiveCategory;
+      setDraft(withEffectiveCategory);
+      onChangeRef.current(withEffectiveCategory);
+    },
+    [effectiveCategoryId],
+  );
   const patchDraft = useCallback(
     (patch: Partial<PurchaseItemsValue>) => update({ ...draftRef.current, ...patch }),
     [update],
@@ -217,28 +232,6 @@ export function EditPurchaseItems({
     };
   }, [householdId, draft.itemName, merchant]);
 
-  // 履歴からのカテゴリ推測はレンダー中に導出
-  const suggestedCategoryFromHistory = useMemo(() => {
-    const query = draft.itemName.trim();
-    if (
-      !query ||
-      userCategoryId !== ""
-    )
-      return null;
-    const match = history
-      .flatMap((purchase) => purchase.items)
-      .find((item) => item.name.toLocaleLowerCase() === query.toLocaleLowerCase());
-    if (match && isEnabledCategory(match.categoryId)) return match.categoryId;
-    return null;
-  }, [draft.itemName, history, isEnabledCategory, userCategoryId]);
-
-  // 実効カテゴリ：ユーザー明示選択 > 自動推測 > 空
-  const effectiveCategoryId = userCategoryId || suggestedCategoryFromHistory || "";
-  const effectiveCategoryRef = useRef(effectiveCategoryId);
-  useLayoutEffect(() => {
-    effectiveCategoryRef.current = effectiveCategoryId;
-  }, [effectiveCategoryId]);
-
   const suggestions = useMemo(() => {
     const seen = new Set<string>();
     return history
@@ -285,10 +278,7 @@ export function EditPurchaseItems({
   const selectProductSuggestion = (candidate: ProductSuggestion) => {
     changeItemName(candidate.matchedName || draft.itemName.trim());
     setSelectedProductVariantId(candidate.variant.id);
-    if (
-      isEnabledCategory(candidate.concept.categoryId) &&
-      !userCategoryId
-    )
+    if (isEnabledCategory(candidate.concept.categoryId) && !userCategoryId)
       updateCategory(candidate.concept.categoryId);
     setProductSuggestions([]);
     amountRef.current?.focus();
@@ -425,12 +415,11 @@ export function EditPurchaseItems({
           key: crypto.randomUUID(),
           name,
           amount: amount.replace(/[¥,]/g, ""),
-          categoryId:
-            userCategoryId
-              ? effectiveCategoryId
-              : isEnabledCategory(historyCategoryId)
-                ? historyCategoryId
-                : "",
+          categoryId: userCategoryId
+            ? effectiveCategoryId
+            : isEnabledCategory(historyCategoryId)
+              ? historyCategoryId
+              : "",
           allocations: [],
         };
       }),
