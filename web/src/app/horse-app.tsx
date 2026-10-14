@@ -50,6 +50,7 @@ import {
 } from "./household-route-context";
 import { useHouseholdSession } from "./model/use-household-session";
 import { usePendingInvitation } from "./model/use-pending-invitation";
+import { useUnsavedChanges } from "./model/use-unsaved-changes";
 import {
   shouldAutoNavigateAfterPurchase,
   usePurchaseOutboxSender,
@@ -84,6 +85,7 @@ export function App() {
   const page = appPageFromPath(pathname);
   const createAndPostPurchase = useCreateAndPostPurchase();
   const [unsavedChangesRegistry] = useState(createUnsavedChangesRegistry);
+  const hasUnsavedChanges = useUnsavedChanges(unsavedChangesRegistry);
   const [mobileMenu, setMobileMenu] = useState(false);
   const isMobileViewport = useSyncExternalStore(
     subscribeToMobileViewport,
@@ -117,7 +119,7 @@ export function App() {
         !window.confirm("未保存の変更を破棄しますか？")
       );
     },
-    enableBeforeUnload: () => unsavedChangesRegistry.hasUnsavedChanges(),
+    enableBeforeUnload: false,
   });
 
   const navigateToHouseholdPage = useCallback(
@@ -203,10 +205,6 @@ export function App() {
   const activeHousehold = household?.id === householdId ? household : null;
   const outbox = usePurchaseOutbox(viewer?.id);
   const getCurrentHouseholdId = useCallback(() => household?.id, [household?.id]);
-  const hasUnsavedChanges = useCallback(
-    () => unsavedChangesRegistry.hasUnsavedChanges(),
-    [unsavedChangesRegistry],
-  );
   const navigateToLedger = useCallback(() => navigateToPage("ledger"), [navigateToPage]);
   const { onQueued: onPurchaseQueued, clearAutoNavigate } = usePurchaseOutboxSender({
     viewerId: viewer?.id,

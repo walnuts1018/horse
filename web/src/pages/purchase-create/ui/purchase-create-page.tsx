@@ -7,7 +7,11 @@ import { readHouseholdPurchases } from "../../../entities/purchase";
 import { type Household, type Purchase } from "../../../shared/api";
 import { errorMessage, usePurchaseOutbox } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
-import { loadPurchaseDefaults, savePurchaseDefaults } from "../model/purchase-defaults";
+import {
+  loadPaymentAccountForMerchant,
+  loadPurchaseDefaults,
+  savePurchaseDefaults,
+} from "../model/purchase-defaults";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
 import { usePurchasePayments } from "../model/purchase-payments";
 import { usePurchaseDraft } from "../model/use-purchase-draft";
@@ -53,10 +57,10 @@ function PurchaseCreatePageContent({
   onUnsavedChanges,
 }: PurchaseCreatePageProps) {
   const accountIdsKey = household.accounts.map((account) => account.id).join("\u0000");
+  const accountIds = useMemo(() => accountIdsKey.split("\u0000").filter(Boolean), [accountIdsKey]);
   const purchaseDefaults = useMemo(
-    () =>
-      loadPurchaseDefaults(memberId, household.id, accountIdsKey.split("\u0000").filter(Boolean)),
-    [memberId, household.id, accountIdsKey],
+    () => loadPurchaseDefaults(memberId, household.id, accountIds),
+    [memberId, household.id, accountIds],
   );
   const [merchant, setMerchant] = useState(purchaseDefaults.merchant);
   const [occurredAt, setOccurredAt] = useState(localDateTime);
@@ -90,6 +94,20 @@ function PurchaseCreatePageContent({
     markUnsaved,
     purchaseDefaults.paymentAccountId,
   );
+  const updateMerchant = (value: string, useMerchantDefault = false) => {
+    markUnsaved();
+    setMerchant(value);
+    if (!useMerchantDefault || payments.rows.length !== 1) return;
+    const paymentAccountId = loadPaymentAccountForMerchant(
+      memberId,
+      household.id,
+      value,
+      accountIds,
+    );
+    if (paymentAccountId && paymentAccountId !== payments.rows[0].paymentAccountId) {
+      payments.patch(payments.rows[0].key, { paymentAccountId });
+    }
+  };
   const resetPayments = payments.reset;
   const { rows: paymentRows, autoTotal: paymentAutoTotal } = payments;
   const draft = useMemo(
@@ -215,8 +233,7 @@ function PurchaseCreatePageContent({
       : "入力待ち";
 
   const copyPurchaseItems = (purchase: Purchase) => {
-    markUnsaved();
-    setMerchant(purchase.merchant);
+    updateMerchant(purchase.merchant);
     setCopiedPurchase({ ...purchase });
     itemsCommands.current?.copy(purchase);
     setMessage("");
@@ -251,16 +268,14 @@ function PurchaseCreatePageContent({
         copiedPurchase={copiedPurchase}
         classNames={{ details: styles.details, history: styles.history }}
         onMerchantChange={(value) => {
-          markUnsaved();
-          setMerchant(value);
+          updateMerchant(value, recentMerchants.includes(value));
         }}
         onOccurredAtChange={(value) => {
           markUnsaved();
           setOccurredAt(value);
         }}
         onSelectMerchant={(value) => {
-          markUnsaved();
-          setMerchant(value);
+          updateMerchant(value, true);
           setCopiedPurchase(null);
         }}
         onCopyPurchase={copyPurchaseItems}

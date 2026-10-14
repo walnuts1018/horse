@@ -15,6 +15,17 @@ import type {
   ReviewTarget,
   StatementEntry,
 } from "./imports";
+import {
+  createReceiptPurchaseInput,
+  effectiveReceiptItemAmount,
+} from "./receipt-confirmation";
+import {
+  createStatementExternalIncomeInput,
+  createStatementPurchaseInput,
+  statementConfirmationKey,
+  statementOccurredAt,
+} from "./statement-confirmation";
+export { effectiveReceiptItemAmount } from "./receipt-confirmation";
 
 import {
   useCorrectPurchaseFromStatementMutation,
@@ -45,16 +56,6 @@ import {
 } from "./imports";
 
 type ReceiptItemAllocation = { poolId: string; weight: number };
-
-export function effectiveReceiptItemAmount(
-  item: ExtractedItem,
-  index: number,
-  candidateAmounts: number[] | undefined,
-  manualAmountOverrides: Record<string, number> | undefined,
-) {
-  const itemKey = item.key ?? `item-${index}`;
-  return manualAmountOverrides?.[itemKey] ?? candidateAmounts?.[index] ?? item.grossAmount;
-}
 
 export function useImportConfirmation({
   household,
@@ -335,64 +336,23 @@ export function useImportConfirmation({
       hasManualAmountOverrides(document.id) ||
       (candidate ? !candidate.consistent : !document.result?.balanced);
     const paymentDraft = paymentDraftFor(document);
-    const totalYen = items.reduce(
-      (total, item, index) => total + receiptItemAmount(document, item, index),
-      0,
-    );
-    if (!items.length) throw new Error("確定できる品目がありません");
-    if (!occurredAt) throw new Error("購入日を入力してください");
-    if (document.result?.candidates?.length && !selectedCandidates[document.id]) {
-      throw new Error("税計算候補を選択してください");
-    }
-    if (requiresOverrideReason && overrideReason.length < 3) {
-      throw new Error("金額の訂正理由を入力してください");
-    }
-    if (
-      household.accounts.length > 0 &&
-      (paymentDraft.some(
-        (payment) =>
-          !payment.paymentAccountId ||
-          !Number.isSafeInteger(payment.amountYen) ||
-          payment.amountYen < 0,
-      ) ||
-        paymentDraft.reduce((total, payment) => total + payment.amountYen, 0) !== totalYen)
-    ) {
-      throw new Error("決済内訳と購入額を一致させてください");
-    }
-    const purchaseItems = items.map((item, index) => {
-      const allocations = receiptItemAllocations[document.id]?.[item.key ?? `item-${index}`] ?? [];
-      return {
-        name: item.name,
-        amountYen: receiptItemAmount(document, item, index),
-        quantityNumerator: item.quantityNumerator,
-        quantityDenominator: item.quantityDenominator,
-        quantityUnit: item.quantityUnit,
-        printedUnitPriceYen: item.printedUnitPriceYen,
-        printedUnitPriceQuantityNumerator: item.printedUnitPriceQuantityNumerator,
-        printedUnitPriceQuantityDenominator: item.printedUnitPriceQuantityDenominator,
-        printedUnitPriceUnit: item.printedUnitPriceUnit,
-        categoryId:
-          item.categoryId != null ? item.categoryId || null : suggestedCategoryId(item) || null,
-        productVariantId: item.productVariantId || null,
-        allocations: allocations.length ? allocations : null,
-      };
+    const purchaseInput = createReceiptPurchaseInput({
+      document,
+      householdId: household.id,
+      occurredAt,
+      candidateId: candidateID,
+      requiresCandidateSelection: Boolean(document.result?.candidates?.length),
+      requiresOverrideReason,
+      overrideReason,
+      paymentDraft,
+      accountCount: household.accounts.length,
+      manualAmounts: manualAmountOverrides[document.id],
+      allocations: receiptItemAllocations[document.id],
+      suggestedCategoryIds: items.map((item) => suggestedCategoryId(item)),
     });
     await createAndPostPurchase({
+      ...purchaseInput,
       idempotencyKey: await importIdempotencyKey(document.id, "receipt"),
-      householdId: household.id,
-      origin: "AI",
-      sourceDocumentId: document.id,
-      occurredAt,
-      merchant: receipt?.merchant ?? "",
-      paymentAllocations: paymentDraft
-        .filter((payment) => payment.paymentAccountId && payment.amountYen > 0)
-        .map((payment) => ({
-          paymentAccountId: payment.paymentAccountId,
-          amountYen: payment.amountYen,
-        })),
-      receiptCandidateId: candidateID || null,
-      manualAmountOverrideReason: overrideReason || null,
-      items: purchaseItems,
     });
     editedReceiptDocuments.current.delete(document.id);
     setHasUnsavedChanges(false);
@@ -417,41 +377,32 @@ export function useImportConfirmation({
       );
     }
     const reference = statementSourceReference(entry);
-    const key = `${document.id}:${reference}`;
+    const key = statementConfirmationKey(document.id, entry);
     if (confirmedStatements.has(key)) return;
     if (isExternalIncome) {
-      await recordStatementExternalIncome({
-        householdId: household.id,
-        accountId: account.id,
-        amountYen: entry.amount,
-        occurredAt: new Date(entry.occurredAt).toISOString(),
-        description: entry.merchant,
-        idempotencyKey: await importIdempotencyKey(document.id, reference),
-        sourceDocumentId: document.id,
-        sourceReference: reference,
-      });
+      await recordStatementExternalIncome(
+        createStatementExternalIncomeInput({
+          document,
+          householdId: household.id,
+          accountId: account.id,
+          entry,
+          idempotencyKey: await importIdempotencyKey(document.id, reference),
+        }),
+      );
       setConfirmedStatements((current) => new Set(current).add(key));
       setHasUnsavedChanges(false);
       onAdded(true);
       return;
     }
-    await createAndPostPurchase({
-      idempotencyKey: await importIdempotencyKey(document.id, reference),
-      householdId: household.id,
-      origin: "AI",
-      sourceDocumentId: document.id,
-      sourceReference: reference,
-      occurredAt: new Date(entry.occurredAt).toISOString(),
-      merchant: entry.merchant,
-      paymentAllocations: [{ paymentAccountId, amountYen: entry.amount }],
-      items: [
-        {
-          name: entry.merchant || "カード利用",
-          amountYen: entry.amount,
-          allocations: null,
-        },
-      ],
-    });
+    await createAndPostPurchase(
+      createStatementPurchaseInput({
+        document,
+        householdId: household.id,
+        idempotencyKey: await importIdempotencyKey(document.id, reference),
+        entry,
+        paymentAccountId,
+      }),
+    );
     refreshPurchases();
     setConfirmedStatements((current) => new Set(current).add(key));
     setHasUnsavedChanges(false);
@@ -468,7 +419,7 @@ export function useImportConfirmation({
     const issue = statementConfirmationIssue(entry);
     if (issue) throw new Error(issue);
     const reference = statementSourceReference(entry);
-    const key = `${document.id}:${reference}`;
+    const key = statementConfirmationKey(document.id, entry);
     if (confirmedStatements.has(key)) return;
     const target = itemId ? { item: { purchaseId, itemId } } : { purchase: { purchaseId } };
     await correctPurchaseFromStatement({
@@ -494,7 +445,7 @@ export function useImportConfirmation({
   ) => {
     if (entry.kind !== "REFUND" || entry.amount >= 0) throw new Error("返金明細を選択してください");
     const reference = statementSourceReference(entry);
-    const key = `${document.id}:${reference}`;
+    const key = statementConfirmationKey(document.id, entry);
     if (confirmedStatements.has(key)) return;
     await linkStatementRefundCorrectionRequest({
       householdId: household.id,
@@ -533,7 +484,7 @@ export function useImportConfirmation({
       throw new Error("明細の口座種別に合う口座を選択してください");
     }
     const reference = statementSourceReference(entry);
-    const key = `${document.id}:${reference}`;
+    const key = statementConfirmationKey(document.id, entry);
     if (confirmedStatements.has(key)) return;
     const fromAccountId =
       isCardBillPayment || entry.amount < 0 ? statementAccount.id : otherAccount.id;
@@ -545,7 +496,7 @@ export function useImportConfirmation({
       fromAccountId,
       toAccountId,
       amountYen: Math.abs(entry.amount),
-      occurredAt: new Date(entry.occurredAt).toISOString(),
+      occurredAt: statementOccurredAt(entry),
       description: entry.merchant,
       idempotencyKey: await importIdempotencyKey(document.id, reference),
       sourceDocumentId: document.id,
@@ -576,14 +527,14 @@ export function useImportConfirmation({
     )
       throw new Error("銀行口座を選択してください");
     const reference = statementSourceReference(entry);
-    const key = `${document.id}:${reference}`;
+    const key = statementConfirmationKey(document.id, entry);
     if (confirmedStatements.has(key)) return;
     const input = {
       householdId: household.id,
       fromMemberId,
       toMemberId,
       amountYen: Math.abs(entry.amount),
-      occurredAt: new Date(entry.occurredAt).toISOString(),
+      occurredAt: statementOccurredAt(entry),
       description: entry.merchant,
       idempotencyKey: await importIdempotencyKey(document.id, reference),
       sourceDocumentId: document.id,
@@ -621,7 +572,7 @@ export function useImportConfirmation({
     )
       throw new Error("銀行口座を選択してください");
     const reference = statementSourceReference(entry);
-    const key = `${document.id}:${reference}`;
+    const key = statementConfirmationKey(document.id, entry);
     if (confirmedStatements.has(key)) return;
     await linkStatementTransferRequest({
       householdId: household.id,
@@ -652,7 +603,7 @@ export function useImportConfirmation({
     )
       throw new Error("銀行口座を選択してください");
     const reference = statementSourceReference(entry);
-    const key = `${document.id}:${reference}`;
+    const key = statementConfirmationKey(document.id, entry);
     if (confirmedStatements.has(key)) return;
     await linkStatementAccountMovementRequest({
       householdId: household.id,
@@ -682,7 +633,7 @@ export function useImportConfirmation({
     )
       throw new Error("銀行口座を選択してください");
     const reference = statementSourceReference(entry);
-    const key = `${document.id}:${reference}`;
+    const key = statementConfirmationKey(document.id, entry);
     if (confirmedStatements.has(key)) return;
     await linkStatementAccountIncomeRequest({
       householdId: household.id,
