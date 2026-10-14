@@ -16,7 +16,7 @@ type PurchasePaymentsAction =
   | { type: "remove"; key: string }
   | { type: "reset"; payment: PaymentDraft }
   | { type: "setRows"; rows: PaymentDraft[] }
-  | { type: "setAutoTotal"; autoTotal: boolean }
+  | { type: "setAutoTotal"; autoTotal: boolean; materializedAmount?: string }
   | { type: "setManualAmountEdited"; edited: boolean };
 
 export function reducePurchasePayments(
@@ -27,16 +27,17 @@ export function reducePurchasePayments(
     case "add":
       return {
         rows: [
-          ...state.rows.map((payment) => ({
-            ...payment,
-            amountYen:
-              state.autoTotal && state.rows.length === 1
-                ? String(action.itemTotal)
-                : payment.amountYen,
-          })),
+          ...state.rows.map((payment, index) =>
+            state.autoTotal && index === state.rows.length - 1
+              ? {
+                  ...payment,
+                  amountYen: String(purchasePaymentAmount(state, payment, action.itemTotal)),
+                }
+              : payment,
+          ),
           action.payment,
         ],
-        autoTotal: false,
+        autoTotal: state.autoTotal,
         manualAmountEdited:
           state.manualAmountEdited || (!state.autoTotal && state.rows.length === 1),
       };
@@ -46,7 +47,10 @@ export function reducePurchasePayments(
         rows: state.rows.map((payment) =>
           payment.key === action.key ? { ...payment, ...action.value } : payment,
         ),
-        autoTotal: action.value.amountYen === undefined ? state.autoTotal : false,
+        autoTotal:
+          action.value.amountYen === undefined || state.rows.at(-1)?.key !== action.key
+            ? state.autoTotal
+            : false,
         manualAmountEdited: state.manualAmountEdited || action.value.amountYen !== undefined,
       };
     case "remove": {
@@ -62,7 +66,21 @@ export function reducePurchasePayments(
     case "setRows":
       return { ...state, rows: action.rows };
     case "setAutoTotal":
-      return { ...state, autoTotal: action.autoTotal };
+      return {
+        ...state,
+        rows:
+          !action.autoTotal && action.materializedAmount !== undefined && state.rows.length > 0
+            ? state.rows.map((payment, index) =>
+                index === state.rows.length - 1
+                  ? { ...payment, amountYen: action.materializedAmount! }
+                  : payment,
+              )
+            : state.rows,
+        autoTotal: action.autoTotal,
+        manualAmountEdited:
+          state.manualAmountEdited ||
+          (!action.autoTotal && action.materializedAmount !== undefined),
+      };
     case "setManualAmountEdited":
       return { ...state, manualAmountEdited: action.edited };
   }
@@ -73,7 +91,25 @@ export function purchasePaymentAmount(
   payment: PaymentDraft,
   itemTotal: number,
 ): number {
-  return Number(state.autoTotal && state.rows.length === 1 ? itemTotal : payment.amountYen) || 0;
+  if (state.autoTotal && state.rows.at(-1)?.key === payment.key) {
+    const precedingTotal = state.rows
+      .slice(0, -1)
+      .reduce((sum, row) => sum + (Number(row.amountYen) || 0), 0);
+    return itemTotal - precedingTotal;
+  }
+  return Number(payment.amountYen) || 0;
+}
+
+export function purchasePaymentDifference(state: PurchasePaymentsState, itemTotal: number): number {
+  const total = state.rows.reduce(
+    (sum, payment) => sum + purchasePaymentAmount(state, payment, itemTotal),
+    0,
+  );
+  const autoRemainder =
+    state.autoTotal && state.rows.length > 1
+      ? purchasePaymentAmount(state, state.rows[state.rows.length - 1], itemTotal)
+      : undefined;
+  return autoRemainder !== undefined && autoRemainder < 0 ? autoRemainder : itemTotal - total;
 }
 
 export function usePurchasePayments(
@@ -90,7 +126,7 @@ export function usePurchasePayments(
   const { rows, autoTotal } = state;
   const amount = (payment: PaymentDraft) => purchasePaymentAmount(state, payment, itemTotal);
   const total = rows.reduce((sum, payment) => sum + amount(payment), 0);
-  const difference = itemTotal - total;
+  const difference = purchasePaymentDifference(state, itemTotal);
 
   const add = () => {
     onDirty();
@@ -119,7 +155,8 @@ export function usePurchasePayments(
     rows,
     setRows: (nextRows: PaymentDraft[]) => dispatch({ type: "setRows", rows: nextRows }),
     autoTotal,
-    setAutoTotal: (enabled: boolean) => dispatch({ type: "setAutoTotal", autoTotal: enabled }),
+    setAutoTotal: (enabled: boolean, materializedAmount?: string) =>
+      dispatch({ type: "setAutoTotal", autoTotal: enabled, materializedAmount }),
     manualAmountEdited: state.manualAmountEdited,
     setManualAmountEdited: (edited: boolean) => dispatch({ type: "setManualAmountEdited", edited }),
     amount,

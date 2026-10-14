@@ -246,10 +246,19 @@ function PurchaseCreatePageContent({
     }
     const submittedItemTotal = sum(submittedItems.map((item) => Number(item.amount) || 0));
     const submittedPaymentAmount = (payment: (typeof paymentRows)[number]) =>
-      paymentAutoTotal && paymentRows.length === 1 ? submittedItemTotal : payments.amount(payment);
+      paymentAutoTotal && paymentRows.at(-1)?.key === payment.key
+        ? submittedItemTotal -
+          paymentRows.slice(0, -1).reduce((total, row) => total + (Number(row.amountYen) || 0), 0)
+        : payments.amount(payment);
+    const submittedAutoRemainder =
+      paymentAutoTotal && paymentRows.length > 1
+        ? submittedPaymentAmount(paymentRows[paymentRows.length - 1])
+        : undefined;
     const submittedPaymentDifference =
-      submittedItemTotal -
-      paymentRows.reduce((total, payment) => total + submittedPaymentAmount(payment), 0);
+      submittedAutoRemainder !== undefined && submittedAutoRemainder < 0
+        ? submittedAutoRemainder
+        : submittedItemTotal -
+          paymentRows.reduce((total, payment) => total + submittedPaymentAmount(payment), 0);
     void submit(event, {
       items: submittedItems,
       paymentAmount: submittedPaymentAmount,
@@ -317,6 +326,10 @@ function PurchaseCreatePageContent({
           autoTotal={paymentAutoTotal}
           itemTotal={itemTotal}
           difference={paymentDifference}
+          onSetAutoTotal={(enabled, amount) => {
+            markUnsaved();
+            payments.setAutoTotal(enabled, amount);
+          }}
           onAdd={payments.add}
           onPatch={payments.patch}
           onRemove={payments.remove}
