@@ -78,6 +78,22 @@ type GeminiRouteOptions struct {
 	FreeOnly         bool
 }
 
+type geminiCandidateCondition uint8
+
+const (
+	geminiCandidateAlways geminiCandidateCondition = iota
+	geminiCandidateAfterInitialFallbackError
+	geminiCandidateAfterEmailLiteQuota
+	geminiCandidateAfterFallbackError
+	geminiCandidateAfterEmailFlashFallbackError
+)
+
+type geminiCandidate struct {
+	client    Gemini
+	model     string
+	condition geminiCandidateCondition
+}
+
 func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document Document, hints []HistoryHint, options GeminiRouteOptions) (Receipt, []ExtractionRun, error) {
 	model := options.Model
 	if model == "" {
@@ -124,13 +140,41 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 	if options.PaidOnly {
 		clients = []Gemini{paid}
 	}
-	emailSource := r.modelForSource(sourceKind, document.MIMEType) == r.emailModel()
+	emailSource := r.modelForSource(sourceKind, document.MIMEType) == r.emailModel() && model == r.emailModel() && r.flashModel() != model
+	candidates := make([]geminiCandidate, 0, 3)
+	if emailSource && clients[0].ProjectRoute == ProjectFree {
+		candidates = append(candidates,
+			geminiCandidate{client: free, model: model},
+		)
+		if !options.FreeOnly {
+			candidates = append(candidates, geminiCandidate{client: paid, model: model, condition: geminiCandidateAfterInitialFallbackError})
+		}
+		candidates = append(candidates, geminiCandidate{client: free, model: r.flashModel(), condition: geminiCandidateAfterEmailLiteQuota})
+		if !options.FreeOnly {
+			candidates = append(candidates, geminiCandidate{client: paid, model: r.flashModel(), condition: geminiCandidateAfterEmailFlashFallbackError})
+		}
+	} else {
+		for index, client := range clients {
+			condition := geminiCandidateAlways
+			if index > 0 {
+				condition = geminiCandidateAfterFallbackError
+			}
+			candidates = append(candidates, geminiCandidate{client: client, model: model, condition: condition})
+		}
+	}
 	runs := make([]ExtractionRun, 0, 2)
-	for index, client := range clients {
+	var previousErr error
+	var initialErr error
+	previousWasEmailFlash := false
+	for index, candidate := range candidates {
+		if !candidate.shouldRun(initialErr, previousErr, previousWasEmailFlash) {
+			continue
+		}
+		client := candidate.client
 		if client.APIKey == "" {
 			continue
 		}
-		receipt, run, err := r.extractWithClient(ctx, client, model, thinking, tier, sourceKind, document, hints, options)
+		receipt, run, err := r.extractWithClient(ctx, client, candidate.model, thinking, tier, sourceKind, document, hints, options)
 		if run.Model != "" {
 			runs = append(runs, run)
 		}
@@ -138,64 +182,63 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 			runs[len(runs)-1].Receipt = &receipt
 			return receipt, runs, nil
 		}
-		if index == 0 && client.ProjectRoute == ProjectFree && emailSource && model == r.emailModel() && r.flashModel() != model {
-			apiErr, ok := errors.AsType[*GeminiAPIError](err)
-			if ok && apiErr.Kind == GeminiFailureQuota {
-				runs[len(runs)-1].Reason = "free_quota_model_fallback"
-				flashFree := free
-				flashReceipt, flashRun, flashErr := r.extractWithClient(ctx, flashFree, r.flashModel(), thinking, tier, sourceKind, document, hints, options)
-				if flashRun.Model != "" {
-					runs = append(runs, flashRun)
-				}
-				if flashErr == nil {
-					runs[len(runs)-1].Receipt = &flashReceipt
-					return flashReceipt, runs, nil
-				}
-				if flashErrAPI, ok := errors.AsType[*GeminiAPIError](flashErr); ok && flashErrAPI.Kind == GeminiFailureQuota {
-					runs[len(runs)-1].Reason = "free_flash_quota_retry"
-					return Receipt{}, runs, flashErr
-				}
-				if options.FreeOnly || !shouldFallbackToPaid(flashErr) {
-					return Receipt{}, runs, flashErr
-				}
-				if err := ctx.Err(); err != nil {
-					return Receipt{}, runs, err
-				}
-				if len(runs) > 1 {
-					runs[len(runs)-1].Reason = "free_transient_fallback"
-				}
-				if paid.APIKey == "" {
-					return Receipt{}, runs, flashErr
-				}
-				paidReceipt, paidRun, paidErr := r.extractWithClient(ctx, paid, r.flashModel(), thinking, tier, sourceKind, document, hints, options)
-				if paidRun.Model != "" {
-					runs = append(runs, paidRun)
-				}
-				if paidErr != nil {
-					return Receipt{}, runs, paidErr
-				}
-				runs[len(runs)-1].Receipt = &paidReceipt
-				return paidReceipt, runs, nil
+		if initialErr == nil {
+			initialErr = err
+		}
+		nextCandidate := -1
+		for next := index + 1; next < len(candidates); next++ {
+			wasEmailFlash := emailSource && candidate.model == r.flashModel() && candidate.client.ProjectRoute == ProjectFree
+			if candidates[next].shouldRun(initialErr, err, wasEmailFlash) && candidates[next].client.APIKey != "" {
+				nextCandidate = next
+				break
 			}
 		}
-		if index != 0 || client.ProjectRoute != ProjectFree || options.FreeOnly || !shouldFallbackToPaid(err) {
+		if nextCandidate < 0 || client.ProjectRoute != ProjectFree || options.FreeOnly {
+			if emailSource && candidate.model == r.flashModel() {
+				if apiErr, ok := errors.AsType[*GeminiAPIError](err); ok && apiErr.Kind == GeminiFailureQuota && len(runs) > 0 {
+					runs[len(runs)-1].Reason = "free_flash_quota_retry"
+				}
+			}
 			return Receipt{}, runs, err
 		}
-		if err := ctx.Err(); err != nil {
-			return Receipt{}, runs, err
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return Receipt{}, runs, ctxErr
 		}
-		if apiErr, ok := errors.AsType[*GeminiAPIError](err); ok {
-			if apiErr.Kind == GeminiFailureQuota {
+		if len(runs) > 0 {
+			apiErr, isAPIError := errors.AsType[*GeminiAPIError](err)
+			if emailSource && candidate.model == model && candidates[nextCandidate].model == r.flashModel() && isAPIError && apiErr.Kind == GeminiFailureQuota {
+				runs[len(runs)-1].Reason = "free_quota_model_fallback"
+			} else if isAPIError && apiErr.Kind == GeminiFailureQuota && !emailSource {
 				runs[len(runs)-1].Reason = "free_quota_fallback"
 			} else {
 				runs[len(runs)-1].Reason = "free_transient_fallback"
 			}
 		}
+		previousErr = err
+		previousWasEmailFlash = emailSource && candidate.model == r.flashModel() && candidate.client.ProjectRoute == ProjectFree
 	}
 	if len(runs) > 0 {
 		return Receipt{}, runs, errors.New("Gemini free route failed without paid fallback")
 	}
 	return Receipt{}, runs, errors.New("Gemini API key is not configured")
+}
+
+func (c geminiCandidate) shouldRun(initialErr, previousErr error, previousWasEmailFlash bool) bool {
+	switch c.condition {
+	case geminiCandidateAlways:
+		return true
+	case geminiCandidateAfterInitialFallbackError:
+		return shouldFallbackToPaid(initialErr)
+	case geminiCandidateAfterEmailLiteQuota:
+		apiErr, ok := errors.AsType[*GeminiAPIError](initialErr)
+		return ok && apiErr.Kind == GeminiFailureQuota
+	case geminiCandidateAfterFallbackError:
+		return shouldFallbackToPaid(previousErr)
+	case geminiCandidateAfterEmailFlashFallbackError:
+		return previousWasEmailFlash && shouldFallbackToPaid(previousErr)
+	default:
+		return false
+	}
 }
 
 func (r GeminiRouter) extractWithClient(ctx context.Context, client Gemini, model, thinking, tier, sourceKind string, document Document, hints []HistoryHint, options GeminiRouteOptions) (Receipt, ExtractionRun, error) {
