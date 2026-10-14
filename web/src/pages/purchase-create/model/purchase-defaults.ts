@@ -10,6 +10,19 @@ export type PurchaseDefaultHistory = {
   lastUsedAt: string;
 };
 
+export type PurchaseDefaultHistoryState = {
+  householdId: string;
+  history: PurchaseDefaultHistory[];
+  loaded: boolean;
+};
+
+export function purchaseDefaultHistoryForHousehold(
+  state: PurchaseDefaultHistoryState,
+  householdId: string,
+): PurchaseDefaultHistoryState {
+  return state.householdId === householdId ? state : { householdId, history: [], loaded: false };
+}
+
 type PaymentAccountHistory = Array<{
   paymentAllocations: Array<{ paymentAccountId: string }>;
 }>;

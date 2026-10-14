@@ -7,6 +7,7 @@ import {
   merchantsFromHistory,
   orderPaymentAccountsByUsage,
   paymentAccountFromHistory,
+  purchaseDefaultHistoryForHousehold,
   savePurchaseDefaults,
 } from "./purchase-defaults";
 
@@ -22,6 +23,28 @@ afterEach(() => {
 });
 
 describe("purchase defaults", () => {
+  it("hides the previous household history until the new household query completes", () => {
+    const previousState = {
+      householdId: "household-1",
+      history: [
+        {
+          merchant: "スーパーA",
+          paymentAccountId: "account-1",
+          purchaseCount: 2,
+          lastUsedAt: "2026-10-10T09:00:00Z",
+        },
+      ],
+      loaded: true,
+    };
+
+    expect(purchaseDefaultHistoryForHousehold(previousState, "household-2")).toEqual({
+      householdId: "household-2",
+      history: [],
+      loaded: false,
+    });
+    expect(purchaseDefaultHistoryForHousehold(previousState, "household-1")).toBe(previousState);
+  });
+
   it("uses the latest household merchant and the most-used exact merchant account", () => {
     const history = [
       {

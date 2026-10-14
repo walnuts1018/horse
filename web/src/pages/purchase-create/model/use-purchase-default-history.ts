@@ -6,7 +6,8 @@ import {
   initialPurchaseDefaultsFromHistory,
   merchantsFromHistory,
   paymentAccountFromHistory,
-  type PurchaseDefaultHistory,
+  purchaseDefaultHistoryForHousehold,
+  type PurchaseDefaultHistoryState,
 } from "./purchase-defaults";
 import { purchaseDefaultsQuery } from "./purchase-defaults-operations";
 
@@ -16,8 +17,11 @@ export function usePurchaseDefaultHistory(householdId: string, accountIds: strin
     () => accountIdsKey.split("\u0000").filter(Boolean),
     [accountIdsKey],
   );
-  const [history, setHistory] = useState<PurchaseDefaultHistory[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [state, setState] = useState<PurchaseDefaultHistoryState>(() => ({
+    householdId,
+    history: [],
+    loaded: false,
+  }));
 
   useEffect(() => {
     let active = true;
@@ -27,29 +31,32 @@ export function usePurchaseDefaultHistory(householdId: string, accountIds: strin
       .toPromise()
       .then((result) => {
         if (!active) return;
-        setHistory(
-          (result?.purchaseDefaults ?? []).map((entry) => ({
+        setState({
+          householdId,
+          history: (result?.purchaseDefaults ?? []).map((entry) => ({
             merchant: entry.merchant,
             paymentAccountId: entry.paymentAccountId,
             purchaseCount: entry.purchaseCount,
             lastUsedAt: entry.lastUsedAt,
           })),
-        );
+          loaded: true,
+        });
       })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setLoaded(true);
+      .catch(() => {
+        if (active) setState({ householdId, history: [], loaded: true });
       });
     return () => {
       active = false;
     };
   }, [householdId]);
 
+  const currentState = purchaseDefaultHistoryForHousehold(state, householdId);
+
   return {
-    loaded,
-    initialDefaults: initialPurchaseDefaultsFromHistory(history, stableAccountIds),
+    loaded: currentState.loaded,
+    initialDefaults: initialPurchaseDefaultsFromHistory(currentState.history, stableAccountIds),
     paymentAccountForMerchant: (merchant: string) =>
-      paymentAccountFromHistory(history, merchant, stableAccountIds),
-    recentMerchants: merchantsFromHistory(history),
+      paymentAccountFromHistory(currentState.history, merchant, stableAccountIds),
+    recentMerchants: merchantsFromHistory(currentState.history),
   };
 }
