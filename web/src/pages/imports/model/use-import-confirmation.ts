@@ -58,6 +58,8 @@ import {
   recordStatementRepayment,
 } from "../api/documents";
 import {
+  purchaseDatePrecisionFor,
+  purchaseOccurredAtFor,
   receiptDateInputValue,
   receiptOccurredAt,
   receiptTimeInputValue,
@@ -80,27 +82,6 @@ function receiptItemsChanged(document?: DocumentReview) {
     document?.result &&
     (document.result as typeof document.result & { reviewReceiptItemsChanged?: boolean })
       .reviewReceiptItemsChanged,
-  );
-}
-
-function purchaseDatePrecisionFor(document: DocumentReview): "DATE_TIME" | "DATE_ONLY" {
-  if (document.receiptConfirmationState?.purchaseTime !== undefined) {
-    return document.receiptConfirmationState.purchaseTime ? "DATE_TIME" : "DATE_ONLY";
-  }
-  return (
-    document.result?.receipt?.datePrecision ??
-    (/[T ]\d{2}:\d{2}/.test(document.result?.receipt?.purchasedAt ?? "")
-      ? "DATE_TIME"
-      : "DATE_ONLY")
-  );
-}
-
-function purchaseOccurredAtFor(document: DocumentReview) {
-  return receiptOccurredAt(
-    document.result?.receipt?.purchasedAt,
-    document.receiptConfirmationState?.purchaseDate,
-    document.receiptConfirmationState?.purchaseTime,
-    purchaseDatePrecisionFor(document),
   );
 }
 
@@ -616,10 +597,11 @@ export function useImportConfirmation({
     setDocuments((current) =>
       current.map((document) => {
         if (document.id !== documentId || !document.result) return document;
+        const purchaseTime = document.receiptConfirmationState?.purchaseTime;
         const purchasedAt = receiptOccurredAt(
           document.result.receipt?.purchasedAt,
           date,
-          document.receiptConfirmationState?.purchaseTime,
+          purchaseTime || undefined,
           purchaseDatePrecisionFor(document),
         );
         return purchasedAt

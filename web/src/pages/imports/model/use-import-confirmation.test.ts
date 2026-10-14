@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  purchaseOccurredAtFor,
   receiptDateInputValue,
   receiptOccurredAt,
   receiptTimeInputValue,
@@ -18,6 +19,22 @@ describe("receipt purchase date confirmation", () => {
   it("uses the extracted date in Japan time for the date input", () => {
     expect(receiptDateInputValue("2025-04-01T00:30:00+09:00")).toBe("2025-04-01");
     expect(receiptDateInputValue("2025-04-01")).toBe("2025-04-01");
+  });
+
+  it("allows confirmation after removing the time from a date-time receipt", () => {
+    expect(
+      purchaseOccurredAtFor({
+        id: "document-1",
+        status: "SUCCEEDED",
+        receiptConfirmationState: { purchaseTime: "" },
+        result: {
+          receipt: {
+            purchasedAt: "2025-04-01T09:15:00+09:00",
+            datePrecision: "DATE_TIME",
+          },
+        },
+      }),
+    ).toBe("2025-04-01T03:00:00.000Z");
   });
 
   it("uses a representative timestamp for a date-only purchase without showing it as the actual time", () => {

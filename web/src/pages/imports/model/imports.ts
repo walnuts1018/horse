@@ -275,6 +275,28 @@ export type DocumentReview = {
   };
 };
 
+export function purchaseDatePrecisionFor(document: DocumentReview): "DATE_TIME" | "DATE_ONLY" {
+  if (document.receiptConfirmationState?.purchaseTime !== undefined) {
+    return document.receiptConfirmationState.purchaseTime ? "DATE_TIME" : "DATE_ONLY";
+  }
+  return (
+    document.result?.receipt?.datePrecision ??
+    (/[T ]\d{2}:\d{2}/.test(document.result?.receipt?.purchasedAt ?? "")
+      ? "DATE_TIME"
+      : "DATE_ONLY")
+  );
+}
+
+export function purchaseOccurredAtFor(document: DocumentReview) {
+  const purchaseTime = document.receiptConfirmationState?.purchaseTime;
+  return receiptOccurredAt(
+    document.result?.receipt?.purchasedAt,
+    document.receiptConfirmationState?.purchaseDate,
+    purchaseTime || undefined,
+    purchaseDatePrecisionFor(document),
+  );
+}
+
 // APIから届いた証拠品目とOCR行に一覧の再利用に耐える安定キーを付与する。編集時は既存品目を展開し直すためキーは保持される。
 export function withStableEvidenceKeys(document: DocumentReview): DocumentReview {
   const result = document.result;
