@@ -68,6 +68,7 @@ function PurchaseCreatePageContent({
   );
   const [merchant, setMerchant] = useState(purchaseDefaults.merchant);
   const [occurredAt, setOccurredAt] = useState(localDateTime);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [itemsValue, setItemsValue] = useState<PurchaseItemsValue>(emptyPurchaseItemsValue);
   const [historyAvailability, setHistoryAvailability] = useState({ undo: false, redo: false });
   const itemsCommands = useRef<EditPurchaseItemsCommands>(null);
@@ -269,6 +270,22 @@ function PurchaseCreatePageContent({
     },
   });
   const { pending, message, setMessage, fieldError, clearFieldError, submit } = submission;
+  const paymentSummary = paymentRows
+    .map(
+      (payment) =>
+        household.accounts.find((account) => account.id === payment.paymentAccountId)?.name ??
+        "未選択",
+    )
+    .join("・");
+  const purchaseDate = new Date(occurredAt);
+  const dateSummary = Number.isNaN(purchaseDate.getTime())
+    ? "日時未設定"
+    : purchaseDate.toLocaleString("ja-JP", {
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
   const handleSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     const submittedItems = itemsCommands.current?.prepareForSubmit();
     if (!submittedItems) {
@@ -340,7 +357,22 @@ function PurchaseCreatePageContent({
         copiedPurchase={copiedPurchase}
         copiedAt={copiedAt}
         occurredAtError={fieldError?.field === "occurredAt"}
-        classNames={{ details: styles.details, history: styles.history }}
+        summary={
+          <>
+            <span className={styles.summaryMerchant}>{merchant.trim() || "店名未入力"}</span>
+            <span className={styles.summarySecondary}>
+              {dateSummary} · {paymentSummary}
+            </span>
+          </>
+        }
+        detailsExpanded={detailsExpanded || Boolean(fieldError)}
+        onToggleDetails={() => setDetailsExpanded((expanded) => !expanded)}
+        classNames={{
+          details: styles.details,
+          history: styles.history,
+          summary: styles.detailsSummary,
+          detailsFields: styles.detailsFields,
+        }}
         onMerchantChange={(value) => {
           updateMerchant(value, recentMerchants.includes(value));
         }}
