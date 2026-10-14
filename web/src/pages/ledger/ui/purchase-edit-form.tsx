@@ -17,22 +17,37 @@ export function PurchaseEditForm({
   onChange,
   onCancel,
   onSave,
+  saveState,
 }: {
   purchase: Purchase;
   draft: PurchaseDraft;
   accounts: Household["accounts"];
   onChange: (draft: PurchaseDraft) => void;
   onCancel: () => void;
-  onSave: (purchase: Purchase) => void;
+  onSave: (purchase: Purchase) => void | Promise<void>;
+  saveState: "unsaved" | "saving" | "saved" | "conflict";
 }) {
+  const saveStateLabel = {
+    unsaved: "未保存の変更があります",
+    saving: "保存中",
+    saved: "保存済み",
+    conflict: "競合があります。最新の記録を確認してください",
+  }[saveState];
+
   return (
     <form
       className="purchase-edit-form"
       onSubmit={(event) => {
         event.preventDefault();
-        onSave(purchase);
+        void onSave(purchase);
       }}
     >
+      <output
+        className={`purchase-edit-status purchase-edit-status-${saveState}`}
+        aria-live="polite"
+      >
+        {saveStateLabel}
+      </output>
       <input
         aria-label="店名"
         value={draft.merchant}
@@ -127,11 +142,20 @@ export function PurchaseEditForm({
         </small>
       </div>
       <div className="edit-actions">
-        <button type="button" className="button button-soft" onClick={onCancel}>
+        <button
+          type="button"
+          className="button button-soft"
+          onClick={onCancel}
+          disabled={saveState === "saving"}
+        >
           キャンセル
         </button>
-        <button className="button button-primary" type="submit">
-          買い物を保存
+        <button
+          className="button button-primary"
+          type="submit"
+          disabled={saveState === "saving" || saveState === "conflict"}
+        >
+          {saveState === "saving" ? "保存中" : "買い物を保存"}
         </button>
       </div>
     </form>

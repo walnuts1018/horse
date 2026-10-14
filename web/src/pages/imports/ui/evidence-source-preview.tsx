@@ -1,12 +1,20 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import { FileImage } from "lucide-react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import type { EvidencePreviewController } from "../model/evidence-preview";
 
 import { InlineError } from "../../../shared/ui";
 import { regionPolygon, type Region } from "../model/evidence-geometry";
 import { yen, type DocumentReview } from "../model/imports";
+import {
+  getReceiptEvidenceSelection,
+  receiptEvidenceSelectionIndex,
+  selectReceiptEvidenceItem,
+  subscribeReceiptEvidenceSelection,
+} from "../model/receipt-evidence-selection";
+import { ensureReceiptItemKeys } from "../model/receipt-review-draft";
 
 import styles from "./imports-page.module.css";
 
@@ -47,9 +55,40 @@ export function EvidenceSourcePreview({
     receiptEvidenceIndex,
     setReceiptEvidenceIndex,
   } = previewState;
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const receiptItems = useMemo(
+    () => ensureReceiptItemKeys(document.result?.receipt?.items ?? []),
+    [document.result?.receipt?.items],
+  );
+  const selection = useSyncExternalStore(
+    (listener) => subscribeReceiptEvidenceSelection(document.id, listener),
+    () => getReceiptEvidenceSelection(document.id),
+    () => null,
+  );
+  const selectedReceiptIndex = receiptEvidenceSelectionIndex(
+    selection,
+    receiptItems.map((item, index) => item.key ?? `item-${index}`),
+    Number(receiptEvidenceIndex),
+  );
+
+  useEffect(() => {
+    if (!selection) return;
+    detailsRef.current?.setAttribute("open", "");
+    const item = receiptItems.at(selectedReceiptIndex);
+    if (!item) return;
+    const itemKey = item.key ?? `item-${selectedReceiptIndex}`;
+    if (selection.itemKey !== itemKey) {
+      selectReceiptEvidenceItem(document.id, {
+        itemKey,
+        index: selectedReceiptIndex,
+        focusEditor: false,
+      });
+    }
+    if (item.region && item.region.page !== page) selectPage(item.region.page);
+  }, [document.id, page, receiptItems, selectPage, selectedReceiptIndex, selection]);
 
   return (
-    <details className={styles.evidenceSourceColumn}>
+    <details className={styles.evidenceSourceColumn} ref={detailsRef}>
       <summary>
         <span>原本</span>
         {preview?.documentId === document.id && preview.page === page && (
@@ -94,18 +133,24 @@ export function EvidenceSourcePreview({
             {preview?.documentId === document.id && preview.page === page && (
               <div className={styles.evidenceImageStage}>
                 <img src={preview.src} alt={`${page + 1}ページ目の原本`} />
-                {document.result?.receipt?.items?.map((item, index) =>
+                {receiptItems.map((item, index) =>
                   item.region?.page === page ? (
                     <button
                       key={item.key}
                       type="button"
-                      className={`${styles.evidenceRegion} ${Number(receiptEvidenceIndex) === index ? styles.evidenceRegionSelected : ""}`}
+                      className={`${styles.evidenceRegion} ${selectedReceiptIndex === index ? styles.evidenceRegionSelected : ""}`}
                       style={{
                         clipPath: `polygon(${regionPolygon(item.region, preview.transform)})`,
                       }}
                       aria-label={`${item.name}の原本位置`}
+                      aria-pressed={selectedReceiptIndex === index}
                       onClick={() => {
                         setReceiptEvidenceIndex(String(index));
+                        selectReceiptEvidenceItem(document.id, {
+                          itemKey: item.key ?? `item-${index}`,
+                          index,
+                          focusEditor: true,
+                        });
                         onSelectCropRegion(item.region!);
                       }}
                     />
@@ -157,15 +202,22 @@ export function EvidenceSourcePreview({
             <span>{cropRegion ? `ページ ${cropRegion.page + 1}` : "範囲未選択"}</span>
           </div>
           <div className={styles.evidenceSourceItems}>
-            {document.result.receipt?.items?.map((item, index) => (
+            {receiptItems.map((item, index) => (
               <button
                 type="button"
                 key={item.key}
-                className={`text-button ${Number(receiptEvidenceIndex) === index ? styles.evidenceItemSelected : ""}`}
-                aria-pressed={Number(receiptEvidenceIndex) === index}
+                className={`text-button ${selectedReceiptIndex === index ? styles.evidenceItemSelected : ""}`}
+                aria-pressed={selectedReceiptIndex === index}
                 disabled={!item.region}
                 onClick={() => {
                   setReceiptEvidenceIndex(String(index));
+                  selectReceiptEvidenceItem(document.id, {
+                    itemKey: item.key ?? `item-${index}`,
+                    index,
+                    focusEditor: true,
+                  });
+                  detailsRef.current?.setAttribute("open", "");
+                  if (item.region && item.region.page !== page) selectPage(item.region.page);
                   if (item.region) onSelectCropRegion(item.region);
                 }}
               >

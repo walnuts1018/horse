@@ -1,6 +1,15 @@
-import { useEffect, useState } from "react";
+import { Combobox } from "@base-ui/react/combobox";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { readProductSuggestions, type ProductSuggestion } from "../../../entities/product";
+
+import "./product-variant-select.css";
+
+function suggestionLabel(suggestion: ProductSuggestion) {
+  return [suggestion.concept.name, suggestion.variant.name, suggestion.variant.brand]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 export function ProductVariantSelect({
   householdId,
@@ -15,82 +24,133 @@ export function ProductVariantSelect({
   value: string;
   onChange: (variantId: string) => void;
 }) {
+  const listboxId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [queryState, setQueryState] = useState({ itemName, query: itemName.trim() });
+  const query = queryState.itemName === itemName ? queryState.query : itemName.trim();
   const [suggestionsState, setSuggestionsState] = useState<{
     query: string;
     suggestions: ProductSuggestion[];
   }>({ query: "", suggestions: [] });
-  const [loadingState, setLoadingState] = useState<{ query: string; loading: boolean }>({
-    query: "",
-    loading: false,
-  });
-  const [selectedSuggestion, setSelectedSuggestion] = useState<{
-    itemName: string;
-    suggestion: ProductSuggestion;
-  } | null>(null);
-  const [searchEnabled, setSearchEnabled] = useState(false);
+  const [loadingQuery, setLoadingQuery] = useState("");
+  const [selectedSuggestion, setSelectedSuggestion] = useState<ProductSuggestion | null>(null);
 
   useEffect(() => {
-    const query = itemName.trim();
-    if (!searchEnabled || query.length < 2) return;
+    const search = query.trim();
+    if (search.length < 2) return;
+
     let active = true;
-    const timer = window.setTimeout(() => {
-      setLoadingState({ query, loading: true });
-      void readProductSuggestions(householdId, query, merchant.trim() || null, 8)
-        .then((result) => {
-          if (!active) return;
-          setSuggestionsState({ query, suggestions: result });
-        })
-        .catch(() => active && setSuggestionsState({ query, suggestions: [] }))
-        .finally(() => active && setLoadingState({ query, loading: false }));
-    }, 220);
+    const timer = window.setTimeout(
+      () => {
+        void readProductSuggestions(householdId, search, merchant.trim() || null, 20)
+          .then((suggestions) => {
+            if (active) setSuggestionsState({ query: search, suggestions });
+          })
+          .catch(() => {
+            if (active) setSuggestionsState({ query: search, suggestions: [] });
+          })
+          .finally(() => {
+            if (active) setLoadingQuery((current) => (current === search ? "" : current));
+          });
+      },
+      search === itemName.trim() ? 0 : 180,
+    );
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [householdId, itemName, merchant, searchEnabled]);
+  }, [householdId, itemName, merchant, query]);
 
-  // 検索結果は検索したときのクエリと一致するときだけ参照する
-  const query = itemName.trim();
-  const currentSuggestions = suggestionsState.query === query ? suggestionsState.suggestions : [];
-  const loading = loadingState.loading && loadingState.query === query;
-  const currentSelectedSuggestion =
-    selectedSuggestion?.itemName === itemName ? selectedSuggestion.suggestion : null;
-  const options = currentSuggestions.some((suggestion) => suggestion.variant.id === value)
-    ? currentSuggestions
-    : currentSelectedSuggestion?.variant.id === value
-      ? [currentSelectedSuggestion, ...currentSuggestions]
-      : currentSuggestions;
+  const search = query.trim();
+  const suggestions = suggestionsState.query === search ? suggestionsState.suggestions : [];
+  const loading = loadingQuery === search && search.length >= 2;
+  const currentSelection =
+    suggestions.find((suggestion) => suggestion.variant.id === value) ??
+    (selectedSuggestion?.variant.id === value ? selectedSuggestion : null);
 
   return (
-    <label>
-      商品
-      <select
-        aria-label={`${itemName || "品目"}の商品variant`}
-        value={value}
-        onFocus={() => setSearchEnabled(true)}
-        onChange={(event) => {
-          const variantId = event.target.value;
-          const suggestion =
-            currentSuggestions.find((entry) => entry.variant.id === variantId) ?? null;
-          setSelectedSuggestion(suggestion ? { itemName, suggestion } : null);
+    <div className="product-variant-select">
+      <label id={`${listboxId}-label`} htmlFor={`${listboxId}-input`}>
+        商品
+      </label>
+      {value && (
+        <div className="product-variant-select__selected" aria-live="polite">
+          <span>選択中</span>
+          <strong>{currentSelection ? suggestionLabel(currentSelection) : "登録済み商品"}</strong>
+          {currentSelection?.variant.packageSize && (
+            <small>{currentSelection.variant.packageSize}</small>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              onChange("");
+              setSelectedSuggestion(null);
+              requestAnimationFrame(() => inputRef.current?.focus());
+            }}
+          >
+            解除
+          </button>
+        </div>
+      )}
+      <Combobox.Root
+        value={value || null}
+        inputValue={query}
+        onInputValueChange={(nextQuery) => {
+          setQueryState({ itemName, query: nextQuery });
+          setLoadingQuery(nextQuery.trim());
+        }}
+        onValueChange={(variantId) => {
+          if (!variantId || variantId === value) return;
+          const suggestion = suggestions.find((entry) => entry.variant.id === variantId);
+          if (suggestion) setSelectedSuggestion(suggestion);
           onChange(variantId);
         }}
+        itemToStringLabel={(variantId) =>
+          currentSelection?.variant.id === variantId ? suggestionLabel(currentSelection) : ""
+        }
+        filter={null}
+        autoHighlight
       >
-        <option value="">商品を選択</option>
-        {options.map((suggestion) => (
-          <option value={suggestion.variant.id} key={suggestion.variant.id}>
-            {[suggestion.concept.name, suggestion.variant.name, suggestion.variant.brand]
-              .filter(Boolean)
-              .join(" · ")}
-            {suggestion.variant.packageSize ? ` (${suggestion.variant.packageSize})` : ""}
-          </option>
-        ))}
-      </select>
-      {loading && <small>商品候補を検索中</small>}
-      {searchEnabled &&
-        !loading &&
-        itemName.trim().length >= 2 &&
-        currentSuggestions.length === 0 && <small>商品候補がありません</small>}
-    </label>
+        <div className="product-variant-select__combobox">
+          <Combobox.Input
+            ref={inputRef}
+            id={`${listboxId}-input`}
+            aria-labelledby={`${listboxId}-label`}
+            placeholder="商品名で検索"
+            autoComplete="off"
+          />
+          <Combobox.Positioner>
+            <Combobox.Popup className="product-variant-select__popup">
+              <Combobox.List className="product-variant-select__list" aria-label="商品候補">
+                {suggestions.map((suggestion) => (
+                  <Combobox.Item
+                    key={suggestion.variant.id}
+                    value={suggestion.variant.id}
+                    disabled={suggestion.variant.id === value}
+                  >
+                    <span>{suggestionLabel(suggestion)}</span>
+                    {suggestion.variant.packageSize && (
+                      <small>{suggestion.variant.packageSize}</small>
+                    )}
+                    {suggestion.variant.id === value && <small>選択中</small>}
+                  </Combobox.Item>
+                ))}
+                <Combobox.Empty>
+                  {!loading && search.length >= 2 && "商品候補がありません"}
+                </Combobox.Empty>
+              </Combobox.List>
+              <div
+                className="product-variant-select__status"
+                aria-live="polite"
+                aria-busy={loading}
+              >
+                {loading && "商品候補を検索中"}
+                {!loading && search.length < 2 && "2文字以上入力してください"}
+              </div>
+            </Combobox.Popup>
+          </Combobox.Positioner>
+        </div>
+      </Combobox.Root>
+    </div>
   );
 }

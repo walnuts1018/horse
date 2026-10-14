@@ -308,6 +308,26 @@
   padding: 12px 0;
 }
 
+.purchase-edit-status {
+  grid-column: 1 / -1;
+  min-height: 18px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.purchase-edit-status-unsaved,
+.purchase-edit-status-saving {
+  color: var(--muted);
+}
+
+.purchase-edit-status-saved {
+  color: var(--green-dark);
+}
+
+.purchase-edit-status-conflict {
+  color: #a23b2a;
+}
+
 .purchase-edit-form input,
 .purchase-edit-form select,
 .expanded-item input,

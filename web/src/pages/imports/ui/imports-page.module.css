@@ -140,6 +140,15 @@
   color: #9c5c28;
 }
 
+.receiptItemEvidenceSelected {
+  border-color: var(--green);
+  background: var(--green-wash);
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px rgb(40 109 88 / 0.16);
+  scroll-margin-block: 16px;
+}
+
 .evidenceOcrLines {
   max-height: 180px;
   overflow: auto;

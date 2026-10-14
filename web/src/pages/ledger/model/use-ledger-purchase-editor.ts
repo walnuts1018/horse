@@ -49,6 +49,8 @@ export function useLedgerPurchaseEditor({
   const [itemDrafts, setItemDrafts] = useState<Record<string, LedgerItemDraft | undefined>>({});
   const [catalog, setCatalog] = useState<ProductConcept[]>([]);
   const [editError, setEditError] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [savingPurchase, setSavingPurchase] = useState(false);
   const [postingPurchase, setPostingPurchase] = useState<string | null>(null);
   const [correctionTarget, setCorrectionTarget] = useState<{
     purchaseId: string;
@@ -56,12 +58,28 @@ export function useLedgerPurchaseEditor({
   } | null>(null);
   const [conflict, setConflict] = useState<PurchaseConflict | null>(null);
   const initialDraftSnapshot = useRef<string | null>(null);
+  const latestPurchaseDraft = useRef<PurchaseDraft | null>(null);
+  const latestItemDrafts = useRef(itemDrafts);
 
   const reportDirty = (nextPurchaseDraft = purchaseDraft, nextItemDrafts = itemDrafts) => {
-    onDirtyChange(
-      isLedgerPurchaseEditorDirty(initialDraftSnapshot.current, nextPurchaseDraft, nextItemDrafts),
+    latestPurchaseDraft.current = nextPurchaseDraft;
+    latestItemDrafts.current = nextItemDrafts;
+    const nextDirty = isLedgerPurchaseEditorDirty(
+      initialDraftSnapshot.current,
+      nextPurchaseDraft,
+      nextItemDrafts,
     );
+    setDirty(nextDirty);
+    onDirtyChange(nextDirty);
   };
+
+  const purchaseSaveState: "conflict" | "saving" | "unsaved" | "saved" = savingPurchase
+    ? "saving"
+    : conflict
+      ? "conflict"
+      : dirty
+        ? "unsaved"
+        : "saved";
 
   useEffect(() => {
     let active = true;
@@ -120,6 +138,9 @@ export function useLedgerPurchaseEditor({
       ]),
     );
     initialDraftSnapshot.current = ledgerPurchaseEditorSnapshot(nextPurchaseDraft, nextItemDrafts);
+    latestPurchaseDraft.current = nextPurchaseDraft;
+    latestItemDrafts.current = nextItemDrafts;
+    setDirty(false);
     onDirtyChange(false);
     setEditing(purchase.id);
     setPurchaseDraft(nextPurchaseDraft);
@@ -144,6 +165,8 @@ export function useLedgerPurchaseEditor({
   const cancelEditing = () => {
     setEditing(null);
     initialDraftSnapshot.current = null;
+    latestPurchaseDraft.current = null;
+    setDirty(false);
     onDirtyChange(false);
   };
 
@@ -274,7 +297,7 @@ export function useLedgerPurchaseEditor({
   };
 
   const savePurchase = async (purchase: Purchase) => {
-    if (!purchaseDraft) return;
+    if (!purchaseDraft || savingPurchase) return;
     const paymentAllocations: PurchasePaymentInput[] = purchaseDraft.paymentAllocations.map(
       (payment) => ({
         paymentAccountId: payment.paymentAccountId,
@@ -322,11 +345,13 @@ export function useLedgerPurchaseEditor({
     if (!items.length && !hasPurchaseChanges) {
       setEditing(null);
       initialDraftSnapshot.current = null;
+      setDirty(false);
       onDirtyChange(false);
       setConflict(null);
       setEditError("");
       return;
     }
+    setSavingPurchase(true);
     try {
       await mutateSavePurchaseItemEdits({
         input: {
@@ -337,9 +362,15 @@ export function useLedgerPurchaseEditor({
         },
       });
       await refresh();
-      setEditing(null);
-      initialDraftSnapshot.current = null;
-      onDirtyChange(false);
+      const savedSnapshot = ledgerPurchaseEditorSnapshot(purchaseDraft, itemDrafts);
+      initialDraftSnapshot.current = savedSnapshot;
+      const hasLaterChanges = isLedgerPurchaseEditorDirty(
+        savedSnapshot,
+        latestPurchaseDraft.current,
+        latestItemDrafts.current,
+      );
+      setDirty(hasLaterChanges);
+      onDirtyChange(hasLaterChanges);
       setConflict(null);
       setEditError("");
     } catch (reason) {
@@ -358,33 +389,48 @@ export function useLedgerPurchaseEditor({
               const latestItemRevisions = new Map(
                 latest.items.map((item) => [item.id, item.revision]),
               );
-              await mutateSavePurchaseItemEdits({
-                input: {
-                  purchaseId: latest.id,
-                  purchaseBaseRevision: latest.revision,
-                  ...(hasPurchaseChanges ? { purchasePatch } : {}),
-                  items: items.map((item) =>
-                    Object.assign({}, item, {
-                      baseRevision: latestItemRevisions.get(item.itemId) ?? item.baseRevision,
-                    }),
-                  ),
-                },
-              });
-              await refresh();
-              setConflict(null);
-              setEditing(null);
-              initialDraftSnapshot.current = null;
-              onDirtyChange(false);
+              setSavingPurchase(true);
+              try {
+                await mutateSavePurchaseItemEdits({
+                  input: {
+                    purchaseId: latest.id,
+                    purchaseBaseRevision: latest.revision,
+                    ...(hasPurchaseChanges ? { purchasePatch } : {}),
+                    items: items.map((item) =>
+                      Object.assign({}, item, {
+                        baseRevision: latestItemRevisions.get(item.itemId) ?? item.baseRevision,
+                      }),
+                    ),
+                  },
+                });
+                await refresh();
+                const savedSnapshot = ledgerPurchaseEditorSnapshot(purchaseDraft, itemDrafts);
+                initialDraftSnapshot.current = savedSnapshot;
+                const hasLaterChanges = isLedgerPurchaseEditorDirty(
+                  savedSnapshot,
+                  latestPurchaseDraft.current,
+                  latestItemDrafts.current,
+                );
+                setDirty(hasLaterChanges);
+                setConflict(null);
+                onDirtyChange(hasLaterChanges);
+              } finally {
+                setSavingPurchase(false);
+              }
             },
             discard: async () => {
               await refresh();
               setConflict(null);
               setEditing(null);
               initialDraftSnapshot.current = null;
+              latestPurchaseDraft.current = null;
+              setDirty(false);
               onDirtyChange(false);
             },
           });
       } else setEditError(errorMessage(reason));
+    } finally {
+      setSavingPurchase(false);
     }
   };
 
@@ -397,6 +443,7 @@ export function useLedgerPurchaseEditor({
     itemDrafts,
     postDraftPurchase,
     postingPurchase,
+    purchaseSaveState,
     purchaseDraft,
     savePurchase,
     setConflict,

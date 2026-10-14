@@ -1,11 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import type { PreviewTransform } from "./evidence-geometry";
 import type { DocumentReview } from "./imports";
 
 import { errorMessage } from "../../../shared/lib/errors";
 import { readDocumentPreview } from "../api/document-preview";
+import {
+  getReceiptEvidenceSelection,
+  receiptEvidenceSelectionIndex,
+  selectReceiptEvidenceItem,
+  subscribeReceiptEvidenceSelection,
+} from "./receipt-evidence-selection";
+import { ensureReceiptItemKeys } from "./receipt-review-draft";
 
 export type EvidencePreview = {
   documentId: string;
@@ -37,9 +44,25 @@ export function useEvidencePreview(document: DocumentReview | undefined) {
     key: null,
     message: "",
   });
-  const [receiptEvidenceIndex, setReceiptEvidenceIndex] = useState("0");
 
   const documentId = document?.id ?? "";
+  const receiptItems = document?.result?.receipt?.items;
+  const selection = useSyncExternalStore(
+    (listener) => subscribeReceiptEvidenceSelection(documentId, listener),
+    () => getReceiptEvidenceSelection(documentId),
+    () => null,
+  );
+  const keyedReceiptItems = useMemo(
+    () => ensureReceiptItemKeys(receiptItems ?? []),
+    [receiptItems],
+  );
+  const receiptEvidenceIndex = String(
+    receiptEvidenceSelectionIndex(
+      selection,
+      keyedReceiptItems.map((item, index) => item.key ?? `item-${index}`),
+      selection?.index ?? 0,
+    ),
+  );
   const page = pageState.documentId === documentId ? pageState.page : 0;
   const pageDraft = pageDraftState.documentId === documentId ? pageDraftState.draft : "1";
   const previewable = Boolean(
@@ -95,6 +118,21 @@ export function useEvidencePreview(document: DocumentReview | undefined) {
     setPage(requestedPage);
     setPageDraft(String(requestedPage + 1));
   };
+
+  const setReceiptEvidenceIndex = useCallback(
+    (index: string) => {
+      const itemIndex = Number(index);
+      const item = keyedReceiptItems.at(itemIndex);
+      if (item) {
+        selectReceiptEvidenceItem(documentId, {
+          itemKey: item.key ?? `item-${itemIndex}`,
+          index: itemIndex,
+          focusEditor: false,
+        });
+      }
+    },
+    [documentId, keyedReceiptItems],
+  );
 
   return {
     page,

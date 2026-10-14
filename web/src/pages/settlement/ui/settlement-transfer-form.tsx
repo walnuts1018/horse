@@ -6,6 +6,14 @@ import type { Household } from "../../../shared/api";
 
 import { isOneOf } from "../../../shared/lib";
 
+import "./settlement-transfer-form.css";
+
+const transferActions = [
+  { kind: "ADVANCE", label: "立て替えた", detail: "あとで精算するお金" },
+  { kind: "LOAN", label: "お金を貸した", detail: "返してもらうお金" },
+  { kind: "GIFT", label: "お金をあげた", detail: "返してもらわないお金" },
+] as const;
+
 export function SettlementTransferForm({
   household,
   pending,
@@ -48,23 +56,32 @@ export function SettlementTransferForm({
   onDescriptionChange: (description: string) => void;
 }) {
   return (
-    <form className="transfer-form" onSubmit={onSubmit}>
-      <label>
-        種別
-        <select
-          value={transferKind}
-          disabled={pending || hasPendingTransfer}
-          onChange={(event) => {
-            if (isOneOf(event.target.value, ["ADVANCE", "LOAN", "GIFT"] as const)) {
-              onKindChange(event.target.value);
-            }
-          }}
-        >
-          <option value="ADVANCE">立て替え</option>
-          <option value="LOAN">貸し借り</option>
-          <option value="GIFT">贈与</option>
-        </select>
-      </label>
+    <form className="transfer-form settlement-transfer-entry-form" onSubmit={onSubmit}>
+      <fieldset className="transfer-kind">
+        <legend>どんな送金ですか？</legend>
+        <div className="transfer-kind-options">
+          {transferActions.map(({ kind, label, detail }) => (
+            <label className="transfer-kind-option" key={kind}>
+              <input
+                type="radio"
+                name="transfer-kind"
+                value={kind}
+                checked={transferKind === kind}
+                disabled={pending || hasPendingTransfer}
+                onChange={(event) => {
+                  if (isOneOf(event.target.value, ["ADVANCE", "LOAN", "GIFT"] as const)) {
+                    onKindChange(event.target.value);
+                  }
+                }}
+              />
+              <span>
+                <strong>{label}</strong>
+                <small>{detail}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <label>
         {transferKind === "LOAN" ? "貸主" : transferKind === "GIFT" ? "贈与者" : "立替者"}
         <select

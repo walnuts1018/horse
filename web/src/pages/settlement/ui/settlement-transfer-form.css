@@ -1,0 +1,151 @@
+.settlement-transfer-entry-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 12px;
+  align-items: end;
+}
+
+.settlement-transfer-entry-form > label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settlement-transfer-entry-form > label > select,
+.settlement-transfer-entry-form > label > input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.settlement-transfer-entry-form > .transfer-description,
+.settlement-transfer-entry-form > button {
+  grid-column: 1 / -1;
+}
+
+.settlement-transfer-entry-form > button {
+  min-height: 44px;
+  justify-self: start;
+}
+
+.transfer-kind {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.transfer-kind legend {
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.transfer-kind-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.transfer-kind-option {
+  display: flex;
+  min-height: 64px;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.transfer-kind-option:has(input:checked) {
+  border-color: #39715a;
+  background: var(--green-wash);
+}
+
+.transfer-kind-option input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 1px 0 0;
+  accent-color: var(--green);
+}
+
+.transfer-kind-option input:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+
+.transfer-kind-option span,
+.transfer-kind-option strong,
+.transfer-kind-option small {
+  display: block;
+}
+
+.transfer-kind-option span {
+  min-width: 0;
+}
+
+.transfer-kind-option strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.transfer-kind-option small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.transfer-kind-option:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (width <= 600px) {
+  .settlement-transfer-entry-form {
+    grid-template-columns: 1fr;
+  }
+
+  .settlement-transfer-entry-form > .transfer-description,
+  .settlement-transfer-entry-form > button {
+    grid-column: 1;
+  }
+
+  .settlement-transfer-entry-form > button {
+    width: 100%;
+  }
+
+  .transfer-kind-options {
+    grid-template-columns: 1fr;
+  }
+
+  .transfer-kind-option {
+    min-height: 56px;
+    align-items: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transfer-kind-option {
+    transition: none;
+  }
+}

@@ -1,5 +1,12 @@
 import { Check, Plus, X } from "lucide-react";
-import { useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
 import type { Household } from "../../../shared/api";
 
@@ -11,6 +18,11 @@ import {
   type ReviewTarget,
   yen,
 } from "../model/imports";
+import {
+  getReceiptEvidenceSelection,
+  selectReceiptEvidenceItem,
+  subscribeReceiptEvidenceSelection,
+} from "../model/receipt-evidence-selection";
 import { addReceiptPayment, updateReceiptPaymentAmount } from "../model/receipt-payment-split";
 import { parseReceiptReviewAmountDraft } from "../model/receipt-review-amount";
 import { ensureReceiptItemKeys } from "../model/receipt-review-draft";
@@ -21,6 +33,8 @@ import {
 } from "../model/tax-candidate-explanation";
 import { effectiveReceiptItemAmount } from "../model/use-import-confirmation";
 import { ProductVariantSelect } from "./product-variant-select";
+
+import styles from "./imports-page.module.css";
 
 type ReceiptReviewProps = {
   household: Household;
@@ -93,9 +107,20 @@ export function ReceiptReview({
 }: ReceiptReviewProps) {
   const [amountDrafts, setAmountDrafts] = useState<Record<string, Record<string, string>>>({});
   const focusNewItem = useRef(false);
+  const itemNameInputs = useRef(new Map<string, HTMLInputElement>());
   const result = selectedDocument.result;
   const receipt = result?.receipt;
   const receiptItems = ensureReceiptItemKeys(receipt?.items ?? []);
+  const evidenceSelection = useSyncExternalStore(
+    (listener) => subscribeReceiptEvidenceSelection(selectedDocument.id, listener),
+    () => getReceiptEvidenceSelection(selectedDocument.id),
+    () => null,
+  );
+
+  useEffect(() => {
+    if (!evidenceSelection?.focusEditor) return;
+    itemNameInputs.current.get(evidenceSelection.itemKey)?.focus({ preventScroll: true });
+  }, [evidenceSelection?.focusEditor, evidenceSelection?.itemKey]);
   if (!result || !receipt) return null;
   const itemsChanged = Boolean(
     (result as typeof result & { reviewReceiptItemsChanged?: boolean }).reviewReceiptItemsChanged,
@@ -305,14 +330,24 @@ export function ReceiptReview({
         {!receiptItems.length && <p className="receipt-items-empty">品目がありません。</p>}
         {receiptItems.map((item, index) => (
           <div
-            className={`receipt-item-review ${amountDifferences.some((difference) => difference.index === index) ? "receipt-item-candidate-difference" : ""}`}
+            className={`receipt-item-review ${amountDifferences.some((difference) => difference.index === index) ? "receipt-item-candidate-difference" : ""} ${evidenceSelection?.itemKey === item.key ? styles.receiptItemEvidenceSelected : ""}`}
             key={item.key}
+            onFocusCapture={() =>
+              selectReceiptEvidenceItem(selectedDocument.id, {
+                itemKey: item.key ?? `item-${index}`,
+                index,
+                focusEditor: false,
+              })
+            }
           >
             <div>
               <input
                 id={`receipt-review-item-${index}`}
                 aria-label="品名"
                 ref={(element) => {
+                  const itemKey = item.key ?? `item-${index}`;
+                  if (element) itemNameInputs.current.set(itemKey, element);
+                  else itemNameInputs.current.delete(itemKey);
                   if (item.verification !== "MANUAL" || index !== receiptItems.length - 1) return;
                   if (!element || !focusNewItem.current) return;
                   focusNewItem.current = false;

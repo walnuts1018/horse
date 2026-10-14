@@ -241,6 +241,7 @@ export function LedgerPage({
     postDraftPurchase,
     postingPurchase,
     purchaseDraft,
+    purchaseSaveState,
     savePurchase,
     setCorrectionTarget,
     setEditError,
@@ -324,6 +325,7 @@ export function LedgerPage({
             <button
               className="button button-soft"
               type="button"
+              disabled={purchaseSaveState === "saving"}
               onClick={() => void conflict.discard()}
             >
               最新の記録を使う
@@ -331,6 +333,7 @@ export function LedgerPage({
             <button
               className="button button-primary"
               type="button"
+              disabled={purchaseSaveState === "saving"}
               onClick={() =>
                 void conflict.retry().catch((reason) => setEditError(errorMessage(reason)))
               }
@@ -571,9 +574,10 @@ export function LedgerPage({
                         purchase={purchase}
                         draft={purchaseDraft}
                         accounts={household.accounts}
+                        saveState={purchaseSaveState}
                         onChange={updatePurchaseDraft}
                         onCancel={cancelEditing}
-                        onSave={(target) => void savePurchase(target)}
+                        onSave={savePurchase}
                       />
                     ) : (
                       <button
