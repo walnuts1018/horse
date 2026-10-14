@@ -1,6 +1,7 @@
 .evidenceReviewLayout {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  grid-template-areas: "source edit";
   align-items: start;
   gap: 14px;
   margin-top: 16px;
@@ -28,6 +29,7 @@
 }
 
 .evidenceSourceColumn {
+  grid-area: source;
   position: sticky;
   top: 79px;
   min-width: 0;
@@ -40,7 +42,12 @@
 }
 
 .evidenceEditColumn {
+  grid-area: edit;
   min-width: 0;
+}
+
+.evidenceSummaryPreview {
+  display: none;
 }
 
 .evidencePreview,
@@ -193,6 +200,9 @@
 @media (width < 900px) {
   .evidenceReviewLayout {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "edit"
+      "source";
     gap: 8px;
   }
 
@@ -201,6 +211,19 @@
   }
 
   .evidenceSourceColumn > summary {
-    padding: 10px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 56px;
+    padding: 8px 0;
+  }
+
+  .evidenceSummaryPreview {
+    display: block;
+    width: 72px;
+    height: 48px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    object-fit: cover;
   }
 }

@@ -125,19 +125,6 @@ export function ImportDocumentReview({
         </section>
       )}
       <div className={styles.evidenceReviewLayout}>
-        <EvidenceSourcePreview
-          document={document}
-          previewState={previewState}
-          cropRegion={evidence.cropRegion}
-          cropPending={evidence.pending}
-          selectedStatementReference={selectedStatementReference}
-          onSelectStatementRegion={selectStatementRegion}
-          pending={pending}
-          onCropRegionChange={evidence.setCropRegion}
-          onSelectCropRegion={evidence.selectCropRegion}
-          onDirty={onDirty}
-          onRetryCrop={evidence.retryCrop}
-        />
         <div className={styles.evidenceEditColumn}>
           {!!document.result?.receipt?.items?.length && (
             <ReceiptReview
@@ -169,6 +156,19 @@ export function ImportDocumentReview({
             />
           )}
         </div>
+        <EvidenceSourcePreview
+          document={document}
+          previewState={previewState}
+          cropRegion={evidence.cropRegion}
+          cropPending={evidence.pending}
+          selectedStatementReference={selectedStatementReference}
+          onSelectStatementRegion={selectStatementRegion}
+          pending={pending}
+          onCropRegionChange={evidence.setCropRegion}
+          onSelectCropRegion={evidence.selectCropRegion}
+          onDirty={onDirty}
+          onRetryCrop={evidence.retryCrop}
+        />
       </div>
       <StatementReview
         document={document}

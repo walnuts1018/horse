@@ -187,6 +187,7 @@
     grid-template-areas:
       "item-heading"
       "entry-form"
+      "bulk-actions"
       "item-list"
       "entry-hint"
       "item-table";

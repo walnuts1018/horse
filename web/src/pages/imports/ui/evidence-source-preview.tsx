@@ -49,8 +49,13 @@ export function EvidenceSourcePreview({
   } = previewState;
 
   return (
-    <details className={styles.evidenceSourceColumn} open>
-      <summary>原本</summary>
+    <details className={styles.evidenceSourceColumn}>
+      <summary>
+        <span>原本</span>
+        {preview?.documentId === document.id && preview.page === page && (
+          <img className={styles.evidenceSummaryPreview} src={preview.src} alt="" />
+        )}
+      </summary>
       <div className={styles.evidencePreview}>
         <a
           className="review-image"

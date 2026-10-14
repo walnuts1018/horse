@@ -36,31 +36,6 @@
 
 ここは単純な入力速度以上に、誤認識を少ない操作で安全に訂正することが重要です。
 
-### 3-1. モバイルで原本画像が編集欄より先に長く表示される
-
-重要度：高
-
-対象：
-
-- [import-document-review.tsx](https://github.com/walnuts1018/horse/blob/778cb41/web/src/pages/imports/ui/import-document-review.tsx#L125-L167)
-- [モバイルレイアウト](https://github.com/walnuts1018/horse/blob/778cb41/web/src/pages/imports/ui/imports-page.module.css#L193-L207)
-
-PCでは原本画像と編集欄が左右に並ぶよう設計されています。これは適切です。
-
-しかし、幅900px未満では1列になり、原本プレビューが編集欄の前に表示されます。
-
-原本プレビュー内には、画像だけでなく範囲の再抽出やOCR行一覧もあります。
-
-このためスマホでは、必要な編集欄に到達するまでスクロールが長くなる可能性があります。
-
-改善方法
-
-モバイルでは原本画像をコンパクトなプレビューにして、品目編集欄へすぐアクセスできるようにします。
-
-ある品目を編集したときだけ、対応する原本領域をその品目の近くに拡大表示する方式がよいです。
-
-全文OCRやクロップ座標などの詳細機能は、通常の確認フローとは別の展開領域へ移します。
-
 ### 3-2. 品目を編集しても、原本側の対応位置が自動的に選択されない
 
 [品目編集フォーム](https://github.com/walnuts1018/horse/blob/778cb41/web/src/pages/imports/ui/receipt-review.tsx#L240-L299)
