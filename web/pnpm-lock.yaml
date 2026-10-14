@@ -109,8 +109,8 @@ importers:
         specifier: ^17.16.0
         version: 17.16.0(supports-color@10.2.2)(typescript@5.9.3)
       stylelint-browser-compat:
-        specifier: 1.0.0-beta.199
-        version: 1.0.0-beta.199(browserslist@4.29.3)(stylelint@17.16.0(supports-color@10.2.2)(typescript@5.9.3))
+        specifier: 1.0.0-beta.200
+        version: 1.0.0-beta.200(browserslist@4.29.3)(stylelint@17.16.0(supports-color@10.2.2)(typescript@5.9.3))
       stylelint-config-standard:
         specifier: ^40.0.0
         version: 40.0.0(stylelint@17.16.0(supports-color@10.2.2)(typescript@5.9.3))
@@ -1528,8 +1528,8 @@ packages:
     resolution: {integrity: sha512-LHE+8BuR7RYGDKvnrmcuSq3tDcKv9OFEXQt/HpbZhY7V6h0zlUXutnAD82GiFx9rdieCMjkvtcsPqBwgUl1Iiw==}
     engines: {node: '>= 0.4'}
 
-  array.prototype.at@1.1.3:
-    resolution: {integrity: sha512-TX4J1Uig4skvpOakrvP8q/uyhUj+ZDNmQoZpHf3MsKTrXcMHDPrgJlpv2nRJMfANrsmhg1JoOGrg3yOp209SWg==}
+  array.prototype.at@1.2.0:
+    resolution: {integrity: sha512-eBubX7uN4b+iGRTpRu2KeuIl1nYgOYrnZmUq+EVIsVF9oFT/aW4qDzMVESUMW0xdvNbrC1OlTZSvG+VrmpJLKA==}
     engines: {node: '>= 0.4'}
 
   arraybuffer.prototype.slice@1.0.4:
@@ -3221,8 +3221,8 @@ packages:
     resolution: {integrity: sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==}
     engines: {node: '>=8'}
 
-  stylelint-browser-compat@1.0.0-beta.199:
-    resolution: {integrity: sha512-gbbKYN+41AdYSZngfiAsqO11KnDFybXDF64SGEv3rGcLbanhaV5okzN1yTVb1HiTkjA4c9oHPUgoTJwub0QZsw==}
+  stylelint-browser-compat@1.0.0-beta.200:
+    resolution: {integrity: sha512-wUsb9NvUY38F4fjL0wEP/AZ4jGKnOWGs0koKC0cY9k14iHn6nr6lz2GjK06Oo4cpyTNSuzBmaM5Xygd+ZJ7Qsg==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       browserslist: '>=4.20.3'
@@ -5021,7 +5021,7 @@ snapshots:
       call-bound: 1.0.4
       is-array-buffer: 3.0.5
 
-  array.prototype.at@1.1.3:
+  array.prototype.at@1.2.0:
     dependencies:
       call-bind: 1.0.9
       define-properties: 1.2.1
@@ -6854,10 +6854,10 @@ snapshots:
 
   strip-json-comments@3.1.1: {}
 
-  stylelint-browser-compat@1.0.0-beta.199(browserslist@4.29.3)(stylelint@17.16.0(supports-color@10.2.2)(typescript@5.9.3)):
+  stylelint-browser-compat@1.0.0-beta.200(browserslist@4.29.3)(stylelint@17.16.0(supports-color@10.2.2)(typescript@5.9.3)):
     dependencies:
       '@mdn/browser-compat-data': 7.1.22
-      array.prototype.at: 1.1.3
+      array.prototype.at: 1.2.0
       browserslist: 4.29.3
       lodash.get: 4.4.2
       postcss-media-query-parser: 0.2.3
