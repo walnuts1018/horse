@@ -79,6 +79,34 @@
   margin: 10px 0 12px;
 }
 
+.accountSettingsEntry {
+  border-bottom: 1px solid #f0f3f0;
+  padding-bottom: 7px;
+}
+
+.accountSettingsEntry .settingRow {
+  border-bottom: 0;
+}
+
+.cardLast4Form {
+  padding-left: 40px;
+}
+
+.cardLast4Form label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.cardLast4Form input {
+  width: 92px;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+}
+
 .settingRow {
   display: flex;
   align-items: center;

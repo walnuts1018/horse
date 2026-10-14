@@ -7,7 +7,7 @@ function greatestCommonDivisor(left: number, right: number): number {
   return a;
 }
 
-function normalizedAllocations(allocations: readonly WeightedAllocation[]): string {
+function normalizedAllocations(allocations: readonly WeightedAllocation[]): Map<string, number> {
   const weights = new Map<string, number>();
   for (const { poolId, weight } of allocations) {
     if (!Number.isSafeInteger(weight) || weight <= 0) continue;
@@ -16,16 +16,19 @@ function normalizedAllocations(allocations: readonly WeightedAllocation[]): stri
 
   let divisor = 0;
   for (const weight of weights.values()) divisor = greatestCommonDivisor(divisor, weight);
-  return [...weights]
-    .map(([poolId, weight]) => [poolId, divisor === 0 ? weight : weight / divisor] as const)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([poolId, weight]) => `${poolId}\u0000${weight}`)
-    .join("\u0001");
+  return new Map(
+    [...weights].map(([poolId, weight]) => [poolId, divisor === 0 ? weight : weight / divisor]),
+  );
 }
 
 export function areAllocationsEquivalent(
   left: readonly WeightedAllocation[],
   right: readonly WeightedAllocation[],
 ): boolean {
-  return normalizedAllocations(left) === normalizedAllocations(right);
+  const normalizedLeft = normalizedAllocations(left);
+  const normalizedRight = normalizedAllocations(right);
+  return (
+    normalizedLeft.size === normalizedRight.size &&
+    [...normalizedLeft].every(([poolId, weight]) => normalizedRight.get(poolId) === weight)
+  );
 }

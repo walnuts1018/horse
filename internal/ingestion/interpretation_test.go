@@ -29,6 +29,12 @@ func TestInterpretationsKeepAmbiguousObservations(t *testing.T) {
 	if !got.Candidates[0].Consistent || !got.Candidates[1].Consistent || got.Candidates[2].Consistent {
 		t.Fatalf("candidate constraints not preserved: %+v", got.Candidates)
 	}
+	if len(got.Candidates[0].ItemInterpretations) != 1 || got.Candidates[0].ItemInterpretations[0].PriceBasis != priceBasisTaxIncluded || len(got.Candidates[0].GroupInterpretations) != 1 || got.Candidates[0].GroupInterpretations[0].Rounding != taxRoundingFloor {
+		t.Fatalf("candidate interpretation details missing: %+v", got.Candidates[0])
+	}
+	if len(got.Candidates[2].ItemInterpretations) != 1 {
+		t.Fatalf("unbalanced candidate interpretation was omitted: %+v", got.Candidates[2])
+	}
 	if r.Items[0].PriceBasis != priceBasisUnknown || r.TaxGroups[0].Rounding != priceBasisUnknown {
 		t.Fatal("input observations changed")
 	}
@@ -46,5 +52,8 @@ func TestInterpretationRejectsChangingExplicitFacts(t *testing.T) {
 	}
 	if len(got.Candidates) != 1 || got.Candidates[0].Consistent || len(got.Candidates[0].Issues) == 0 {
 		t.Fatalf("explicit fact override accepted: %+v", got.Candidates)
+	}
+	if len(got.Candidates[0].ItemInterpretations) > 0 || len(got.Candidates[0].GroupInterpretations) > 0 {
+		t.Fatalf("invalid candidate details were exposed: %+v", got.Candidates[0])
 	}
 }

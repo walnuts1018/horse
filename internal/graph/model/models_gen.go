@@ -200,6 +200,10 @@ type SavePurchaseItemEditsResult interface {
 	IsSavePurchaseItemEditsResult()
 }
 
+type SetAccountCardLast4Result interface {
+	IsSetAccountCardLast4Result()
+}
+
 type SetAllocationRuleResult interface {
 	IsSetAllocationRuleResult()
 }
@@ -288,10 +292,11 @@ func (this AcceptHouseholdInvitationUserError) GetCode() MutationErrorCode { ret
 func (this AcceptHouseholdInvitationUserError) GetMessage() string         { return this.Message }
 
 type Account struct {
-	ID     string      `json:"id"`
-	Name   string      `json:"name"`
-	Kind   AccountKind `json:"kind"`
-	PoolID *string     `json:"poolId,omitempty"`
+	ID        string      `json:"id"`
+	Name      string      `json:"name"`
+	Kind      AccountKind `json:"kind"`
+	CardLast4 *string     `json:"cardLast4,omitempty"`
+	PoolID    *string     `json:"poolId,omitempty"`
 }
 
 func (Account) IsNode() {}
@@ -717,6 +722,7 @@ type CreateAccountInput struct {
 	HouseholdID    string                      `json:"householdId"`
 	Name           string                      `json:"name"`
 	Kind           AccountKind                 `json:"kind"`
+	CardLast4      *string                     `json:"cardLast4,omitempty"`
 	PoolID         *string                     `json:"poolId,omitempty"`
 	OpeningBalance *AccountOpeningBalanceInput `json:"openingBalance,omitempty"`
 }
@@ -2056,6 +2062,28 @@ func (SavePurchaseItemEditsUserError) IsSavePurchaseItemEditsResult() {}
 func (SavePurchaseItemEditsUserError) IsMutationError()                {}
 func (this SavePurchaseItemEditsUserError) GetCode() MutationErrorCode { return this.Code }
 func (this SavePurchaseItemEditsUserError) GetMessage() string         { return this.Message }
+
+type SetAccountCardLast4Input struct {
+	AccountID string  `json:"accountId"`
+	CardLast4 *string `json:"cardLast4,omitempty"`
+}
+
+type SetAccountCardLast4Success struct {
+	Result *Account `json:"result"`
+}
+
+func (SetAccountCardLast4Success) IsSetAccountCardLast4Result() {}
+
+type SetAccountCardLast4UserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (SetAccountCardLast4UserError) IsSetAccountCardLast4Result() {}
+
+func (SetAccountCardLast4UserError) IsMutationError()                {}
+func (this SetAccountCardLast4UserError) GetCode() MutationErrorCode { return this.Code }
+func (this SetAccountCardLast4UserError) GetMessage() string         { return this.Message }
 
 type SetAllocationRuleInput struct {
 	HouseholdID string                     `json:"householdId"`

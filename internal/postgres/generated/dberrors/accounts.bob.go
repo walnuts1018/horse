@@ -25,6 +25,13 @@ var AccountErrors = &accountErrors{
 		s:       "accounts_household_id_name_key",
 	},
 
+	ErrCheckAccountsCardLast4Check: &CheckConstraintError{
+		schema:  "",
+		table:   "accounts",
+		columns: []string{"card_last4", "kind"},
+		s:       "accounts_card_last4_check",
+	},
+
 	ErrCheckAccountsKindCheck: &CheckConstraintError{
 		schema:  "",
 		table:   "accounts",
@@ -39,6 +46,8 @@ type accountErrors struct {
 	ErrUniqueAccountsHouseholdIdIdKey *UniqueConstraintError
 
 	ErrUniqueAccountsHouseholdIdNameKey *UniqueConstraintError
+
+	ErrCheckAccountsCardLast4Check *CheckConstraintError
 
 	ErrCheckAccountsKindCheck *CheckConstraintError
 }

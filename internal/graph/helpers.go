@@ -222,6 +222,10 @@ func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string) (*
 	}
 	for _, storedAccount := range accounts {
 		account := &model.Account{ID: storedAccount.ID.String(), Name: storedAccount.Name, Kind: model.AccountKind(storedAccount.Kind)}
+		if storedAccount.CardLast4.Valid {
+			cardLast4 := storedAccount.CardLast4.V
+			account.CardLast4 = &cardLast4
+		}
 		if storedAccount.PoolID.Valid {
 			poolID := storedAccount.PoolID.V.String()
 			account.PoolID = &poolID

@@ -67,6 +67,7 @@ export type {
 } from "./__generated__/StatementRefundCorrectionsQuery.graphql";
 export type { LinkStatementRefundCorrectionMutation } from "./__generated__/LinkStatementRefundCorrectionMutation.graphql";
 export type { CreateAccountMutation } from "./__generated__/CreateAccountMutation.graphql";
+export type { SetAccountCardLast4Mutation } from "./__generated__/SetAccountCardLast4Mutation.graphql";
 export type { CreatePoolMutation } from "./__generated__/CreatePoolMutation.graphql";
 export type { SetPoolFundingRuleMutation } from "./__generated__/SetPoolFundingRuleMutation.graphql";
 export type { SetAllocationRuleMutation } from "./__generated__/SetAllocationRuleMutation.graphql";

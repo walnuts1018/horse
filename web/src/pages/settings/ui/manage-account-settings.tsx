@@ -201,27 +201,56 @@ export function ManageAccountSettings({
         </div>
         <div className={styles.settingsRows}>
           {household.accounts.map((account) => (
-            <div className={styles.settingRow} key={account.id}>
-              <div className={styles.accountAvatar}>
-                <Wallet size={16} />
+            <div className={styles.accountSettingsEntry} key={account.id}>
+              <div className={styles.settingRow}>
+                <div className={styles.accountAvatar}>
+                  <Wallet size={16} />
+                </div>
+                <div>
+                  <b>{account.name}</b>
+                  <small>
+                    {household.pools.find((pool) => pool.id === account.poolId)?.name ?? "個人"} ·{" "}
+                    {(
+                      { BANK: "銀行", CASH: "現金", CARD: "カード", OTHER: "その他" } as Record<
+                        string,
+                        string
+                      >
+                    )[account.kind] ?? account.kind}{" "}
+                    · 残高{" "}
+                    {yen(
+                      balances.find((balance) => balance.accountId === account.id)?.balanceYen ?? 0,
+                    )}
+                  </small>
+                </div>
+                <ChevronRight size={16} />
               </div>
-              <div>
-                <b>{account.name}</b>
-                <small>
-                  {household.pools.find((pool) => pool.id === account.poolId)?.name ?? "個人"} ·{" "}
-                  {(
-                    { BANK: "銀行", CASH: "現金", CARD: "カード", OTHER: "その他" } as Record<
-                      string,
-                      string
-                    >
-                  )[account.kind] ?? account.kind}{" "}
-                  · 残高{" "}
-                  {yen(
-                    balances.find((balance) => balance.accountId === account.id)?.balanceYen ?? 0,
-                  )}
-                </small>
-              </div>
-              <ChevronRight size={16} />
+              {account.kind === "CARD" && (
+                <form
+                  className={`inline-create ${styles.cardLast4Form}`}
+                  data-unsaved-id={`card-last4:${account.id}`}
+                  onSubmit={(event) => void model.saveCardLast4(event, account.id)}
+                >
+                  <label>
+                    末尾4桁
+                    <input
+                      autoComplete="off"
+                      inputMode="numeric"
+                      maxLength={4}
+                      pattern="[0-9]{4}"
+                      value={model.cardLast4Drafts[account.id] ?? ""}
+                      onChange={(event) =>
+                        model.setCardLast4Drafts((current) => ({
+                          ...current,
+                          [account.id]: event.target.value.replace(/\D/g, "").slice(0, 4),
+                        }))
+                      }
+                    />
+                  </label>
+                  <button type="submit" className="button button-soft" disabled={model.pending}>
+                    保存
+                  </button>
+                </form>
+              )}
             </div>
           ))}
         </div>
@@ -248,6 +277,20 @@ export function ManageAccountSettings({
             <option value="CARD">カード</option>
             <option value="OTHER">その他</option>
           </select>
+          {model.accountKind === "CARD" && (
+            <input
+              aria-label="カード末尾4桁"
+              autoComplete="off"
+              inputMode="numeric"
+              maxLength={4}
+              pattern="[0-9]{4}"
+              value={model.accountCardLast4}
+              onChange={(event) =>
+                model.setAccountCardLast4Draft(event.target.value.replace(/\D/g, "").slice(0, 4))
+              }
+              placeholder="末尾4桁"
+            />
+          )}
           <select
             value={model.accountPool}
             onChange={(event) => model.setAccountPool(event.target.value)}

@@ -12,6 +12,7 @@ import {
   createAccount,
   createPool,
   setPoolFundingRule,
+  setAccountCardLast4,
   type AccountKind,
   type PoolKind,
 } from "../api/account-settings";
@@ -86,6 +87,8 @@ export function useAccountSettings({
   const [accountName, setAccountName] = useState("");
   const [accountPool, setAccountPool] = useState("");
   const [accountKind, setAccountKind] = useState<AccountKind>("BANK");
+  const [accountCardLast4, setAccountCardLast4Draft] = useState("");
+  const [cardLast4Drafts, setCardLast4Drafts] = useState<Record<string, string | undefined>>({});
   const [openingBalanceYen, setOpeningBalanceYen] = useState("");
   const [openingBalanceAt, setOpeningBalanceAt] = useState(() => {
     const date = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
@@ -93,6 +96,7 @@ export function useAccountSettings({
   });
   const [fundingDrafts, setFundingDrafts] = useState<FundingDrafts>({});
   const fundingDraftHouseholdId = useRef(household.id);
+  const cardLast4DraftHouseholdId = useRef(household.id);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -106,6 +110,18 @@ export function useAccountSettings({
     // 同期setStateをマイクロタスクで遅延
     queueMicrotask(() => {
       setFundingDrafts((current) => reconcileFundingDrafts(household, currentHouseholdId, current));
+      const currentAccountHouseholdId = cardLast4DraftHouseholdId.current;
+      cardLast4DraftHouseholdId.current = household.id;
+      setCardLast4Drafts((current) =>
+        Object.fromEntries(
+          household.accounts.map((account) => [
+            account.id,
+            currentAccountHouseholdId === household.id && account.id in current
+              ? current[account.id]
+              : (account.cardLast4 ?? ""),
+          ]),
+        ),
+      );
     });
   }, [household]);
 
@@ -136,6 +152,7 @@ export function useAccountSettings({
       householdId: household.id,
       name: accountName.trim(),
       kind: accountKind,
+      ...(accountKind === "CARD" && accountCardLast4 ? { cardLast4: accountCardLast4 } : {}),
       poolId: accountPool || null,
       ...(openingBalanceYen !== ""
         ? {
@@ -149,6 +166,7 @@ export function useAccountSettings({
       .then(async () => {
         onFormCleanRef.current("create-account");
         setAccountName("");
+        setAccountCardLast4Draft("");
         setOpeningBalanceYen("");
         await onRefresh();
         await onRefreshBalances();
@@ -156,6 +174,26 @@ export function useAccountSettings({
       })
       .catch((reason) => onNoticeRef.current(errorMessage(reason), "error"))
       .finally(() => setPending(false));
+  };
+
+  const saveCardLast4 = async (event: SubmitEvent<HTMLFormElement>, accountId: string) => {
+    event.preventDefault();
+    const cardLast4 = cardLast4Drafts[accountId]?.trim() ?? "";
+    if (cardLast4 !== "" && !/^\d{4}$/.test(cardLast4)) {
+      onNoticeRef.current("末尾4桁を半角数字4桁で入力してください", "warning");
+      return;
+    }
+    setPending(true);
+    try {
+      await setAccountCardLast4({ accountId, cardLast4: cardLast4 || null });
+      onFormCleanRef.current(`card-last4:${accountId}`);
+      await onRefresh();
+      onNoticeRef.current("カード末尾4桁を保存しました", "success");
+    } catch (reason) {
+      onNoticeRef.current(errorMessage(reason), "error");
+    } finally {
+      setPending(false);
+    }
   };
 
   const saveFundingRule = async (event: SubmitEvent<HTMLFormElement>, poolId: string) => {
@@ -207,6 +245,10 @@ export function useAccountSettings({
     setAccountPool,
     accountKind,
     setAccountKind,
+    accountCardLast4,
+    setAccountCardLast4Draft,
+    cardLast4Drafts,
+    setCardLast4Drafts,
     openingBalanceYen,
     setOpeningBalanceYen,
     openingBalanceAt,
@@ -216,6 +258,7 @@ export function useAccountSettings({
     pending,
     addPool,
     addAccount,
+    saveCardLast4,
     saveFundingRule,
   };
 }

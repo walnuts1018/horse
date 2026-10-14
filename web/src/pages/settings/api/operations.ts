@@ -126,6 +126,24 @@ export const createAccountMutation = graphql`
   }
 `;
 
+export const setAccountCardLast4Mutation = graphql`
+  mutation SetAccountCardLast4Mutation($input: SetAccountCardLast4Input!) {
+    setAccountCardLast4(input: $input) {
+      __typename
+      ... on SetAccountCardLast4Success {
+        result {
+          id
+          cardLast4
+        }
+      }
+      ... on MutationError {
+        code
+        message
+      }
+    }
+  }
+`;
+
 export const createCategoryMutation = graphql`
   mutation CreateCategoryMutation($input: CreateCategoryInput!) {
     createCategory(input: $input) {

@@ -95,7 +95,13 @@ export function isPersonalPool(pool: Pool): pool is PersonalPool | UnconfiguredP
 export function isSharedPool(pool: Pool): pool is SharedPool | UnconfiguredSharedPool {
   return pool.__typename === "SharedPool" || pool.__typename === "UnconfiguredSharedPool";
 }
-export type Account = { id: string; name: string; kind: string; poolId?: string | null };
+export type Account = {
+  id: string;
+  name: string;
+  kind: string;
+  cardLast4?: string | null;
+  poolId?: string | null;
+};
 export type Category = { id: string; name: string; parentId?: string | null; archived?: boolean };
 export type Allocation = { poolId: string; poolName: string; weight: number };
 export type PurchaseItemAllocation = Allocation & { amountYen: number };

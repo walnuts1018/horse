@@ -12,6 +12,7 @@ input CreateAccountInput {
   householdId: ID! @nodeID(of: "Household")
   name: String!
   kind: AccountKind!
+  cardLast4: String
   poolId: ID @nodeID(of: "Pool")
   openingBalance: AccountOpeningBalanceInput
 }
@@ -22,6 +23,26 @@ input AccountOpeningBalanceInput {
 }
 
 type CreateAccountUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+
+extend type Mutation {
+  setAccountCardLast4(input: SetAccountCardLast4Input!): SetAccountCardLast4Result!
+}
+
+input SetAccountCardLast4Input {
+  accountId: ID! @nodeID(of: "Account")
+  cardLast4: String
+}
+
+union SetAccountCardLast4Result = SetAccountCardLast4Success | SetAccountCardLast4UserError
+
+type SetAccountCardLast4Success {
+  result: Account!
+}
+
+type SetAccountCardLast4UserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }

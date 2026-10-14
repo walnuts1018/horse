@@ -5,6 +5,9 @@ export type ExtractedItem = {
   key?: string;
   name: string;
   printedAmount: number;
+  discount?: number;
+  priceBasis?: string;
+  taxGroup?: string;
   grossAmount: number;
   categoryId?: string | null;
   quantityNumerator?: string | null;
@@ -154,6 +157,8 @@ export type ReceiptPayment = { method: string; cardLast4?: string; amount: numbe
 export type VerificationCandidate = {
   id: string;
   amounts: number[];
+  itemInterpretations?: Array<{ index: number; priceBasis: string; taxGroup: string }>;
+  groupInterpretations?: Array<{ id: string; basis: string; rounding: string }>;
   computedTotal: number;
   consistent: boolean;
   issues: string[];
@@ -198,6 +203,13 @@ export type DocumentReview = {
       merchant?: string;
       purchasedAt?: string;
       items?: ExtractedItem[];
+      taxGroups?: Array<{
+        id: string;
+        numerator: number;
+        denominator: number;
+        basis?: string;
+        rounding?: string;
+      }>;
       payments?: ReceiptPayment[];
     };
     computedTotal?: number;

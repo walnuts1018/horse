@@ -33,6 +33,7 @@ export const householdQuery = graphql`
         id
         name
         kind
+        cardLast4
         poolId
       }
       categories {

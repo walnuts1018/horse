@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<238652e3f8a02509f162a67008008d70>>
+ * @generated SignedSource<<cf93e4ebce4659db30aa278e67e63fb8>>
  * @lightSyntaxTransform
  */
 
@@ -17,6 +17,7 @@ export type HouseholdQuery$variables = {
 export type HouseholdQuery$data = {
   readonly household: {
     readonly accounts: ReadonlyArray<{
+      readonly cardLast4: string | null | undefined;
       readonly id: string;
       readonly kind: AccountKind;
       readonly name: string;
@@ -252,6 +253,13 @@ v5 = [
             "name": "kind",
             "storageKey": null
           },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "cardLast4",
+            "storageKey": null
+          },
           (v4/*:: as any*/)
         ],
         "storageKey": null
@@ -318,16 +326,16 @@ return {
     "selections": (v5/*:: as any*/)
   },
   "params": {
-    "cacheID": "c0e285bff86d0489c37da0a9d25ebcf6",
+    "cacheID": "ae9a9f92e7d747fcc4f0c738d57a294b",
     "id": null,
     "metadata": {},
     "name": "HouseholdQuery",
     "operationKind": "query",
-    "text": "query HouseholdQuery(\n  $id: ID!\n) {\n  household(id: $id) {\n    id\n    name\n    revision\n    members {\n      id\n      displayName\n      role\n    }\n    pools {\n      id\n      name\n      defaultShareWeight\n      fundingShares {\n        memberId\n        memberName\n        weight\n      }\n      fundingRuleVersion\n      __typename\n      ... on PersonalPool {\n        ownerMemberId\n      }\n      ... on SharedPool {\n        settlementPolicy\n      }\n    }\n    accounts {\n      id\n      name\n      kind\n      poolId\n    }\n    categories {\n      id\n      name\n      parentId\n      archived\n    }\n    defaultAllocation {\n      poolId\n      weight\n    }\n  }\n}\n"
+    "text": "query HouseholdQuery(\n  $id: ID!\n) {\n  household(id: $id) {\n    id\n    name\n    revision\n    members {\n      id\n      displayName\n      role\n    }\n    pools {\n      id\n      name\n      defaultShareWeight\n      fundingShares {\n        memberId\n        memberName\n        weight\n      }\n      fundingRuleVersion\n      __typename\n      ... on PersonalPool {\n        ownerMemberId\n      }\n      ... on SharedPool {\n        settlementPolicy\n      }\n    }\n    accounts {\n      id\n      name\n      kind\n      cardLast4\n      poolId\n    }\n    categories {\n      id\n      name\n      parentId\n      archived\n    }\n    defaultAllocation {\n      poolId\n      weight\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "041f4ee551253c07e8f2e47d9e537ab7";
+(node as any).hash = "c18eeccdd562bb72994ae3248eddeaed";
 
 export default node;

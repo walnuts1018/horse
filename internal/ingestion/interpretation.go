@@ -22,11 +22,13 @@ type GroupInterpretation struct {
 }
 
 type InterpretationResult struct {
-	ID            string   `json:"id"`
-	Amounts       []int64  `json:"amounts"`
-	ComputedTotal int64    `json:"computedTotal"`
-	Consistent    bool     `json:"consistent"`
-	Issues        []string `json:"issues"`
+	ID                   string                `json:"id"`
+	Amounts              []int64               `json:"amounts"`
+	ItemInterpretations  []ItemInterpretation  `json:"itemInterpretations,omitempty"`
+	GroupInterpretations []GroupInterpretation `json:"groupInterpretations,omitempty"`
+	ComputedTotal        int64                 `json:"computedTotal"`
+	Consistent           bool                  `json:"consistent"`
+	Issues               []string              `json:"issues"`
 }
 
 // 成立した候補も観測事実の確定値へ上書きしない。合計が等しい複数の計算方式を保持する。
@@ -85,6 +87,8 @@ func evaluateInterpretations(observed Receipt) []InterpretationResult {
 			result.ComputedTotal = verified.ComputedTotal
 			result.Consistent = verified.Balanced
 			result.Issues = verified.Issues
+			result.ItemInterpretations = slices.Clone(candidate.Items)
+			result.GroupInterpretations = slices.Clone(candidate.Groups)
 			for _, item := range verified.Receipt.Items {
 				result.Amounts = append(result.Amounts, item.GrossAmount)
 			}

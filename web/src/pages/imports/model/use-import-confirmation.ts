@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
-} from "react";
+import { useEffect, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 
 import type { Household } from "../../../shared/api";
 import type { ImportReceiptConfirmationState } from "../../../shared/lib/purchase-storage";
@@ -19,6 +11,7 @@ import type {
 } from "./imports";
 
 import { createReceiptPurchaseInput, effectiveReceiptItemAmount } from "./receipt-confirmation";
+import { receiptPaymentAccountId } from "./receipt-payment-account";
 import {
   createStatementExternalIncomeInput,
   createStatementPurchaseInput,
@@ -93,109 +86,96 @@ export function useImportConfirmation({
     ...locallyConfirmedStatements,
     ...persistedStatementConfirmationKeys(selectedDocument),
   ]);
-  const [selectedCandidates, setSelectedCandidates] = useState<Record<string, string>>({});
   const [reviewTargetState, setReviewTargetState] = useState<{
     documentId: string;
     index: number;
   }>({ documentId: "", index: 0 });
-  const [manualAmountOverrides, setManualAmountOverrides] = useState<
-    Record<string, Record<string, number>>
-  >({});
-  const [manualAmountOverrideReasons, setManualAmountOverrideReasons] = useState<
-    Record<string, string | undefined>
-  >({});
-  const [receiptPayments, setReceiptPayments] = useState<
-    Record<string, ReceiptPaymentDraft[] | undefined>
-  >({});
-  const [receiptItemAllocations, setReceiptItemAllocations] = useState<
-    Record<string, Record<string, ReceiptItemAllocation[]>>
-  >({});
   const [manualPurchaseDates, setManualPurchaseDates] = useState<Record<string, string>>({});
-  const receiptConfirmationStates = useRef<Record<string, ImportReceiptConfirmationState>>({});
   const selectedDocumentId = selectedDocument?.id ?? "";
-  useEffect(() => {
-    if (!selectedDocument) return;
-    const documentId = selectedDocument.id;
-    const state = selectedDocument.receiptConfirmationState;
-    receiptConfirmationStates.current[documentId] = state ?? {};
-    setSelectedCandidates((current) => ({
-      ...current,
-      ...(state?.selectedCandidate
-        ? { [documentId]: state.selectedCandidate.id }
-        : { [documentId]: "" }),
-    }));
-    setManualAmountOverrides((current) => ({
-      ...current,
-      [documentId]: state?.manualAmountOverrides ?? {},
-    }));
-    setManualAmountOverrideReasons((current) => ({
-      ...current,
-      [documentId]: state?.manualAmountOverrideReason,
-    }));
-    setReceiptPayments((current) => ({
-      ...current,
-      [documentId]: state?.payments,
-    }));
-    setReceiptItemAllocations((current) => ({
-      ...current,
-      [documentId]: state?.itemAllocations ?? {},
-    }));
-  }, [selectedDocument?.id, selectedDocument?.receiptConfirmationState]);
-  const persistReceiptConfirmationState = (
+  const confirmationState = selectedDocument?.receiptConfirmationState;
+  const selectedCandidates = selectedDocument
+    ? { [selectedDocument.id]: confirmationState?.selectedCandidate?.id ?? "" }
+    : {};
+  const manualAmountOverrides = selectedDocument
+    ? { [selectedDocument.id]: confirmationState?.manualAmountOverrides ?? {} }
+    : {};
+  const manualAmountOverrideReasons = selectedDocument
+    ? { [selectedDocument.id]: confirmationState?.manualAmountOverrideReason }
+    : {};
+  const receiptPayments = selectedDocument
+    ? { [selectedDocument.id]: confirmationState?.payments }
+    : {};
+  const receiptItemAllocations = selectedDocument
+    ? { [selectedDocument.id]: confirmationState?.itemAllocations ?? {} }
+    : {};
+  const updateReceiptConfirmationState = (
     documentId: string,
-    patch: Partial<ImportReceiptConfirmationState>,
+    update: (
+      state: ImportReceiptConfirmationState,
+      document: DocumentReview,
+    ) => ImportReceiptConfirmationState,
   ) => {
-    const next = { ...(receiptConfirmationStates.current[documentId] ?? {}), ...patch };
-    for (const key of Object.keys(patch) as Array<keyof ImportReceiptConfirmationState>) {
-      if (patch[key] === undefined) delete next[key];
-    }
-    receiptConfirmationStates.current[documentId] = next;
     setDocuments((current) =>
-      current.map((document) =>
-        document.id === documentId ? { ...document, receiptConfirmationState: next } : document,
-      ),
+      current.map((document) => {
+        if (document.id !== documentId) return document;
+        const next = update(document.receiptConfirmationState ?? {}, document);
+        return {
+          ...document,
+          receiptConfirmationState: Object.keys(next).length ? next : undefined,
+        };
+      }),
     );
   };
   const setSelectedCandidatesPersisted: Dispatch<SetStateAction<Record<string, string>>> = (
     action,
   ) => {
-    const next = typeof action === "function" ? action(selectedCandidates) : action;
-    setSelectedCandidates(next);
     if (!selectedDocument) return;
-    const selectedId = next[selectedDocument.id];
-    const candidate = selectedDocument.result?.candidates?.find((entry) => entry.id === selectedId);
-    persistReceiptConfirmationState(selectedDocument.id, {
-      selectedCandidate: candidate ? { ...candidate } : undefined,
+    updateReceiptConfirmationState(selectedDocument.id, (state, document) => {
+      const current = {
+        [document.id]: state.selectedCandidate?.id ?? "",
+      };
+      const next = typeof action === "function" ? action(current) : action;
+      const selectedId = next[document.id];
+      const candidate = document.result?.candidates?.find((entry) => entry.id === selectedId);
+      const { selectedCandidate: _selectedCandidate, ...rest } = state;
+      return candidate ? { ...rest, selectedCandidate: { ...candidate } } : rest;
     });
   };
   const setManualAmountOverridesPersisted: Dispatch<
     SetStateAction<Record<string, Record<string, number>>>
   > = (action) => {
-    const next = typeof action === "function" ? action(manualAmountOverrides) : action;
-    setManualAmountOverrides(next);
     if (!selectedDocument) return;
-    persistReceiptConfirmationState(selectedDocument.id, {
-      manualAmountOverrides: next[selectedDocument.id],
+    updateReceiptConfirmationState(selectedDocument.id, (state, document) => {
+      const current = { [document.id]: state.manualAmountOverrides ?? {} };
+      const next = typeof action === "function" ? action(current) : action;
+      const { manualAmountOverrides: _manualAmountOverrides, ...rest } = state;
+      return Object.keys(next[document.id] ?? {}).length > 0
+        ? { ...rest, manualAmountOverrides: next[document.id] }
+        : rest;
     });
   };
   const setManualAmountOverrideReasonsPersisted: Dispatch<
     SetStateAction<Record<string, string | undefined>>
   > = (action) => {
-    const next = typeof action === "function" ? action(manualAmountOverrideReasons) : action;
-    setManualAmountOverrideReasons(next);
     if (!selectedDocument) return;
-    persistReceiptConfirmationState(selectedDocument.id, {
-      manualAmountOverrideReason: next[selectedDocument.id],
+    updateReceiptConfirmationState(selectedDocument.id, (state, document) => {
+      const current = { [document.id]: state.manualAmountOverrideReason };
+      const next = typeof action === "function" ? action(current) : action;
+      const { manualAmountOverrideReason: _reason, ...rest } = state;
+      return next[document.id] !== undefined
+        ? { ...rest, manualAmountOverrideReason: next[document.id] }
+        : rest;
     });
   };
   const setReceiptPaymentsPersisted: Dispatch<
     SetStateAction<Record<string, ReceiptPaymentDraft[] | undefined>>
   > = (action) => {
-    const next = typeof action === "function" ? action(receiptPayments) : action;
-    setReceiptPayments(next);
     if (!selectedDocument) return;
-    persistReceiptConfirmationState(selectedDocument.id, {
-      payments: next[selectedDocument.id],
+    updateReceiptConfirmationState(selectedDocument.id, (state, document) => {
+      const current = { [document.id]: state.payments };
+      const next = typeof action === "function" ? action(current) : action;
+      const { payments: _payments, ...rest } = state;
+      return next[document.id] !== undefined ? { ...rest, payments: next[document.id] } : rest;
     });
   };
   // 文書が切り替わった直後は前の文書の確認位置を引き継がない
@@ -247,16 +227,15 @@ export function useImportConfirmation({
     const recognizedPayments = document.result?.receipt?.payments ?? [];
     if (recognizedPayments.length) {
       return recognizedPayments.map((payment, index) => {
-        const method = normalizeName(payment.method);
-        const matchingAccounts = household.accounts.filter(
-          (account) =>
-            normalizeName(account.name) === method || normalizeName(account.kind) === method,
-        );
         return {
           key: `recognized:${index}`,
           method: payment.method,
           cardLast4: payment.cardLast4,
-          paymentAccountId: matchingAccounts.length === 1 ? matchingAccounts[0].id : "",
+          paymentAccountId: receiptPaymentAccountId(
+            household.accounts,
+            payment.method,
+            payment.cardLast4,
+          ),
           amountYen: payment.amount,
         };
       });
@@ -338,10 +317,14 @@ export function useImportConfirmation({
     if (element instanceof HTMLElement) element.focus({ preventScroll: true });
   }, [activeReviewTargetKey, activeReviewTargetElementId]);
 
-  const resetConfirmation = useCallback(() => {
+  const resetConfirmation = () => {
     setConfirmedStatements(new Set());
-    setSelectedCandidates({});
-  }, []);
+    if (!selectedDocument) return;
+    updateReceiptConfirmationState(selectedDocument.id, (state) => {
+      const { selectedCandidate: _selectedCandidate, ...rest } = state;
+      return rest;
+    });
+  };
 
   const editItem = (documentId: string, index: number, patch: Partial<ExtractedItem>) => {
     editedReceiptDocuments.current.add(documentId);
@@ -379,15 +362,10 @@ export function useImportConfirmation({
   ) => {
     editedReceiptDocuments.current.add(documentId);
     markUnsaved();
-    setReceiptItemAllocations((current) => ({
-      ...current,
-      [documentId]: { ...current[documentId], [itemKey]: allocations },
+    updateReceiptConfirmationState(documentId, (state) => ({
+      ...state,
+      itemAllocations: { ...state.itemAllocations, [itemKey]: allocations },
     }));
-    const nextAllocations = {
-      ...(receiptConfirmationStates.current[documentId]?.itemAllocations ?? {}),
-      [itemKey]: allocations,
-    };
-    persistReceiptConfirmationState(documentId, { itemAllocations: nextAllocations });
   };
 
   const editMerchant = (documentId: string, merchant: string) => {

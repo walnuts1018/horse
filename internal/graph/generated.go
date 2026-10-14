@@ -110,10 +110,11 @@ type ComplexityRoot struct {
 	}
 
 	Account struct {
-		ID     func(childComplexity int) int
-		Kind   func(childComplexity int) int
-		Name   func(childComplexity int) int
-		PoolID func(childComplexity int) int
+		CardLast4 func(childComplexity int) int
+		ID        func(childComplexity int) int
+		Kind      func(childComplexity int) int
+		Name      func(childComplexity int) int
+		PoolID    func(childComplexity int) int
 	}
 
 	AccountBalance struct {
@@ -758,6 +759,7 @@ type ComplexityRoot struct {
 		RevokeHouseholdMailForwarding func(childComplexity int, input model.HouseholdMailForwardingInput) int
 		RotateHouseholdMailForwarding func(childComplexity int, input model.HouseholdMailForwardingInput) int
 		SavePurchaseItemEdits         func(childComplexity int, input model.SavePurchaseItemEditsInput) int
+		SetAccountCardLast4           func(childComplexity int, input model.SetAccountCardLast4Input) int
 		SetAllocationRule             func(childComplexity int, input model.SetAllocationRuleInput) int
 		SetCategoryArchived           func(childComplexity int, input model.SetCategoryArchivedInput) int
 		SetDefaultAllocation          func(childComplexity int, input model.SetDefaultAllocationInput) int
@@ -1154,6 +1156,15 @@ type ComplexityRoot struct {
 		Message func(childComplexity int) int
 	}
 
+	SetAccountCardLast4Success struct {
+		Result func(childComplexity int) int
+	}
+
+	SetAccountCardLast4UserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	SetAllocationRuleSuccess struct {
 		Result func(childComplexity int) int
 	}
@@ -1503,6 +1514,7 @@ type MutationResolver interface {
 	CorrectPurchase(ctx context.Context, input model.CorrectPurchaseInput) (model.CorrectPurchaseResult, error)
 	CorrectPurchaseFromStatement(ctx context.Context, input model.CorrectPurchaseFromStatementInput) (model.CorrectPurchaseResult, error)
 	CreateAccount(ctx context.Context, input model.CreateAccountInput) (model.CreateAccountResult, error)
+	SetAccountCardLast4(ctx context.Context, input model.SetAccountCardLast4Input) (model.SetAccountCardLast4Result, error)
 	CreateAndPostPurchase(ctx context.Context, input model.CreatePurchaseInput) (model.CreateAndPostPurchaseResult, error)
 	CreateBudget(ctx context.Context, input model.CreateBudgetInput) (model.CreateBudgetResult, error)
 	CreateCategory(ctx context.Context, input model.CreateCategoryInput) (model.CreateCategoryResult, error)
@@ -1759,6 +1771,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.AcceptedHouseholdInvitation.ID(childComplexity), true
 
+	case "Account.cardLast4":
+		if e.ComplexityRoot.Account.CardLast4 == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Account.CardLast4(childComplexity), true
 	case "Account.id":
 		if e.ComplexityRoot.Account.ID == nil {
 			break
@@ -4091,6 +4109,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.SavePurchaseItemEdits(childComplexity, args["input"].(model.SavePurchaseItemEditsInput)), true
+	case "Mutation.setAccountCardLast4":
+		if e.ComplexityRoot.Mutation.SetAccountCardLast4 == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_setAccountCardLast4_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.SetAccountCardLast4(childComplexity, args["input"].(model.SetAccountCardLast4Input)), true
 	case "Mutation.setAllocationRule":
 		if e.ComplexityRoot.Mutation.SetAllocationRule == nil {
 			break
@@ -5790,6 +5819,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.SavePurchaseItemEditsUserError.Message(childComplexity), true
 
+	case "SetAccountCardLast4Success.result":
+		if e.ComplexityRoot.SetAccountCardLast4Success.Result == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetAccountCardLast4Success.Result(childComplexity), true
+
+	case "SetAccountCardLast4UserError.code":
+		if e.ComplexityRoot.SetAccountCardLast4UserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetAccountCardLast4UserError.Code(childComplexity), true
+	case "SetAccountCardLast4UserError.message":
+		if e.ComplexityRoot.SetAccountCardLast4UserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SetAccountCardLast4UserError.Message(childComplexity), true
+
 	case "SetAllocationRuleSuccess.result":
 		if e.ComplexityRoot.SetAllocationRuleSuccess.Result == nil {
 			break
@@ -6516,6 +6565,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputRemoveHouseholdMemberInput,
 		ec.unmarshalInputRevokeHouseholdInvitationInput,
 		ec.unmarshalInputSavePurchaseItemEditsInput,
+		ec.unmarshalInputSetAccountCardLast4Input,
 		ec.unmarshalInputSetAllocationRuleInput,
 		ec.unmarshalInputSetAllocationRuleItemInput,
 		ec.unmarshalInputSetCategoryArchivedInput,
@@ -6655,6 +6705,7 @@ type AcceptHouseholdInvitationUserError implements MutationError {
   id: ID! @goField(forceResolver: true)
   name: String!
   kind: AccountKind!
+  cardLast4: String
   poolId: ID @goField(forceResolver: true)
 }
 
@@ -7138,6 +7189,7 @@ input CreateAccountInput {
   householdId: ID! @nodeID(of: "Household")
   name: String!
   kind: AccountKind!
+  cardLast4: String
   poolId: ID @nodeID(of: "Pool")
   openingBalance: AccountOpeningBalanceInput
 }
@@ -7148,6 +7200,26 @@ input AccountOpeningBalanceInput {
 }
 
 type CreateAccountUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+
+extend type Mutation {
+  setAccountCardLast4(input: SetAccountCardLast4Input!): SetAccountCardLast4Result!
+}
+
+input SetAccountCardLast4Input {
+  accountId: ID! @nodeID(of: "Account")
+  cardLast4: String
+}
+
+union SetAccountCardLast4Result = SetAccountCardLast4Success | SetAccountCardLast4UserError
+
+type SetAccountCardLast4Success {
+  result: Account!
+}
+
+type SetAccountCardLast4UserError implements MutationError {
   code: MutationErrorCode!
   message: String!
 }
@@ -9177,6 +9249,8 @@ func (ec *executionContext) childFields_Account(ctx context.Context, field graph
 		return ec.fieldContext_Account_name(ctx, field)
 	case "kind":
 		return ec.fieldContext_Account_kind(ctx, field)
+	case "cardLast4":
+		return ec.fieldContext_Account_cardLast4(ctx, field)
 	case "poolId":
 		return ec.fieldContext_Account_poolId(ctx, field)
 	}
@@ -10911,6 +10985,20 @@ func (ec *executionContext) field_Mutation_savePurchaseItemEdits_args(ctx contex
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.SavePurchaseItemEditsInput, error) {
 			return ec.unmarshalNSavePurchaseItemEditsInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSavePurchaseItemEditsInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_setAccountCardLast4_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.SetAccountCardLast4Input, error) {
+			return ec.unmarshalNSetAccountCardLast4Input2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetAccountCardLast4Input(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -13550,6 +13638,29 @@ func (ec *executionContext) _Account_kind(ctx context.Context, field graphql.Col
 }
 func (ec *executionContext) fieldContext_Account_kind(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("Account", field, false, false, errors.New("field of type AccountKind does not have child fields"))
+}
+
+func (ec *executionContext) _Account_cardLast4(ctx context.Context, field graphql.CollectedField, obj *model.Account) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Account_cardLast4(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.CardLast4, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_Account_cardLast4(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("Account", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
 func (ec *executionContext) _Account_poolId(ctx context.Context, field graphql.CollectedField, obj *model.Account) (ret graphql.Marshaler) {
@@ -21528,6 +21639,50 @@ func (ec *executionContext) fieldContext_Mutation_createAccount(ctx context.Cont
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_createAccount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_setAccountCardLast4(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_setAccountCardLast4(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().SetAccountCardLast4(ctx, fc.Args["input"].(model.SetAccountCardLast4Input))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.SetAccountCardLast4Result) graphql.Marshaler {
+			return ec.marshalNSetAccountCardLast4Result2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetAccountCardLast4Result(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_setAccountCardLast4(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type SetAccountCardLast4Result does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_setAccountCardLast4_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -29674,6 +29829,84 @@ func (ec *executionContext) fieldContext_SavePurchaseItemEditsUserError_message(
 	return graphql.NewScalarFieldContext("SavePurchaseItemEditsUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _SetAccountCardLast4Success_result(ctx context.Context, field graphql.CollectedField, obj *model.SetAccountCardLast4Success) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetAccountCardLast4Success_result(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Result, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Account) graphql.Marshaler {
+			return ec.marshalNAccount2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccount(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetAccountCardLast4Success_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SetAccountCardLast4Success",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Account(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SetAccountCardLast4UserError_code(ctx context.Context, field graphql.CollectedField, obj *model.SetAccountCardLast4UserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetAccountCardLast4UserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetAccountCardLast4UserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetAccountCardLast4UserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _SetAccountCardLast4UserError_message(ctx context.Context, field graphql.CollectedField, obj *model.SetAccountCardLast4UserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SetAccountCardLast4UserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SetAccountCardLast4UserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SetAccountCardLast4UserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _SetAllocationRuleSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.SetAllocationRuleSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -34446,7 +34679,7 @@ func (ec *executionContext) unmarshalInputCreateAccountInput(ctx context.Context
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"householdId", "name", "kind", "poolId", "openingBalance"}
+	fieldsInOrder := [...]string{"householdId", "name", "kind", "cardLast4", "poolId", "openingBalance"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -34494,6 +34727,13 @@ func (ec *executionContext) unmarshalInputCreateAccountInput(ctx context.Context
 				return it, err
 			}
 			it.Kind = data
+		case "cardLast4":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("cardLast4"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CardLast4 = data
 		case "poolId":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("poolId"))
 			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
@@ -38360,6 +38600,63 @@ func (ec *executionContext) unmarshalInputSavePurchaseItemEditsInput(ctx context
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputSetAccountCardLast4Input(ctx context.Context, obj any) (model.SetAccountCardLast4Input, error) {
+	var it model.SetAccountCardLast4Input
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"accountId", "cardLast4"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "accountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("accountId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Account")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.AccountID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "cardLast4":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("cardLast4"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CardLast4 = data
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputSetAllocationRuleInput(ctx context.Context, obj any) (model.SetAllocationRuleInput, error) {
 	var it model.SetAllocationRuleInput
 	if obj == nil {
@@ -41030,6 +41327,13 @@ func (ec *executionContext) _MutationError(ctx context.Context, sel ast.Selectio
 			return graphql.Null
 		}
 		return ec._SetAllocationRuleUserError(ctx, sel, obj)
+	case model.SetAccountCardLast4UserError:
+		return ec._SetAccountCardLast4UserError(ctx, sel, &obj)
+	case *model.SetAccountCardLast4UserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetAccountCardLast4UserError(ctx, sel, obj)
 	case model.SavePurchaseItemEditsUserError:
 		return ec._SavePurchaseItemEditsUserError(ctx, sel, &obj)
 	case *model.SavePurchaseItemEditsUserError:
@@ -42000,6 +42304,33 @@ func (ec *executionContext) _SavePurchaseItemEditsResult(ctx context.Context, se
 	}
 }
 
+func (ec *executionContext) _SetAccountCardLast4Result(ctx context.Context, sel ast.SelectionSet, obj model.SetAccountCardLast4Result) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.SetAccountCardLast4UserError:
+		return ec._SetAccountCardLast4UserError(ctx, sel, &obj)
+	case *model.SetAccountCardLast4UserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetAccountCardLast4UserError(ctx, sel, obj)
+	case model.SetAccountCardLast4Success:
+		return ec._SetAccountCardLast4Success(ctx, sel, &obj)
+	case *model.SetAccountCardLast4Success:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._SetAccountCardLast4Success(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of SetAccountCardLast4Result must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 func (ec *executionContext) _SetAllocationRuleResult(ctx context.Context, sel ast.SelectionSet, obj model.SetAllocationRuleResult) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -42686,6 +43017,11 @@ func (ec *executionContext) _Account(ctx context.Context, sel ast.SelectionSet, 
 		case "kind":
 			out.Values[i] = ec._Account_kind(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "cardLast4":
+			out.Values[i] = ec._Account_cardLast4(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "poolId":
@@ -49168,6 +49504,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "setAccountCardLast4":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_setAccountCardLast4(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "createAndPostPurchase":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createAndPostPurchase(ctx, field)
@@ -54025,6 +54368,87 @@ func (ec *executionContext) _SavePurchaseItemEditsUserError(ctx context.Context,
 	return out
 }
 
+var setAccountCardLast4SuccessImplementors = []string{"SetAccountCardLast4Success", "SetAccountCardLast4Result"}
+
+func (ec *executionContext) _SetAccountCardLast4Success(ctx context.Context, sel ast.SelectionSet, obj *model.SetAccountCardLast4Success) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, setAccountCardLast4SuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SetAccountCardLast4Success")
+		case "result":
+			out.Values[i] = ec._SetAccountCardLast4Success_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var setAccountCardLast4UserErrorImplementors = []string{"SetAccountCardLast4UserError", "SetAccountCardLast4Result", "MutationError"}
+
+func (ec *executionContext) _SetAccountCardLast4UserError(ctx context.Context, sel ast.SelectionSet, obj *model.SetAccountCardLast4UserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, setAccountCardLast4UserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SetAccountCardLast4UserError")
+		case "code":
+			out.Values[i] = ec._SetAccountCardLast4UserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._SetAccountCardLast4UserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var setAllocationRuleSuccessImplementors = []string{"SetAllocationRuleSuccess", "SetAllocationRuleResult"}
 
 func (ec *executionContext) _SetAllocationRuleSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.SetAllocationRuleSuccess) graphql.Marshaler {
@@ -58772,6 +59196,21 @@ func (ec *executionContext) marshalNSavePurchaseItemEditsResult2githubᚗcomᚋw
 		return graphql.Null
 	}
 	return ec._SavePurchaseItemEditsResult(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNSetAccountCardLast4Input2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetAccountCardLast4Input(ctx context.Context, v any) (model.SetAccountCardLast4Input, error) {
+	res, err := ec.unmarshalInputSetAccountCardLast4Input(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSetAccountCardLast4Result2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetAccountCardLast4Result(ctx context.Context, sel ast.SelectionSet, v model.SetAccountCardLast4Result) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._SetAccountCardLast4Result(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNSetAllocationRuleInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetAllocationRuleInput(ctx context.Context, v any) (model.SetAllocationRuleInput, error) {

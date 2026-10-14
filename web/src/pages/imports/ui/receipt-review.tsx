@@ -13,6 +13,11 @@ import {
   yen,
 } from "../model/imports";
 import { addReceiptPayment, updateReceiptPaymentAmount } from "../model/receipt-payment-split";
+import {
+  candidateAmountDifferences,
+  candidateAmountForItem,
+  candidateInterpretationLabels,
+} from "../model/tax-candidate-explanation";
 import { effectiveReceiptItemAmount } from "../model/use-import-confirmation";
 import { ProductVariantSelect } from "./product-variant-select";
 
@@ -81,7 +86,12 @@ export function ReceiptReview({
   pending,
   onConfirm,
 }: ReceiptReviewProps) {
-  if (!selectedDocument.result?.receipt?.items?.length) return null;
+  const result = selectedDocument.result;
+  const receipt = result?.receipt;
+  const receiptItems = receipt?.items;
+  if (!result || !receipt || !receiptItems?.length) return null;
+  const candidates = result.candidates ?? [];
+  const amountDifferences = candidateAmountDifferences(candidates, receiptItems);
   const defaultAllocations =
     household.defaultAllocation.length > 0
       ? household.defaultAllocation
@@ -124,7 +134,7 @@ export function ReceiptReview({
           <label>
             店名
             <input
-              value={selectedDocument.result.receipt.merchant ?? ""}
+              value={receipt.merchant ?? ""}
               onChange={(event) => onMerchantChange(event.target.value)}
             />
           </label>
@@ -251,8 +261,11 @@ export function ReceiptReview({
             購入額 {yen(receiptTotal(selectedDocument))}
           </small>
         </div>
-        {selectedDocument.result.receipt.items.map((item, index) => (
-          <div className="receipt-item-review" key={item.key}>
+        {receiptItems.map((item, index) => (
+          <div
+            className={`receipt-item-review ${amountDifferences.some((difference) => difference.index === index) ? "receipt-item-candidate-difference" : ""}`}
+            key={item.key}
+          >
             <div>
               <input
                 id={`receipt-review-item-${index}`}
@@ -265,6 +278,9 @@ export function ReceiptReview({
               <small>
                 {item.verification} · {Math.round(item.confidence * 100)}%
               </small>
+              {amountDifferences.some((difference) => difference.index === index) && (
+                <small className="candidate-difference-label">候補差あり</small>
+              )}
               <select
                 aria-label={`${item.name}のカテゴリ`}
                 value={item.categoryId != null ? item.categoryId : suggestedCategoryId(item)}
@@ -426,7 +442,7 @@ export function ReceiptReview({
             </details>
           </div>
         ))}
-        {!!selectedDocument.result.candidates?.length && (
+        {!!candidates.length && (
           <div className="candidate-review" id="receipt-review-candidates" tabIndex={-1}>
             <div className="panel-heading">
               <div>
@@ -434,45 +450,81 @@ export function ReceiptReview({
                 <h3>計算候補</h3>
               </div>
             </div>
-            {selectedDocument.result.candidates.map((candidate) => (
-              <button
-                type="button"
-                className={`candidate-option ${selectedCandidates[selectedDocument.id] === candidate.id ? "candidate-selected" : ""}`}
-                key={candidate.id}
-                onClick={() => {
-                  markUnsaved();
-                  if (selectedCandidates[selectedDocument.id] !== candidate.id) {
-                    setManualAmountOverrides((current) => {
-                      const next = { ...current };
-                      delete next[selectedDocument.id];
-                      return next;
-                    });
-                  }
-                  setSelectedCandidates((current) => ({
-                    ...current,
-                    [selectedDocument.id]: candidate.id,
-                  }));
-                }}
-              >
-                <span>
-                  <b>{candidate.id || "候補"}</b>
-                  <small>
-                    {candidate.consistent ? "合計一致" : "合計差異"}
-                    {candidate.issues.length ? ` · ${candidate.issues.join("、")}` : ""}
-                  </small>
-                </span>
-                <strong>{yen(candidate.computedTotal)}</strong>
-              </button>
-            ))}
-            <small>品目の印字額は保持されます。選んだ計算額を帳簿に使います。</small>
+            {candidates.map((candidate, candidateIndex) => {
+              const differences = amountDifferences.flatMap((difference) => {
+                const amount = candidateAmountForItem(candidate, difference);
+                return amount ? [amount] : [];
+              });
+              const interpretationLabels = candidateInterpretationLabels(candidate, {
+                items: receiptItems,
+                taxGroups: receipt.taxGroups ?? [],
+              });
+              const selected = selectedCandidates[selectedDocument.id] === candidate.id;
+              return (
+                <div className="candidate-option-row" key={candidate.id}>
+                  <button
+                    type="button"
+                    className={`candidate-option ${selected ? "candidate-selected" : ""}`}
+                    onClick={() => {
+                      markUnsaved();
+                      if (!selected) {
+                        setManualAmountOverrides((current) => {
+                          const next = { ...current };
+                          delete next[selectedDocument.id];
+                          return next;
+                        });
+                      }
+                      setSelectedCandidates((current) => ({
+                        ...current,
+                        [selectedDocument.id]: candidate.id,
+                      }));
+                    }}
+                  >
+                    <span>
+                      <b>候補{candidateIndex + 1}</b>
+                      {interpretationLabels.map((label) => (
+                        <small className="candidate-interpretation-label" key={label}>
+                          {label}
+                        </small>
+                      ))}
+                      {interpretationLabels.length === 0 && <small>税区分の詳細なし</small>}
+                      {differences.slice(0, 3).map((difference) => (
+                        <small className="candidate-amount-difference" key={difference.index}>
+                          {difference.name} {yen(difference.amount)}
+                        </small>
+                      ))}
+                      {differences.length > 3 && <small>ほか{differences.length - 3}品目</small>}
+                      <small>
+                        {candidate.consistent ? "合計一致" : "合計差異"}
+                        {candidate.issues.length ? ` · ${candidate.issues.join("、")}` : ""}
+                      </small>
+                    </span>
+                    <strong>{yen(candidate.computedTotal)}</strong>
+                  </button>
+                  {differences.length > 0 && (
+                    <button
+                      className="candidate-difference-jump"
+                      type="button"
+                      onClick={() => {
+                        document
+                          .getElementById(`receipt-review-item-${differences[0].index}`)
+                          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }}
+                    >
+                      差額品目へ
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
         {(Object.keys(manualAmountOverrides[selectedDocument.id] ?? {}).length > 0 ||
           (selectedCandidates[selectedDocument.id]
-            ? !selectedDocument.result.candidates?.find(
+            ? !result.candidates?.find(
                 (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
               )?.consistent
-            : !selectedDocument.result.balanced)) && (
+            : !result.balanced)) && (
           <label className="field-group" id="receipt-review-amount-reason" tabIndex={-1}>
             金額の訂正理由
             <input

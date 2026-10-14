@@ -2,12 +2,14 @@ import type {
   CreateAccountMutation,
   CreatePoolMutation,
   SetPoolFundingRuleMutation,
+  SetAccountCardLast4Mutation,
 } from "../../../shared/api";
 
 import { commitGraphQLMutationResult } from "../../../shared/api";
 import {
   createAccountMutation,
   createPoolMutation,
+  setAccountCardLast4Mutation,
   setPoolFundingRuleMutation,
 } from "./operations";
 
@@ -24,6 +26,19 @@ export function createAccount(input: CreateAccountMutation["variables"]["input"]
     (response) => response.createAccount,
     "CreateAccountSuccess",
     "口座を作成できませんでした",
+  );
+}
+
+export function setAccountCardLast4(input: SetAccountCardLast4Mutation["variables"]["input"]) {
+  return commitGraphQLMutationResult<
+    SetAccountCardLast4Mutation,
+    NonNullable<SetAccountCardLast4Mutation["response"]["setAccountCardLast4"]["result"]>
+  >(
+    setAccountCardLast4Mutation,
+    { input },
+    (response) => response.setAccountCardLast4,
+    "SetAccountCardLast4Success",
+    "カード末尾4桁を保存できませんでした",
   );
 }
 

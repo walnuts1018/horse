@@ -282,6 +282,11 @@
   cursor: pointer;
 }
 
+.candidate-option-row {
+  display: grid;
+  gap: 4px;
+}
+
 .candidate-option > span {
   display: grid;
   gap: 4px;
@@ -297,6 +302,38 @@
 .candidate-review > small {
   color: var(--muted);
   font-size: 10px;
+}
+
+.candidate-interpretation-label,
+.candidate-amount-difference {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: 999px;
+  background: var(--green-wash);
+  padding: 2px 7px;
+  color: var(--green-dark);
+}
+
+.candidate-difference-label {
+  color: var(--green-dark);
+}
+
+.candidate-difference-jump {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  padding: 2px 8px;
+  color: var(--green-dark);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.receipt-item-candidate-difference {
+  border-radius: 10px;
+  outline: 1px solid var(--green);
+  background: var(--green-wash);
+  padding: 10px;
 }
 
 .candidate-selected {

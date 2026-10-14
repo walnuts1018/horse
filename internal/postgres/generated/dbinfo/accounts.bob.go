@@ -69,6 +69,15 @@ var Accounts = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		CardLast4: column{
+			Name:      "card_last4",
+			DBType:    "text",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: accountIndexes{
 		AccountsPkey: index{
@@ -171,6 +180,14 @@ var Accounts = Table[
 		},
 	},
 	Checks: accountChecks{
+		AccountsCardLast4Check: check{
+			constraint: constraint{
+				Name:    "accounts_card_last4_check",
+				Columns: []string{"card_last4", "kind"},
+				Comment: "",
+			},
+			Expression: "((card_last4 IS NULL) OR ((kind = 'CARD'::text) AND (card_last4 ~ '^[0-9]{4}$'::text)))",
+		},
 		AccountsKindCheck: check{
 			constraint: constraint{
 				Name:    "accounts_kind_check",
@@ -190,11 +207,12 @@ type accountColumns struct {
 	Name        column
 	Kind        column
 	CreatedAt   column
+	CardLast4   column
 }
 
 func (c accountColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.PoolID, c.Name, c.Kind, c.CreatedAt,
+		c.ID, c.HouseholdID, c.PoolID, c.Name, c.Kind, c.CreatedAt, c.CardLast4,
 	}
 }
 
@@ -233,11 +251,12 @@ func (u accountUniques) AsSlice() []constraint {
 }
 
 type accountChecks struct {
-	AccountsKindCheck check
+	AccountsCardLast4Check check
+	AccountsKindCheck      check
 }
 
 func (c accountChecks) AsSlice() []check {
 	return []check{
-		c.AccountsKindCheck,
+		c.AccountsCardLast4Check, c.AccountsKindCheck,
 	}
 }

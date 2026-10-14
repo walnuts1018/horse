@@ -22,7 +22,10 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-const maxOpeningBalanceYen int64 = 1_000_000_000_000
+const (
+	cardAccountKind            = "CARD"
+	maxOpeningBalanceYen int64 = 1_000_000_000_000
+)
 
 var accountingLocation = time.FixedZone("JST", 9*60*60)
 
@@ -44,21 +47,26 @@ type CreateCommand struct {
 	HouseholdID string
 	Name        string
 	Kind        string
+	CardLast4   *string
 	PoolID      *string
 	Opening     *OpeningBalance
 }
 
 type CreatedAccount struct {
-	ID     string
-	Name   string
-	Kind   string
-	PoolID *string
+	ID        string
+	Name      string
+	Kind      string
+	CardLast4 *string
+	PoolID    *string
 }
 
 func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedAccount, error) {
 	name := strings.TrimSpace(command.Name)
 	if name == "" || len(name) > 120 || !validKind(command.Kind) {
 		return CreatedAccount{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid account"))
+	}
+	if err := validateCardLast4(command.Kind, command.CardLast4); err != nil {
+		return CreatedAccount{}, err
 	}
 	if command.Opening != nil && (command.Opening.AmountYen < 1 || command.Opening.AmountYen > maxOpeningBalanceYen) {
 		return CreatedAccount{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid opening balance"))
@@ -113,8 +121,12 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedAcc
 		}
 	}
 	kind := command.Kind
+	var cardLast4 sql.Null[string]
+	if command.CardLast4 != nil {
+		cardLast4 = sql.Null[string]{V: *command.CardLast4, Valid: true}
+	}
 	if _, err := models.Accounts.Insert(&models.AccountSetter{
-		ID: &accountID, HouseholdID: &householdID, PoolID: &poolID, Name: &name, Kind: &kind,
+		ID: &accountID, HouseholdID: &householdID, PoolID: &poolID, Name: &name, Kind: &kind, CardLast4: &cardLast4,
 	}).Exec(ctx, executor); err != nil {
 		return CreatedAccount{}, err
 	}
@@ -123,13 +135,14 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedAcc
 			return CreatedAccount{}, err
 		}
 	}
-	if err := accounting.RecordEvent(ctx, executor, householdID, accountID, "account.created", 1, []string{"name", "kind", "poolId"}, actorID); err != nil {
+	if err := accounting.RecordEvent(ctx, executor, householdID, accountID, "account.created", 1, []string{"name", "kind", "cardLast4", "poolId"}, actorID); err != nil {
 		return CreatedAccount{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return CreatedAccount{}, err
 	}
-	return CreatedAccount{ID: accountID.String(), Name: name, Kind: kind, PoolID: command.PoolID}, nil
+
+	return CreatedAccount{ID: accountID.String(), Name: name, Kind: kind, CardLast4: command.CardLast4, PoolID: command.PoolID}, nil
 }
 
 func createOpeningBalance(ctx context.Context, executor bob.Executor, householdID, actorID, accountID gofrsuuid.UUID, kind string, opening OpeningBalance) error {
@@ -146,7 +159,7 @@ func createOpeningBalance(ctx context.Context, executor bob.Executor, householdI
 		return err
 	}
 	accountSide, offsetSide := accounting.Debit, accounting.Credit
-	if kind == "CARD" {
+	if kind == cardAccountKind {
 		accountSide, offsetSide = accounting.Credit, accounting.Debit
 	}
 	entries, err := accounting.BuildEntries([]accounting.Posting{
@@ -183,7 +196,7 @@ func lockAccountingPeriod(ctx context.Context, executor bob.Executor, householdI
 
 func validKind(kind string) bool {
 	switch kind {
-	case "BANK", "CASH", "CARD", "OTHER":
+	case "BANK", "CASH", cardAccountKind, "OTHER":
 		return true
 	default:
 		return false

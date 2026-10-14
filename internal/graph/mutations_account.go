@@ -22,10 +22,27 @@ func (r *mutationResolver) createAccount(ctx context.Context, input model.Create
 	}
 	created, err := accountapp.NewService(r.DB).Create(ctx, accountapp.CreateCommand{
 		ActorID: user.MemberID, HouseholdID: input.HouseholdID, Name: input.Name,
-		Kind: input.Kind.String(), PoolID: input.PoolID, Opening: opening,
+		Kind: input.Kind.String(), CardLast4: input.CardLast4, PoolID: input.PoolID, Opening: opening,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &model.Account{ID: created.ID, Name: created.Name, Kind: model.AccountKind(created.Kind), PoolID: created.PoolID}, nil
+	return &model.Account{ID: created.ID, Name: created.Name, Kind: model.AccountKind(created.Kind), CardLast4: created.CardLast4, PoolID: created.PoolID}, nil
+}
+
+func (r *mutationResolver) setAccountCardLast4(ctx context.Context, input model.SetAccountCardLast4Input) (*model.Account, error) {
+	user, err := principal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := accountapp.NewService(r.DB).SetCardLast4(ctx, accountapp.SetCardLast4Command{
+		ActorID: user.MemberID, AccountID: input.AccountID, CardLast4: input.CardLast4,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &model.Account{
+		ID: updated.ID, Name: updated.Name, Kind: model.AccountKind(updated.Kind),
+		CardLast4: updated.CardLast4, PoolID: updated.PoolID,
+	}, nil
 }

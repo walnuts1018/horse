@@ -33,6 +33,7 @@ type Account struct {
 	Name        string              `db:"name" `
 	Kind        string              `db:"kind" `
 	CreatedAt   time.Time           `db:"created_at" `
+	CardLast4   sql.Null[string]    `db:"card_last4" `
 
 	R accountR `db:"-" `
 
@@ -79,7 +80,7 @@ type accountRLoaded struct {
 
 func buildAccountColumns(tableName string) accountColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"id", "household_id", "pool_id", "name", "kind", "created_at",
+		"id", "household_id", "pool_id", "name", "kind", "created_at", "card_last4",
 	)
 
 	if tableName != "" {
@@ -95,6 +96,7 @@ func buildAccountColumns(tableName string) accountColumns {
 		Name:        buildAccountColumn(tableName, "name"),
 		Kind:        buildAccountColumn(tableName, "kind"),
 		CreatedAt:   buildAccountColumn(tableName, "created_at"),
+		CardLast4:   buildAccountColumn(tableName, "card_last4"),
 	}
 }
 
@@ -107,6 +109,7 @@ type accountColumns struct {
 	Name        accountColumn
 	Kind        accountColumn
 	CreatedAt   accountColumn
+	CardLast4   accountColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -158,10 +161,11 @@ type AccountSetter struct {
 	Name        *string              `db:"name" `
 	Kind        *string              `db:"kind" `
 	CreatedAt   *time.Time           `db:"created_at" `
+	CardLast4   *sql.Null[string]    `db:"card_last4" `
 }
 
 func (s AccountSetter) SetColumns() []string {
-	vals := make([]string, 0, 6)
+	vals := make([]string, 0, 7)
 	if s.ID != nil {
 		vals = append(vals, "id")
 	}
@@ -179,6 +183,9 @@ func (s AccountSetter) SetColumns() []string {
 	}
 	if s.CreatedAt != nil {
 		vals = append(vals, "created_at")
+	}
+	if s.CardLast4 != nil {
+		vals = append(vals, "card_last4")
 	}
 	return vals
 }
@@ -231,6 +238,15 @@ func (s AccountSetter) Overwrite(t *Account) {
 				return *new(time.Time)
 			}
 			return *s.CreatedAt
+		}()
+	}
+	if s.CardLast4 != nil {
+		t.CardLast4 = func() sql.Null[string] {
+			if s.CardLast4 == nil {
+				return *new(sql.Null[string])
+			}
+			v := s.CardLast4
+			return *v
 		}()
 	}
 }
@@ -302,6 +318,17 @@ func (s *AccountSetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.CreatedAt
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.CardLast4 == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[string] {
+				if s.CardLast4 == nil {
+					return *new(sql.Null[string])
+				}
+				v := s.CardLast4
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -310,7 +337,7 @@ func (s AccountSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s AccountSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 6)
+	exprs := make([]bob.Expression, 0, 7)
 
 	if s.ID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -354,6 +381,13 @@ func (s AccountSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.CardLast4 != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "card_last4")...),
+			psql.Arg(s.CardLast4),
+		}})
+	}
+
 	return exprs
 }
 
@@ -364,7 +398,7 @@ func accountScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc, fun
 		idx int
 		dst func(o *Account) any
 	}
-	targets := make([]target, 0, 6)
+	targets := make([]target, 0, 7)
 	for i, col := range cols {
 		switch col {
 		case "id":
@@ -379,6 +413,8 @@ func accountScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc, fun
 			targets = append(targets, target{i, func(o *Account) any { return &o.Kind }})
 		case "created_at":
 			targets = append(targets, target{i, func(o *Account) any { return &o.CreatedAt }})
+		case "card_last4":
+			targets = append(targets, target{i, func(o *Account) any { return &o.CardLast4 }})
 		}
 	}
 
@@ -1420,6 +1456,7 @@ type accountWhere[Q psql.Filterable] struct {
 	Name        psql.WhereMod[Q, string]
 	Kind        psql.WhereMod[Q, string]
 	CreatedAt   psql.WhereMod[Q, time.Time]
+	CardLast4   psql.WhereNullMod[Q, string]
 	R           accountWhereR[Q]
 }
 
@@ -1436,6 +1473,7 @@ func buildAccountWhere[Q psql.Filterable](cols accountColumns) accountWhere[Q] {
 		Name:        psql.Where[Q, string](cols.Name.Expression),
 		Kind:        psql.Where[Q, string](cols.Kind.Expression),
 		CreatedAt:   psql.Where[Q, time.Time](cols.CreatedAt.Expression),
+		CardLast4:   psql.WhereNull[Q, string](cols.CardLast4.Expression),
 		R:           accountWhereR[Q]{cols: cols},
 	}
 }
@@ -1575,6 +1613,7 @@ type accountPreloadBuf struct {
 	Name        sql.Null[string]
 	Kind        sql.Null[string]
 	CreatedAt   sql.Null[time.Time]
+	CardLast4   sql.Null[string]
 }
 
 // accountScanMapperNullable maps the preloaded account
@@ -1589,7 +1628,7 @@ func accountScanMapperNullable(prefix string) scan.Mapper[*Account] {
 			idx int
 			dst func(b *accountPreloadBuf) any
 		}
-		targets := make([]target, 0, 6)
+		targets := make([]target, 0, 7)
 		for i, col := range cols {
 			name, ok := strings.CutPrefix(col, prefix)
 			if !ok {
@@ -1608,6 +1647,8 @@ func accountScanMapperNullable(prefix string) scan.Mapper[*Account] {
 				targets = append(targets, target{i, func(b *accountPreloadBuf) any { return &b.Kind }})
 			case "created_at":
 				targets = append(targets, target{i, func(b *accountPreloadBuf) any { return &b.CreatedAt }})
+			case "card_last4":
+				targets = append(targets, target{i, func(b *accountPreloadBuf) any { return &b.CardLast4 }})
 			}
 		}
 
@@ -1635,7 +1676,8 @@ func accountScanMapperNullable(prefix string) scan.Mapper[*Account] {
 					!(buf.PoolID.Valid) &&
 					!(buf.Name.Valid) &&
 					!(buf.Kind.Valid) &&
-					!(buf.CreatedAt.Valid) {
+					!(buf.CreatedAt.Valid) &&
+					!(buf.CardLast4.Valid) {
 					return nil, nil
 				}
 
@@ -1656,6 +1698,7 @@ func accountScanMapperNullable(prefix string) scan.Mapper[*Account] {
 				if buf.CreatedAt.Valid {
 					o.CreatedAt = buf.CreatedAt.V
 				}
+				o.CardLast4 = buf.CardLast4
 				return o, nil
 			}
 	}

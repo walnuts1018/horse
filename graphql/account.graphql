@@ -2,6 +2,7 @@ type Account implements Node {
   id: ID! @goField(forceResolver: true)
   name: String!
   kind: AccountKind!
+  cardLast4: String
   poolId: ID @goField(forceResolver: true)
 }
 
