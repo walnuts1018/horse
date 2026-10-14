@@ -29,6 +29,7 @@ import {
   importIdempotencyKey,
   linkStatementTransfer as linkStatementTransferRequest,
   linkStatementAccountMovement as linkStatementAccountMovementRequest,
+  linkStatementAccountIncome as linkStatementAccountIncomeRequest,
   recordStatementAccountMovement,
   recordStatementExternalIncome,
   recordStatementLoan,
@@ -606,6 +607,36 @@ export function useImportConfirmation({
     onAdded(true);
   };
 
+  const linkStatementAccountIncome = async (
+    document: DocumentReview,
+    entry: StatementEntry,
+    statementAccountId: string,
+    incomeId: string,
+  ) => {
+    if (entry.kind !== "EXTERNAL_INCOME") throw new Error("外部入金の明細を選択してください");
+    const issue = statementConfirmationIssue(entry);
+    if (issue) throw new Error(issue);
+    if (
+      !household.accounts.some(
+        (account) => account.id === statementAccountId && account.kind === "BANK",
+      )
+    )
+      throw new Error("銀行口座を選択してください");
+    const reference = statementSourceReference(entry);
+    const key = `${document.id}:${reference}`;
+    if (confirmedStatements.has(key)) return;
+    await linkStatementAccountIncomeRequest({
+      householdId: household.id,
+      accountIncomeId: incomeId,
+      sourceDocumentId: document.id,
+      sourceReference: reference,
+      sourceAccountId: statementAccountId,
+    });
+    setConfirmedStatements((current) => new Set(current).add(key));
+    setHasUnsavedChanges(false);
+    onAdded(true);
+  };
+
   return {
     recentPurchases,
     confirmedStatements,
@@ -656,5 +687,11 @@ export function useImportConfirmation({
       accountId: string,
       movementId: string,
     ) => linkStatementAccountMovement(document, entry, accountId, movementId),
+    linkStatementAccountIncome: (
+      document: DocumentReview,
+      entry: StatementEntry,
+      accountId: string,
+      incomeId: string,
+    ) => linkStatementAccountIncome(document, entry, accountId, incomeId),
   };
 }

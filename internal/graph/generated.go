@@ -610,6 +610,15 @@ type ComplexityRoot struct {
 		Node   func(childComplexity int) int
 	}
 
+	LinkStatementAccountIncomeSuccess struct {
+		Result func(childComplexity int) int
+	}
+
+	LinkStatementAccountIncomeUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	LinkStatementAccountMovementSuccess struct {
 		Result func(childComplexity int) int
 	}
@@ -714,6 +723,7 @@ type ComplexityRoot struct {
 		CreateTag                     func(childComplexity int, input model.CreateTagInput) int
 		IssueHouseholdMailForwarding  func(childComplexity int, input model.HouseholdMailForwardingInput) int
 		LeaveHousehold                func(childComplexity int, input model.LeaveHouseholdInput) int
+		LinkStatementAccountIncome    func(childComplexity int, input model.LinkStatementAccountIncomeInput) int
 		LinkStatementAccountMovement  func(childComplexity int, input model.LinkStatementAccountMovementInput) int
 		LinkStatementTransfer         func(childComplexity int, input model.LinkStatementTransferInput) int
 		PostPurchase                  func(childComplexity int, input model.PostPurchaseInput) int
@@ -1448,6 +1458,7 @@ type MutationResolver interface {
 	RecordAccountMovement(ctx context.Context, input model.RecordAccountMovementInput) (model.RecordAccountMovementResult, error)
 	LinkStatementAccountMovement(ctx context.Context, input model.LinkStatementAccountMovementInput) (model.LinkStatementAccountMovementResult, error)
 	RecordExternalIncome(ctx context.Context, input model.RecordExternalIncomeInput) (model.RecordExternalIncomeResult, error)
+	LinkStatementAccountIncome(ctx context.Context, input model.LinkStatementAccountIncomeInput) (model.LinkStatementAccountIncomeResult, error)
 	RecordFunding(ctx context.Context, input model.RecordFundingInput) (model.RecordFundingResult, error)
 	RecordRepayment(ctx context.Context, input model.RecordRepaymentInput) (model.RecordRepaymentResult, error)
 	RecordTransfer(ctx context.Context, input model.RecordTransferInput) (model.RecordTransferResult, error)
@@ -3260,6 +3271,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.LedgerEdge.Node(childComplexity), true
 
+	case "LinkStatementAccountIncomeSuccess.result":
+		if e.ComplexityRoot.LinkStatementAccountIncomeSuccess.Result == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LinkStatementAccountIncomeSuccess.Result(childComplexity), true
+
+	case "LinkStatementAccountIncomeUserError.code":
+		if e.ComplexityRoot.LinkStatementAccountIncomeUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LinkStatementAccountIncomeUserError.Code(childComplexity), true
+	case "LinkStatementAccountIncomeUserError.message":
+		if e.ComplexityRoot.LinkStatementAccountIncomeUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LinkStatementAccountIncomeUserError.Message(childComplexity), true
+
 	case "LinkStatementAccountMovementSuccess.result":
 		if e.ComplexityRoot.LinkStatementAccountMovementSuccess.Result == nil {
 			break
@@ -3772,6 +3803,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.LeaveHousehold(childComplexity, args["input"].(model.LeaveHouseholdInput)), true
+	case "Mutation.linkStatementAccountIncome":
+		if e.ComplexityRoot.Mutation.LinkStatementAccountIncome == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_linkStatementAccountIncome_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.LinkStatementAccountIncome(childComplexity, args["input"].(model.LinkStatementAccountIncomeInput)), true
 	case "Mutation.linkStatementAccountMovement":
 		if e.ComplexityRoot.Mutation.LinkStatementAccountMovement == nil {
 			break
@@ -6161,6 +6203,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputCreateTagInput,
 		ec.unmarshalInputHouseholdMailForwardingInput,
 		ec.unmarshalInputLeaveHouseholdInput,
+		ec.unmarshalInputLinkStatementAccountIncomeInput,
 		ec.unmarshalInputLinkStatementAccountMovementInput,
 		ec.unmarshalInputLinkStatementTransferInput,
 		ec.unmarshalInputPersonalPoolFundingRuleInput,
@@ -7923,6 +7966,26 @@ type RecordAccountMovementUserError implements MutationError {
 `, BuiltIn: false},
 	{Name: "../../graphql/record_external_income_mutation.graphql", Input: `extend type Mutation {
   recordExternalIncome(input: RecordExternalIncomeInput!): RecordExternalIncomeResult!
+  linkStatementAccountIncome(input: LinkStatementAccountIncomeInput!): LinkStatementAccountIncomeResult!
+}
+
+union LinkStatementAccountIncomeResult = LinkStatementAccountIncomeSuccess | LinkStatementAccountIncomeUserError
+
+type LinkStatementAccountIncomeSuccess {
+  result: AccountIncome!
+}
+
+input LinkStatementAccountIncomeInput {
+  householdId: ID! @nodeID(of: "Household")
+  accountIncomeId: ID! @nodeID(of: "AccountIncome")
+  sourceDocumentId: ID!
+  sourceReference: String!
+  sourceAccountId: ID! @nodeID(of: "Account")
+}
+
+type LinkStatementAccountIncomeUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 
 union RecordExternalIncomeResult = RecordExternalIncomeSuccess | RecordExternalIncomeUserError
@@ -10160,6 +10223,20 @@ func (ec *executionContext) field_Mutation_leaveHousehold_args(ctx context.Conte
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.LeaveHouseholdInput, error) {
 			return ec.unmarshalNLeaveHouseholdInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLeaveHouseholdInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_linkStatementAccountIncome_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.LinkStatementAccountIncomeInput, error) {
+			return ec.unmarshalNLinkStatementAccountIncomeInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementAccountIncomeInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -19150,6 +19227,84 @@ func (ec *executionContext) fieldContext_LedgerEdge_node(_ context.Context, fiel
 	return fc, nil
 }
 
+func (ec *executionContext) _LinkStatementAccountIncomeSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.LinkStatementAccountIncomeSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LinkStatementAccountIncomeSuccess_result(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Result, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.AccountIncome) graphql.Marshaler {
+			return ec.marshalNAccountIncome2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐAccountIncome(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LinkStatementAccountIncomeSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "LinkStatementAccountIncomeSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_AccountIncome(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _LinkStatementAccountIncomeUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.LinkStatementAccountIncomeUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LinkStatementAccountIncomeUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LinkStatementAccountIncomeUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LinkStatementAccountIncomeUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _LinkStatementAccountIncomeUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.LinkStatementAccountIncomeUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LinkStatementAccountIncomeUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LinkStatementAccountIncomeUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LinkStatementAccountIncomeUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _LinkStatementAccountMovementSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.LinkStatementAccountMovementSuccess) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -21444,6 +21599,50 @@ func (ec *executionContext) fieldContext_Mutation_recordExternalIncome(ctx conte
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_recordExternalIncome_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_linkStatementAccountIncome(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_linkStatementAccountIncome(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().LinkStatementAccountIncome(ctx, fc.Args["input"].(model.LinkStatementAccountIncomeInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.LinkStatementAccountIncomeResult) graphql.Marshaler {
+			return ec.marshalNLinkStatementAccountIncomeResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementAccountIncomeResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_linkStatementAccountIncome(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type LinkStatementAccountIncomeResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_linkStatementAccountIncome_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -34040,6 +34239,124 @@ func (ec *executionContext) unmarshalInputLeaveHouseholdInput(ctx context.Contex
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputLinkStatementAccountIncomeInput(ctx context.Context, obj any) (model.LinkStatementAccountIncomeInput, error) {
+	var it model.LinkStatementAccountIncomeInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"householdId", "accountIncomeId", "sourceDocumentId", "sourceReference", "sourceAccountId"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "householdId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Household")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.HouseholdID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "accountIncomeId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("accountIncomeId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "AccountIncome")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.AccountIncomeID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "sourceDocumentId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceDocumentId"))
+			data, err := ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceDocumentID = data
+		case "sourceReference":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceReference"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceReference = data
+		case "sourceAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceAccountId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Account")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.SourceAccountID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputLinkStatementAccountMovementInput(ctx context.Context, obj any) (model.LinkStatementAccountMovementInput, error) {
 	var it model.LinkStatementAccountMovementInput
 	if obj == nil {
@@ -38686,6 +39003,33 @@ func (ec *executionContext) _LedgerEntry(ctx context.Context, sel ast.SelectionS
 	}
 }
 
+func (ec *executionContext) _LinkStatementAccountIncomeResult(ctx context.Context, sel ast.SelectionSet, obj model.LinkStatementAccountIncomeResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.LinkStatementAccountIncomeUserError:
+		return ec._LinkStatementAccountIncomeUserError(ctx, sel, &obj)
+	case *model.LinkStatementAccountIncomeUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LinkStatementAccountIncomeUserError(ctx, sel, obj)
+	case model.LinkStatementAccountIncomeSuccess:
+		return ec._LinkStatementAccountIncomeSuccess(ctx, sel, &obj)
+	case *model.LinkStatementAccountIncomeSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LinkStatementAccountIncomeSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of LinkStatementAccountIncomeResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 func (ec *executionContext) _LinkStatementAccountMovementResult(ctx context.Context, sel ast.SelectionSet, obj model.LinkStatementAccountMovementResult) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -38898,6 +39242,13 @@ func (ec *executionContext) _MutationError(ctx context.Context, sel ast.Selectio
 			return graphql.Null
 		}
 		return ec._LinkStatementAccountMovementUserError(ctx, sel, obj)
+	case model.LinkStatementAccountIncomeUserError:
+		return ec._LinkStatementAccountIncomeUserError(ctx, sel, &obj)
+	case *model.LinkStatementAccountIncomeUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LinkStatementAccountIncomeUserError(ctx, sel, obj)
 	case model.LeaveHouseholdUserError:
 		return ec._LeaveHouseholdUserError(ctx, sel, &obj)
 	case *model.LeaveHouseholdUserError:
@@ -45719,6 +46070,87 @@ func (ec *executionContext) _LedgerEdge(ctx context.Context, sel ast.SelectionSe
 	return out
 }
 
+var linkStatementAccountIncomeSuccessImplementors = []string{"LinkStatementAccountIncomeSuccess", "LinkStatementAccountIncomeResult"}
+
+func (ec *executionContext) _LinkStatementAccountIncomeSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.LinkStatementAccountIncomeSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, linkStatementAccountIncomeSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LinkStatementAccountIncomeSuccess")
+		case "result":
+			out.Values[i] = ec._LinkStatementAccountIncomeSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var linkStatementAccountIncomeUserErrorImplementors = []string{"LinkStatementAccountIncomeUserError", "LinkStatementAccountIncomeResult", "MutationError"}
+
+func (ec *executionContext) _LinkStatementAccountIncomeUserError(ctx context.Context, sel ast.SelectionSet, obj *model.LinkStatementAccountIncomeUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, linkStatementAccountIncomeUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LinkStatementAccountIncomeUserError")
+		case "code":
+			out.Values[i] = ec._LinkStatementAccountIncomeUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._LinkStatementAccountIncomeUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var linkStatementAccountMovementSuccessImplementors = []string{"LinkStatementAccountMovementSuccess", "LinkStatementAccountMovementResult"}
 
 func (ec *executionContext) _LinkStatementAccountMovementSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.LinkStatementAccountMovementSuccess) graphql.Marshaler {
@@ -46770,6 +47202,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "recordExternalIncome":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_recordExternalIncome(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "linkStatementAccountIncome":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_linkStatementAccountIncome(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -54786,6 +55225,21 @@ func (ec *executionContext) marshalNLedgerEntry2githubᚗcomᚋwalnuts1018ᚋhor
 		return graphql.Null
 	}
 	return ec._LedgerEntry(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNLinkStatementAccountIncomeInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementAccountIncomeInput(ctx context.Context, v any) (model.LinkStatementAccountIncomeInput, error) {
+	res, err := ec.unmarshalInputLinkStatementAccountIncomeInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNLinkStatementAccountIncomeResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementAccountIncomeResult(ctx context.Context, sel ast.SelectionSet, v model.LinkStatementAccountIncomeResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._LinkStatementAccountIncomeResult(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNLinkStatementAccountMovementInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementAccountMovementInput(ctx context.Context, v any) (model.LinkStatementAccountMovementInput, error) {

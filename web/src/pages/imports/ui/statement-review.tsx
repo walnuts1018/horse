@@ -3,6 +3,7 @@ import { fetchQuery } from "react-relay";
 
 import {
   accountMovementsQuery,
+  accountIncomesQuery,
   loanBalancesQuery,
   statementTransferCandidatesQuery,
 } from "../../../entities/ledger";
@@ -10,6 +11,7 @@ import {
   getRelayEnvironment,
   type Account,
   type AccountMovementsQuery,
+  type AccountIncomesQuery,
   type Household,
   type LoanBalancesQuery,
   type Purchase,
@@ -36,6 +38,7 @@ export function StatementReview({
   onConfirmLoan,
   onLinkExistingTransfer,
   onLinkExistingMovement,
+  onLinkExistingIncome,
   onSelectRegion,
 }: {
   document: DocumentReview;
@@ -60,6 +63,7 @@ export function StatementReview({
   ) => void;
   onLinkExistingTransfer: (entry: StatementEntry, accountId: string, transferId: string) => void;
   onLinkExistingMovement: (entry: StatementEntry, accountId: string, movementId: string) => void;
+  onLinkExistingIncome: (entry: StatementEntry, accountId: string, incomeId: string) => void;
   onSelectRegion: (entry: StatementEntry) => void;
 }) {
   const [refundTargets, setRefundTargets] = useState<
@@ -95,6 +99,13 @@ export function StatementReview({
   const [movementCandidateCursor, setMovementCandidateCursor] = useState<string | null>(null);
   const [hasMoreMovementCandidates, setHasMoreMovementCandidates] = useState(false);
   const [loadingMovementCandidates, setLoadingMovementCandidates] = useState(false);
+  const [incomeCandidates, setIncomeCandidates] = useState<
+    AccountIncomesQuery["response"]["accountIncomes"]["edges"]
+  >([]);
+  const [incomeCandidateCursor, setIncomeCandidateCursor] = useState<string | null>(null);
+  const [hasMoreIncomeCandidates, setHasMoreIncomeCandidates] = useState(false);
+  const [loadingIncomeCandidates, setLoadingIncomeCandidates] = useState(false);
+  const [selectedIncomeIds, setSelectedIncomeIds] = useState<Record<string, string>>({});
   useEffect(() => {
     const subscription = fetchQuery<LoanBalancesQuery>(getRelayEnvironment(), loanBalancesQuery, {
       householdId: household.id,
@@ -109,6 +120,24 @@ export function StatementReview({
             balanceYen: Number(node.balanceYen),
           })),
         ),
+    });
+    return () => subscription.unsubscribe();
+  }, [household.id]);
+  useEffect(() => {
+    setIncomeCandidates([]);
+    setIncomeCandidateCursor(null);
+    setHasMoreIncomeCandidates(false);
+    const subscription = fetchQuery<AccountIncomesQuery>(
+      getRelayEnvironment(),
+      accountIncomesQuery,
+      { householdId: household.id, first: 100, after: null },
+      { fetchPolicy: "network-only" },
+    ).subscribe({
+      next: (data) => {
+        setIncomeCandidates(data.accountIncomes.edges);
+        setIncomeCandidateCursor(data.accountIncomes.pageInfo.endCursor ?? null);
+        setHasMoreIncomeCandidates(data.accountIncomes.pageInfo.hasNextPage);
+      },
     });
     return () => subscription.unsubscribe();
   }, [household.id]);
@@ -192,6 +221,24 @@ export function StatementReview({
       complete: () => setLoadingMovementCandidates(false),
     });
   };
+  const loadMoreIncomeCandidates = () => {
+    if (!incomeCandidateCursor || loadingIncomeCandidates) return;
+    setLoadingIncomeCandidates(true);
+    fetchQuery<AccountIncomesQuery>(
+      getRelayEnvironment(),
+      accountIncomesQuery,
+      { householdId: household.id, first: 100, after: incomeCandidateCursor },
+      { fetchPolicy: "network-only" },
+    ).subscribe({
+      next: (data) => {
+        setIncomeCandidates((current) => [...current, ...data.accountIncomes.edges]);
+        setIncomeCandidateCursor(data.accountIncomes.pageInfo.endCursor ?? null);
+        setHasMoreIncomeCandidates(data.accountIncomes.pageInfo.hasNextPage);
+      },
+      error: () => setLoadingIncomeCandidates(false),
+      complete: () => setLoadingIncomeCandidates(false),
+    });
+  };
   const statements = document.result?.statements;
   if (!statements) return null;
 
@@ -233,6 +280,7 @@ export function StatementReview({
         const issue = statementConfirmationIssue(entry);
         const refundTarget = refundTargets[key] ?? { purchaseId: "", itemId: "" };
         const paymentAccountId = paymentAccounts[key] ?? "";
+        const selectedIncomeId = selectedIncomeIds[key] ?? "";
         const transferAccounts = statementAccounts[key] ?? {
           statementAccountId: "",
           otherAccountId: "",
@@ -260,6 +308,16 @@ export function StatementReview({
           if ((!isTransfer && !isCardBillPayment) || node.kind !== expectedKind) return [];
           if (
             Number(node.amountYen) !== Math.abs(entry.amount) ||
+            Date.parse(node.occurredAt) !== Date.parse(entry.occurredAt)
+          )
+            return [];
+          return [{ id: node.id, description: node.description, occurredAt: node.occurredAt }];
+        });
+        const matchingIncomes = incomeCandidates.flatMap(({ node }) => {
+          if (
+            !isExternalIncome ||
+            node.accountId !== paymentAccountId ||
+            Number(node.amountYen) !== entry.amount ||
             Date.parse(node.occurredAt) !== Date.parse(entry.occurredAt)
           )
             return [];
@@ -670,12 +728,13 @@ export function StatementReview({
                       <select
                         value={paymentAccountId}
                         disabled={pending}
-                        onChange={(event) =>
+                        onChange={(event) => {
                           setPaymentAccounts((current) => ({
                             ...current,
                             [key]: event.target.value,
-                          }))
-                        }
+                          }));
+                          setSelectedIncomeIds((current) => ({ ...current, [key]: "" }));
+                        }}
                       >
                         <option value="">口座を選択</option>
                         {accounts
@@ -687,13 +746,53 @@ export function StatementReview({
                           ))}
                       </select>
                     </label>
+                    {isExternalIncome && matchingIncomes.length > 0 && (
+                      <label>
+                        <span>既存の入金</span>
+                        <select
+                          value={selectedIncomeId}
+                          disabled={pending}
+                          onChange={(event) =>
+                            setSelectedIncomeIds((current) => ({
+                              ...current,
+                              [key]: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">新しい入金として記録</option>
+                          {matchingIncomes.map((income) => (
+                            <option key={income.id} value={income.id}>
+                              {income.occurredAt.slice(0, 10)} · {income.description}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    {isExternalIncome && hasMoreIncomeCandidates && (
+                      <button
+                        type="button"
+                        className="text-button"
+                        disabled={loadingIncomeCandidates}
+                        onClick={loadMoreIncomeCandidates}
+                      >
+                        {loadingIncomeCandidates ? "読み込み中" : "過去の入金を読み込む"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="text-button"
                       disabled={pending || !paymentAccountId}
-                      onClick={() => onConfirm(entry, paymentAccountId)}
+                      onClick={() =>
+                        selectedIncomeId
+                          ? onLinkExistingIncome(entry, paymentAccountId, selectedIncomeId)
+                          : onConfirm(entry, paymentAccountId)
+                      }
                     >
-                      {isExternalIncome ? "入金を記録" : "購入に追加"}
+                      {isExternalIncome
+                        ? selectedIncomeId
+                          ? "既存の入金に紐付け"
+                          : "入金を記録"
+                        : "購入に追加"}
                     </button>
                   </>
                 ))

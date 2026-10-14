@@ -51,6 +51,7 @@ export type { RecordTransferMutation } from "./__generated__/RecordTransferMutat
 export type { RecordRepaymentMutation } from "./__generated__/RecordRepaymentMutation.graphql";
 export type { LinkStatementTransferMutation } from "./__generated__/LinkStatementTransferMutation.graphql";
 export type { LinkStatementAccountMovementMutation } from "./__generated__/LinkStatementAccountMovementMutation.graphql";
+export type { LinkStatementAccountIncomeMutation } from "./__generated__/LinkStatementAccountIncomeMutation.graphql";
 export type { StatementTransferCandidatesQuery } from "./__generated__/StatementTransferCandidatesQuery.graphql";
 export type { CreateAccountMutation } from "./__generated__/CreateAccountMutation.graphql";
 export type { CreatePoolMutation } from "./__generated__/CreatePoolMutation.graphql";

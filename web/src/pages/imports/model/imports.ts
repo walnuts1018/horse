@@ -168,6 +168,7 @@ export type DocumentReview = {
     sourceReference: string;
     purchaseId: string;
     accountMovementId?: string;
+    accountIncomeId?: string;
     transferId?: string;
   }>;
   result?: {

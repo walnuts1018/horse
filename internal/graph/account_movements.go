@@ -305,6 +305,25 @@ func (r *mutationResolver) linkStatementAccountMovement(ctx context.Context, inp
 	}, nil
 }
 
+func (r *mutationResolver) linkStatementAccountIncome(ctx context.Context, input model.LinkStatementAccountIncomeInput) (*model.AccountIncome, error) {
+	user, err := requireMember(ctx, r.DB, input.HouseholdID)
+	if err != nil {
+		return nil, err
+	}
+	result, err := accountmovement.New(r.DB).LinkStatementIncome(ctx, accountmovement.LinkIncomeCommand{
+		ActorID: user.MemberID, HouseholdID: input.HouseholdID, AccountIncomeID: input.AccountIncomeID,
+		SourceDocumentID: input.SourceDocumentID, SourceReference: input.SourceReference, SourceAccountID: input.SourceAccountID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &model.AccountIncome{
+		ID: result.ID, HouseholdID: result.HouseholdID, AccountID: result.AccountID,
+		AmountYen: graphLong(result.AmountYen), Currency: currencyJPY, OccurredAt: model.DateTime(result.OccurredAt),
+		Description: result.Description, CreatedAt: model.DateTime(result.CreatedAt),
+	}, nil
+}
+
 func (r *queryResolver) accountIncomes(ctx context.Context, householdID string, after, before *string, first, last *int) (*model.AccountIncomeConnection, error) {
 	if _, err := requireMember(ctx, r.DB, householdID); err != nil {
 		return nil, err

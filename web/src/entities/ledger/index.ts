@@ -9,6 +9,7 @@ export {
   linkStatementTransferMutation,
   recordAccountMovementMutation,
   linkStatementAccountMovementMutation,
+  linkStatementAccountIncomeMutation,
   recordExternalIncomeMutation,
   recordFundingMutation,
   recordTransferMutation,

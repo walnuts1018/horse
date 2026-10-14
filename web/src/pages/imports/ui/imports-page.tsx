@@ -493,6 +493,9 @@ export function ImportsPage({
                   movementId,
                 )
               }
+              onLinkExistingIncome={(entry, accountId, incomeId) =>
+                void review.linkStatementAccountIncome(selectedDocument, entry, accountId, incomeId)
+              }
               onError={setMessage}
               onLinked={async () => {
                 setHasUnsavedChanges(false);

@@ -59,6 +59,10 @@ func TestStatementExternalIncomeConfirmationIsAtomicAndIdempotent(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	otherBank, err := resolver.createAccount(ctx, model.CreateAccountInput{HouseholdID: household.ID, Name: "Statement income other bank", Kind: model.AccountKindBank})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	documentID, occurredAt, reference := uuid.NewV7().String(), testStatementTransferFirstOccurredAt, testStatementRow2Reference
 	documentUUID, householdUUID := generatedUUID(documentID), generatedUUID(household.ID)
@@ -122,8 +126,77 @@ func TestStatementExternalIncomeConfirmationIsAtomicAndIdempotent(t *testing.T) 
 		t.Fatalf("same statement row with a different key was not rejected: %v", err)
 	}
 
+	linkDocumentID := uuid.NewV7().String()
+	linkDocumentUUID := generatedUUID(linkDocumentID)
+	linkHash, linkObjectKey := "hash-"+linkDocumentID, household.ID+"/originals/"+linkDocumentID
+	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{
+		ID: &linkDocumentUUID, HouseholdID: &householdUUID, Sha256: &linkHash, ObjectKey: &linkObjectKey,
+		MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &memberUUID,
+	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	linkReference := "row:7"
+	linkVerified, err := stdjson.Marshal(ingestion.Verification{Statements: []ingestion.StatementEntry{{
+		Row: 7, SourceReference: linkReference, Kind: "EXTERNAL_INCOME", OccurredAt: occurredAt, Merchant: "Salary", Amount: 72500, Region: &region,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkJobID, linkVersion := generatedUUID(uuid.NewV7().String()), int32(1)
+	linkResult := sql.Null[types.JSON[stdjson.RawMessage]]{V: types.JSON[stdjson.RawMessage]{Val: linkVerified}, Valid: true}
+	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
+		ID: &linkJobID, HouseholdID: &householdUUID, SourceDocumentID: &linkDocumentUUID,
+		Version: &linkVersion, Status: &status, Result: &linkResult,
+	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	otherAccountIncome, err := resolver.recordExternalIncome(ctx, model.RecordExternalIncomeInput{
+		HouseholdID: household.ID, AccountID: otherBank.ID, AmountYen: 72500, OccurredAt: model.DateTime(occurredAt),
+		Description: "Salary", IdempotencyKey: uuid.NewV7().String(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongAmountIncome, err := resolver.recordExternalIncome(ctx, model.RecordExternalIncomeInput{
+		HouseholdID: household.ID, AccountID: account.ID, AmountYen: 72501, OccurredAt: model.DateTime(occurredAt),
+		Description: "Salary", IdempotencyKey: uuid.NewV7().String(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongDateIncome, err := resolver.recordExternalIncome(ctx, model.RecordExternalIncomeInput{
+		HouseholdID: household.ID, AccountID: account.ID, AmountYen: 72500, OccurredAt: "2026-10-03T12:00:00Z",
+		Description: "Salary", IdempotencyKey: uuid.NewV7().String(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkInput := model.LinkStatementAccountIncomeInput{
+		HouseholdID: household.ID, AccountIncomeID: otherAccountIncome.ID, SourceDocumentID: linkDocumentID,
+		SourceReference: linkReference, SourceAccountID: account.ID,
+	}
+	if _, err := resolver.linkStatementAccountIncome(ctx, linkInput); !errors.Is(err, ErrBadInput) {
+		t.Fatalf("income from a different bank account was accepted: %v", err)
+	}
+	linkInput.AccountIncomeID = wrongAmountIncome.ID
+	if _, err := resolver.linkStatementAccountIncome(ctx, linkInput); !errors.Is(err, ErrBadInput) {
+		t.Fatalf("income with a different amount was accepted: %v", err)
+	}
+	linkInput.AccountIncomeID = wrongDateIncome.ID
+	if _, err := resolver.linkStatementAccountIncome(ctx, linkInput); !errors.Is(err, ErrBadInput) {
+		t.Fatalf("income with a different date was accepted: %v", err)
+	}
+	linkInput.AccountIncomeID = created.ID
+	linked, err := resolver.linkStatementAccountIncome(ctx, linkInput)
+	if err != nil || linked.ID != created.ID {
+		t.Fatalf("existing income was not linked: income=%#v error=%v", linked, err)
+	}
+	if _, err := resolver.linkStatementAccountIncome(ctx, linkInput); !errors.Is(err, ErrConflict) {
+		t.Fatalf("same statement row was linked twice: %v", err)
+	}
+
 	incomes, err := models.AccountIncomes.Query(sm.Where(models.AccountIncomes.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, bobpgx.NewPool(db))
-	if err != nil || len(incomes) != 1 {
+	if err != nil || len(incomes) != 4 {
 		t.Fatalf("failed or replayed requests created extra incomes: incomes=%#v error=%v", incomes, err)
 	}
 	incomeUUID := generatedUUID(created.ID)
@@ -133,6 +206,13 @@ func TestStatementExternalIncomeConfirmationIsAtomicAndIdempotent(t *testing.T) 
 	))).All(ctx, bobpgx.NewPool(db))
 	if err != nil || len(confirmations) != 1 || !confirmations[0].AccountIncomeID.Valid || confirmations[0].AccountIncomeID.V != incomeUUID {
 		t.Fatalf("statement row was not linked to its income: confirmations=%#v error=%v", confirmations, err)
+	}
+	linkedConfirmations, err := models.DocumentConfirmations.Query(sm.Where(psql.And(
+		models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(linkDocumentUUID)),
+		models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(linkReference)),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(linkedConfirmations) != 1 || !linkedConfirmations[0].AccountIncomeID.Valid || linkedConfirmations[0].AccountIncomeID.V != incomeUUID {
+		t.Fatalf("source row was not linked to the existing income: confirmations=%#v error=%v", linkedConfirmations, err)
 	}
 	entries, err := models.JournalEntries.Query(sm.Where(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(incomes[0].JournalID)))).All(ctx, bobpgx.NewPool(db))
 	if err != nil || len(entries) != 2 || entries[0].DebitYen+entries[1].DebitYen != entries[0].CreditYen+entries[1].CreditYen {

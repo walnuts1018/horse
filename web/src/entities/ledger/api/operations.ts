@@ -295,6 +295,27 @@ export const linkStatementAccountMovementMutation = graphql`
   }
 `;
 
+export const linkStatementAccountIncomeMutation = graphql`
+  mutation LinkStatementAccountIncomeMutation($input: LinkStatementAccountIncomeInput!) {
+    linkStatementAccountIncome(input: $input) {
+      __typename
+      ... on LinkStatementAccountIncomeSuccess {
+        result {
+          id
+          householdId
+          accountId
+          amountYen
+          occurredAt
+          description
+        }
+      }
+      ... on LinkStatementAccountIncomeUserError {
+        message
+      }
+    }
+  }
+`;
+
 export const recordExternalIncomeMutation = graphql`
   mutation RecordExternalIncomeMutation($input: RecordExternalIncomeInput!) {
     recordExternalIncome(input: $input) {

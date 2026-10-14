@@ -39,6 +39,15 @@ type LinkMovementCommand struct {
 	SourceAccountID   string
 }
 
+type LinkIncomeCommand struct {
+	ActorID          string
+	HouseholdID      string
+	AccountIncomeID  string
+	SourceDocumentID string
+	SourceReference  string
+	SourceAccountID  string
+}
+
 const externalIncomeStatementKind = "EXTERNAL_INCOME"
 
 func loadStatementIncomeEvidence(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, documentID, reference string) (*statementIncomeEvidence, error) {
@@ -318,4 +327,77 @@ func (s *Service) LinkStatementMovement(ctx context.Context, command LinkMovemen
 		return MovementResult{}, err
 	}
 	return movementResult(movement), nil
+}
+
+func (s *Service) LinkStatementIncome(ctx context.Context, command LinkIncomeCommand) (IncomeResult, error) {
+	if command.SourceDocumentID == "" || command.SourceReference == "" || command.SourceAccountID == "" || len(command.SourceReference) > 256 {
+		return IncomeResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid statement income source"))
+	}
+	householdID, err := parseID(command.HouseholdID, "household")
+	if err != nil {
+		return IncomeResult{}, err
+	}
+	actorID, err := parseID(command.ActorID, "actor")
+	if err != nil {
+		return IncomeResult{}, err
+	}
+	incomeID, err := parseID(command.AccountIncomeID, "account income")
+	if err != nil {
+		return IncomeResult{}, err
+	}
+	statementAccountID, err := parseID(command.SourceAccountID, "statement account")
+	if err != nil {
+		return IncomeResult{}, err
+	}
+	if _, err := gofrsuuid.FromString(command.SourceDocumentID); err != nil {
+		return IncomeResult{}, apperror.Wrap(apperror.KindNotFound, errors.New("invalid source document id"))
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return IncomeResult{}, err
+	}
+	defer txcleanup.Rollback(ctx, tx)
+	executor := bobpgx.NewTx(tx, nil)
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
+		return IncomeResult{}, apperror.ErrNotFound
+	} else if err != nil {
+		return IncomeResult{}, err
+	}
+	evidence, err := loadStatementIncomeEvidence(ctx, executor, householdID, command.SourceDocumentID, command.SourceReference)
+	if err != nil {
+		return IncomeResult{}, err
+	}
+	account, err := loadAccount(ctx, executor, householdID, statementAccountID)
+	if err != nil {
+		return IncomeResult{}, err
+	}
+	if account.Kind != bankAccountKind {
+		return IncomeResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("statement account must be a bank account"))
+	}
+	income, err := models.AccountIncomes.Query(sm.Where(psql.And(
+		models.AccountIncomes.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.AccountIncomes.Columns.ID.EQ(psql.Arg(incomeID)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return IncomeResult{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return IncomeResult{}, err
+	}
+	if income.AccountID != statementAccountID {
+		return IncomeResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("selected income account does not match statement account"))
+	}
+	if err := validateStatementIncome(evidence.Entry, statementAccountID, income.AmountYen, income.OccurredAt); err != nil {
+		return IncomeResult{}, err
+	}
+	if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{
+		SourceDocumentID: &evidence.DocumentID, SourceReference: &command.SourceReference, HouseholdID: &householdID,
+		AccountIncomeID: &sql.Null[gofrsuuid.UUID]{V: income.ID, Valid: true}, CreatedBy: &actorID,
+	}).Exec(ctx, executor); err != nil {
+		return IncomeResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return IncomeResult{}, err
+	}
+	return incomeResult(income), nil
 }

@@ -79,6 +79,7 @@ type documentConfirmation struct {
 	SourceReference   string `json:"sourceReference"`
 	PurchaseID        string `json:"purchaseId"`
 	AccountMovementID string `json:"accountMovementId,omitempty"`
+	AccountIncomeID   string `json:"accountIncomeId,omitempty"`
 	TransferID        string `json:"transferId,omitempty"`
 }
 
@@ -554,6 +555,7 @@ func (s *Server) loadDocumentConfirmations(ctx context.Context, document *docume
 	for _, confirmation := range confirmations {
 		purchaseID := ""
 		accountMovementID := ""
+		accountIncomeID := ""
 		transferID := ""
 		if confirmation.PurchaseID.Valid {
 			purchaseID = confirmation.PurchaseID.V.String()
@@ -565,11 +567,13 @@ func (s *Server) loadDocumentConfirmations(ctx context.Context, document *docume
 			purchaseID = correction.PurchaseID.String()
 		} else if confirmation.AccountMovementID.Valid {
 			accountMovementID = confirmation.AccountMovementID.V.String()
+		} else if confirmation.AccountIncomeID.Valid {
+			accountIncomeID = confirmation.AccountIncomeID.V.String()
 		} else if confirmation.TransferID.Valid {
 			transferID = confirmation.TransferID.V.String()
 		}
 		document.Confirmations = append(document.Confirmations, documentConfirmation{
-			SourceReference: confirmation.SourceReference, PurchaseID: purchaseID, AccountMovementID: accountMovementID, TransferID: transferID,
+			SourceReference: confirmation.SourceReference, PurchaseID: purchaseID, AccountMovementID: accountMovementID, AccountIncomeID: accountIncomeID, TransferID: transferID,
 		})
 	}
 	return nil
