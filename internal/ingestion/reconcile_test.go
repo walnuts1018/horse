@@ -3,6 +3,8 @@ package ingestion
 import (
 	"testing"
 	"time"
+
+	"github.com/walnuts1018/horse/internal/application/accounting"
 )
 
 const statementTransactionID = "card-1"
@@ -142,5 +144,22 @@ func TestSourceObservationsPreserveBankAndReceiptSigns(t *testing.T) {
 	receiptObservations := SourceObservations("receipt", "receipt-hash", "receipt", Verification{Receipt: Receipt{Total: 1000, Items: []Item{{GrossAmount: 1000}}}})
 	if len(bankObservations) != 1 || bankObservations[0].Amount != -1000 || len(receiptObservations) != 1 || receiptObservations[0].Amount != 1000 {
 		t.Fatalf("observation signs were normalized during extraction: bank=%#v receipt=%#v", bankObservations, receiptObservations)
+	}
+}
+
+func TestSourceObservationsParseDateOnlyReceiptPurchaseDate(t *testing.T) {
+	t.Parallel()
+	result := Verification{Receipt: Receipt{PurchasedAt: "2026-10-01", Total: 1000, Items: []Item{{GrossAmount: 1000}}}}
+
+	observations := SourceObservations("receipt", "hash", "receipt", result)
+	if len(observations) != 1 {
+		t.Fatalf("got %d observations, want one", len(observations))
+	}
+	want := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	if !observations[0].OccurredAt.Equal(want) {
+		t.Fatalf("got purchase time %v, want date-only UTC midnight %v", observations[0].OccurredAt, want)
+	}
+	if got := accounting.PeriodFor(observations[0].OccurredAt); got != "2026-10" {
+		t.Fatalf("date-only purchase was assigned to accounting period %q, want 2026-10", got)
 	}
 }

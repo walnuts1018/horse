@@ -102,7 +102,10 @@ func SourceObservations(documentID, hash, sourceKind string, result Verification
 	}
 	if len(result.Receipt.Items) > 0 {
 		receipt := result.Receipt
-		occurredAt, _ := time.Parse(time.RFC3339, receipt.PurchasedAt)
+		occurredAt, err := time.Parse(time.RFC3339, receipt.PurchasedAt)
+		if err != nil {
+			occurredAt, _ = time.Parse(time.DateOnly, receipt.PurchasedAt)
+		}
 		card := ""
 		for _, payment := range receipt.Payments {
 			if payment.CardLast4 == "" {

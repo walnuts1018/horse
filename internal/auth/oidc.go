@@ -10,6 +10,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"uuid"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
@@ -40,6 +42,7 @@ type Config struct {
 	RedirectURL    string
 	PublicOrigin   string
 	FrontendOrigin string
+	Logger         *slog.Logger
 }
 
 type Principal struct {
@@ -54,6 +57,7 @@ type Service struct {
 	verifier *oidc.IDTokenVerifier
 	oauth    oauth2.Config
 	cfg      Config
+	logger   *slog.Logger
 }
 
 type claims struct {
@@ -79,7 +83,7 @@ func New(ctx context.Context, db *pgxpool.Pool, cfg Config) (*Service, error) {
 			Endpoint: provider.Endpoint(), RedirectURL: cfg.RedirectURL,
 			Scopes: []string{oidc.ScopeOpenID, "profile", "email"},
 		},
-		cfg: cfg,
+		cfg: cfg, logger: cfg.Logger,
 	}, nil
 }
 
@@ -270,7 +274,25 @@ func resolveLookupError(operation string, err error) error {
 
 func (s *Service) Me(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.Resolve(r)
+	if err != nil && !errors.Is(err, ErrUnauthenticated) && s.logger != nil {
+		cause := rootError(err)
+		attrs := []any{"error_type", fmt.Sprintf("%T", cause)}
+		if databaseError, ok := errors.AsType[*pgconn.PgError](cause); ok {
+			attrs = append(attrs, "database_code", databaseError.Code)
+		}
+		s.logger.ErrorContext(r.Context(), "authentication resolution failed", attrs...)
+	}
 	writeMeResponse(w, principal, err)
+}
+
+func rootError(err error) error {
+	for {
+		cause := errors.Unwrap(err)
+		if cause == nil {
+			return err
+		}
+		err = cause
+	}
 }
 
 func writeMeResponse(w http.ResponseWriter, principal Principal, err error) {

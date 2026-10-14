@@ -146,7 +146,7 @@ func newAuth(ctx context.Context, pool *pgxpool.Pool, cfg Config, logger *slog.L
 	service, err := auth.New(ctx, pool, auth.Config{
 		IssuerURL: cfg.OIDCIssuerURL, ClientID: cfg.OIDCClientID,
 		ClientSecret: cfg.OIDCClientSecret, RedirectURL: cfg.OIDCRedirectURL,
-		PublicOrigin: cfg.PublicOrigin, FrontendOrigin: cfg.FrontendOrigin,
+		PublicOrigin: cfg.PublicOrigin, FrontendOrigin: cfg.FrontendOrigin, Logger: logger,
 	})
 	if err != nil {
 		logger.Error("Initializing authentication failed", "error", err)

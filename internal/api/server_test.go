@@ -84,6 +84,24 @@ func TestAuthenticationFailuresSeparateMissingSessionFromLookupFailure(t *testin
 	}
 }
 
+func TestAuthenticationFailureLogsRootCauseWithoutDatabaseMessage(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	server := New(nil, nil, slog.New(slog.NewTextHandler(&output, nil)), Config{})
+	request := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+	server.writeAuthenticationUnavailable(httptest.NewRecorder(), request, fmt.Errorf("resolve OIDC session: %w", &pgconn.PgError{
+		Code:    "40001",
+		Message: "private database detail",
+	}))
+	log := output.String()
+	if !strings.Contains(log, "error_type=*pgconn.PgError") || !strings.Contains(log, "database_code=40001") {
+		t.Fatalf("authentication failure log is missing safe diagnostics: %s", log)
+	}
+	if strings.Contains(log, "private database detail") {
+		t.Fatalf("authentication failure log exposed the database error message: %s", log)
+	}
+}
+
 func TestAccessLogSkipsHealthProbes(t *testing.T) {
 	t.Parallel()
 	var output bytes.Buffer

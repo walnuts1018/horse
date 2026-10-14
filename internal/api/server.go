@@ -428,7 +428,23 @@ func (s *Server) writeAuthenticationFailure(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) writeAuthenticationUnavailable(w http.ResponseWriter, r *http.Request, err error) {
-	s.logger.ErrorContext(r.Context(), "authentication resolution failed", "error_type", fmt.Sprintf("%T", err))
+	cause := rootError(err)
+	attrs := []any{"error_type", fmt.Sprintf("%T", cause)}
+	databaseError, ok := errors.AsType[*pgconn.PgError](cause)
+	if ok {
+		attrs = append(attrs, "database_code", databaseError.Code)
+	}
+	s.logger.ErrorContext(r.Context(), "authentication resolution failed", attrs...)
+}
+
+func rootError(err error) error {
+	for {
+		cause := errors.Unwrap(err)
+		if cause == nil {
+			return err
+		}
+		err = cause
+	}
 }
 
 func writeGraphQLUnavailableBody(w http.ResponseWriter) {
