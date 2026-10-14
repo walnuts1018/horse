@@ -171,7 +171,9 @@ const documentsQuery = useInfiniteQuery({
 
 ### 未保存状態の登録単位
 
-親ルートは `useBlocker` による画面遷移確認と `enableBeforeUnload` によるブラウザー終了確認を使い、重複していた `beforeunload` listener を削除しました。dirty registry は世帯とページ単位で状態を保持しますが、同一ページの複数フォームが同じ callback を共有する場合は最後の通知が状態を上書きします。複数フォームを持つページでは、各フォームの状態を集合などで集約してから親へ通知してください。
+親ルートは`useBlocker`による画面遷移確認と`enableBeforeUnload`によるブラウザー離脱確認を使います。設定・精算・取込はページ内のdirty stateを集約し、帳簿は未保存観察のID集合を親へ通知します。複数フォームの通知を最後のcallbackが上書きする指摘は現行コードと一致しないため削除しました。
+
+公開環境では未保存の購入入力から別画面へ遷移すると確認が表示されました。一方、購入下書きから直接再読み込みした際にブラウザー離脱確認が表示されなかった記録があります。`enableBeforeUnload`のコードはありますが、実ブラウザーで更新・タブ終了を再確認する必要があります。Android/iOS実機でdrawer操作とpull-to-refreshの競合も未確認です。
 
 ### Relay Environment の SSR 対応
 
