@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchQuery } from "react-relay";
 
 import {
@@ -124,6 +124,13 @@ export function StatementReview({
   const [hasMoreIncomeCandidates, setHasMoreIncomeCandidates] = useState(false);
   const [loadingIncomeCandidates, setLoadingIncomeCandidates] = useState(false);
   const [selectedIncomeIds, setSelectedIncomeIds] = useState<Record<string, string>>({});
+  const [candidateLoadErrors, setCandidateLoadErrors] = useState<Record<string, boolean>>({});
+  const [candidatePageLoadErrors, setCandidatePageLoadErrors] = useState<Record<string, boolean>>(
+    {},
+  );
+  const candidateSubscriptions = useRef<Record<string, { unsubscribe: () => void } | undefined>>(
+    {},
+  );
   const loadRefundCorrections = (entry: StatementEntry, after?: string) => {
     const reference = statementSourceReference(entry);
     const key = `${document.id}:${reference}`;
@@ -179,11 +186,15 @@ export function StatementReview({
     setOpenRefundCorrections((current) => ({ ...current, [key]: true }));
     if (!(key in refundCorrectionCandidates)) loadRefundCorrections(entry);
   };
-  useEffect(() => {
-    const subscription = fetchQuery<LoanBalancesQuery>(getRelayEnvironment(), loanBalancesQuery, {
-      householdId: household.id,
-      first: 100,
-    }).subscribe({
+  const loadLoanCandidates = useCallback(() => {
+    candidateSubscriptions.current.loans?.unsubscribe();
+    setLoans([]);
+    setCandidateLoadErrors((current) => ({ ...current, loans: false }));
+    candidateSubscriptions.current.loans = fetchQuery<LoanBalancesQuery>(
+      getRelayEnvironment(),
+      loanBalancesQuery,
+      { householdId: household.id, first: 100 },
+    ).subscribe({
       next: (data) =>
         setLoans(
           data.loanBalances.edges.map(({ node }) => ({
@@ -193,14 +204,21 @@ export function StatementReview({
             balanceYen: Number(node.balanceYen),
           })),
         ),
+      error: () => setCandidateLoadErrors((current) => ({ ...current, loans: true })),
     });
-    return () => subscription.unsubscribe();
   }, [household.id]);
   useEffect(() => {
+    const subscriptions = candidateSubscriptions.current;
+    loadLoanCandidates();
+    return () => subscriptions.loans?.unsubscribe();
+  }, [loadLoanCandidates]);
+  const loadIncomeCandidates = useCallback(() => {
+    candidateSubscriptions.current.incomes?.unsubscribe();
     setIncomeCandidates([]);
     setIncomeCandidateCursor(null);
     setHasMoreIncomeCandidates(false);
-    const subscription = fetchQuery<AccountIncomesQuery>(
+    setCandidateLoadErrors((current) => ({ ...current, incomes: false }));
+    candidateSubscriptions.current.incomes = fetchQuery<AccountIncomesQuery>(
       getRelayEnvironment(),
       accountIncomesQuery,
       { householdId: household.id, first: 100, after: null },
@@ -211,14 +229,21 @@ export function StatementReview({
         setIncomeCandidateCursor(data.accountIncomes.pageInfo.endCursor ?? null);
         setHasMoreIncomeCandidates(data.accountIncomes.pageInfo.hasNextPage);
       },
+      error: () => setCandidateLoadErrors((current) => ({ ...current, incomes: true })),
     });
-    return () => subscription.unsubscribe();
   }, [household.id]);
   useEffect(() => {
+    const subscriptions = candidateSubscriptions.current;
+    loadIncomeCandidates();
+    return () => subscriptions.incomes?.unsubscribe();
+  }, [loadIncomeCandidates]);
+  const loadMovementCandidates = useCallback(() => {
+    candidateSubscriptions.current.movements?.unsubscribe();
     setMovementCandidates([]);
     setMovementCandidateCursor(null);
     setHasMoreMovementCandidates(false);
-    const subscription = fetchQuery<AccountMovementsQuery>(
+    setCandidateLoadErrors((current) => ({ ...current, movements: false }));
+    candidateSubscriptions.current.movements = fetchQuery<AccountMovementsQuery>(
       getRelayEnvironment(),
       accountMovementsQuery,
       {
@@ -233,14 +258,21 @@ export function StatementReview({
         setMovementCandidateCursor(data.accountMovements.pageInfo.endCursor ?? null);
         setHasMoreMovementCandidates(data.accountMovements.pageInfo.hasNextPage);
       },
+      error: () => setCandidateLoadErrors((current) => ({ ...current, movements: true })),
     });
-    return () => subscription.unsubscribe();
   }, [household.id]);
   useEffect(() => {
+    const subscriptions = candidateSubscriptions.current;
+    loadMovementCandidates();
+    return () => subscriptions.movements?.unsubscribe();
+  }, [loadMovementCandidates]);
+  const loadTransferCandidates = useCallback(() => {
+    candidateSubscriptions.current.transfers?.unsubscribe();
     setTransferCandidates([]);
     setTransferCandidateCursor(null);
     setHasMoreTransferCandidates(false);
-    const subscription = fetchQuery<StatementTransferCandidatesQuery>(
+    setCandidateLoadErrors((current) => ({ ...current, transfers: false }));
+    candidateSubscriptions.current.transfers = fetchQuery<StatementTransferCandidatesQuery>(
       getRelayEnvironment(),
       statementTransferCandidatesQuery,
       { householdId: household.id, first: 100, after: null },
@@ -251,11 +283,17 @@ export function StatementReview({
         setTransferCandidateCursor(data.ledger.pageInfo.endCursor ?? null);
         setHasMoreTransferCandidates(data.ledger.pageInfo.hasNextPage);
       },
+      error: () => setCandidateLoadErrors((current) => ({ ...current, transfers: true })),
     });
-    return () => subscription.unsubscribe();
   }, [household.id]);
+  useEffect(() => {
+    const subscriptions = candidateSubscriptions.current;
+    loadTransferCandidates();
+    return () => subscriptions.transfers?.unsubscribe();
+  }, [loadTransferCandidates]);
   const loadMoreTransferCandidates = () => {
     if (!transferCandidateCursor || loadingTransferCandidates) return;
+    setCandidatePageLoadErrors((current) => ({ ...current, transfers: false }));
     setLoadingTransferCandidates(true);
     fetchQuery<StatementTransferCandidatesQuery>(
       getRelayEnvironment(),
@@ -268,12 +306,16 @@ export function StatementReview({
         setTransferCandidateCursor(data.ledger.pageInfo.endCursor ?? null);
         setHasMoreTransferCandidates(data.ledger.pageInfo.hasNextPage);
       },
-      error: () => setLoadingTransferCandidates(false),
+      error: () => {
+        setLoadingTransferCandidates(false);
+        setCandidatePageLoadErrors((current) => ({ ...current, transfers: true }));
+      },
       complete: () => setLoadingTransferCandidates(false),
     });
   };
   const loadMoreMovementCandidates = () => {
     if (!movementCandidateCursor || loadingMovementCandidates) return;
+    setCandidatePageLoadErrors((current) => ({ ...current, movements: false }));
     setLoadingMovementCandidates(true);
     fetchQuery<AccountMovementsQuery>(
       getRelayEnvironment(),
@@ -290,12 +332,16 @@ export function StatementReview({
         setMovementCandidateCursor(data.accountMovements.pageInfo.endCursor ?? null);
         setHasMoreMovementCandidates(data.accountMovements.pageInfo.hasNextPage);
       },
-      error: () => setLoadingMovementCandidates(false),
+      error: () => {
+        setLoadingMovementCandidates(false);
+        setCandidatePageLoadErrors((current) => ({ ...current, movements: true }));
+      },
       complete: () => setLoadingMovementCandidates(false),
     });
   };
   const loadMoreIncomeCandidates = () => {
     if (!incomeCandidateCursor || loadingIncomeCandidates) return;
+    setCandidatePageLoadErrors((current) => ({ ...current, incomes: false }));
     setLoadingIncomeCandidates(true);
     fetchQuery<AccountIncomesQuery>(
       getRelayEnvironment(),
@@ -308,7 +354,10 @@ export function StatementReview({
         setIncomeCandidateCursor(data.accountIncomes.pageInfo.endCursor ?? null);
         setHasMoreIncomeCandidates(data.accountIncomes.pageInfo.hasNextPage);
       },
-      error: () => setLoadingIncomeCandidates(false),
+      error: () => {
+        setLoadingIncomeCandidates(false);
+        setCandidatePageLoadErrors((current) => ({ ...current, incomes: true }));
+      },
       complete: () => setLoadingIncomeCandidates(false),
     });
   };
@@ -323,6 +372,45 @@ export function StatementReview({
           <h3>{statements.length}件</h3>
         </div>
       </div>
+      {[
+        ...(statements.some((entry) => entry.kind === "REPAYMENT") ? ["loans"] : []),
+        ...(statements.some((entry) => entry.kind === "LOAN" || entry.kind === "REPAYMENT")
+          ? ["transfers"]
+          : []),
+        ...(statements.some(
+          (entry) => entry.kind === "ACCOUNT_TRANSFER" || entry.kind === "CARD_BILL_PAYMENT",
+        )
+          ? ["movements"]
+          : []),
+        ...(statements.some((entry) => entry.kind === "EXTERNAL_INCOME") ? ["incomes"] : []),
+      ]
+        .filter((name) => candidateLoadErrors[name])
+        .map((name) => (
+          <p className="inline-error" role="alert" key={name}>
+            {name === "loans"
+              ? "貸付候補を読み込めませんでした"
+              : name === "transfers"
+                ? "取引候補を読み込めませんでした"
+                : name === "movements"
+                  ? "口座移動候補を読み込めませんでした"
+                  : "入金候補を読み込めませんでした"}
+            <button
+              type="button"
+              className="text-button"
+              onClick={
+                name === "loans"
+                  ? loadLoanCandidates
+                  : name === "transfers"
+                    ? loadTransferCandidates
+                    : name === "movements"
+                      ? loadMovementCandidates
+                      : loadIncomeCandidates
+              }
+            >
+              再試行
+            </button>
+          </p>
+        ))}
       {hasMoreTransferCandidates && (
         <button
           type="button"
@@ -332,6 +420,14 @@ export function StatementReview({
         >
           {loadingTransferCandidates ? "読み込み中" : "過去の取引を読み込む"}
         </button>
+      )}
+      {candidatePageLoadErrors.transfers && (
+        <p className="inline-error" role="alert">
+          過去の取引を読み込めませんでした
+          <button type="button" className="text-button" onClick={loadMoreTransferCandidates}>
+            再試行
+          </button>
+        </p>
       )}
       {hasMoreMovementCandidates &&
         statements.some(
@@ -346,6 +442,14 @@ export function StatementReview({
             {loadingMovementCandidates ? "読み込み中" : "過去の口座移動を読み込む"}
           </button>
         )}
+      {candidatePageLoadErrors.movements && (
+        <p className="inline-error" role="alert">
+          過去の口座移動を読み込めませんでした
+          <button type="button" className="text-button" onClick={loadMoreMovementCandidates}>
+            再試行
+          </button>
+        </p>
+      )}
       {statements.map((entry) => {
         const reference = statementSourceReference(entry);
         const key = `${document.id}:${reference}`;
@@ -926,6 +1030,18 @@ export function StatementReview({
                       >
                         {loadingIncomeCandidates ? "読み込み中" : "過去の入金を読み込む"}
                       </button>
+                    )}
+                    {isExternalIncome && candidatePageLoadErrors.incomes && (
+                      <p className="inline-error" role="alert">
+                        過去の入金を読み込めませんでした
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={loadMoreIncomeCandidates}
+                        >
+                          再試行
+                        </button>
+                      </p>
                     )}
                     <button
                       type="button"
