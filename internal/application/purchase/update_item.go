@@ -5,9 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math/big"
 	"slices"
-	"strconv"
 	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
@@ -408,14 +406,28 @@ func measureFromItemUpdate(command UpdateItemCommand, item *models.PurchaseItem)
 	if result.quantityNumerator.Valid != result.quantityDenominator.Valid || result.quantityNumerator.Valid != result.quantityUnit.Valid {
 		return purchaseItemUpdateMeasure{}, errors.New("quantity fields must be provided together")
 	}
-	if result.quantityNumerator.Valid && (result.quantityNumerator.V <= 0 || result.quantityNumerator.V > maxQuantityNumerator || result.quantityDenominator.V <= 0 || result.quantityDenominator.V > maxQuantityDenominator || strings.TrimSpace(result.quantityUnit.V) == "" || len(result.quantityUnit.V) > 32) {
-		return purchaseItemUpdateMeasure{}, errors.New("invalid quantity")
-	}
 	if result.printedUnitPriceYen.Valid != result.printedUnitPriceQuantityNumerator.Valid || result.printedUnitPriceYen.Valid != result.printedUnitPriceQuantityDenominator.Valid || result.printedUnitPriceYen.Valid != result.printedUnitPriceUnit.Valid {
 		return purchaseItemUpdateMeasure{}, errors.New("printed unit price fields must be provided together")
 	}
-	if result.printedUnitPriceYen.Valid && (result.printedUnitPriceYen.V < 0 || result.printedUnitPriceYen.V > maxMoney || result.printedUnitPriceQuantityNumerator.V <= 0 || result.printedUnitPriceQuantityNumerator.V > maxQuantityNumerator || result.printedUnitPriceQuantityDenominator.V <= 0 || result.printedUnitPriceQuantityDenominator.V > maxQuantityDenominator || strings.TrimSpace(result.printedUnitPriceUnit.V) == "" || len(result.printedUnitPriceUnit.V) > 32) {
-		return purchaseItemUpdateMeasure{}, errors.New("invalid printed unit price")
+	var quantity *domain.Measure
+	if result.quantityNumerator.Valid {
+		quantity = &domain.Measure{
+			Value: domain.Rational{Numerator: result.quantityNumerator.V, Denominator: result.quantityDenominator.V},
+			Unit:  result.quantityUnit.V,
+		}
+	}
+	var printedPrice *domain.PrintedUnitPrice
+	if result.printedUnitPriceYen.Valid {
+		printedPrice = &domain.PrintedUnitPrice{
+			AmountYen: result.printedUnitPriceYen.V,
+			Basis: domain.Measure{
+				Value: domain.Rational{Numerator: result.printedUnitPriceQuantityNumerator.V, Denominator: result.printedUnitPriceQuantityDenominator.V},
+				Unit:  result.printedUnitPriceUnit.V,
+			},
+		}
+	}
+	if err := domain.ValidateMeasure(quantity, printedPrice); err != nil {
+		return purchaseItemUpdateMeasure{}, err
 	}
 	return result, nil
 }
@@ -427,18 +439,11 @@ func updateRational(numerator, denominator *string) (sql.Null[int64], sql.Null[i
 	if numerator == nil || denominator == nil {
 		return sql.Null[int64]{}, sql.Null[int64]{}, errors.New("rational numerator and denominator must be provided together")
 	}
-	n, err := strconv.ParseInt(*numerator, 10, 64)
-	if err != nil || n <= 0 || n > maxQuantityNumerator || strconv.FormatInt(n, 10) != *numerator {
-		return sql.Null[int64]{}, sql.Null[int64]{}, errors.New("invalid rational numerator")
+	rational, err := domain.ParseRational(*numerator, *denominator)
+	if err != nil {
+		return sql.Null[int64]{}, sql.Null[int64]{}, err
 	}
-	d, err := strconv.ParseInt(*denominator, 10, 64)
-	if err != nil || d <= 0 || d > maxQuantityDenominator || strconv.FormatInt(d, 10) != *denominator {
-		return sql.Null[int64]{}, sql.Null[int64]{}, errors.New("invalid rational denominator")
-	}
-	if new(big.Int).GCD(nil, nil, big.NewInt(n), big.NewInt(d)).Int64() != 1 {
-		return sql.Null[int64]{}, sql.Null[int64]{}, errors.New("rational must be reduced")
-	}
-	return sql.Null[int64]{V: n, Valid: true}, sql.Null[int64]{V: d, Valid: true}, nil
+	return sql.Null[int64]{V: rational.Numerator, Valid: true}, sql.Null[int64]{V: rational.Denominator, Valid: true}, nil
 }
 
 func updateItemLearning(value *ProductLearning) (string, *string, error) {

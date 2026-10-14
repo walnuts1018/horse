@@ -4,14 +4,11 @@ import (
 	"database/sql"
 	"errors"
 	"math/big"
-	"strconv"
 	"strings"
 
+	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
-
-const maxQuantityNumerator int64 = 1_000_000_000_000
-const maxQuantityDenominator int64 = 1_000_000
 
 type purchaseItemMeasure struct {
 	quantityNumerator                   sql.Null[int64]
@@ -38,9 +35,14 @@ func newPurchaseItemMeasure(quantityNumerator, quantityDenominator, quantityUnit
 		(!measure.quantityNumerator.Valid || !measure.quantityDenominator.Valid || !measure.quantityUnit.Valid) {
 		return purchaseItemMeasure{}, errors.New("quantity fields must be provided together")
 	}
-	if measure.quantityNumerator.Valid && (measure.quantityNumerator.V <= 0 || measure.quantityNumerator.V > maxQuantityNumerator ||
-		measure.quantityDenominator.V <= 0 || measure.quantityDenominator.V > maxQuantityDenominator || !validMeasureUnit(measure.quantityUnit.V)) {
-		return purchaseItemMeasure{}, errors.New("invalid quantity")
+	if measure.quantityNumerator.Valid {
+		quantity := domain.Measure{
+			Value: domain.Rational{Numerator: measure.quantityNumerator.V, Denominator: measure.quantityDenominator.V},
+			Unit:  measure.quantityUnit.V,
+		}
+		if err := domain.ValidateMeasure(&quantity, nil); err != nil {
+			return purchaseItemMeasure{}, err
+		}
 	}
 	measure.printedUnitPriceQuantityNumerator, measure.printedUnitPriceQuantityDenominator, err = parseMeasureRational(printedBasisNumerator, printedBasisDenominator)
 	if err != nil {
@@ -50,11 +52,17 @@ func newPurchaseItemMeasure(quantityNumerator, quantityDenominator, quantityUnit
 		(!measure.printedUnitPriceYen.Valid || !measure.printedUnitPriceQuantityNumerator.Valid || !measure.printedUnitPriceQuantityDenominator.Valid || !measure.printedUnitPriceUnit.Valid) {
 		return purchaseItemMeasure{}, errors.New("printed unit price fields must be provided together")
 	}
-	if measure.printedUnitPriceYen.Valid && (measure.printedUnitPriceYen.V < 0 || measure.printedUnitPriceYen.V > maxMoney ||
-		measure.printedUnitPriceQuantityNumerator.V <= 0 || measure.printedUnitPriceQuantityNumerator.V > maxQuantityNumerator ||
-		measure.printedUnitPriceQuantityDenominator.V <= 0 || measure.printedUnitPriceQuantityDenominator.V > maxQuantityDenominator ||
-		!validMeasureUnit(measure.printedUnitPriceUnit.V)) {
-		return purchaseItemMeasure{}, errors.New("invalid printed unit price")
+	if measure.printedUnitPriceYen.Valid {
+		price := domain.PrintedUnitPrice{
+			AmountYen: measure.printedUnitPriceYen.V,
+			Basis: domain.Measure{
+				Value: domain.Rational{Numerator: measure.printedUnitPriceQuantityNumerator.V, Denominator: measure.printedUnitPriceQuantityDenominator.V},
+				Unit:  measure.printedUnitPriceUnit.V,
+			},
+		}
+		if err := domain.ValidateMeasure(nil, &price); err != nil {
+			return purchaseItemMeasure{}, err
+		}
 	}
 	return measure, nil
 }
@@ -79,24 +87,11 @@ func parseMeasureRational(numerator, denominator *string) (sql.Null[int64], sql.
 	if numerator == nil || denominator == nil {
 		return sql.Null[int64]{}, sql.Null[int64]{}, errors.New("rational numerator and denominator must be provided together")
 	}
-	numeratorValue, err := strconv.ParseInt(*numerator, 10, 64)
-	if err != nil || numeratorValue <= 0 || numeratorValue > maxQuantityNumerator || strconv.FormatInt(numeratorValue, 10) != *numerator {
-		return sql.Null[int64]{}, sql.Null[int64]{}, errors.New("invalid rational numerator")
+	rational, err := domain.ParseRational(*numerator, *denominator)
+	if err != nil {
+		return sql.Null[int64]{}, sql.Null[int64]{}, err
 	}
-	denominatorValue, err := strconv.ParseInt(*denominator, 10, 64)
-	if err != nil || denominatorValue <= 0 || denominatorValue > maxQuantityDenominator || strconv.FormatInt(denominatorValue, 10) != *denominator {
-		return sql.Null[int64]{}, sql.Null[int64]{}, errors.New("invalid rational denominator")
-	}
-	gcd := new(big.Int).GCD(nil, nil, big.NewInt(numeratorValue), big.NewInt(denominatorValue))
-	if gcd.Int64() != 1 {
-		return sql.Null[int64]{}, sql.Null[int64]{}, errors.New("rational must be reduced")
-	}
-	return sql.Null[int64]{V: numeratorValue, Valid: true}, sql.Null[int64]{V: denominatorValue, Valid: true}, nil
-}
-
-func validMeasureUnit(unit string) bool {
-	unit = strings.TrimSpace(unit)
-	return unit != "" && len(unit) <= 32
+	return sql.Null[int64]{V: rational.Numerator, Valid: true}, sql.Null[int64]{V: rational.Denominator, Valid: true}, nil
 }
 
 func anyValid(values ...bool) bool {

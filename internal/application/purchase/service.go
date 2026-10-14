@@ -7,9 +7,7 @@ import (
 	stdjson "encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"slices"
-	"strconv"
 	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
@@ -37,9 +35,7 @@ var (
 	ErrUnattributedPurchasePayment = errors.New("posted purchase payment has no funding pool")
 )
 
-const maxMoney int64 = 1_000_000_000_000
-const maxQuantityNumerator int64 = 1_000_000_000_000
-const maxQuantityDenominator int64 = 1_000_000
+const maxMoney = domain.MaxMeasurePrice
 const manualOrigin = "MANUAL"
 
 type Service struct {
@@ -461,6 +457,8 @@ type itemMeasure struct {
 
 func measureFromCommand(item Item) (itemMeasure, error) {
 	var measure itemMeasure
+	var quantity *domain.Measure
+	var printedPrice *domain.PrintedUnitPrice
 	if item.Quantity != nil {
 		n, d, err := parseRational(item.Quantity.Numerator, item.Quantity.Denominator)
 		if err != nil {
@@ -468,6 +466,7 @@ func measureFromCommand(item Item) (itemMeasure, error) {
 		}
 		measure.quantityNumerator, measure.quantityDenominator = n, d
 		measure.quantityUnit = sql.Null[string]{V: item.Quantity.Unit, Valid: true}
+		quantity = &domain.Measure{Value: domain.Rational{Numerator: n.V, Denominator: d.V}, Unit: item.Quantity.Unit}
 	}
 	if item.PrintedUnitPrice != nil {
 		n, d, err := parseRational(item.PrintedUnitPrice.Basis.Numerator, item.PrintedUnitPrice.Basis.Denominator)
@@ -477,29 +476,32 @@ func measureFromCommand(item Item) (itemMeasure, error) {
 		measure.printedUnitPriceYen = sql.Null[int64]{V: item.PrintedUnitPrice.AmountYen, Valid: true}
 		measure.printedUnitPriceQuantityNumerator, measure.printedUnitPriceQuantityDenominator = n, d
 		measure.printedUnitPriceUnit = sql.Null[string]{V: item.PrintedUnitPrice.Basis.Unit, Valid: true}
+		printedPrice = &domain.PrintedUnitPrice{
+			AmountYen: item.PrintedUnitPrice.AmountYen,
+			Basis: domain.Measure{
+				Value: domain.Rational{Numerator: n.V, Denominator: d.V},
+				Unit:  item.PrintedUnitPrice.Basis.Unit,
+			},
+		}
 	}
-	if measure.quantityNumerator.Valid && (measure.quantityNumerator.V > maxQuantityNumerator || measure.quantityDenominator.V > maxQuantityDenominator || !validUnit(measure.quantityUnit.V)) {
+	if err := domain.ValidateMeasure(quantity, printedPrice); err != nil {
+		return measure, err
+	}
+	if quantity != nil && !validUnit(quantity.Unit) {
 		return measure, errors.New("invalid quantity")
 	}
-	if measure.printedUnitPriceYen.Valid && (measure.printedUnitPriceYen.V < 0 || measure.printedUnitPriceYen.V > maxMoney || measure.printedUnitPriceQuantityNumerator.V > maxQuantityNumerator || measure.printedUnitPriceQuantityDenominator.V > maxQuantityDenominator || !validUnit(measure.printedUnitPriceUnit.V)) {
+	if printedPrice != nil && !validUnit(printedPrice.Basis.Unit) {
 		return measure, errors.New("invalid printed unit price")
 	}
 	return measure, nil
 }
 
 func parseRational(numerator, denominator string) (sql.Null[int64], sql.Null[int64], error) {
-	n, err := strconv.ParseInt(numerator, 10, 64)
-	if err != nil || n <= 0 || strconv.FormatInt(n, 10) != numerator {
-		return sql.Null[int64]{}, sql.Null[int64]{}, errors.New("invalid rational numerator")
+	rational, err := domain.ParseRational(numerator, denominator)
+	if err != nil {
+		return sql.Null[int64]{}, sql.Null[int64]{}, err
 	}
-	d, err := strconv.ParseInt(denominator, 10, 64)
-	if err != nil || d <= 0 || strconv.FormatInt(d, 10) != denominator {
-		return sql.Null[int64]{}, sql.Null[int64]{}, errors.New("invalid rational denominator")
-	}
-	if new(big.Int).GCD(nil, nil, big.NewInt(n), big.NewInt(d)).Int64() != 1 {
-		return sql.Null[int64]{}, sql.Null[int64]{}, errors.New("rational values must be reduced")
-	}
-	return sql.Null[int64]{V: n, Valid: true}, sql.Null[int64]{V: d, Valid: true}, nil
+	return sql.Null[int64]{V: rational.Numerator, Valid: true}, sql.Null[int64]{V: rational.Denominator, Valid: true}, nil
 }
 
 func validUnit(value string) bool {
