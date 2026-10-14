@@ -10,7 +10,8 @@
   font-size: 25px;
   letter-spacing: -0.025em;
   margin: 7px 0 4px;
-  color: #263a32;
+  color: var(--ink);
+  text-wrap: balance;
 }
 
 .home-page .welcome-row p {
@@ -112,7 +113,7 @@
   align-items: center;
   gap: 9px;
   color: #5f6d65;
-  font-size: 12px;
+  font-size: max(12px, 1em);
 }
 
 .home-page .settle-line .status-dot {
@@ -316,5 +317,27 @@
   .home-page .quick-card small,
   .home-page .chart-labels {
     font-size: 10px;
+  }
+}
+
+.home-page .purchase-row {
+  min-height: 64px;
+  border-bottom: 1px solid #f0f2ef;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.home-page .purchase-row:last-child {
+  border: 0;
+}
+
+@media (width <= 760px) {
+  .home-page .purchase-row {
+    min-height: 58px;
+  }
+
+  .home-page .welcome-row h1 {
+    font-size: 22px;
   }
 }

@@ -371,3 +371,40 @@
     font-size: 12px;
   }
 }
+
+.period-picker {
+  height: 37px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid #e8ede8;
+  background: #fff;
+  border-radius: 9px;
+  color: #8b9890;
+}
+
+.period-picker input {
+  width: 112px;
+  border: 0;
+  background: none;
+  color: #53645a;
+  font-size: 10px;
+}
+
+.ledger-panel {
+  padding: 7px 17px;
+}
+
+@media (width <= 760px) {
+  .period-picker {
+    height: 34px;
+    padding: 0 5px;
+    gap: 3px;
+  }
+
+  .period-picker input {
+    width: 98px;
+    font-size: 9px;
+  }
+}

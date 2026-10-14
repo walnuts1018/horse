@@ -107,6 +107,8 @@
 
 .payment-balanced {
   color: #39755f;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .item-entry-panel {
@@ -657,5 +659,38 @@
 
   .entry-hint span:last-child {
     display: none;
+  }
+}
+
+.app-shell .page-content .allocation-chip {
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.allocation-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell
+  .page-content
+  :is(
+    .item-table-head,
+    .item-index,
+    .entry-hint,
+    .entry-default,
+    .allocation-chip,
+    .selected-product-label
+  ) {
+  font-size: max(12px, 1em);
+}
+
+@media (width <= 760px) {
+  .app-shell .page-content .composer-heading p,
+  .app-shell .page-content .save-status {
+    font-size: max(var(--mobile-font-supporting), 1em);
   }
 }

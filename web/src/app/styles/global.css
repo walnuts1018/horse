@@ -375,8 +375,7 @@ a {
 }
 
 .household-avatar,
-.profile-avatar,
-.pool-avatar {
+.profile-avatar {
   width: 32px;
   height: 32px;
   border-radius: 10px;
@@ -789,18 +788,6 @@ a {
   letter-spacing: -0.03em;
 }
 
-.purchase-row {
-  min-height: 64px;
-  border-bottom: 1px solid #f0f2ef;
-  display: flex;
-  align-items: center;
-  gap: 11px;
-}
-
-.purchase-row:last-child {
-  border: 0;
-}
-
 .merchant-icon {
   width: 34px;
   height: 34px;
@@ -905,13 +892,9 @@ a {
   }
 }
 
-.payment-balanced,
 .payment-unbalanced {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-}
-
-.payment-unbalanced {
   color: #a45e4f;
 }
 
@@ -928,8 +911,6 @@ a {
 
 .field-group input,
 .field-group select,
-.inline-create input,
-.inline-create select,
 .select-filter input {
   height: 36px;
   min-width: 0;
@@ -942,8 +923,7 @@ a {
   font-size: 11px;
 }
 
-.field-group input::placeholder,
-.inline-create input::placeholder {
+.field-group input::placeholder {
   color: #b1bbb5;
 }
 
@@ -1048,30 +1028,6 @@ form.ledger-filters .select-filter input[type="number"] {
   font-size: 10px;
 }
 
-.period-picker {
-  height: 37px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 9px;
-  border: 1px solid #e8ede8;
-  background: #fff;
-  border-radius: 9px;
-  color: #8b9890;
-}
-
-.period-picker input {
-  width: 112px;
-  border: 0;
-  background: none;
-  color: #53645a;
-  font-size: 10px;
-}
-
-.ledger-panel {
-  padding: 7px 17px;
-}
-
 .invitation-prompt {
   display: flex;
   align-items: center;
@@ -1104,64 +1060,6 @@ form.ledger-filters .select-filter input[type="number"] {
   font-size: 9px;
   display: grid;
   place-items: center;
-}
-
-.inline-create {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.inline-create input,
-.inline-create select {
-  height: 33px;
-  font-size: 9px;
-  padding: 0 8px;
-}
-
-.inline-create .button {
-  height: 33px;
-  padding: 0 9px;
-  font-size: 9px;
-  flex: none;
-}
-
-.category-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 13px 0;
-}
-
-.category-tag {
-  padding: 6px 9px;
-  border-radius: 7px;
-  font-size: 9px;
-  color: #577061;
-}
-
-.swatch-bg-0 {
-  background: #e9f4ed;
-}
-
-.swatch-bg-1 {
-  background: #fcf1e4;
-}
-
-.swatch-bg-2 {
-  background: #edf0f8;
-}
-
-.swatch-bg-3 {
-  background: #faecea;
-}
-
-.swatch-bg-4 {
-  background: #eaf4f3;
-}
-
-.swatch-bg-5 {
-  background: #f2edf7;
 }
 
 .number-field {
@@ -1472,10 +1370,6 @@ form.ledger-filters .select-filter input[type="number"] {
     font-size: 9px;
   }
 
-  .purchase-row {
-    min-height: 58px;
-  }
-
   .merchant-icon {
     width: 30px;
     height: 30px;
@@ -1505,33 +1399,6 @@ form.ledger-filters .select-filter input[type="number"] {
   .field-group select {
     height: 34px;
     font-size: 10px;
-  }
-
-  .period-picker {
-    height: 34px;
-    padding: 0 5px;
-    gap: 3px;
-  }
-
-  .period-picker input {
-    width: 98px;
-    font-size: 9px;
-  }
-
-  .inline-create {
-    flex-wrap: wrap;
-  }
-
-  .inline-create input {
-    flex: 1;
-  }
-
-  .inline-create select {
-    flex: 1;
-  }
-
-  .inline-create .button {
-    flex: none;
   }
 
   .mobile-dock {
@@ -1705,40 +1572,11 @@ textarea:focus-visible,
 
 .app-shell
   .page-content
-  :is(
-    small,
-    label,
-    .period-chip,
-    .purchase-description span,
-    .purchase-meta span,
-    .record-count,
-    .ledger-item-row,
-    .item-table-head,
-    .item-index,
-    .entry-hint,
-    .entry-default,
-    .allocation-chip,
-    .selected-product-label,
-    .settle-line
-  ) {
+  :is(small, label, .period-chip, .purchase-description span, .purchase-meta span) {
   font-size: max(12px, 1em);
 }
 
-.app-shell .page-content .allocation-chip {
-  min-width: 0;
-  width: 100%;
-  overflow: hidden;
-}
-
-.allocation-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .page-heading h1,
-.welcome-row h1,
 .heading h1 {
   color: var(--ink);
   letter-spacing: -0.025em;
@@ -1860,7 +1698,6 @@ textarea:focus-visible,
   }
 
   .page-heading h1,
-  .welcome-row h1,
   .heading h1 {
     font-size: 22px;
   }
@@ -2025,8 +1862,6 @@ textarea:focus-visible,
     .page-heading p,
     .page-heading > .button,
     .purchase-meta span,
-    .composer-heading p,
-    .save-status,
     .mobile-dock :is(button, a) span
   ) {
     font-size: max(var(--mobile-font-supporting), 1em);
@@ -2040,7 +1875,6 @@ textarea:focus-visible,
   .field-group label,
   .number-field small,
   .create-household label,
-  .inline-create .button,
   .mobile-dock :is(button, a) span,
   .mobile-dock .dock-add span {
     font-size: 12px;

@@ -473,3 +473,7 @@
     gap: 5px;
   }
 }
+
+.app-shell .page-content :is(.record-count, .ledger-item-row) {
+  font-size: max(12px, 1em);
+}
