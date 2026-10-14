@@ -318,6 +318,13 @@
   scroll-margin-block: 16px;
 }
 
+.receiptItemProvenance {
+  width: fit-content;
+  border-radius: 999px;
+  background: var(--surface-muted, #f1f4f1);
+  padding: 2px 7px;
+}
+
 .evidenceOcrLines {
   max-height: 180px;
   overflow: auto;
@@ -396,8 +403,8 @@
   .evidenceReviewLayout {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "edit"
-      "source";
+      "source"
+      "edit";
     gap: 8px;
   }
 
@@ -411,6 +418,10 @@
     justify-content: space-between;
     min-height: 56px;
     padding: 8px 0;
+  }
+
+  .evidenceSourceColumn[open] {
+    margin-bottom: 8px;
   }
 
   .evidenceSummaryPreview {

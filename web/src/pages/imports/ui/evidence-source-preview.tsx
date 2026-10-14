@@ -88,7 +88,7 @@ export function EvidenceSourcePreview({
   }, [document.id, page, receiptItems, selectPage, selectedReceiptIndex, selection]);
 
   return (
-    <details className={styles.evidenceSourceColumn} ref={detailsRef}>
+    <details className={styles.evidenceSourceColumn} ref={detailsRef} open>
       <summary>
         <span>原本</span>
         {preview?.documentId === document.id && preview.page === page && (

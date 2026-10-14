@@ -9,6 +9,7 @@ export type ReceiptConfirmationState = ImportReceiptConfirmationState & {
 
 export type ExtractedItem = {
   key?: string;
+  printedName?: string;
   name: string;
   printedAmount: number;
   discount?: number;

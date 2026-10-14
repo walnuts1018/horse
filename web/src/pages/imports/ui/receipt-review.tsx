@@ -522,6 +522,14 @@ export function ReceiptReview({
             const itemKey = item.key ?? `item-${index}`;
             const reviewState =
               receiptItemReviewStates[selectedDocument.id]?.[itemKey] ?? "UNREVIEWED";
+            const provenance =
+              item.verification === "MANUAL"
+                ? "手入力"
+                : item.printedName && item.printedName !== item.name
+                  ? "履歴候補"
+                  : item.region
+                    ? "原本抽出"
+                    : "原本位置なし";
             return (
               <div
                 className={`receipt-item-review ${amountDifferences.some((difference) => difference.index === index) ? "receipt-item-candidate-difference" : ""} ${evidenceSelection?.itemKey === item.key ? styles.receiptItemEvidenceSelected : ""}`}
@@ -529,6 +537,13 @@ export function ReceiptReview({
                 onFocusCapture={() =>
                   selectReceiptEvidenceItem(selectedDocument.id, {
                     itemKey: item.key ?? `item-${index}`,
+                    index,
+                    focusEditor: false,
+                  })
+                }
+                onMouseEnter={() =>
+                  selectReceiptEvidenceItem(selectedDocument.id, {
+                    itemKey,
                     index,
                     focusEditor: false,
                   })
@@ -556,6 +571,10 @@ export function ReceiptReview({
                     {item.verification === "MANUAL"
                       ? "手入力"
                       : `AI認識 ${item.verification} · ${Math.round(item.confidence * 100)}%`}
+                  </small>
+                  <small className={styles.receiptItemProvenance}>
+                    {provenance}
+                    {item.verification === "UNRESOLVED" ? " · 未検証" : ""}
                   </small>
                   <fieldset className={styles.receiptItemReviewState}>
                     <legend>
