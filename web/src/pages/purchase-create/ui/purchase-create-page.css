@@ -646,12 +646,19 @@
   }
 
   .composer-bottom {
-    position: sticky;
-    bottom: calc(70px + var(--purchase-keyboard-inset, 0px));
-    z-index: 8;
-    padding: 10px 11px;
-    margin: 11px -2px 0;
-    box-shadow: 0 6px 22px #273a2c16;
+    position: fixed;
+    z-index: 19;
+    left: max(8px, env(safe-area-inset-left, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px) + var(--purchase-keyboard-inset, 0px));
+    width: auto;
+    max-width: 1050px;
+    box-sizing: border-box;
+    gap: 8px;
+    padding: 8px 10px;
+    margin: 0 auto;
+    border-radius: 12px;
+    box-shadow: 0 0 0 1px #e9ede9, 0 6px 22px #273a2c20;
   }
 
   .total-label strong {
@@ -667,10 +674,11 @@
   }
 
   .composer-actions .button {
-    height: 35px;
-    padding: 0 9px;
+    min-height: 44px;
+    padding: 0 10px;
     font-size: 12px;
     gap: 5px;
+    white-space: nowrap;
   }
 
   .button-add,

@@ -86,8 +86,9 @@ function PurchaseCreatePageContent({
       const editingText =
         activeElement instanceof HTMLElement &&
         activeElement.matches("input:not([type=checkbox]), textarea");
+      const keyboardOpen = editingText && viewport.height < window.innerHeight * 0.8;
       const inset =
-        window.matchMedia("(max-width: 760px)").matches && editingText
+        window.matchMedia("(max-width: 760px)").matches && keyboardOpen
           ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
           : 0;
       composerRef.current?.style.setProperty("--purchase-keyboard-inset", `${inset}px`);

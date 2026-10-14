@@ -234,6 +234,7 @@
   .composer {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
     grid-template-areas:
       "heading"
       "details"
