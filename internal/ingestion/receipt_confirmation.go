@@ -15,16 +15,27 @@ func ValidateReceiptConfirmation(verification Verification, amounts []int64, can
 	}
 
 	if candidateID != "" {
-		found := false
+		var selected *InterpretationResult
 		for _, candidate := range verification.Candidates {
 			if candidate.ID != candidateID {
 				continue
 			}
-			found = true
+			selected = &candidate
 			break
 		}
-		if !found {
+		if selected == nil {
 			return false, errors.New("receipt calculation candidate was not found")
+		}
+		if reason == "" && !equalReceiptAmounts(amounts, selected.Amounts) {
+			return false, errors.New("purchase item amounts do not match receipt calculation candidate")
+		}
+	} else if len(verification.Receipt.Items) == len(amounts) && reason == "" {
+		extractedAmounts := make([]int64, len(verification.Receipt.Items))
+		for index, item := range verification.Receipt.Items {
+			extractedAmounts[index] = item.GrossAmount
+		}
+		if !equalReceiptAmounts(amounts, extractedAmounts) {
+			return false, errors.New("purchase item amounts do not match extracted receipt amounts")
 		}
 	}
 
@@ -39,4 +50,16 @@ func ValidateReceiptConfirmation(verification Verification, amounts []int64, can
 		return false, errors.New("purchase total does not match receipt total")
 	}
 	return reason != "", nil
+}
+
+func equalReceiptAmounts(left, right []int64) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index, amount := range left {
+		if amount != right[index] {
+			return false
+		}
+	}
+	return true
 }
