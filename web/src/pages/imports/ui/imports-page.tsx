@@ -4,6 +4,7 @@ import { Camera, FileImage, PenLine, ShieldCheck, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import "./imports-page.css";
+import "./import-model-selector.css";
 import { type Household } from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib/errors";
 import { InlineError } from "../../../shared/ui";
@@ -12,10 +13,12 @@ import { useEvidencePreview } from "../model/evidence-preview";
 import {
   asRecord,
   defaultUploadSourceKind,
+  isImportModel,
   isSupportedFile,
   withStableEvidenceKeys,
   type DocumentFilters,
   type DocumentReview,
+  type ImportModel,
   type PendingUpload,
   type StatementEntry,
   type StatementSourceKind,
@@ -52,6 +55,7 @@ export function ImportsPage({
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<CameraCaptureHandle>(null);
   const [files, setFiles] = useState<PendingUpload[]>([]);
+  const [importModel, setImportModel] = useState<ImportModel>("free");
   // 親への未保存通知は effect で状態を push せず、変化したイベントから直接行う
   const onUnsavedChangesRef = useRef(onUnsavedChanges);
   const reportedUnsavedChanges = useRef(false);
@@ -184,6 +188,7 @@ export function ImportsPage({
         id: crypto.randomUUID(),
         file,
         sourceKind: defaultUploadSourceKind(file),
+        model: importModel,
         status: "queued" as const,
       })),
     ]);
@@ -216,6 +221,7 @@ export function ImportsPage({
         }
         body.set("householdId", household.id);
         body.set("sourceKind", entry.sourceKind);
+        body.set("model", entry.model);
         const response = await fetch("/documents", {
           method: "POST",
           credentials: "include",
@@ -463,6 +469,7 @@ export function ImportsPage({
             analysisFile,
             analysisTransform,
             sourceKind: defaultUploadSourceKind(originalFile),
+            model: importModel,
             status: "queued",
           };
           setFiles((current) => [...current, upload]);
@@ -488,6 +495,25 @@ export function ImportsPage({
           </div>
           <h2>購入記録を追加</h2>
           <p>JPEG、PNG、WebP、PDF、CSV、EML</p>
+          <div className="import-model-selector">
+            <label htmlFor="import-model">AIモデル</label>
+            <select
+              id="import-model"
+              value={importModel}
+              onChange={(event) => {
+                if (isImportModel(event.target.value)) setImportModel(event.target.value);
+              }}
+            >
+              <option value="free">Gemini Flash／Flash-Lite（無料）</option>
+              <option value="pro">Gemini Pro（有料）</option>
+            </select>
+            {files.length > 0 && (
+              <small aria-live="polite">
+                追加済み: Free {files.filter((file) => file.model === "free").length}件・Pro{" "}
+                {files.filter((file) => file.model === "pro").length}件
+              </small>
+            )}
+          </div>
           <div className="import-actions dropzone-import-actions">
             <button
               type="button"

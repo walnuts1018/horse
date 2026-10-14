@@ -67,6 +67,39 @@ func TestGeminiRouterRetriesQuotaOnFreeRouteBeforeUsingPaid(t *testing.T) {
 	}
 }
 
+func TestGeminiRouterSelectedOptionsUseRequestedModelRoute(t *testing.T) {
+	t.Parallel()
+	router := GeminiRouter{FlashModel: "configured-flash", LiteModel: "configured-lite", ProModel: "configured-pro"}
+	tests := []struct {
+		name       string
+		selection  string
+		sourceKind string
+		mimeType   string
+		wantModel  string
+		freeOnly   bool
+		paidOnly   bool
+	}{
+		{name: "free receipt model", selection: ModelSelectionFree, sourceKind: "receipt", mimeType: mimeTypeJPEG, wantModel: "configured-flash", freeOnly: true},
+		{name: "free email model", selection: ModelSelectionFree, sourceKind: "email", mimeType: mimeTypeEmail, wantModel: "configured-lite", freeOnly: true},
+		{name: "paid pro model", selection: ModelSelectionPro, sourceKind: "receipt", mimeType: mimeTypeJPEG, wantModel: "configured-pro", paidOnly: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			options, err := router.selectedOptions(test.selection, test.sourceKind, test.mimeType, JobPurposeInteractive, 3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if options.Model != test.wantModel || options.FreeOnly != test.freeOnly || options.PaidOnly != test.paidOnly || options.Attempt != 3 || options.Reason != geminiReasonInitialExtraction {
+				t.Fatalf("selected extraction options = %+v", options)
+			}
+		})
+	}
+	if _, err := router.selectedOptions("unknown", "receipt", mimeTypeJPEG, JobPurposeInteractive, 1); err == nil {
+		t.Fatal("unknown model selection was accepted")
+	}
+}
+
 func TestGeminiCandidatePlanAndFallbackState(t *testing.T) {
 	clients := []Gemini{
 		{APIKey: testFreeGeminiAPIKey, ProjectRoute: ProjectFree},

@@ -36,6 +36,7 @@ type RegisterCommand struct {
 	SourceKind        string
 	Filename          string
 	Purpose           string
+	Model             string
 	Data              []byte
 	Attachments       []ingestion.EmailAttachment
 	AnalysisData      []byte
@@ -119,7 +120,7 @@ func (s *Service) Register(ctx context.Context, store RegistrationStore, command
 				return Registration{}, err
 			}
 		}
-		jobID, jobErr := s.RegisterDocumentJob(ctx, executor, command.HouseholdID, document.ID, command.Purpose)
+		jobID, jobErr := s.RegisterDocumentJob(ctx, executor, command.HouseholdID, document.ID, command.Purpose, command.Model)
 		if jobErr != nil {
 			return Registration{}, jobErr
 		}
@@ -137,7 +138,7 @@ func (s *Service) Register(ctx context.Context, store RegistrationStore, command
 		})
 	}
 	if len(storedAttachments) > 0 {
-		attachmentJobs, registerErr := s.registerStoredAttachments(ctx, executor, command.HouseholdID, command.MemberID, document.ID, command.Purpose, storedAttachments)
+		attachmentJobs, registerErr := s.registerStoredAttachments(ctx, executor, command.HouseholdID, command.MemberID, document.ID, command.Purpose, command.Model, storedAttachments)
 		if registerErr != nil {
 			return Registration{}, registerErr
 		}
@@ -174,11 +175,11 @@ func (s *Service) deleteUnreferencedObjects(ctx context.Context, store Registrat
 	return errors.Join(deleteErrors...)
 }
 
-func (s *Service) registerStoredAttachments(ctx context.Context, executor bob.Executor, householdID, memberID, parentID gofrsuuid.UUID, purpose string, attachments []StoredEmailAttachment) ([]gofrsuuid.UUID, error) {
+func (s *Service) registerStoredAttachments(ctx context.Context, executor bob.Executor, householdID, memberID, parentID gofrsuuid.UUID, purpose, model string, attachments []StoredEmailAttachment) ([]gofrsuuid.UUID, error) {
 	queued := make([]gofrsuuid.UUID, 0, len(attachments))
 	seen := make(map[gofrsuuid.UUID]struct{}, len(attachments))
 	for index, attachment := range attachments {
-		childID, jobID, err := s.registerAttachmentDocument(ctx, executor, householdID, memberID, attachment, purpose)
+		childID, jobID, err := s.registerAttachmentDocument(ctx, executor, householdID, memberID, attachment, purpose, model)
 		if err != nil {
 			return nil, err
 		}
@@ -200,7 +201,7 @@ func (s *Service) registerStoredAttachments(ctx context.Context, executor bob.Ex
 	return queued, nil
 }
 
-func (s *Service) registerAttachmentDocument(ctx context.Context, executor bob.Executor, householdID, memberID gofrsuuid.UUID, attachment StoredEmailAttachment, purpose string) (gofrsuuid.UUID, *gofrsuuid.UUID, error) {
+func (s *Service) registerAttachmentDocument(ctx context.Context, executor bob.Executor, householdID, memberID gofrsuuid.UUID, attachment StoredEmailAttachment, purpose, model string) (gofrsuuid.UUID, *gofrsuuid.UUID, error) {
 	id, err := gofrsuuid.FromString(uuid.NewV7().String())
 	if err != nil {
 		return gofrsuuid.Nil, nil, err
@@ -230,16 +231,22 @@ func (s *Service) registerAttachmentDocument(ctx context.Context, executor bob.E
 	if !errors.Is(err, sql.ErrNoRows) {
 		return gofrsuuid.Nil, nil, err
 	}
-	jobID, err := s.RegisterDocumentJob(ctx, executor, householdID, document.ID, purpose)
+	jobID, err := s.RegisterDocumentJob(ctx, executor, householdID, document.ID, purpose, model)
 	if err != nil {
 		return gofrsuuid.Nil, nil, err
 	}
 	return document.ID, &jobID, nil
 }
 
-func (s *Service) RegisterDocumentJob(ctx context.Context, executor bob.Executor, householdID, documentID gofrsuuid.UUID, purpose string) (gofrsuuid.UUID, error) {
+func (s *Service) RegisterDocumentJob(ctx context.Context, executor bob.Executor, householdID, documentID gofrsuuid.UUID, purpose, model string) (gofrsuuid.UUID, error) {
 	if purpose != ingestion.JobPurposeInteractive && purpose != ingestion.JobPurposeBackground {
 		return gofrsuuid.Nil, errors.New("invalid extraction purpose")
+	}
+	if model == "" {
+		model = ingestion.ModelSelectionFree
+	}
+	if model != ingestion.ModelSelectionFree && model != ingestion.ModelSelectionPro {
+		return gofrsuuid.Nil, errors.New("invalid extraction model selection")
 	}
 	jobID, err := gofrsuuid.FromString(uuid.NewV7().String())
 	if err != nil {
@@ -247,7 +254,8 @@ func (s *Service) RegisterDocumentJob(ctx context.Context, executor bob.Executor
 	}
 	request, err := stdjson.Marshal(struct {
 		Purpose string `json:"purpose"`
-	}{Purpose: purpose})
+		Model   string `json:"model"`
+	}{Purpose: purpose, Model: model})
 	if err != nil {
 		return gofrsuuid.Nil, err
 	}

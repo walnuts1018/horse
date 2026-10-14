@@ -16,6 +16,8 @@ const (
 
 	JobPurposeInteractive = "interactive"
 	JobPurposeBackground  = "background"
+	ModelSelectionFree    = "free"
+	ModelSelectionPro     = "pro"
 
 	ModelReceipt = "gemini-3.8-flash"
 	ModelEmail   = "gemini-3.5-flash-lite"
@@ -76,6 +78,28 @@ type GeminiRouteOptions struct {
 	Guidance         []string
 	PaidOnly         bool
 	FreeOnly         bool
+}
+
+func (r GeminiRouter) selectedOptions(selection, sourceKind, mimeType, purpose string, attempt int) (GeminiRouteOptions, error) {
+	options := GeminiRouteOptions{
+		Purpose: purpose,
+		Reason:  geminiReasonInitialExtraction,
+		Attempt: attempt,
+	}
+	switch selection {
+	case "":
+		options.Model = r.modelForSource(sourceKind, mimeType)
+	case ModelSelectionFree:
+		options.Model = r.modelForSource(sourceKind, mimeType)
+		options.FreeOnly = true
+	case ModelSelectionPro:
+		options = r.ProOptions(purpose, nil)
+		options.Reason = geminiReasonInitialExtraction
+		options.Attempt = attempt
+	default:
+		return GeminiRouteOptions{}, errors.New("invalid Gemini model selection")
+	}
+	return options, nil
 }
 
 type geminiCandidateCondition uint8

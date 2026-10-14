@@ -118,6 +118,11 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid extraction purpose", http.StatusBadRequest)
 		return
 	}
+	model, ok := documentModelSelection(r.FormValue("model"))
+	if !ok {
+		http.Error(w, "invalid extraction model", http.StatusBadRequest)
+		return
+	}
 	householdUUID, err := parseNodeIDOrUUID(householdID, "Household")
 	if err != nil {
 		http.Error(w, "household not found", http.StatusNotFound)
@@ -181,7 +186,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	registration, err := documentapp.NewService(s.db).Register(r.Context(), s.cfg.Store, documentapp.RegisterCommand{
 		HouseholdID: householdUUID, MemberID: memberID, MIMEType: mimeType, SourceKind: sourceKind, Filename: filename.V,
-		Purpose: purpose, Data: data, Attachments: emailAttachments, AnalysisData: analysisData, AnalysisMIMEType: analysisMIME,
+		Purpose: purpose, Model: model, Data: data, Attachments: emailAttachments, AnalysisData: analysisData, AnalysisMIMEType: analysisMIME,
 		AnalysisTransform: analysisTransformJSON,
 	})
 	if err != nil {
@@ -223,7 +228,7 @@ func insertDocumentJob(ctx context.Context, exec bob.Executor, householdID, docu
 }
 
 func insertDocumentJobWithPurpose(ctx context.Context, exec bob.Executor, householdID, documentID gofrsuuid.UUID, purpose string) (gofrsuuid.UUID, error) {
-	return documentapp.NewService(nil).RegisterDocumentJob(ctx, exec, householdID, documentID, purpose)
+	return documentapp.NewService(nil).RegisterDocumentJob(ctx, exec, householdID, documentID, purpose, ingestion.ModelSelectionFree)
 }
 
 func documentJobPurpose(value string) (string, bool) {
@@ -236,6 +241,23 @@ func documentJobPurpose(value string) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func documentModelSelection(value string) (string, bool) {
+	if value == "" {
+		return ingestion.ModelSelectionFree, true
+	}
+	switch value {
+	case ingestion.ModelSelectionFree, ingestion.ModelSelectionPro:
+		return value, true
+	default:
+		return "", false
+	}
+}
+
+func validDocumentModelSelection(value string) bool {
+	_, ok := documentModelSelection(value)
+	return ok
 }
 
 func (s *Server) documentResponse(ctx context.Context, exec bob.Executor, document *models.SourceDocument) (documentResponse, error) {
@@ -939,8 +961,9 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Crop       *ingestion.Region `json:"crop,omitempty"`
 		SourceKind *string           `json:"sourceKind,omitempty"`
+		Model      *string           `json:"model,omitempty"`
 	}
-	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 64<<10), &input); err != nil || input.Crop != nil && !ingestion.ValidRegion(*input.Crop) || input.SourceKind != nil && !validReprocessableSourceKind(*input.SourceKind) {
+	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 64<<10), &input); err != nil || input.Crop != nil && !ingestion.ValidRegion(*input.Crop) || input.SourceKind != nil && !validReprocessableSourceKind(*input.SourceKind) || input.Model != nil && !validDocumentModelSelection(*input.Model) {
 		http.Error(w, "invalid extraction retry input", http.StatusBadRequest)
 		return
 	}
@@ -1049,7 +1072,22 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusAccepted, map[string]string{jobIDJSONKey: latestJob.ID.String(), "status": documentStatusQueued})
 		return
 	}
-	request, err := json.Marshal(map[string]any{"crop": input.Crop, "purpose": ingestion.JobPurposeInteractive})
+	model := ingestion.ModelSelectionFree
+	if input.Model != nil {
+		model, _ = documentModelSelection(*input.Model)
+	} else if latestJob != nil {
+		var previousRequest struct {
+			Model string `json:"model,omitempty"`
+		}
+		if err := json.Unmarshal(latestJob.Request.Val, &previousRequest); err == nil && validDocumentModelSelection(previousRequest.Model) {
+			model, _ = documentModelSelection(previousRequest.Model)
+		}
+	}
+	request, err := json.Marshal(struct {
+		Crop    *ingestion.Region `json:"crop,omitempty"`
+		Purpose string            `json:"purpose"`
+		Model   string            `json:"model"`
+	}{Crop: input.Crop, Purpose: ingestion.JobPurposeInteractive, Model: model})
 	if err != nil {
 		http.Error(w, "extraction retry failed", http.StatusInternalServerError)
 		return

@@ -16,6 +16,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	var request struct {
 		Crop    *Region `json:"crop,omitempty"`
 		Purpose string  `json:"purpose,omitempty"`
+		Model   string  `json:"model,omitempty"`
 	}
 	if err := json.Unmarshal(j.Request, &request); err != nil {
 		return Verification{}, fmt.Errorf("decode extraction request: %w", err)
@@ -67,13 +68,20 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		return Verification{}, fmt.Errorf("load receipt history hints: %w", err)
 	}
 	pipeline := extractionPipeline{router: router, job: j, document: document, hints: hints, lines: lines, ocrErr: ocrErr, transform: transform, page: transformPage}
-	initialOptions := GeminiRouteOptions{Purpose: request.Purpose, Reason: geminiReasonInitialExtraction, Attempt: j.Attempt}
+	initialOptions, err := router.selectedOptions(request.Model, j.SourceKind, document.MIMEType, request.Purpose, j.Attempt)
+	if err != nil {
+		return Verification{}, err
+	}
 	verified, runs, err := pipeline.run(ctx, initialOptions, "map evidence regions to original image")
 	if err != nil {
 		verified.Runs = runs
 		return verified, err
 	}
-	retryPolicy := extractionRetryPolicyFor(verified, document.MIMEType, w.Router.Paid.APIKey != "")
+	allowProReview := request.Model == "" && w.Router.Paid.APIKey != ""
+	if request.Model == ModelSelectionPro {
+		return verified, nil
+	}
+	retryPolicy := extractionRetryPolicyFor(verified, document.MIMEType, allowProReview)
 	if retryPolicy.qualityRun != nil {
 		guidance := evidenceGuidance(verified.Issues, verified.OCRLines)
 		qualityOptions := router.QualityOptions(j.SourceKind, *retryPolicy.qualityRun, guidance)

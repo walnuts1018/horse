@@ -285,6 +285,9 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if err := uploadForm.WriteField("sourceKind", testReceiptSourceKind); err != nil {
 		t.Fatal(err)
 	}
+	if err := uploadForm.WriteField("model", ingestion.ModelSelectionPro); err != nil {
+		t.Fatal(err)
+	}
 	filePart, err := uploadForm.CreateFormFile("file", "receipt.png")
 	if err != nil {
 		t.Fatal(err)
@@ -343,9 +346,10 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	}
 	var interactiveRequest struct {
 		Purpose string `json:"purpose"`
+		Model   string `json:"model"`
 	}
-	if err := stdjson.Unmarshal(interactiveJob.Request.Val, &interactiveRequest); err != nil || interactiveRequest.Purpose != ingestion.JobPurposeInteractive {
-		t.Fatalf("default extraction purpose = %q, error=%v, want interactive", interactiveRequest.Purpose, err)
+	if err := stdjson.Unmarshal(interactiveJob.Request.Val, &interactiveRequest); err != nil || interactiveRequest.Purpose != ingestion.JobPurposeInteractive || interactiveRequest.Model != ingestion.ModelSelectionPro {
+		t.Fatalf("extraction request = %+v, error=%v, want interactive purpose and pro model", interactiveRequest, err)
 	}
 	uploadedContentRequest := httptest.NewRequest(http.MethodGet, "/documents/"+uploadedID+"/content", nil)
 	uploadedContentRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
@@ -446,9 +450,10 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 		}
 		var request struct {
 			Purpose string `json:"purpose"`
+			Model   string `json:"model"`
 		}
-		if err := stdjson.Unmarshal(job.Request.Val, &request); err != nil || request.Purpose != ingestion.JobPurposeBackground {
-			t.Fatalf("email extraction purpose = %q, error=%v, want background", request.Purpose, err)
+		if err := stdjson.Unmarshal(job.Request.Val, &request); err != nil || request.Purpose != ingestion.JobPurposeBackground || request.Model != ingestion.ModelSelectionFree {
+			t.Fatalf("email extraction request = %+v, error=%v, want background purpose and free model", request, err)
 		}
 		jobIDs[documentID] = job.ID
 	}

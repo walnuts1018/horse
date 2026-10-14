@@ -52,6 +52,11 @@ export type StatementEntry = {
 };
 export type StatementSourceKind = "card" | "bank";
 export type UploadSourceKind = "receipt" | "order" | "email" | StatementSourceKind;
+export type ImportModel = "free" | "pro";
+
+export function isImportModel(value: string): value is ImportModel {
+  return value === "free" || value === "pro";
+}
 
 export function receiptDateInputValue(purchasedAt?: string): string {
   if (!purchasedAt) return "";
@@ -354,6 +359,7 @@ export type PendingUpload = {
   analysisFile?: File;
   analysisTransform?: [number, number, number, number, number, number, number, number, number];
   sourceKind: UploadSourceKind;
+  model: ImportModel;
   status: "queued" | "uploading" | "failed";
   error?: string;
 };
