@@ -8,8 +8,9 @@ import { useHouseholdPurchases } from "../../../entities/purchase";
 import { type Household, type HomeDashboardQuery, type Purchase } from "../../../shared/api";
 import { japanMonth } from "../../../shared/lib";
 import { EmptyState } from "../../../shared/ui";
-import { homeDashboardQuery, summarizeSettlementDues } from "../model/home-summary";
+import { homeDashboardQuery } from "../model/home-summary";
 import { pendingImportMessage, readPendingImportStatus } from "../model/pending-imports";
+import { summarizeSettlementDues } from "../model/settlement-dues";
 import { SetupGuidance } from "./setup-guidance";
 
 import "./home-page.css";

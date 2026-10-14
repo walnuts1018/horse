@@ -32,28 +32,28 @@ WITH latest_success AS (
     SELECT
         latest_success.household_id,
         latest_success.source_document_id,
-        COALESCE(NULLIF(statement.source_reference, ''), 'row:' || statement.row_number) AS source_reference,
+        COALESCE(NULLIF(statement."sourceReference", ''), 'row:' || statement."row") AS source_reference,
         source_documents.sha256 AS source_hash,
         source_documents.source_kind,
         statement.kind AS transaction_kind,
-        COALESCE(statement.order_id, '') AS order_id,
-        COALESCE(statement.transaction_id, '') AS transaction_id,
+        COALESCE(statement."orderId", '') AS order_id,
+        COALESCE(statement."transactionId", '') AS transaction_id,
         COALESCE(statement.merchant, '') AS merchant,
-        NULLIF(statement.occurred_at, '')::timestamptz AS occurred_at,
+        NULLIF(statement."occurredAt", '')::timestamptz AS occurred_at,
         statement.amount::bigint AS amount_yen,
-        COALESCE(statement.card_last4, '') AS card_last4
+        COALESCE(statement."cardLast4", '') AS card_last4
     FROM latest_success
     JOIN source_documents ON source_documents.id = latest_success.source_document_id
     CROSS JOIN LATERAL jsonb_to_recordset(COALESCE(latest_success.result -> 'statements', '[]'::jsonb)) AS statement(
-        source_reference text,
-        row_number text,
+        "sourceReference" text,
+        "row" text,
         kind text,
-        order_id text,
-        transaction_id text,
+        "orderId" text,
+        "transactionId" text,
         merchant text,
-        occurred_at text,
+        "occurredAt" text,
         amount text,
-        card_last4 text
+        "cardLast4" text
     )
 ), receipt_rows AS (
     SELECT
@@ -62,16 +62,16 @@ WITH latest_success AS (
         '' AS source_reference,
         source_documents.sha256 AS source_hash,
         source_documents.source_kind,
-        'RECEIPT' AS transaction_kind,
+        'RECEIPT_PURCHASE' AS transaction_kind,
         COALESCE(latest_success.result #>> '{receipt,orderId}', '') AS order_id,
         COALESCE(latest_success.result #>> '{receipt,transactionId}', '') AS transaction_id,
         COALESCE(latest_success.result #>> '{receipt,merchant}', '') AS merchant,
         NULLIF(latest_success.result #>> '{receipt,purchasedAt}', '')::timestamptz AS occurred_at,
         (latest_success.result #>> '{receipt,total}')::bigint AS amount_yen,
         COALESCE((
-            SELECT CASE WHEN count(DISTINCT payment.card_last4) = 1 THEN min(payment.card_last4) ELSE '' END
-            FROM jsonb_to_recordset(COALESCE(latest_success.result #> '{receipt,payments}', '[]'::jsonb)) AS payment(card_last4 text)
-            WHERE COALESCE(payment.card_last4, '') <> ''
+            SELECT CASE WHEN count(DISTINCT payment."cardLast4") = 1 THEN min(payment."cardLast4") ELSE '' END
+            FROM jsonb_to_recordset(COALESCE(latest_success.result #> '{receipt,payments}', '[]'::jsonb)) AS payment("cardLast4" text)
+            WHERE COALESCE(payment."cardLast4", '') <> ''
         ), '') AS card_last4
     FROM latest_success
     JOIN source_documents ON source_documents.id = latest_success.source_document_id

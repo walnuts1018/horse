@@ -4,6 +4,7 @@ import type { Household, ProductConcept, Tag } from "../../../shared/api";
 import type { useLedgerItemBulkEdit } from "../model/ledger-item-bulk-edit";
 
 import { InlineError } from "../../../shared/ui";
+import { LedgerProductVariantSelect } from "./ledger-product-variant-select";
 
 import styles from "./ledger-item-bulk-actions.module.css";
 
@@ -142,56 +143,90 @@ export function LedgerItemBulkActions({
                 </fieldset>
               )}
               {activeAction === "product" && (
-                <label className="select-filter">
-                  <span>商品</span>
-                  <select
-                    value={edit.variantId}
-                    disabled={pending || disabled}
-                    onChange={(event) => edit.setVariantId(event.target.value)}
-                  >
-                    <option value="">変更なし</option>
-                    {catalog.flatMap((concept) =>
-                      concept.variants
-                        .filter((variant) => !variant.archived)
-                        .map((variant) => (
-                          <option key={variant.id} value={variant.id}>
-                            {concept.name} · {variant.name}
-                          </option>
-                        )),
-                    )}
-                    <option value="__none">商品を解除</option>
-                  </select>
-                </label>
+                <div className={styles.productSetting}>
+                  {edit.variantId === "__none" ? (
+                    <div className={styles.productRemoval}>
+                      <span>商品を解除</span>
+                      <button
+                        className="text-button"
+                        type="button"
+                        disabled={pending || disabled}
+                        onClick={() => edit.setVariantId("")}
+                      >
+                        取り消す
+                      </button>
+                    </div>
+                  ) : (
+                    <LedgerProductVariantSelect
+                      householdId={household.id}
+                      itemName=""
+                      merchant=""
+                      value={edit.variantId}
+                      catalog={catalog}
+                      onChange={(variantId) => edit.setVariantId(variantId)}
+                    />
+                  )}
+                  {edit.variantId !== "__none" && (
+                    <button
+                      className="button button-soft"
+                      type="button"
+                      disabled={pending || disabled}
+                      onClick={() => edit.setVariantId("__none")}
+                    >
+                      商品を解除
+                    </button>
+                  )}
+                </div>
               )}
               {activeAction === "tags" && (
-                <label className="select-filter">
-                  <span>タグを置換</span>
-                  <input
-                    type="checkbox"
-                    checked={edit.tagsActive}
-                    disabled={pending || disabled}
-                    onChange={(event) => edit.setTagsActive(event.target.checked)}
-                  />
-                  <select
-                    aria-label="一括設定するタグ"
-                    multiple
-                    value={edit.tags}
-                    disabled={!edit.tagsActive || pending || disabled}
-                    onChange={(event) =>
-                      edit.setTags(
-                        Array.from(event.currentTarget.selectedOptions, (option) => option.value),
-                      )
-                    }
-                  >
+                <fieldset className={styles.tagEditor} disabled={pending || disabled}>
+                  <legend>タグを置換</legend>
+                  <label className={styles.tagToggle}>
+                    <input
+                      type="checkbox"
+                      checked={edit.tagsActive}
+                      onChange={(event) => edit.setTagsActive(event.target.checked)}
+                    />
+                    <span>選択したタグで置換</span>
+                  </label>
+                  <div className={styles.selectedTags} aria-live="polite">
+                    {edit.tags.length === 0 ? (
+                      <span className={styles.emptyTags}>タグなしに置換</span>
+                    ) : (
+                      availableTags
+                        .filter((tag) => edit.tags.includes(tag.id))
+                        .map((tag) => (
+                          <span className={styles.tagChip} key={tag.id}>
+                            {tag.name}
+                          </span>
+                        ))
+                    )}
+                  </div>
+                  <div className={styles.tagChoices}>
                     {availableTags
                       .filter((tag) => !tag.archived)
                       .map((tag) => (
-                        <option key={tag.id} value={tag.id}>
-                          {tag.name}
-                        </option>
+                        <label className={styles.tagChoice} key={tag.id}>
+                          <input
+                            type="checkbox"
+                            checked={edit.tags.includes(tag.id)}
+                            disabled={!edit.tagsActive}
+                            onChange={(event) =>
+                              edit.setTags((current) =>
+                                event.target.checked
+                                  ? [...current, tag.id]
+                                  : current.filter((id) => id !== tag.id),
+                              )
+                            }
+                          />
+                          <span>{tag.name}</span>
+                        </label>
                       ))}
-                  </select>
-                </label>
+                    {availableTags.every((tag) => tag.archived) && (
+                      <span className={styles.emptyTags}>利用できるタグがありません</span>
+                    )}
+                  </div>
+                </fieldset>
               )}
             </div>
           )}

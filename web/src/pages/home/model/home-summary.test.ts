@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeSettlementDues } from "./home-summary";
+import { summarizeSettlementDues } from "./settlement-dues";
 
 describe("summarizeSettlementDues", () => {
   it("入金必要額と過払い控除を相殺せずに集計する", () => {
