@@ -116,21 +116,11 @@ func (s *Service) GetSharedPurchaseDraft(ctx context.Context, actorID, draftID s
 }
 
 func (s *Service) UpdateSharedPurchaseDraft(ctx context.Context, actorID, draftID string, expectedRevision int64, payload string) (UpdateSharedPurchaseDraftResult, error) {
-	if expectedRevision < 1 {
-		return UpdateSharedPurchaseDraftResult{}, fmt.Errorf("%w: expected revision must be positive", ErrBadInput)
-	}
-	if len(payload) > maxSharedPurchaseDraftPayloadBytes {
-		return UpdateSharedPurchaseDraftResult{}, fmt.Errorf("%w: shared purchase draft payload exceeds size limit", ErrBadInput)
-	}
 	actorUUID, err := parseUUID(actorID, "actor")
 	if err != nil {
 		return UpdateSharedPurchaseDraftResult{}, err
 	}
 	draftUUID, err := parseUUID(draftID, "shared purchase draft")
-	if err != nil {
-		return UpdateSharedPurchaseDraftResult{}, err
-	}
-	refs, encoded, err := validateSharedPurchaseDraftPayload(payload)
 	if err != nil {
 		return UpdateSharedPurchaseDraftResult{}, err
 	}
@@ -161,6 +151,10 @@ func (s *Service) UpdateSharedPurchaseDraft(ctx context.Context, actorID, draftI
 		}
 		committed = true
 		return UpdateSharedPurchaseDraftResult{Draft: sharedPurchaseDraftFromRow(row), Conflict: true}, nil
+	}
+	refs, encoded, err := validateSharedPurchaseDraftPayload(payload)
+	if err != nil {
+		return UpdateSharedPurchaseDraftResult{}, err
 	}
 	if err := validateSharedDraftReferences(ctx, executor, row.HouseholdID, refs); err != nil {
 		return UpdateSharedPurchaseDraftResult{}, err

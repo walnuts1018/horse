@@ -58,7 +58,7 @@ func TestSharedPurchaseDraftUsesMembershipAndRevisionCAS(t *testing.T) {
 	if updated.Conflict || updated.Draft.Revision != 2 || !strings.Contains(updated.Draft.Payload, "Updated market") {
 		t.Fatalf("revision 1 update result = %#v", updated)
 	}
-	stalePayload := `{"merchant":"Stale edit","occurredAt":"2026-10-14T12:00:00+09:00","itemName":"","itemAmount":"","categoryId":"","items":[]}`
+	stalePayload := `{`
 	stale, err := resolver.UpdateSharedPurchaseDraft(ownerContext, created.ID, 1, stalePayload)
 	if err != nil {
 		t.Fatal(err)
