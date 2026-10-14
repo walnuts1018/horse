@@ -169,31 +169,9 @@ const documentsQuery = useInfiniteQuery({
 
 ## 4. React 以外の構造的な改善
 
-### URL は TanStack Router を唯一の情報源にする
+### 未保存状態の登録単位
 
-現在 `imports-page.tsx` は `window.location.search` からフィルターを初期化し、履歴変更時には `popstate` でローカル state を更新しています。
-
-この同期処理は不要です。
-
-`validateSearch` を定義し、`Route.useSearch()` から値を取得し、変更時は `navigate({ search: ... })` を使う構成に変更してください。
-
-これは帳簿画面ですでに採用されているパターンなので、取り込みにも展開できます。
-
-[image](https://www.google.com/s2/favicons?domain=https://tanstack.com\&sz=32)
-
-TanStack Router Docs
-
-### 未保存状態は単一の管理機構へ
-
-現在はページごとに `onUnsavedChanges` を Effect で通知し、親の `hasUnsavedChangesRef` に反映しています。
-
-さらに親は `useBlocker({ enableBeforeUnload })` と独自の `beforeunload` listener の両方を使用しています。
-
-[horse-app.tsx L124–144](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/app/horse-app.tsx#L124-L144)
-
-`useBlocker` に一本化し、dirty state をフォーム ID ごとの集合で管理すると、複数フォームが同時に編集中でも正しくブロックできます。
-
-`useSettingsChangeTracking` の集合管理は良い出発点です。アプリ共通の `useUnsavedChangesRegistry` として抽象化すると良いでしょう。
+親ルートは `useBlocker` による画面遷移確認と `enableBeforeUnload` によるブラウザー終了確認を使い、重複していた `beforeunload` listener を削除しました。dirty registry は世帯とページ単位で状態を保持しますが、同一ページの複数フォームが同じ callback を共有する場合は最後の通知が状態を上書きします。複数フォームを持つページでは、各フォームの状態を集合などで集約してから親へ通知してください。
 
 ### Relay Environment の SSR 対応
 
