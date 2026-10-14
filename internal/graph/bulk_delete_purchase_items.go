@@ -30,5 +30,13 @@ func (r *mutationResolver) bulkDeletePurchaseItems(ctx context.Context, input mo
 	if err != nil {
 		return nil, err
 	}
-	return result.DeletedItemIDs, nil
+	deletedItemIDs := make([]string, 0, len(result.DeletedItemIDs))
+	for _, itemID := range result.DeletedItemIDs {
+		globalID, err := encodeNodeID(nodeTypePurchaseItem, itemID)
+		if err != nil {
+			return nil, err
+		}
+		deletedItemIDs = append(deletedItemIDs, globalID)
+	}
+	return deletedItemIDs, nil
 }
