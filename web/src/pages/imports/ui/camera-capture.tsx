@@ -60,6 +60,7 @@ export const CameraCapture = forwardRef<
   const [cropMode, setCropMode] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
+  const [adding, setAdding] = useState(false);
   const draftOpen = draft !== null;
 
   useImperativeHandle(ref, () => ({
@@ -202,8 +203,9 @@ export const CameraCapture = forwardRef<
     setDraft((current) => (current ? { ...current, crop } : current));
   };
 
-  const add = async () => {
-    if (!draft) return;
+  const add = async (continueCapturing = false) => {
+    if (!draft || adding) return;
+    setAdding(true);
     try {
       let analysisFile: File | undefined;
       let analysisTransform: CameraImageTransform | undefined;
@@ -233,9 +235,15 @@ export const CameraCapture = forwardRef<
         analysisTransform = draft.transform;
       }
       onAdd({ originalFile: draft.originalFile, analysisFile, analysisTransform });
-      setDraft(null);
+      if (continueCapturing) {
+        inputRef.current?.click();
+      } else {
+        setDraft(null);
+      }
     } catch (reason) {
       onError(errorMessage(reason));
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -399,8 +407,21 @@ export const CameraCapture = forwardRef<
                   切り抜きを解除
                 </button>
               )}
-              <button type="button" className="button button-primary" onClick={() => void add()}>
-                画像をアップロード
+              <button
+                type="button"
+                className="button button-soft"
+                disabled={adding}
+                onClick={() => void add(true)}
+              >
+                追加して次を撮影
+              </button>
+              <button
+                type="button"
+                className="button button-primary"
+                disabled={adding}
+                onClick={() => void add()}
+              >
+                取り込みに追加
               </button>
             </div>
             {draft.crop && (
