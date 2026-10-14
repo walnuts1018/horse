@@ -89,34 +89,6 @@ gqlgenのフィールドリゾルバをもっと使うべきです。
 
 目指すのは「すべてを先読みする巨大なローダー」でも「フィールドごとに1件ずつSQLを実行する構造」でもなく、GraphQLで要求されたデータだけを、必要な単位で一括取得する構造です。
 
-### 3. 文書APIから業務ロジックを追い出す
-
-優先度：最高 / 改善効果：非常に大きい
-
-該当コード：
-
-- [api/documents.go — 約1,544行](https://github.com/walnuts1018/horse/blob/main/internal/api/documents.go)
-- [api/mailbox_poller.go](https://github.com/walnuts1018/horse/blob/main/internal/api/mailbox_poller.go)
-
-`documents.go`には、アップロード、ファイル形式判定、S3への保存、重複排除、DB登録、添付ファイルの関連付け、ジョブ生成、ジョブ発行、一覧取得、カーソル処理、再処理、確認処理が共存しています。
-
-HTTPハンドラは入力の受け取りとHTTP応答に専念し、登録処理をApplication層へ委譲するべきです。
-
-```
-HTTP handler
-  └─ DocumentService.Register()
-       ├─ ファイル検証
-       ├─ オブジェクト保存
-       ├─ 文書と添付ファイルの登録
-       ├─ 抽出ジョブの登録
-       └─ 必要な補償処理
-
-Worker / MailboxPoller
-  └─ 同じ DocumentService を利用
-```
-
-世帯所属の確認は`internal/application/document.Service.RequireHouseholdMember()`に切り出され、アップロード処理から利用されています。個別文書の取得・更新でも`documentForMember()`が文書の世帯に対する所属を確認します。この認可経路は整備されています。
-
 ## 4. 通常更新・一括更新・まとめて保存が別々の実装になっている
 
 優先度：最高 / 改善効果：非常に大きい
@@ -140,8 +112,6 @@ Worker / MailboxPoller
 
 第一に、同じルールを複数箇所で保守する必要があること。 通常更新だけ修正して一括更新への反映を忘れる、といった不一致が起こりやすくなります。
 
-第二に、操作単位の最適化が難しいこと。 `updateItem()`は投稿済み購入の仕訳同期を行うので、`SaveItemEdits()`で10明細を変更すると、最終結果だけでよい仕訳更新が繰り返される可能性があります。
-
 推奨するのは、単一更新と一括更新を別々の業務実装にするのではなく、以下の構造へ統合することです。
 
 Create / Update / BulkUpdate / SaveItemEdits
@@ -156,10 +126,6 @@ GraphQLなどの公開API
 
 ロック → DB更新 → 必要なら仕訳再構築 → イベント記録
 
-重要なのは、最終的に仕訳を再構築する必要があるかを、更新するフィールドから判断できるようにすることです。
-
-例えば商品名の修正では仕訳更新が不要です。一方で金額や配賦、支払を変更した場合は必要です。複数明細をまとめて変更するときも、原則としてその購入の最終状態に対して一度だけ仕訳を再構築すれば済む設計を目指せます。
-
 ただし、既存のロック順序と会計期間の整合性は慎重に維持する必要があります。
 
 ## 5. その他の重要な改善点
@@ -167,8 +133,6 @@ GraphQLなどの公開API
 | 対象 | 確認した問題 | 推奨する改善 |
 | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
 | [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離され、`Do()`にはDB操作、権限確認、ロック、冪等性処理などが残る | ユースケース処理の責務と順序を整理する |
-| [Gemini Router](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/router.go#L81-L199) | ルート候補の生成はデータ化され、共通ループで試行する形に改善された。一方、候補の実行条件、次候補の探索、フォールバック理由の記録が`Generate()`に残る | 候補選択とフォールバック状態の扱いを分離し、ルーティングの条件を追いやすくする |
-| [抽出Worker](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/worker_extract.go#L10-L141) | 初回抽出、品質再実行、Pro再検証は共通pipelineで実行され、抽出結果の検証、座標変換、OCR照合も共通化された。一方、`extract()`には再実行条件、候補結果の比較・採用、実行履歴の集約が残る | 再実行ポリシーと候補結果の選択を独立した調整処理へ分ける |
 | [Geminiクライアント](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/gemini.go#L74-L313) | JSON応答の復号とusage抽出は純粋なdecoderへ分離されたが、HTTPクライアント設定、Prompt、API呼び出し、Quota処理は`ExtractRun()`に残る | Provider、Prompt、Quota処理の責務を整理する |
 
 ### 小さな自前ユーティリティも整理する
