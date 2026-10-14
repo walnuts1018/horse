@@ -42,7 +42,7 @@ pgxの`BeginFunc`は採用せず、明示的な`Begin`/`Commit`/`Rollback`を維
 
 ソース監査でdirty状態に対する`useBlocker`と`beforeunload`、購入下書きのIndexedDB保存、drawer表示中の`overscroll-behavior`とbody固定を確認しました。2026年10月13日に公開環境で帳簿への遷移によるURL変更、深いURLの直接表示、再読み込み後の画面維持、戻る・進むを確認しました。dirtyな購入入力からホームへ移動すると破棄確認が表示されました。別の合成入力では直接再読み込み後も品名と金額が下書きから復元されましたが、ブラウザー確認は表示されませんでした。合成入力は空に戻し、購入は送信していません。更新・タブ終了時の確認は未解決として`docs/reviews/react.md`に残します。
 
-UXレビューの品目では、商品サジェストを選択した直後に自由入力用handlerが消していたvariant IDを、名前変更後に設定するよう順序を直しました。取込画面では、編集中のレシート結果をポーリング応答で上書きしないようにし、明示的な再抽出・購入確定後に保護を解除します。精算画面では世帯と期間を応答snapshotに紐付け、古い応答を破棄し、締めMutationには表示中snapshotのrevisionを使います。各変更の型検査と整形確認は成功し、総合CIは後続のmain実行で確認します。実操作を伴うフロントエンドのtest runnerがなく、小規模なstate更新順序やrequest世代管理だけを検証するモック中心のテストは追加しませんでした。対応した3項目を`docs/reviews/ux.md`から削除し、未解決項目は残しています。
+レビューで指摘された品目では、商品サジェストを選択した直後に自由入力用handlerが消していたvariant IDを、名前変更後に設定するよう順序を直しました。取込画面では、編集中のレシート結果をポーリング応答で上書きしないようにし、明示的な再抽出・購入確定後に保護を解除します。精算画面では世帯と期間を応答snapshotに紐付け、古い応答を破棄し、締めMutationには表示中snapshotのrevisionを使います。各変更の型検査と整形確認は成功し、総合CIは後続のmain実行で確認します。実操作を伴うフロントエンドのtest runnerがなく、小規模なstate更新順序やrequest世代管理だけを検証するモック中心のテストは追加しませんでした。対応した3項目をレビューから削除しました。
 
 ### Dockerと公開イメージ
 
@@ -97,7 +97,7 @@ nullable outputの静的監査では、明白にnon-nullへ変更できるfield�
 
 分析画面は購入履歴の全ページ取得後に集計し、取得失敗時は不完全な数値を表示せず再試行を提示します。新規品目のカテゴリは未分類を初期値とし、利用者の選択や確かな商品・履歴候補を維持します。Frontend型検査が成功しました。
 
-取り込み一覧に古い履歴の追加取得を実装し、ポーリング後も取得済みページを保持します。検索条件と原本ファイル名の保存は未実装のため、`docs/reviews/ux.md`に残します。
+取り込み一覧に古い履歴の追加取得を実装し、ポーリング後も取得済みページを保持します。検索条件はTanStack Routerのsearch stateへ保存し、戻る・進むで復元します。手動fetchとpollingの整理は`docs/reviews/react.md`に残しています。
 
 仕訳明細の一括登録をBobの複数行INSERTへ変更しました。`go test ./internal/application/accounting`が成功しました。
 
@@ -111,14 +111,14 @@ Geminiの未知モデル価格は`unknown_model_price`として明示し、有�
 
 `docs/reviews/be-architecture2.md`のUUID変換とApplication共通エラー分類は、入力UUIDのparse errorを`ErrBadInput`として返し、共通の`apperror`分類をGraphQL結果へ変換する実装に整理しました。購入作成・確定・更新の不正IDと共通エラー分類を検証する単体テストを追加し、対象Goパッケージのテストとlintが成功したため、同文書の「型とエラーの扱い」節を削除しました。
 
-`docs/reviews/ux.md`では、取り込み確定時の複数決済・品目カテゴリ・商品variant選択、モバイル文字サイズ、タップ領域、購入入力順序、通知種別、原本と編集欄の配置、TanStack Routerの`Link`による画面遷移、初回設定ガイドを実装済みとして整理しました。商品variantは`productSuggestions`で候補を検索し、選択IDを購入作成へ渡します。初回設定ガイドは既存の家庭データと購入件数から未設定項目を判定し、負担先・決済元・標準配分の該当sectionへ移動します。確認した箇所は`web/src/pages/imports/ui/imports-page.tsx`、`web/src/pages/purchase-create/ui/purchase-create-page.tsx`、`web/src/pages/home/ui/home-page.tsx`、`web/src/pages/home/ui/setup-guidance.tsx`、`web/src/app/horse-app.tsx`、`web/src/app/styles/global.css`、`web/src/shared/ui/notice.tsx`です。Frontendの型検査、FSD、lint、formatが成功しました。ホームの7日間支出グラフには日付と金額の代替ラベルを追加しました。
+`docs/reviews/react.md`にあった取り込み確定時の複数決済・品目カテゴリ・商品variant選択、モバイル文字サイズ、タップ領域、購入入力順序、通知種別、原本と編集欄の配置、TanStack Routerの`Link`による画面遷移、初回設定ガイドを実装しました。商品variantは`productSuggestions`で候補を検索し、選択IDを購入作成へ渡します。初回設定ガイドは既存の家庭データと購入件数から未設定項目を判定し、負担先・決済元・標準配分の該当sectionへ移動します。確認した箇所は`web/src/pages/imports/ui/imports-page.tsx`、`web/src/pages/purchase-create/ui/purchase-create-page.tsx`、`web/src/pages/home/ui/home-page.tsx`、`web/src/pages/home/ui/setup-guidance.tsx`、`web/src/app/horse-app.tsx`、`web/src/app/styles/global.css`、`web/src/shared/ui/notice.tsx`です。Frontendの型検査、FSD、lint、formatが成功しました。ホームの7日間支出グラフには日付と金額の代替ラベルを追加しました。
 
-購入下書きのIndexedDB保存失敗時に「保存を再試行」を表示し、成功時だけ保存時刻を更新して未保存状態を解除します。`web:check`、対象lint・format、FSD検査が成功したため、UXレビュー#13を削除しました。取り込み画面には不確実な品目・金額・決済差異の確認キューを追加し、前後操作で該当入力へ移動します。`web:check`、FSD、対象lint・formatが成功したためUXレビュー#18を削除しました。補足文字50色・75宣言を変更し、`#f3f6f2`上のコントラスト比を1.81:1〜4.46:1から4.99:1へ改善しました。白と確認した薄色背景でも4.80:1以上を確認し、stylelintと`git diff --check`が成功しました。UXレビュー#19には7〜9px文字とタップ領域の未確認事項を残します。撮影後のプレビュー・回転・トリミング、実機カメラ、pull-to-refreshとタブ終了時の挙動は未確認です。
+購入下書きのIndexedDB保存失敗時に「保存を再試行」を表示し、成功時だけ保存時刻を更新して未保存状態を解除します。`web:check`、対象lint・format、FSD検査が成功したため、UXレビュー#13を削除しました。取り込み画面には不確実な品目・金額・決済差異の確認キューを追加し、前後操作で該当入力へ移動します。`web:check`、FSD、対象lint・formatが成功したためUXレビュー#18を削除しました。補足文字の色とサイズを変更し、`#f3f6f2`上のコントラスト比を1.81:1〜4.46:1から4.99:1へ改善しました。白と確認した薄色背景でも4.80:1以上を確認し、タップ領域を44px以上にしました。stylelintと`git diff --check`が成功しました。
 GitHub Actions run `38415764085`全体は購入検索統合テストのfixture不備で失敗しました。同run内の`TestPurchaseRefundSettlementUsesOriginalFundingSnapshotAfterRuleChanges`、`TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeriod`、`TestAccountingFlowUsesScheduleAndActualFundingSeparately`は成功し、購入時ルール変更後の訂正と負担ルール一覧の一括読込を確認しました。同runのFrontend型検査、Relay検査、lint、FSD、format、buildも成功しました。
 
 run `38417152110`では、全購入に同じデフォルト負担先を使ったため、専用プールfilterの期待値が実データと合わず購入検索統合テストが失敗しました。別プールを作り、対象購入以外の品目へ明示配分して再実行します。
 
-UXレビュー#14では、撮影後の画像確認、90度回転、矩形トリミング、ダイアログのフォーカス管理、Escapeキー終了、キーボード用切り抜き調整を追加しました。#15では設定画面を「口座」「負担」「分類」「予算」「メンバー」のタブへ分け、選択中の領域だけを表示します。予算や資金移動をトップレベル画面へ移す案は、経路構成と利用頻度を確認して別途判断します。#16の検索語・期間・分類・タグ・決済元・プールによる購入絞り込みはBob DSLでDB適用後にページングするためレビューから削除しました。#17では購入一覧の次ページ取得エラーに条件付きの再試行を加え、検索条件が変わった場合は古いエラーを表示しないようにしました。#19ではモバイルで見える補足・行・チャートラベルを10px以上、主要操作のタップ領域を44px以上にしました。ドロワーのoverscrollとスクロール連鎖は既存CSSで抑止しています。実機でのカメラ、文字、タップ操作は確認待ちです。Web型検査、FSD、対象lint・format、Stylelintに成功しました。
+UXレビュー#14では、撮影後の画像確認、90度回転、矩形トリミング、ダイアログのフォーカス管理、Escapeキー終了、キーボード用切り抜き調整を追加しました。#15では設定画面を「口座」「負担」「分類」「予算」「メンバー」のタブへ分け、選択中の領域だけを表示します。予算や資金移動をトップレベル画面へ移す案は、経路構成と利用頻度を確認して別途判断します。#16の検索語・期間・分類・タグ・決済元・プールによる購入絞り込みはBob DSLでDB適用後にページングするためレビューから削除しました。#17では購入一覧の次ページ取得エラーに条件付きの再試行を加え、検索条件が変わった場合は古いエラーを表示しないようにしました。#19ではモバイルで見える補足・行・チャートラベルを10px以上、主要操作のタップ領域を44px以上にしました。ドロワーのoverscrollとスクロール連鎖は既存CSSで抑止しています。Web型検査、FSD、対象lint・format、Stylelintに成功しました。
 
 取り込み画面は最大3件を並列送信し、各原本の送信状態と失敗時の再送を表示します。原本一覧はカーソルを使って古い履歴を追加取得し、フィルターを変更した時点で以前の一覧とcursorを破棄します。実装済みのためUXレビューの並列化・進捗とページネーション項目を削除しました。
 
@@ -244,7 +244,7 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 
 公開環境の合成検証用家庭で`imports`から`settlement`へ移動し、URL更新、`settlement`の直接再読み込み、ブラウザーの戻る・進むでrouteと画面が一致することを確認しました。未保存入力中の離脱確認と他routeは未確認のため、UXレビューの該当項目は検証範囲を限定して残しました。
 
-2026年10月14日に公開環境の合成家庭で帳簿・精算・分析・取り込み・設定のURLを直接開き、それぞれ再読み込みしてもURLと画面見出しが一致することを確認しました。公開環境のroute再読み込みに関する未解決項目を`docs/reviews/ux.md`から削除しました。未保存入力中の離脱確認は未検証のため残しています。
+2026年10月14日に公開環境の合成家庭で帳簿・精算・分析・取り込み・設定のURLを直接開き、それぞれ再読み込みしてもURLと画面見出しが一致することを確認しました。公開環境のroute再読み込みに関する未解決項目は解決済みとしてレビューから削除しました。未保存入力中の離脱確認は未解決です。
 
 ### 2026年10月14日のApplication入力検証
 

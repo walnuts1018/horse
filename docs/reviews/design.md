@@ -152,7 +152,7 @@ Skillの検索データを実際に活用し、デザイン上の判断に取り
 - `README.md`
 - `docs/plan.md`
 - `docs/completion-audit.md`
-- `docs/reviews/ux.md`
+- `docs/reviews/react.md`
 - `web/src/app/`
 - `web/src/pages/`
 - `web/src/shared/ui/`
