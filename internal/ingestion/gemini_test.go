@@ -23,7 +23,29 @@ func TestReceiptSchemaMatchesJSONTypesAndRequiredFields(t *testing.T) {
 		reflect.TypeFor[Receipt](): {"OrderID": true, "TransactionID": true},
 		reflect.TypeFor[Item]():    {"CategoryHint": true},
 	}
-	assertSchemaMatchesType(t, reflect.TypeFor[Receipt](), receiptSchema(), ignoredFields, optionalFields)
+	assertSchemaMatchesType(t, reflect.TypeFor[Receipt](), receiptSchema(), ignoredFields, optionalFields, nil)
+}
+
+func TestStatementSchemaMatchesExtractionModel(t *testing.T) {
+	t.Parallel()
+	ignoredFields := map[reflect.Type]map[string]bool{
+		reflect.TypeFor[StatementEntry](): {"Row": true, "SourceReference": true},
+	}
+	requiredFields := map[reflect.Type]map[string]bool{
+		reflect.TypeFor[StatementEntry](): {"Region": true},
+	}
+	schema := statementSchema()
+	assertSchemaMatchesType(t, reflect.TypeFor[statementExtraction](), schema, ignoredFields, nil, requiredFields)
+
+	transactions := schema["properties"].(map[string]any)["transactions"].(map[string]any)
+	entry := transactions["items"].(map[string]any)
+	region := entry["properties"].(map[string]any)["region"].(map[string]any)
+	for _, field := range []string{"top", "left", "bottom", "right"} {
+		coordinate := region["properties"].(map[string]any)[field].(map[string]any)
+		if coordinate["minimum"] != float64(0) || coordinate["maximum"] != float64(1) {
+			t.Errorf("statement region %q bounds = [%v, %v], want [0, 1]", field, coordinate["minimum"], coordinate["maximum"])
+		}
+	}
 }
 
 func TestGeminiExtractsSourceKindSpecificStatementRows(t *testing.T) {
@@ -86,7 +108,7 @@ func TestGeminiFailedRunsRetainUsageAndEstimatedCost(t *testing.T) {
 	}
 }
 
-func assertSchemaMatchesType(t *testing.T, typ reflect.Type, schema map[string]any, ignoredFields, optionalFields map[reflect.Type]map[string]bool) {
+func assertSchemaMatchesType(t *testing.T, typ reflect.Type, schema map[string]any, ignoredFields, optionalFields, requiredFields map[reflect.Type]map[string]bool) {
 	t.Helper()
 	if schema[schemaTypeKey] != "object" {
 		t.Fatalf("schema for %s has type %v, want object", typ, schema[schemaTypeKey])
@@ -117,7 +139,7 @@ func assertSchemaMatchesType(t *testing.T, typ reflect.Type, schema map[string]a
 			name = field.Name
 		}
 		wantProperties[name] = true
-		if !strings.Contains(","+options+",", ",omitempty,") && !optionalFields[typ][field.Name] {
+		if requiredFields[typ][field.Name] || !strings.Contains(","+options+",", ",omitempty,") && !optionalFields[typ][field.Name] {
 			wantRequired[name] = true
 		}
 		property, exists := properties[name]
@@ -125,7 +147,7 @@ func assertSchemaMatchesType(t *testing.T, typ reflect.Type, schema map[string]a
 			t.Errorf("schema for %s is missing property %q", typ, name)
 			continue
 		}
-		assertSchemaFieldType(t, field.Type, property, ignoredFields, optionalFields)
+		assertSchemaFieldType(t, field.Type, property, ignoredFields, optionalFields, requiredFields)
 	}
 	for name := range properties {
 		if !wantProperties[name] {
@@ -144,7 +166,7 @@ func assertSchemaMatchesType(t *testing.T, typ reflect.Type, schema map[string]a
 	}
 }
 
-func assertSchemaFieldType(t *testing.T, typ reflect.Type, schemaValue any, ignoredFields, optionalFields map[reflect.Type]map[string]bool) {
+func assertSchemaFieldType(t *testing.T, typ reflect.Type, schemaValue any, ignoredFields, optionalFields, requiredFields map[reflect.Type]map[string]bool) {
 	t.Helper()
 	for typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
@@ -162,7 +184,7 @@ func assertSchemaFieldType(t *testing.T, typ reflect.Type, schemaValue any, igno
 	case reflect.Float32, reflect.Float64:
 		wantType = schemaTypeNumber
 	case reflect.Struct:
-		assertSchemaMatchesType(t, typ, schema, ignoredFields, optionalFields)
+		assertSchemaMatchesType(t, typ, schema, ignoredFields, optionalFields, requiredFields)
 		return
 	case reflect.Slice, reflect.Array:
 		wantType = "array"
@@ -170,7 +192,7 @@ func assertSchemaFieldType(t *testing.T, typ reflect.Type, schemaValue any, igno
 		if !ok {
 			t.Fatalf("schema for %s has no array items", typ)
 		}
-		assertSchemaFieldType(t, typ.Elem(), items, ignoredFields, optionalFields)
+		assertSchemaFieldType(t, typ.Elem(), items, ignoredFields, optionalFields, requiredFields)
 	case reflect.Invalid, reflect.Bool, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
 		reflect.Complex64, reflect.Complex128, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.UnsafePointer:
 		t.Fatalf("unsupported JSON schema type %s", typ)
