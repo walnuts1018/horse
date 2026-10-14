@@ -998,49 +998,6 @@ a {
   color: #bc7161;
 }
 
-.suggestions {
-  position: absolute;
-  z-index: 15;
-  top: calc(100% + 5px);
-  left: 0;
-  width: 100%;
-  min-width: 200px;
-  padding: 5px;
-  background: #fff;
-  border: 1px solid #e8ede8;
-  border-radius: 10px;
-  box-shadow: 0 9px 22px #304c3b18;
-}
-
-.suggestions button {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  border: 0;
-  background: transparent;
-  border-radius: 6px;
-  padding: 8px;
-  color: #596a60;
-  font-size: 10px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.suggestions button:hover {
-  background: #f3f7f3;
-}
-
-.suggestions button svg {
-  color: #98a69e;
-}
-
-.suggestions button span {
-  margin-left: auto;
-  color: #5f6d65;
-  font-size: 8px;
-}
-
 .page-heading > .button {
   margin-top: 12px;
 }
@@ -2081,7 +2038,6 @@ textarea:focus-visible,
   .period-chip,
   .purchase-description span,
   .field-group label,
-  .suggestions button span,
   .number-field small,
   .create-household label,
   .inline-create .button,

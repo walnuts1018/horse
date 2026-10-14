@@ -7,7 +7,7 @@ import {
   type DocumentReview,
 } from "./imports";
 
-const file = (name: string, type = "") => ({ name, type }) as File;
+const file = (name: string, type = "") => new File([], name, { type });
 
 describe("アップロード時の原本種別", () => {
   it("CSVは従来どおりカード明細を初期値にしてカードか銀行を選べる", () => {

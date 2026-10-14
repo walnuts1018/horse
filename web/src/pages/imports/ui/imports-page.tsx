@@ -21,7 +21,6 @@ import {
   type PendingUpload,
   type StatementEntry,
   type StatementSourceKind,
-  type UploadSourceKind,
 } from "../model/imports";
 import { useDocumentEvidence } from "../model/use-document-evidence";
 import { useImportConfirmation } from "../model/use-import-confirmation";
