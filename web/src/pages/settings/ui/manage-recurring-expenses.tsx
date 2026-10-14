@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type SubmitEvent } from "reac
 import { type Household, type RecurringExpense } from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib";
 import { isOneOf } from "../../../shared/lib/guard";
+import { InlineError } from "../../../shared/ui";
 import { readRecurringExpenses } from "../api/read-recurring-expenses";
 import {
   archiveRecurringExpense,
@@ -45,8 +46,9 @@ export function ManageRecurringExpenses({
   onFormClean: (formID: string) => void;
   onPendingChange: (pending: boolean) => void;
 }) {
-  const onNoticeRef = useRef(onNotice);
   const [recurring, setRecurring] = useState<RecurringExpense[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [recurringName, setRecurringName] = useState("");
   const [recurringMerchant, setRecurringMerchant] = useState("");
   const [recurringAmount, setRecurringAmount] = useState("");
@@ -58,6 +60,7 @@ export function ManageRecurringExpenses({
   const [recurringEndsOn, setRecurringEndsOn] = useState("");
   const [editingRecurring, setEditingRecurring] = useState<RecurringExpense | null>(null);
   const [pending, setPending] = useState(false);
+  const requestSequence = useRef(0);
   const [matchingExpenseId, setMatchingExpenseId] = useState<string | null>(null);
   const [matchCandidates, setMatchCandidates] = useState<RecurringExpenseMatchCandidate[]>([]);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState("");
@@ -70,19 +73,27 @@ export function ManageRecurringExpenses({
     }).format(new Date()),
   );
 
-  useEffect(() => {
-    onNoticeRef.current = onNotice;
-  }, [onNotice]);
-
   const refresh = useCallback(async () => {
-    setRecurring(await readRecurringExpenses(householdId, true));
+    const sequence = ++requestSequence.current;
+    setLoading(true);
+    setLoadError("");
+    try {
+      const data = await readRecurringExpenses(householdId, true);
+      if (requestSequence.current === sequence) setRecurring(data);
+    } catch (reason) {
+      if (requestSequence.current === sequence) setLoadError(errorMessage(reason));
+      throw reason;
+    } finally {
+      if (requestSequence.current === sequence) setLoading(false);
+    }
   }, [householdId]);
 
   useEffect(() => {
+    if (hidden) return;
     queueMicrotask(() => {
-      void refresh().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
+      void refresh().catch(() => undefined);
     });
-  }, [refresh]);
+  }, [hidden, refresh]);
 
   const saveRecurring = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -118,7 +129,7 @@ export function ManageRecurringExpenses({
       setRecurringMerchant("");
       setRecurringAmount("");
       setRecurringEndsOn("");
-      await refresh();
+      await refresh().catch(() => undefined);
       onNotice("定期支出を保存しました", "success");
     } catch (reason) {
       onNotice(errorMessage(reason), "error");
@@ -151,7 +162,7 @@ export function ManageRecurringExpenses({
         baseRevision: expense.revision,
         archived: !expense.archived,
       });
-      await refresh();
+      await refresh().catch(() => undefined);
       onNotice(expense.archived ? "定期支出を再表示しました" : "定期支出を終了しました", "success");
     } catch (reason) {
       onNotice(errorMessage(reason), "error");
@@ -189,7 +200,7 @@ export function ManageRecurringExpenses({
       });
       setMatchingExpenseId(null);
       setSelectedPurchaseId("");
-      await refresh();
+      await refresh().catch(() => undefined);
       onNotice("購入実績を照合しました", "success");
     } catch (reason) {
       onNotice(errorMessage(reason), "error");
@@ -224,6 +235,20 @@ export function ManageRecurringExpenses({
           {recurring.filter((expense) => !expense.archived).length}
         </span>
       </div>
+      {loading && <output>定期支出を読み込んでいます</output>}
+      {loadError && (
+        <div role="alert">
+          <InlineError message={loadError} />
+          <button
+            type="button"
+            className="text-button"
+            disabled={loading}
+            onClick={() => void refresh().catch(() => undefined)}
+          >
+            再試行
+          </button>
+        </div>
+      )}
       <div className={styles.settingsRows}>
         {recurring.map((expense) => (
           <div className={styles.settingRow} key={expense.id}>

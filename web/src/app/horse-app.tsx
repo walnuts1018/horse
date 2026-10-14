@@ -114,9 +114,7 @@ export function App() {
   const session = useHouseholdSession({
     householdId,
     page,
-    currentPage: getCurrentPage,
     navigateToHouseholdPage,
-    showNotice,
   });
   const {
     viewer,
@@ -125,9 +123,11 @@ export function App() {
     household,
     redirectHouseholdId,
     householdLoading,
+    householdLoadError,
     loading,
     error,
     refreshHousehold,
+    retryHousehold,
     selectHousehold,
   } = session;
   const onInvitationAccepted = useCallback(
@@ -498,6 +498,19 @@ export function App() {
                     <div className="loading-screen">
                       <span className="loading-dot" /> 家計簿を開いています
                     </div>
+                  ) : householdLoadError ? (
+                    <section className="welcome-panel" role="alert">
+                      <span className="eyebrow">読み込みエラー</span>
+                      <h1>家計簿を開けませんでした</h1>
+                      <p>{householdLoadError}</p>
+                      <button
+                        className="button button-primary"
+                        type="button"
+                        onClick={retryHousehold}
+                      >
+                        再試行 <ChevronRight size={18} />
+                      </button>
+                    </section>
                   ) : activeHousehold ? (
                     <Outlet />
                   ) : (

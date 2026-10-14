@@ -213,6 +213,19 @@ export function ImportDocumentList({
           </button>
         </div>
       ))}
+      {documents.length > 0 && documentLoadFailed && (
+        <div className={styles.receiptIssues} role="alert">
+          <p>取り込み履歴の更新に失敗しました。表示中の履歴は最新ではない可能性があります。</p>
+          <button
+            type="button"
+            className="button button-soft"
+            disabled={loadingDocuments}
+            onClick={onRetryLoadDocuments}
+          >
+            {loadingDocuments ? "更新中…" : "再読み込み"}
+          </button>
+        </div>
+      )}
       {documents.length === 0 && files.length === 0 && (
         <>
           <output className={styles.documentListEmpty}>

@@ -35,8 +35,20 @@ function HouseholdImports() {
       }
       onUnsavedChanges={reportUnsavedChanges}
       onAdded={async (keepOpen) => {
-        await refreshHousehold(household.id);
+        let refreshFailed = false;
+        try {
+          await refreshHousehold(household.id);
+        } catch {
+          refreshFailed = true;
+        }
         if (!keepOpen) navigateToPage("ledger");
+        if (refreshFailed) {
+          showNotice(
+            "保存しましたが家計簿を更新できませんでした。画面を再読み込みしてください",
+            "error",
+          );
+          return;
+        }
         showNotice("買い物を帳簿に追加しました", "success");
       }}
     />

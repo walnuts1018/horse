@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type SubmitEvent } from "reac
 
 import { type Budget, type Household } from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib";
+import { InlineError } from "../../../shared/ui";
 import { archiveBudget, createBudget, updateBudget } from "../api/budget-management";
 import { readBudgets } from "../api/read-budgets";
 
@@ -39,28 +40,38 @@ export function ManageBudgets({
   onFormClean: (formID: string) => void;
   onPendingChange: (pending: boolean) => void;
 }) {
-  const onNoticeRef = useRef(onNotice);
   const [budgetPeriod, setBudgetPeriod] = useState(currentMonth);
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [budgetName, setBudgetName] = useState("");
   const [budgetCategoryId, setBudgetCategoryId] = useState("");
   const [budgetAmount, setBudgetAmount] = useState("");
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [pending, setPending] = useState(false);
-
-  useEffect(() => {
-    onNoticeRef.current = onNotice;
-  }, [onNotice]);
+  const requestSequence = useRef(0);
 
   const refresh = useCallback(async () => {
-    setBudgets(await readBudgets(householdId, budgetPeriod));
+    const sequence = ++requestSequence.current;
+    setLoading(true);
+    setLoadError("");
+    try {
+      const data = await readBudgets(householdId, budgetPeriod);
+      if (requestSequence.current === sequence) setBudgets(data);
+    } catch (reason) {
+      if (requestSequence.current === sequence) setLoadError(errorMessage(reason));
+      throw reason;
+    } finally {
+      if (requestSequence.current === sequence) setLoading(false);
+    }
   }, [budgetPeriod, householdId]);
 
   useEffect(() => {
+    if (hidden) return;
     queueMicrotask(() => {
-      void refresh().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
+      void refresh().catch(() => undefined);
     });
-  }, [refresh]);
+  }, [hidden, refresh]);
 
   const saveBudget = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -95,7 +106,7 @@ export function ManageBudgets({
       setEditingBudget(null);
       setBudgetName("");
       setBudgetAmount("");
-      await refresh();
+      await refresh().catch(() => undefined);
       onNotice("予算を保存しました", "success");
     } catch (reason) {
       onNotice(errorMessage(reason), "error");
@@ -122,7 +133,7 @@ export function ManageBudgets({
         baseRevision: budget.revision,
         archived: !budget.archived,
       });
-      await refresh();
+      await refresh().catch(() => undefined);
       onNotice(budget.archived ? "予算を再表示しました" : "予算を非表示にしました", "success");
     } catch (reason) {
       onNotice(errorMessage(reason), "error");
@@ -146,6 +157,20 @@ export function ManageBudgets({
           onChange={(event) => setBudgetPeriod(event.target.value)}
         />
       </div>
+      {loading && <output>予算を読み込んでいます</output>}
+      {loadError && (
+        <div role="alert">
+          <InlineError message={loadError} />
+          <button
+            type="button"
+            className="text-button"
+            disabled={loading}
+            onClick={() => void refresh().catch(() => undefined)}
+          >
+            再試行
+          </button>
+        </div>
+      )}
       <div className={styles.settingsRows}>
         {budgets.map((budget) => {
           const ratio =
