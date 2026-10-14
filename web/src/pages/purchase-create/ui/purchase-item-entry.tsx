@@ -1,9 +1,11 @@
 import type { ClipboardEvent, KeyboardEvent, RefObject } from "react";
 
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import type { Household } from "../../../shared/api";
 import type { PurchaseEntrySuggestion } from "../model/product-suggestions";
+
+import { ProductCandidateOption } from "../../../features/product-variant-select";
 
 export function PurchaseItemEntry({
   itemName,
@@ -127,26 +129,28 @@ export function PurchaseItemEntry({
                     onMouseEnter={() => onSuggestionHover(index)}
                     onClick={() => onSelectSuggestion(suggestion)}
                   >
-                    <Search size={13} />
                     {suggestion.kind === "catalog" ? (
-                      <>
-                        <span>{suggestion.candidate.matchedName}</span>
-                        <small>
-                          {suggestion.candidate.concept.name} · {suggestion.candidate.variant.name}
-                        </small>
-                        <span>推定候補</span>
-                      </>
+                      <ProductCandidateOption
+                        label={suggestion.candidate.matchedName}
+                        description={`${suggestion.candidate.concept.name} · ${suggestion.candidate.variant.name}`}
+                        meta={suggestion.candidate.variant.packageSize ?? undefined}
+                        badge="推定候補"
+                      />
                     ) : (
-                      <>
-                        <span>{suggestion.name}</span>
-                        {suggestion.kind === "confirmed" && (
-                          <small>
-                            {suggestion.candidate.concept.name} ·{" "}
-                            {suggestion.candidate.variant.name}
-                          </small>
-                        )}
-                        <span>{suggestion.kind === "confirmed" ? "確認済み商品" : "購入履歴"}</span>
-                      </>
+                      <ProductCandidateOption
+                        label={suggestion.name}
+                        description={
+                          suggestion.kind === "confirmed"
+                            ? `${suggestion.candidate.concept.name} · ${suggestion.candidate.variant.name}`
+                            : undefined
+                        }
+                        meta={
+                          suggestion.kind === "confirmed"
+                            ? (suggestion.candidate.variant.packageSize ?? undefined)
+                            : undefined
+                        }
+                        badge={suggestion.kind === "confirmed" ? "確認済み商品" : "購入履歴"}
+                      />
                     )}
                   </button>
                 ))}

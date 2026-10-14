@@ -3,6 +3,8 @@ import { useId, useRef } from "react";
 
 import type { ProductSuggestion } from "../../../entities/product";
 
+import { ProductCandidateOption } from "./product-candidate-option";
+
 import "./product-variant-select.css";
 
 function suggestionLabel(suggestion: ProductSuggestion) {
@@ -100,11 +102,11 @@ export function ProductVariantSelect({
                     value={suggestion.variant.id}
                     disabled={suggestion.variant.id === value}
                   >
-                    <span>{suggestionLabel(suggestion)}</span>
-                    {suggestion.variant.packageSize && (
-                      <small>{suggestion.variant.packageSize}</small>
-                    )}
-                    {suggestion.variant.id === value && <small>選択中</small>}
+                    <ProductCandidateOption
+                      label={suggestionLabel(suggestion)}
+                      meta={suggestion.variant.packageSize ?? undefined}
+                      badge={suggestion.variant.id === value ? "選択中" : undefined}
+                    />
                   </Combobox.Item>
                 ))}
                 <Combobox.Empty>

@@ -97,14 +97,34 @@
   cursor: pointer;
 }
 
-.product-variant-select__popup [role="option"] > span {
+.product-candidate-option {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.product-candidate-option__label {
   overflow: hidden;
   flex: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.product-variant-select__popup [role="option"] small {
+.product-candidate-option__description,
+.product-candidate-option__meta {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.product-candidate-option__description {
+  flex-basis: 100%;
+}
+
+.product-candidate-option__badge {
   flex: none;
   color: var(--muted);
   font-size: 11px;

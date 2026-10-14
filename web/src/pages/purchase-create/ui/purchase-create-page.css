@@ -401,13 +401,8 @@
   font-size: 10px;
 }
 
-.product-suggestions button {
-  flex-wrap: wrap;
-}
-
-.product-suggestions button > small {
-  flex-basis: 100%;
-  padding-left: 20px;
+.product-suggestions .product-candidate-option__description {
+  padding-left: 0;
   color: #5f6d65;
   font-size: 12px;
 }
@@ -691,7 +686,7 @@
   }
 
   .entry-hint kbd,
-  .product-suggestions button > small,
+  .product-suggestions .product-candidate-option__description,
   .selected-product-label {
     font-size: 12px;
   }
