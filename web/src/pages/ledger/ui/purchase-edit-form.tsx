@@ -47,10 +47,7 @@ export function PurchaseEditForm({
       <div className="purchase-edit-payments">
         <b>決済内訳</b>
         {draft.paymentAllocations.map((payment, index) => (
-          <div
-            className="purchase-edit-payment-row"
-            key={payment.key}
-          >
+          <div className="purchase-edit-payment-row" key={payment.key}>
             <select
               aria-label={"決済元 " + (index + 1)}
               value={payment.paymentAccountId}
