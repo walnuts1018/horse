@@ -704,7 +704,9 @@
     padding: 8px 10px;
     margin: 0 auto;
     border-radius: 12px;
-    box-shadow: 0 0 0 1px #e9ede9, 0 6px 22px #273a2c20;
+    box-shadow:
+      0 0 0 1px #e9ede9,
+      0 6px 22px #273a2c20;
   }
 
   .total-label strong {
