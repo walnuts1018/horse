@@ -191,11 +191,20 @@ export function HomePage({
           </span>
           <span>
             <b>レシートを取り込む</b>
-            {pendingImports.data?.kind === "review" ? (
+            {pendingImports.data?.kind === "attention" ? (
               <small>
                 {pendingImports.data.hasMore
-                  ? "確認待ちあり"
-                  : `確認待ち ${pendingImports.data.count}件`}
+                  ? "確認・再解析が必要"
+                  : [
+                      pendingImports.data.reviewCount > 0
+                        ? `確認待ち ${pendingImports.data.reviewCount}件`
+                        : "",
+                      pendingImports.data.failedCount > 0
+                        ? `解析失敗 ${pendingImports.data.failedCount}件`
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join("・")}
               </small>
             ) : pendingImports.data?.kind === "processing" ? (
               <small>AI解析中</small>

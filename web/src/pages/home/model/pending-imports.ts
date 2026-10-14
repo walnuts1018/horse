@@ -8,9 +8,13 @@ type PendingImportPage = {
 };
 
 export type PendingImportStatus =
-  | { kind: "review"; count: number; hasMore: boolean }
+  | { kind: "attention"; reviewCount: number; failedCount: number; hasMore: boolean }
   | { kind: "processing" }
   | { kind: "none" };
+
+const reviewStatuses = new Set(["READY", "REVIEW", "COMPLETED", "SUCCEEDED", "DONE"]);
+const failedStatuses = new Set(["FAILED"]);
+const terminalStatuses = new Set([...reviewStatuses, ...failedStatuses, "DUPLICATE"]);
 
 function isPendingImportPage(value: unknown): value is PendingImportPage {
   if (!isRecord(value)) return false;
@@ -41,15 +45,12 @@ export async function readPendingImportStatus(
   if (!isPendingImportPage(value)) throw new Error("未確認の取り込みを取得できませんでした");
 
   const statuses = value.documents.map((document) => document.status.toUpperCase());
-  const reviewCount = statuses.filter((status) => status === "READY" || status === "REVIEW").length;
-  if (reviewCount > 0) {
-    return { kind: "review", count: reviewCount, hasMore: value.nextCursor !== null };
+  const reviewCount = statuses.filter((status) => reviewStatuses.has(status)).length;
+  const failedCount = statuses.filter((status) => failedStatuses.has(status)).length;
+  if (reviewCount > 0 || failedCount > 0) {
+    return { kind: "attention", reviewCount, failedCount, hasMore: value.nextCursor !== null };
   }
-  if (
-    statuses.some(
-      (status) => !["COMPLETED", "SUCCEEDED", "FAILED", "DUPLICATE", "DONE"].includes(status),
-    )
-  ) {
+  if (statuses.some((status) => !terminalStatuses.has(status))) {
     return { kind: "processing" };
   }
   return { kind: "none" };
