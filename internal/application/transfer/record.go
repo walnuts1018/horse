@@ -68,24 +68,9 @@ func New(db *pgxpool.Pool) *Workflow {
 }
 
 func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
-	if command.AmountYen <= 0 || command.AmountYen > maxMoney || command.IdempotencyKey == "" || !validKind(command.Kind) {
-		return Result{}, fmt.Errorf("%w: invalid transfer", ErrBadInput)
-	}
-	if command.FromMemberID == command.ToMemberID {
-		return Result{}, fmt.Errorf("%w: transfer participants must differ", ErrBadInput)
-	}
-	if command.OccurredAt.IsZero() {
-		return Result{}, fmt.Errorf("%w: occurred at is required", ErrBadInput)
-	}
-	if command.Kind == repaymentKind && command.LoanID == nil {
-		return Result{}, fmt.Errorf("%w: repayment requires a loan", ErrBadInput)
-	}
-	if command.Kind != repaymentKind && command.LoanID != nil {
-		return Result{}, fmt.Errorf("%w: loan id is only valid for a repayment", ErrBadInput)
-	}
-	statementProvided := command.SourceDocumentID != "" || command.SourceReference != "" || command.SourceAccountID != ""
-	if statementProvided && (command.SourceDocumentID == "" || command.SourceReference == "" || command.SourceAccountID == "" || command.Kind != loanKind && command.Kind != repaymentKind || len(command.SourceReference) > 256) {
-		return Result{}, fmt.Errorf("%w: invalid statement transfer source", ErrBadInput)
+	statementProvided, validationErr := validateCommandRules(command)
+	if validationErr != nil {
+		return Result{}, validationErr
 	}
 
 	householdID, err := parseID(command.HouseholdID, "household")
@@ -346,77 +331,18 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		return Result{}, err
 	}
 	amount := command.AmountYen
-	lineOne, lineTwo := int32(1), int32(2)
-	noAccount, noPool := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
 	fromMember, toMember := sql.Null[gofrsuuid.UUID]{V: fromMemberID, Valid: true}, sql.Null[gofrsuuid.UUID]{V: toMemberID, Valid: true}
-	zero, kindMemo := int64(0), command.Kind
-	if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-		JournalID: &journalID, LineNo: &lineOne, AccountID: &noAccount, PoolID: &noPool, MemberID: &toMember,
-		DebitYen: &amount, CreditYen: &zero, Memo: &kindMemo,
-	}).Exec(ctx, executor); err != nil {
+	journalLines, err := buildJournalLines(command.Kind, amount, fromMemberID, toMemberID, paymentPoolID, paymentAccountID, destinationAccountID)
+	if err != nil {
 		return Result{}, err
 	}
-	if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-		JournalID: &journalID, LineNo: &lineTwo, AccountID: &noAccount, PoolID: &noPool, MemberID: &fromMember,
-		DebitYen: &zero, CreditYen: &amount, Memo: &kindMemo,
-	}).Exec(ctx, executor); err != nil {
-		return Result{}, err
-	}
-	if paymentAccountID != nil || destinationAccountID != nil {
-		if paymentAccountID != nil && paymentPoolID == nil {
-			return Result{}, fmt.Errorf("%w: invalid payment account", ErrBadInput)
-		}
-		line := int32(3)
-		if paymentAccountID != nil {
-			poolValue := sql.Null[gofrsuuid.UUID]{V: *paymentPoolID, Valid: true}
-			debitMemo := "Transfer settlement offset"
-			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-				JournalID: &journalID, LineNo: &line, AccountID: &noAccount, PoolID: &poolValue, MemberID: &noPool,
-				DebitYen: &zero, CreditYen: &amount, Memo: new("Transfer settlement"),
-			}).Exec(ctx, executor); err != nil {
-				return Result{}, err
-			}
-			line++
-			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-				JournalID: &journalID, LineNo: &line, AccountID: &noAccount, PoolID: &noPool, MemberID: &noPool,
-				DebitYen: &amount, CreditYen: &zero, Memo: &debitMemo,
-			}).Exec(ctx, executor); err != nil {
-				return Result{}, err
-			}
-			line++
-		}
-		if paymentAccountID != nil {
-			accountValue := sql.Null[gofrsuuid.UUID]{V: *paymentAccountID, Valid: true}
-			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-				JournalID: &journalID, LineNo: &line, AccountID: &accountValue, PoolID: &noPool, MemberID: &noPool,
-				DebitYen: &zero, CreditYen: &amount, Memo: new("Transfer source account"),
-			}).Exec(ctx, executor); err != nil {
-				return Result{}, err
-			}
-			line++
-			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-				JournalID: &journalID, LineNo: &line, AccountID: &noAccount, PoolID: &noPool, MemberID: &noPool,
-				DebitYen: &amount, CreditYen: &zero, Memo: new("Transfer source account offset"),
-			}).Exec(ctx, executor); err != nil {
-				return Result{}, err
-			}
-			line++
-		}
-		if destinationAccountID != nil {
-			accountValue := sql.Null[gofrsuuid.UUID]{V: *destinationAccountID, Valid: true}
-			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-				JournalID: &journalID, LineNo: &line, AccountID: &accountValue, PoolID: &noPool, MemberID: &noPool,
-				DebitYen: &amount, CreditYen: &zero, Memo: new("Transfer destination account"),
-			}).Exec(ctx, executor); err != nil {
-				return Result{}, err
-			}
-			line++
-			if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-				JournalID: &journalID, LineNo: &line, AccountID: &noAccount, PoolID: &noPool, MemberID: &noPool,
-				DebitYen: &zero, CreditYen: &amount, Memo: new("Transfer destination account offset"),
-			}).Exec(ctx, executor); err != nil {
-				return Result{}, err
-			}
+	for _, entry := range journalLines {
+		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+			JournalID: &journalID, LineNo: &entry.LineNo,
+			AccountID: nullableID(entry.AccountID), PoolID: nullableID(entry.PoolID), MemberID: nullableID(entry.MemberID),
+			DebitYen: &entry.DebitYen, CreditYen: &entry.CreditYen, Memo: &entry.Memo,
+		}).Exec(ctx, executor); err != nil {
+			return Result{}, err
 		}
 	}
 
@@ -450,25 +376,13 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 			return Result{}, err
 		}
 	}
-	if command.Kind == "ADVANCE" || command.Kind == loanKind || command.Kind == repaymentKind {
-		adjustments := []struct {
-			memberID gofrsuuid.UUID
-			amount   int64
-		}{{memberID: fromMemberID, amount: -amount}, {memberID: toMemberID, amount: amount}}
-		if command.Kind == repaymentKind && paymentPoolKind == "SHARED" {
-			adjustments = []struct {
-				memberID gofrsuuid.UUID
-				amount   int64
-			}{{memberID: toMemberID, amount: amount}}
-		}
-		for _, adjustment := range adjustments {
-			adjustmentID := newUUID()
-			if _, err := models.SettlementAdjustments.Insert(&models.SettlementAdjustmentSetter{
-				ID: &adjustmentID, HouseholdID: &householdID, Period: &period, MemberID: &adjustment.memberID,
-				SourceKind: &transferKind, SourceID: &transferID, AmountYen: &adjustment.amount,
-			}).Exec(ctx, executor); err != nil {
-				return Result{}, err
-			}
+	for _, adjustment := range settlementAdjustments(command.Kind, paymentPoolKind, amount, fromMemberID, toMemberID) {
+		adjustmentID := newUUID()
+		if _, err := models.SettlementAdjustments.Insert(&models.SettlementAdjustmentSetter{
+			ID: &adjustmentID, HouseholdID: &householdID, Period: &period, MemberID: &adjustment.memberID,
+			SourceKind: &transferKind, SourceID: &transferID, AmountYen: &adjustment.amount,
+		}).Exec(ctx, executor); err != nil {
+			return Result{}, err
 		}
 	}
 	resourceID := sql.Null[gofrsuuid.UUID]{V: ledgerID, Valid: true}
@@ -495,6 +409,93 @@ func validKind(kind string) bool {
 	default:
 		return false
 	}
+}
+
+type journalLine struct {
+	LineNo    int32
+	AccountID *gofrsuuid.UUID
+	PoolID    *gofrsuuid.UUID
+	MemberID  *gofrsuuid.UUID
+	DebitYen  int64
+	CreditYen int64
+	Memo      string
+}
+
+type settlementAdjustment struct {
+	memberID gofrsuuid.UUID
+	amount   int64
+}
+
+func validateCommandRules(command Command) (bool, error) {
+	if command.AmountYen <= 0 || command.AmountYen > maxMoney || command.IdempotencyKey == "" || !validKind(command.Kind) {
+		return false, fmt.Errorf("%w: invalid transfer", ErrBadInput)
+	}
+	if command.FromMemberID == command.ToMemberID {
+		return false, fmt.Errorf("%w: transfer participants must differ", ErrBadInput)
+	}
+	if command.OccurredAt.IsZero() {
+		return false, fmt.Errorf("%w: occurred at is required", ErrBadInput)
+	}
+	if command.Kind == repaymentKind && command.LoanID == nil {
+		return false, fmt.Errorf("%w: repayment requires a loan", ErrBadInput)
+	}
+	if command.Kind != repaymentKind && command.LoanID != nil {
+		return false, fmt.Errorf("%w: loan id is only valid for a repayment", ErrBadInput)
+	}
+	statementProvided := command.SourceDocumentID != "" || command.SourceReference != "" || command.SourceAccountID != ""
+	if statementProvided && (command.SourceDocumentID == "" || command.SourceReference == "" || command.SourceAccountID == "" || command.Kind != loanKind && command.Kind != repaymentKind || len(command.SourceReference) > 256) {
+		return false, fmt.Errorf("%w: invalid statement transfer source", ErrBadInput)
+	}
+	return statementProvided, nil
+}
+
+func buildJournalLines(kind string, amount int64, fromMemberID, toMemberID gofrsuuid.UUID, paymentPoolID, paymentAccountID, destinationAccountID *gofrsuuid.UUID) ([]journalLine, error) {
+	lines := []journalLine{
+		{LineNo: 1, MemberID: &toMemberID, DebitYen: amount, Memo: kind},
+		{LineNo: 2, MemberID: &fromMemberID, CreditYen: amount, Memo: kind},
+	}
+	line := int32(3)
+	if paymentAccountID != nil || destinationAccountID != nil {
+		if paymentAccountID != nil && paymentPoolID == nil {
+			return nil, fmt.Errorf("%w: invalid payment account", ErrBadInput)
+		}
+		if paymentAccountID != nil {
+			lines = append(lines,
+				journalLine{LineNo: line, PoolID: paymentPoolID, CreditYen: amount, Memo: "Transfer settlement"},
+				journalLine{LineNo: line + 1, DebitYen: amount, Memo: "Transfer settlement offset"},
+			)
+			line += 2
+			lines = append(lines,
+				journalLine{LineNo: line, AccountID: paymentAccountID, CreditYen: amount, Memo: "Transfer source account"},
+				journalLine{LineNo: line + 1, DebitYen: amount, Memo: "Transfer source account offset"},
+			)
+			line += 2
+		}
+		if destinationAccountID != nil {
+			lines = append(lines,
+				journalLine{LineNo: line, AccountID: destinationAccountID, DebitYen: amount, Memo: "Transfer destination account"},
+				journalLine{LineNo: line + 1, CreditYen: amount, Memo: "Transfer destination account offset"},
+			)
+		}
+	}
+	return lines, nil
+}
+
+func settlementAdjustments(kind, paymentPoolKind string, amount int64, fromMemberID, toMemberID gofrsuuid.UUID) []settlementAdjustment {
+	if kind != "ADVANCE" && kind != loanKind && kind != repaymentKind {
+		return nil
+	}
+	if kind == repaymentKind && paymentPoolKind == "SHARED" {
+		return []settlementAdjustment{{memberID: toMemberID, amount: amount}}
+	}
+	return []settlementAdjustment{{memberID: fromMemberID, amount: -amount}, {memberID: toMemberID, amount: amount}}
+}
+
+func nullableID(id *gofrsuuid.UUID) *sql.Null[gofrsuuid.UUID] {
+	if id == nil {
+		return new(sql.Null[gofrsuuid.UUID])
+	}
+	return &sql.Null[gofrsuuid.UUID]{V: *id, Valid: true}
 }
 
 func parseID(value, name string) (gofrsuuid.UUID, error) {
