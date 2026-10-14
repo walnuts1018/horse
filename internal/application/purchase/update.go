@@ -18,6 +18,7 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/application/accounting"
+	"github.com/walnuts1018/horse/internal/application/inputvalidation"
 	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -33,6 +34,9 @@ func (s *Service) Update(ctx context.Context, command UpdateCommand) (UpdateResu
 }
 
 func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pgx.Tx) (UpdateResult, error) {
+	if err := inputvalidation.Check(command); err != nil {
+		return UpdateResult{}, err
+	}
 	if len(command.ChangedFields) == 0 {
 		return UpdateResult{}, fmt.Errorf("%w: patch must contain a field", ErrBadInput)
 	}
@@ -142,9 +146,6 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 	}
 	if command.Merchant != nil {
 		merchant := strings.TrimSpace(*command.Merchant)
-		if len(merchant) > 240 {
-			return UpdateResult{}, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
-		}
 		purchase.Merchant = merchant
 	}
 	if updatePayments {

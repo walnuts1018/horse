@@ -28,9 +28,6 @@ const (
 )
 
 func (s *Service) post(ctx context.Context, tx pgx.Tx, input PostCommand, fingerprint [sha256.Size]byte, lockHousehold bool) (PostResult, error) {
-	if input.IdempotencyKey == "" || len(input.IdempotencyKey) > 200 {
-		return PostResult{}, fmt.Errorf("%w: idempotency key is required", ErrBadInput)
-	}
 	purchaseID, err := parseUUID(input.PurchaseID, "purchase")
 	if err != nil {
 		return PostResult{}, err

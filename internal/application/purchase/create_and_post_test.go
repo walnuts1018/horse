@@ -2,6 +2,7 @@ package purchase
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -25,6 +26,10 @@ func TestCreateAndPostValidatesCommandBeforeOpeningTransaction(t *testing.T) {
 		{name: "actor", command: CreateCommand{ActorID: "bad", HouseholdID: validUUID, IdempotencyKey: idempotencyKey, Items: []Item{{Name: purchaseItemName}}}},
 		{name: "household", command: CreateCommand{ActorID: validUUID, HouseholdID: "bad", IdempotencyKey: idempotencyKey, Items: []Item{{Name: purchaseItemName}}}},
 		{name: "idempotency key", command: CreateCommand{ActorID: validUUID, HouseholdID: validUUID, Items: []Item{{Name: purchaseItemName}}}},
+		{name: "long idempotency key", command: CreateCommand{ActorID: validUUID, HouseholdID: validUUID, IdempotencyKey: strings.Repeat("k", 201), Items: []Item{{Name: purchaseItemName}}}},
+		{name: "long merchant", command: CreateCommand{ActorID: validUUID, HouseholdID: validUUID, IdempotencyKey: idempotencyKey, Merchant: strings.Repeat("m", 241), Items: []Item{{Name: purchaseItemName}}}},
+		{name: "blank item name", command: CreateCommand{ActorID: validUUID, HouseholdID: validUUID, IdempotencyKey: idempotencyKey, Items: []Item{{Name: "  "}}}},
+		{name: "long item name", command: CreateCommand{ActorID: validUUID, HouseholdID: validUUID, IdempotencyKey: idempotencyKey, Items: []Item{{Name: strings.Repeat("i", 241)}}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

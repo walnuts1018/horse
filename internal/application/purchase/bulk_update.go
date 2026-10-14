@@ -17,6 +17,7 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/application/accounting"
+	"github.com/walnuts1018/horse/internal/application/inputvalidation"
 	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -31,7 +32,7 @@ type BulkUpdateTarget struct {
 	BaseRevision       int64
 	ChangedFields      []string
 	OccurredAt         *time.Time
-	Merchant           *string
+	Merchant           *string `validate:"omitempty,max=240"`
 	PaymentAllocations *[]Payment
 }
 
@@ -142,9 +143,6 @@ func (s *Service) BulkUpdate(ctx context.Context, command BulkUpdateCommand) (Bu
 		if conflict {
 			return BulkUpdateResult{}, ErrConflict
 		}
-		if target.command.Merchant != nil && len(strings.TrimSpace(*target.command.Merchant)) > 240 {
-			return BulkUpdateResult{}, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
-		}
 		target.updatePayments = slices.Contains(target.command.ChangedFields, updateFieldPaymentAllocations)
 		if target.updatePayments {
 			payments := *target.command.PaymentAllocations
@@ -229,6 +227,9 @@ func (s *Service) BulkUpdate(ctx context.Context, command BulkUpdateCommand) (Bu
 }
 
 func validateBulkPurchaseFields(target BulkUpdateTarget) error {
+	if err := inputvalidation.Check(target); err != nil {
+		return err
+	}
 	if len(target.ChangedFields) == 0 {
 		return fmt.Errorf("%w: patch must contain a field", ErrBadInput)
 	}

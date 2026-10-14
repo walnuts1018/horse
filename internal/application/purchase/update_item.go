@@ -16,6 +16,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/accounting"
+	"github.com/walnuts1018/horse/internal/application/inputvalidation"
 	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
@@ -39,6 +40,9 @@ func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand) (Up
 }
 
 func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sharedTx pgx.Tx) (UpdateResult, error) {
+	if err := inputvalidation.Check(command); err != nil {
+		return UpdateResult{}, err
+	}
 	if len(command.ChangedFields) == 0 {
 		return UpdateResult{}, fmt.Errorf("%w: patch must contain a field", ErrBadInput)
 	}
@@ -137,7 +141,7 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	newName, newAmount := item.Name, item.AmountYen
 	if command.Name != nil {
 		newName = strings.TrimSpace(*command.Name)
-		if newName == "" || len(newName) > 240 {
+		if newName == "" {
 			return UpdateResult{}, fmt.Errorf("%w: invalid item name", ErrBadInput)
 		}
 	}

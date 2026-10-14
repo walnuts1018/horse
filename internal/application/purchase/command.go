@@ -8,19 +8,19 @@ type CreateCommand struct {
 	ActorID                    string
 	HouseholdID                string
 	OccurredAt                 time.Time
-	IdempotencyKey             string
+	IdempotencyKey             string `validate:"required,max=200"`
 	SourceDocumentID           *string
-	SourceReference            *string
+	SourceReference            *string `validate:"omitempty,max=256"`
 	ReceiptCandidateID         *string
 	ManualAmountOverrideReason *string
 	Origin                     string
-	Merchant                   string
-	Items                      []Item
+	Merchant                   string `validate:"max=240"`
+	Items                      []Item `validate:"min=1,max=200,dive"`
 	PaymentAllocations         []Payment
 }
 
 type Item struct {
-	Name             string
+	Name             string `validate:"notblank,max=240"`
 	AmountYen        int64
 	CategoryID       *string
 	ProductVariantID *string
@@ -58,7 +58,7 @@ type PostCommand struct {
 	ActorID          string
 	PurchaseID       string
 	ExpectedRevision int64
-	IdempotencyKey   string
+	IdempotencyKey   string `validate:"required,max=200"`
 }
 
 type PostResult struct {
@@ -70,7 +70,7 @@ type UpdateCommand struct {
 	PurchaseID         string
 	BaseRevision       int64
 	OccurredAt         *time.Time
-	Merchant           *string
+	Merchant           *string `validate:"omitempty,max=240"`
 	PaymentAllocations *[]Payment
 	ChangedFields      []string
 }
@@ -84,7 +84,7 @@ type UpdateItemCommand struct {
 	ItemID              string
 	BaseRevision        int64
 	ChangedFields       []string
-	Name                *string
+	Name                *string `validate:"omitempty,notblank,max=240"`
 	AmountYen           *int64
 	QuantitySet         bool
 	Quantity            *Measure

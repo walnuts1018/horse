@@ -22,6 +22,7 @@ import (
 	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
+	"github.com/walnuts1018/horse/internal/application/inputvalidation"
 	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/ingestion"
@@ -78,8 +79,8 @@ func (s *Service) Create(ctx context.Context, command CreateCommand, fingerprint
 }
 
 func (s *Service) Post(ctx context.Context, command PostCommand, fingerprint [sha256.Size]byte) (PostResult, error) {
-	if command.IdempotencyKey == "" || len(command.IdempotencyKey) > 200 {
-		return PostResult{}, fmt.Errorf("%w: idempotency key is required", ErrBadInput)
+	if err := inputvalidation.Check(command); err != nil {
+		return PostResult{}, err
 	}
 	if _, err := parseUUID(command.PurchaseID, "purchase"); err != nil {
 		return PostResult{}, err
@@ -154,10 +155,10 @@ func (s *Service) CreateAndPost(ctx context.Context, command CreateCommand, fing
 }
 
 func validateCreateCommand(input CreateCommand) error {
-	if input.IdempotencyKey == "" || len(input.IdempotencyKey) > 200 || len(input.Items) == 0 || len(input.Items) > 200 {
-		return fmt.Errorf("%w: invalid purchase", ErrBadInput)
+	if err := inputvalidation.Check(input); err != nil {
+		return err
 	}
-	if input.SourceReference != nil && (input.SourceDocumentID == nil || len(*input.SourceReference) > 256 || strings.ContainsAny(*input.SourceReference, "\r\n")) {
+	if input.SourceReference != nil && (input.SourceDocumentID == nil || strings.ContainsAny(*input.SourceReference, "\r\n")) {
 		return fmt.Errorf("%w: source reference requires a document and must be valid", ErrBadInput)
 	}
 	origin := input.Origin
@@ -170,9 +171,6 @@ func validateCreateCommand(input CreateCommand) error {
 	if origin != "AI" && origin != manualOrigin && origin != "UNKNOWN" {
 		return fmt.Errorf("%w: invalid purchase origin", ErrBadInput)
 	}
-	if len(strings.TrimSpace(input.Merchant)) > 240 {
-		return fmt.Errorf("%w: merchant name is too long", ErrBadInput)
-	}
 	if _, err := parseUUID(input.HouseholdID, "household"); err != nil {
 		return err
 	}
@@ -183,10 +181,7 @@ func validateCreateCommand(input CreateCommand) error {
 }
 
 func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fingerprint [sha256.Size]byte) (CreateResult, error) {
-	if input.IdempotencyKey == "" || len(input.IdempotencyKey) > 200 || len(input.Items) == 0 || len(input.Items) > 200 {
-		return CreateResult{}, fmt.Errorf("%w: invalid purchase", ErrBadInput)
-	}
-	if input.SourceReference != nil && (input.SourceDocumentID == nil || len(*input.SourceReference) > 256 || strings.ContainsAny(*input.SourceReference, "\r\n")) {
+	if input.SourceReference != nil && (input.SourceDocumentID == nil || strings.ContainsAny(*input.SourceReference, "\r\n")) {
 		return CreateResult{}, fmt.Errorf("%w: source reference requires a document and must be valid", ErrBadInput)
 	}
 	origin := input.Origin
@@ -200,9 +195,6 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fi
 		return CreateResult{}, fmt.Errorf("%w: invalid purchase origin", ErrBadInput)
 	}
 	merchant := strings.TrimSpace(input.Merchant)
-	if len(merchant) > 240 {
-		return CreateResult{}, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
-	}
 	householdUUID, err := parseUUID(input.HouseholdID, "household")
 	if err != nil {
 		return CreateResult{}, err
@@ -440,7 +432,7 @@ type createItemPlan struct {
 }
 
 func prepareCreateItem(item Item) (createItemPlan, error) {
-	if strings.TrimSpace(item.Name) == "" || len(item.Name) > 240 || item.AmountYen < 0 || item.AmountYen > maxMoney {
+	if strings.TrimSpace(item.Name) == "" || item.AmountYen < 0 || item.AmountYen > maxMoney {
 		return createItemPlan{}, fmt.Errorf("%w: invalid purchase item", ErrBadInput)
 	}
 	measure, err := measureFromCommand(item)
