@@ -4,7 +4,11 @@ extend type Query {
 
 extend type Mutation {
   createSharedPurchaseDraft(householdId: ID!, payload: String!): SharedPurchaseDraft!
-  updateSharedPurchaseDraft(id: ID!, expectedRevision: Int!, payload: String!): UpdateSharedPurchaseDraftPayload!
+  updateSharedPurchaseDraft(
+    id: ID!
+    expectedRevision: Int!
+    payload: String!
+  ): UpdateSharedPurchaseDraftPayload!
 }
 
 type SharedPurchaseDraft {
