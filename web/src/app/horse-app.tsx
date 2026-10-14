@@ -82,7 +82,8 @@ export function App() {
     onBackFromPurchase,
   } = useHouseholdNavigation(unsavedChangesRegistry);
   const hasUnsavedChanges = useUnsavedChanges(unsavedChangesRegistry);
-  const [mobileMenu, setMobileMenu] = useState(false);
+  const [mobileMenuPathname, setMobileMenuPathname] = useState<string | null>(null);
+  const mobileMenu = mobileMenuPathname === pathname;
   const isMobileViewport = useSyncExternalStore(
     subscribeToMobileViewport,
     getMobileViewport,
@@ -93,12 +94,16 @@ export function App() {
   const noticeTimeout = useRef<number | undefined>(undefined);
   const [loggingOut, setLoggingOut] = useState(false);
   const appShellRef = useRef<HTMLDivElement>(null);
-  const previousPage = useRef(page);
+  const mainContentRef = useRef<HTMLElement>(null);
+  const previousPathname = useRef(pathname);
+  const focusMainContent = useCallback(() => {
+    mainContentRef.current?.focus({ preventScroll: true });
+  }, []);
   useEffect(() => {
-    if (previousPage.current === page) return;
-    previousPage.current = page;
-    setMobileMenu(false);
-  }, [page]);
+    if (previousPathname.current === pathname) return;
+    previousPathname.current = pathname;
+    focusMainContent();
+  }, [focusMainContent, pathname]);
 
   const showNotice = useCallback((message: string, kind: NoticeKind = "info") => {
     if (noticeTimeout.current !== undefined) window.clearTimeout(noticeTimeout.current);
@@ -265,7 +270,7 @@ export function App() {
     <Dialog.Root
       open={isMobileViewport === false || (isMobileViewport === true && mobileMenu)}
       modal={isMobileViewport === true}
-      onOpenChange={(open) => setMobileMenu(open)}
+      onOpenChange={(open) => setMobileMenuPathname(open ? pathname : null)}
     >
       <div className="app-shell" ref={appShellRef}>
         <a className="skip-link" href="#main-content">
@@ -406,7 +411,7 @@ export function App() {
             </div>
           </Dialog.Popup>
         </Dialog.Portal>
-        <main className="main-area" id="main-content" tabIndex={-1}>
+        <main className="main-area" id="main-content" ref={mainContentRef} tabIndex={-1}>
           <header className="topbar">
             <Dialog.Trigger
               className="icon-button menu-toggle"

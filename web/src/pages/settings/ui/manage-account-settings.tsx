@@ -260,12 +260,14 @@ export function ManageAccountSettings({
           onSubmit={model.addAccount}
         >
           <input
+            aria-label="口座・カード名"
             value={model.accountName}
             onChange={(event) => model.setAccountName(event.target.value)}
             placeholder="口座・カード名"
             required
           />
           <select
+            aria-label="口座・カードの種類"
             value={model.accountKind}
             onChange={(event) => {
               const kind = event.target.value;
@@ -292,6 +294,7 @@ export function ManageAccountSettings({
             />
           )}
           <select
+            aria-label="紐づくプール"
             value={model.accountPool}
             onChange={(event) => model.setAccountPool(event.target.value)}
           >

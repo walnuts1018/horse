@@ -11,6 +11,10 @@ type MonthTotal = { month: string; amount: number };
 type CategorySeries = { id: string; name: string; colorIndex: number };
 
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
+const formatMonth = (month: string) => {
+  const [year, value] = month.split("-");
+  return `${year}/${Number(value)}`;
+};
 type ChartScaleStyle = CSSProperties & { "--chart-scale": number };
 
 export function AnalysisBreakdown({
@@ -68,13 +72,15 @@ export function AnalysisBreakdown({
         </div>
         <div className="monthly-chart">
           {monthly.map((row) => {
+            const label = formatMonth(row.month);
+            const accessibleLabel = `${Number(row.month.slice(0, 4))}年${Number(row.month.slice(5))}月、支出${yen(row.amount)}`;
             if (dimension !== "category") {
               return (
-                <div className="month-column" key={row.month}>
+                <figure className="month-column" key={row.month} aria-label={accessibleLabel}>
                   <b>{yen(row.amount)}</b>
                   <i style={{ height: `${Math.max(3, (row.amount / max) * 100)}%` }} />
-                  <span>{Number(row.month.slice(5))}月</span>
-                </div>
+                  <span>{label}</span>
+                </figure>
               );
             }
             const categoryAmounts = categoryAmountsByMonth.get(row.month) ?? new Map();
@@ -99,7 +105,7 @@ export function AnalysisBreakdown({
               <figure
                 className="month-column category-month-column"
                 key={row.month}
-                aria-label={`${row.month}: ${monthlyBreakdown}、合計${yen(row.amount)}`}
+                aria-label={`${Number(row.month.slice(0, 4))}年${Number(row.month.slice(5))}月、${monthlyBreakdown}、合計${yen(row.amount)}`}
               >
                 <b>{yen(row.amount)}</b>
                 <div className="category-stack">
@@ -133,7 +139,7 @@ export function AnalysisBreakdown({
                     ))}
                   </div>
                 </div>
-                <span>{Number(row.month.slice(5))}月</span>
+                <span>{label}</span>
               </figure>
             );
           })}

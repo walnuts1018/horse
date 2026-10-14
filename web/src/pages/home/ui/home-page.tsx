@@ -103,6 +103,7 @@ export function HomePage({
               month: "long",
               day: "numeric",
               weekday: "short",
+              timeZone: "Asia/Tokyo",
             })}
           </span>
           <h1>おかえりなさい</h1>
@@ -295,6 +296,7 @@ function PurchaseRow({ householdId, purchase }: { householdId: string; purchase:
           {new Date(purchase.occurredAt).toLocaleDateString("ja-JP", {
             month: "numeric",
             day: "numeric",
+            timeZone: "Asia/Tokyo",
           })}
         </span>
       </div>

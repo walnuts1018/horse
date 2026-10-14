@@ -34,6 +34,9 @@ export function ManageHouseholdInvitations({
   const [issuedInvitationId, setIssuedInvitationId] = useState("");
   const [expiresInDays, setExpiresInDays] = useState("7");
   const onNoticeRef = useRef(onNotice);
+  const pendingInvitationCount = invitations.filter(
+    (invitation) => invitation.__typename === "PendingHouseholdInvitation",
+  ).length;
 
   useEffect(() => {
     onNoticeRef.current = onNotice;
@@ -113,12 +116,9 @@ export function ManageHouseholdInvitations({
           <span className="eyebrow">共同編集</span>
           <h2>招待</h2>
         </div>
-        <span className="count-badge">
-          {
-            invitations.filter(
-              (invitation) => invitation.__typename === "PendingHouseholdInvitation",
-            ).length
-          }
+        <span>
+          {"表示中の未使用招待 "}
+          {pendingInvitationCount}件
         </span>
       </div>
       <form
