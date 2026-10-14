@@ -6,7 +6,7 @@
 
 ## 1. 口座残高分析の読込範囲
 
-`internal/postgres/query/account_balance_analysis.go`に口座残高の読取と残高計算を移しました。履歴ページの各行には過去からの残高が必要なので、現在の実装はページサイズにかかわらず口座の全仕訳を読み込みます。Connection変換は`internal/graph/account_balance_analysis.go`に残ります。
+[`internal/postgres/query/account_balance_analysis.go`](../../internal/postgres/query/account_balance_analysis.go)に口座残高の読取と残高計算を移しました。履歴ページの各行には過去からの残高が必要なので、現在の実装はページサイズにかかわらず口座の全仕訳を読み込みます。Connection変換は[`internal/graph/account_balance_analysis.go`](../../internal/graph/account_balance_analysis.go)に残ります。
 
 Query層への移行は完了しました。全仕訳の読込量削減は未実施で、性能計測もありません。集約による削減は全期間残高と安定した順序を保つ方式を定め、実測してから採用してください。
 
@@ -30,5 +30,3 @@ Query層への移行は完了しました。全仕訳の読込量削減は未実
 
 1. 口座残高分析の全仕訳読込を対象に性能を計測し、必要な場合だけ集約方法を改善する。
 2. Fixtureの重複が明確なテストだけ共通化する。
-
-購入訂正・品目更新・口座間移動・外部入金・予算・定期支出のApplication Service移行、口座残高分析のQuery層への移行、Worker処理のファイル分割、購入更新時の負担・支払元スナップショット再作成、複数月精算の基礎データ一括読込、精算Serviceへの移行は実装済みです。これらの旧指摘はレビュー本文から削除し、判断と確認根拠を`docs/decisions/review-responses.md`に記録しています。

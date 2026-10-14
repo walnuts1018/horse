@@ -2,15 +2,10 @@
 
 現行コードでは、通常の抽出は無料Projectから開始します。無料Projectの429では有料Projectへ切り替えず、APIの`Retry-After`をWorkerのjob再試行へ渡します。Geminiが一時的な5xxを返した場合は、有料Projectへfallbackします。成功した呼び出し後に無料枠の使用量を集計したり、モデルごとのRPM・TPM・RPDを共有状態で管理したりする機能はありません。
 
-### 現在の実装
+### 未解決・未実装の項目
 
 | 項目 | 状態 |
 | --- | --- |
-| 無料Projectから抽出を開始 | 実装済み |
-| レシート系とメール系で初回モデルを使い分け | 実装済み |
-| メール系の無料Liteが429の場合に無料Flashを試す | 実装済み |
-| 429後に`Retry-After`を使ってjobを再試行 | 実装済み |
-| 無料Projectの一時的な5xx時に有料Projectへfallback | 実装済み |
 | 有料ProjectのFlex tier | `background` purposeの場合に利用可能。ただし現行APIのjobはすべて`interactive`を設定 |
 | Gemini Batch API | 未実装 |
 | モデル別quotaの共有管理、無料枠の回復待ち | 未実装 |
