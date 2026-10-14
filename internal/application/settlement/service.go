@@ -20,6 +20,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -136,7 +137,7 @@ func (w *Workflow) Close(ctx context.Context, command CloseCommand) (Settlement,
 	if err != nil {
 		return Settlement{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForUpdate()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
 		return Settlement{}, ErrNotFound

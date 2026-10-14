@@ -18,10 +18,14 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
+	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-const maxLifetime = 30 * 24 * time.Hour
+const (
+	maxLifetime = 30 * 24 * time.Hour
+	ownerRole   = "OWNER"
+)
 
 type Service struct {
 	db *pgxpool.Pool
@@ -73,7 +77,7 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedInv
 	if err != nil {
 		return CreatedInvitation{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
 		return CreatedInvitation{}, apperror.ErrNotFound
@@ -84,7 +88,7 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedInv
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
 	)), sm.ForShare()).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && owner.Role != "OWNER" {
+	if errors.Is(err, sql.ErrNoRows) || err == nil && owner.Role != ownerRole {
 		return CreatedInvitation{}, apperror.ErrNotFound
 	}
 	if err != nil {

@@ -18,6 +18,7 @@ export function StatementReview({
   pending,
   onConfirm,
   onConfirmRefund,
+  onConfirmTransfer,
   onSelectRegion,
 }: {
   document: DocumentReview;
@@ -27,12 +28,20 @@ export function StatementReview({
   pending: boolean;
   onConfirm: (entry: StatementEntry, accountId: string) => void;
   onConfirmRefund: (entry: StatementEntry, purchaseId: string, itemId?: string) => void;
+  onConfirmTransfer: (
+    entry: StatementEntry,
+    statementAccountId: string,
+    otherAccountId: string,
+  ) => void;
   onSelectRegion: (entry: StatementEntry) => void;
 }) {
   const [refundTargets, setRefundTargets] = useState<
     Record<string, { purchaseId: string; itemId: string }>
   >({});
   const [paymentAccounts, setPaymentAccounts] = useState<Record<string, string>>({});
+  const [statementAccounts, setStatementAccounts] = useState<
+    Record<string, { statementAccountId: string; otherAccountId: string }>
+  >({});
   const statements = document.result?.statements;
   if (!statements) return null;
 
@@ -51,7 +60,12 @@ export function StatementReview({
         const issue = statementConfirmationIssue(entry);
         const refundTarget = refundTargets[key] ?? { purchaseId: "", itemId: "" };
         const paymentAccountId = paymentAccounts[key] ?? "";
+        const transferAccounts = statementAccounts[key] ?? {
+          statementAccountId: "",
+          otherAccountId: "",
+        };
         const isRefund = entry.kind === "REFUND";
+        const isTransfer = entry.kind === "ACCOUNT_TRANSFER";
         return (
           <div
             className="statement-row"
@@ -67,7 +81,13 @@ export function StatementReview({
               )}
               <small>
                 {entry.occurredAt.slice(0, 10)} ·{" "}
-                {isRefund ? "返品・返金" : entry.kind === "BANK_MOVEMENT" ? "入出金" : "カード利用"}
+                {isRefund
+                  ? "返品・返金"
+                  : isTransfer
+                    ? "口座間振替"
+                    : entry.kind === "CARD_PURCHASE"
+                      ? "カード利用"
+                      : entry.kind}
                 {entry.cardLast4 ? ` · •••• ${entry.cardLast4}` : ""}
               </small>
             </div>
@@ -142,6 +162,81 @@ export function StatementReview({
                       }
                     >
                       返品を記録
+                    </button>
+                  </>
+                )
+              ) : isTransfer ? (
+                issue ? (
+                  <small>{issue}</small>
+                ) : confirmed ? (
+                  <small>振替登録済み</small>
+                ) : (
+                  <>
+                    <label>
+                      <span>{entry.amount < 0 ? "振替元の明細口座" : "振替先の明細口座"}</span>
+                      <select
+                        value={transferAccounts.statementAccountId}
+                        disabled={pending}
+                        onChange={(event) =>
+                          setStatementAccounts((current) => ({
+                            ...current,
+                            [key]: { statementAccountId: event.target.value, otherAccountId: "" },
+                          }))
+                        }
+                      >
+                        <option value="">口座を選択</option>
+                        {accounts
+                          .filter((account) => account.kind !== "CARD")
+                          .map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>{entry.amount < 0 ? "振替先" : "振替元"}</span>
+                      <select
+                        value={transferAccounts.otherAccountId}
+                        disabled={pending || !transferAccounts.statementAccountId}
+                        onChange={(event) =>
+                          setStatementAccounts((current) => ({
+                            ...current,
+                            [key]: { ...transferAccounts, otherAccountId: event.target.value },
+                          }))
+                        }
+                      >
+                        <option value="">口座を選択</option>
+                        {accounts
+                          .filter(
+                            (account) =>
+                              account.kind !== "CARD" &&
+                              account.id !== transferAccounts.statementAccountId,
+                          )
+                          .map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={
+                        pending ||
+                        !transferAccounts.statementAccountId ||
+                        !transferAccounts.otherAccountId
+                      }
+                      onClick={() =>
+                        onConfirmTransfer(
+                          entry,
+                          transferAccounts.statementAccountId,
+                          transferAccounts.otherAccountId,
+                        )
+                      }
+                    >
+                      振替を記録
                     </button>
                   </>
                 )

@@ -8,12 +8,15 @@ export const Route = createFileRoute("/households/$householdId/settings")({
 });
 
 function HouseholdSettings() {
+  const navigate = Route.useNavigate();
   const { household, refreshHousehold, reportUnsavedChanges, showNotice, viewerId } =
     useHouseholdRouteContext();
   if (!household) return null;
   return (
     <SettingsPage
       household={household}
+      viewerId={viewerId}
+      onLeave={() => void navigate({ to: "/", replace: true })}
       isOwner={household.members.some(
         (member) => member.id === viewerId && member.role === "OWNER",
       )}

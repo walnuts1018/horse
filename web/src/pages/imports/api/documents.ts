@@ -1,5 +1,9 @@
+import { commitMutation } from "react-relay";
+
 import type { DocumentFilters, DocumentReview } from "../model/imports";
 
+import { recordAccountMovementMutation } from "../../../entities/ledger";
+import { getRelayEnvironment, type RecordAccountMovementMutation } from "../../../shared/api";
 import { asRecord } from "../model/imports";
 
 export const documentListURL = (householdId: string, filters: DocumentFilters, after?: string) => {
@@ -42,3 +46,27 @@ export const importIdempotencyKey = async (documentId: string, sourceReference: 
   ).join("");
   return `import:${hash}`;
 };
+
+export function recordStatementTransfer(
+  input: RecordAccountMovementMutation["variables"]["input"],
+) {
+  return new Promise<void>((resolve, reject) =>
+    commitMutation<RecordAccountMovementMutation>(getRelayEnvironment(), {
+      mutation: recordAccountMovementMutation,
+      variables: { input },
+      onCompleted: (response, errors) => {
+        if (errors?.length) {
+          reject(new Error(errors[0].message));
+          return;
+        }
+        const result = response.recordAccountMovement;
+        if (result.__typename === "RecordAccountMovementSuccess") {
+          resolve();
+          return;
+        }
+        reject(new Error(result.message || "口座間振替を記録できませんでした"));
+      },
+      onError: reject,
+    }),
+  );
+}

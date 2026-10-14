@@ -21,6 +21,7 @@ var (
 )
 
 type preloadCounts struct {
+	AccountMovement  accountMovementCountPreloader
 	AccountingPeriod accountingPeriodCountPreloader
 	Account          accountCountPreloader
 	AllocationRule   allocationRuleCountPreloader
@@ -46,6 +47,7 @@ type preloadCounts struct {
 
 func getPreloadCount() preloadCounts {
 	return preloadCounts{
+		AccountMovement:  buildAccountMovementCountPreloader(),
 		AccountingPeriod: buildAccountingPeriodCountPreloader(),
 		Account:          buildAccountCountPreloader(),
 		AllocationRule:   buildAllocationRuleCountPreloader(),
@@ -71,6 +73,7 @@ func getPreloadCount() preloadCounts {
 }
 
 type thenLoadCounts[Q orm.Loadable] struct {
+	AccountMovement  accountMovementCountThenLoader[Q]
 	AccountingPeriod accountingPeriodCountThenLoader[Q]
 	Account          accountCountThenLoader[Q]
 	AllocationRule   allocationRuleCountThenLoader[Q]
@@ -96,6 +99,7 @@ type thenLoadCounts[Q orm.Loadable] struct {
 
 func getThenLoadCount[Q orm.Loadable]() thenLoadCounts[Q] {
 	return thenLoadCounts[Q]{
+		AccountMovement:  buildAccountMovementCountThenLoader[Q](),
 		AccountingPeriod: buildAccountingPeriodCountThenLoader[Q](),
 		Account:          buildAccountCountThenLoader[Q](),
 		AllocationRule:   buildAllocationRuleCountThenLoader[Q](),

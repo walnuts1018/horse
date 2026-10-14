@@ -22,6 +22,7 @@ import (
 	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/settlement"
+	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
@@ -268,7 +269,7 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 	if err != nil {
 		return CorrectionResult{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),

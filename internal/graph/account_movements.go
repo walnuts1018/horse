@@ -18,6 +18,13 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
+func optionalString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
 func (r *mutationResolver) recordAccountMovement(ctx context.Context, input model.RecordAccountMovementInput) (*model.AccountMovement, error) {
 	user, err := requireMember(ctx, r.DB, input.HouseholdID)
 	if err != nil {
@@ -48,6 +55,7 @@ func (r *mutationResolver) recordAccountMovement(ctx context.Context, input mode
 		ActorID: user.MemberID, HouseholdID: input.HouseholdID, Kind: string(input.Kind), OccurredAt: occurredAt,
 		FromAccountID: input.FromAccountID, ToAccountID: input.ToAccountID, AmountYen: int64(input.AmountYen),
 		Description: description, IdempotencyKey: input.IdempotencyKey, RequestFingerprint: fingerprint,
+		SourceDocumentID: optionalString(input.SourceDocumentID), SourceReference: optionalString(input.SourceReference), SourceAccountID: optionalString(input.SourceAccountID),
 	})
 	if err != nil {
 		return nil, err

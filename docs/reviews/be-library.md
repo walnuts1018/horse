@@ -6,7 +6,7 @@
 
 | ライブラリ | 適用範囲 |
 | --- | --- |
-| `github.com/go-playground/validator/v10` | Worker設定と、タグ・カテゴリ・商品別名・予算・定期支出のApplication commandにある文字列の空欄・長さを検証します。GraphQLの必須値、scalar、Global IDの形式はgqlgenで検証し、金額・期間・配賦・会計整合性は各Application Serviceの業務検証に残します。 |
+| `github.com/go-playground/validator/v10` | Worker設定と、タグ・カテゴリ・商品概念・商品規格・商品別名・予算・定期支出のApplication commandにある文字列の空欄・長さを検証します。GraphQLの必須値、scalar、Global IDの形式はgqlgenで検証し、金額・期間・配賦・会計整合性は各Application Serviceの業務検証に残します。 |
 
 ## 維持する境界
 

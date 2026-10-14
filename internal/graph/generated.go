@@ -48,6 +48,7 @@ type ResolverRoot interface {
 	FundingSchedule() FundingScheduleResolver
 	GiftTransferLedgerEntry() GiftTransferLedgerEntryResolver
 	Household() HouseholdResolver
+	LeaveHouseholdSuccess() LeaveHouseholdSuccessResolver
 	LoanBalance() LoanBalanceResolver
 	LoanTransferLedgerEntry() LoanTransferLedgerEntryResolver
 	Member() MemberResolver
@@ -71,6 +72,7 @@ type ResolverRoot interface {
 	PurchaseWideCorrection() PurchaseWideCorrectionResolver
 	Query() QueryResolver
 	RecurringExpense() RecurringExpenseResolver
+	RemoveHouseholdMemberSuccess() RemoveHouseholdMemberSuccessResolver
 	RepaymentTransferLedgerEntry() RepaymentTransferLedgerEntryResolver
 	RevokedHouseholdInvitation() RevokedHouseholdInvitationResolver
 	SetPoolFundingRuleSuccess() SetPoolFundingRuleSuccessResolver
@@ -568,6 +570,15 @@ type ComplexityRoot struct {
 		Node   func(childComplexity int) int
 	}
 
+	LeaveHouseholdSuccess struct {
+		HouseholdID func(childComplexity int) int
+	}
+
+	LeaveHouseholdUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	LedgerConnection struct {
 		Edges      func(childComplexity int) int
 		PageInfo   func(childComplexity int) int
@@ -663,12 +674,14 @@ type ComplexityRoot struct {
 		CreatePurchase               func(childComplexity int, input model.CreatePurchaseInput) int
 		CreateRecurringExpense       func(childComplexity int, input model.CreateRecurringExpenseInput) int
 		CreateTag                    func(childComplexity int, input model.CreateTagInput) int
+		LeaveHousehold               func(childComplexity int, input model.LeaveHouseholdInput) int
 		PostPurchase                 func(childComplexity int, input model.PostPurchaseInput) int
 		RecordAccountMovement        func(childComplexity int, input model.RecordAccountMovementInput) int
 		RecordExternalIncome         func(childComplexity int, input model.RecordExternalIncomeInput) int
 		RecordFunding                func(childComplexity int, input model.RecordFundingInput) int
 		RecordRepayment              func(childComplexity int, input model.RecordRepaymentInput) int
 		RecordTransfer               func(childComplexity int, input model.RecordTransferInput) int
+		RemoveHouseholdMember        func(childComplexity int, input model.RemoveHouseholdMemberInput) int
 		RevokeHouseholdInvitation    func(childComplexity int, input model.RevokeHouseholdInvitationInput) int
 		SetAllocationRule            func(childComplexity int, input model.SetAllocationRuleInput) int
 		SetCategoryArchived          func(childComplexity int, input model.SetCategoryArchivedInput) int
@@ -1003,6 +1016,15 @@ type ComplexityRoot struct {
 		Node   func(childComplexity int) int
 	}
 
+	RemoveHouseholdMemberSuccess struct {
+		HouseholdID func(childComplexity int) int
+	}
+
+	RemoveHouseholdMemberUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	RepaymentTransferLedgerEntry struct {
 		AmountYen   func(childComplexity int) int
 		CreatedAt   func(childComplexity int) int
@@ -1315,6 +1337,9 @@ type HouseholdResolver interface {
 
 	Pools(ctx context.Context, obj *model.Household) ([]model.PoolVariant, error)
 }
+type LeaveHouseholdSuccessResolver interface {
+	HouseholdID(ctx context.Context, obj *model.LeaveHouseholdSuccess) (string, error)
+}
 type LoanBalanceResolver interface {
 	LenderMemberID(ctx context.Context, obj *model.LoanBalance) (string, error)
 	BorrowerMemberID(ctx context.Context, obj *model.LoanBalance) (string, error)
@@ -1353,12 +1378,14 @@ type MutationResolver interface {
 	CreatePurchase(ctx context.Context, input model.CreatePurchaseInput) (model.CreatePurchaseResult, error)
 	CreateRecurringExpense(ctx context.Context, input model.CreateRecurringExpenseInput) (model.CreateRecurringExpenseResult, error)
 	CreateTag(ctx context.Context, input model.CreateTagInput) (model.CreateTagResult, error)
+	LeaveHousehold(ctx context.Context, input model.LeaveHouseholdInput) (model.LeaveHouseholdResult, error)
 	PostPurchase(ctx context.Context, input model.PostPurchaseInput) (model.PostPurchaseResult, error)
 	RecordAccountMovement(ctx context.Context, input model.RecordAccountMovementInput) (model.RecordAccountMovementResult, error)
 	RecordExternalIncome(ctx context.Context, input model.RecordExternalIncomeInput) (model.RecordExternalIncomeResult, error)
 	RecordFunding(ctx context.Context, input model.RecordFundingInput) (model.RecordFundingResult, error)
 	RecordRepayment(ctx context.Context, input model.RecordRepaymentInput) (model.RecordRepaymentResult, error)
 	RecordTransfer(ctx context.Context, input model.RecordTransferInput) (model.RecordTransferResult, error)
+	RemoveHouseholdMember(ctx context.Context, input model.RemoveHouseholdMemberInput) (model.RemoveHouseholdMemberResult, error)
 	RevokeHouseholdInvitation(ctx context.Context, input model.RevokeHouseholdInvitationInput) (model.RevokeHouseholdInvitationResult, error)
 	SetAllocationRule(ctx context.Context, input model.SetAllocationRuleInput) (model.SetAllocationRuleResult, error)
 	SetCategoryArchived(ctx context.Context, input model.SetCategoryArchivedInput) (model.SetCategoryArchivedResult, error)
@@ -1469,6 +1496,9 @@ type RecurringExpenseResolver interface {
 
 	CategoryID(ctx context.Context, obj *model.RecurringExpense) (*string, error)
 	PaymentAccountID(ctx context.Context, obj *model.RecurringExpense) (*string, error)
+}
+type RemoveHouseholdMemberSuccessResolver interface {
+	HouseholdID(ctx context.Context, obj *model.RemoveHouseholdMemberSuccess) (string, error)
 }
 type RepaymentTransferLedgerEntryResolver interface {
 	ID(ctx context.Context, obj *model.RepaymentTransferLedgerEntry) (string, error)
@@ -3060,6 +3090,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.HouseholdInvitationEdge.Node(childComplexity), true
 
+	case "LeaveHouseholdSuccess.householdId":
+		if e.ComplexityRoot.LeaveHouseholdSuccess.HouseholdID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LeaveHouseholdSuccess.HouseholdID(childComplexity), true
+
+	case "LeaveHouseholdUserError.code":
+		if e.ComplexityRoot.LeaveHouseholdUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LeaveHouseholdUserError.Code(childComplexity), true
+	case "LeaveHouseholdUserError.message":
+		if e.ComplexityRoot.LeaveHouseholdUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LeaveHouseholdUserError.Message(childComplexity), true
+
 	case "LedgerConnection.edges":
 		if e.ComplexityRoot.LedgerConnection.Edges == nil {
 			break
@@ -3542,6 +3592,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.CreateTag(childComplexity, args["input"].(model.CreateTagInput)), true
+	case "Mutation.leaveHousehold":
+		if e.ComplexityRoot.Mutation.LeaveHousehold == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_leaveHousehold_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.LeaveHousehold(childComplexity, args["input"].(model.LeaveHouseholdInput)), true
 	case "Mutation.postPurchase":
 		if e.ComplexityRoot.Mutation.PostPurchase == nil {
 			break
@@ -3608,6 +3669,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.RecordTransfer(childComplexity, args["input"].(model.RecordTransferInput)), true
+	case "Mutation.removeHouseholdMember":
+		if e.ComplexityRoot.Mutation.RemoveHouseholdMember == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_removeHouseholdMember_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.RemoveHouseholdMember(childComplexity, args["input"].(model.RemoveHouseholdMemberInput)), true
 	case "Mutation.revokeHouseholdInvitation":
 		if e.ComplexityRoot.Mutation.RevokeHouseholdInvitation == nil {
 			break
@@ -5090,6 +5162,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.RecurringExpenseEdge.Node(childComplexity), true
 
+	case "RemoveHouseholdMemberSuccess.householdId":
+		if e.ComplexityRoot.RemoveHouseholdMemberSuccess.HouseholdID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RemoveHouseholdMemberSuccess.HouseholdID(childComplexity), true
+
+	case "RemoveHouseholdMemberUserError.code":
+		if e.ComplexityRoot.RemoveHouseholdMemberUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RemoveHouseholdMemberUserError.Code(childComplexity), true
+	case "RemoveHouseholdMemberUserError.message":
+		if e.ComplexityRoot.RemoveHouseholdMemberUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.RemoveHouseholdMemberUserError.Message(childComplexity), true
+
 	case "RepaymentTransferLedgerEntry.amountYen":
 		if e.ComplexityRoot.RepaymentTransferLedgerEntry.AmountYen == nil {
 			break
@@ -5798,6 +5890,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputCreatePurchaseQuantityInput,
 		ec.unmarshalInputCreateRecurringExpenseInput,
 		ec.unmarshalInputCreateTagInput,
+		ec.unmarshalInputLeaveHouseholdInput,
 		ec.unmarshalInputPersonalPoolFundingRuleInput,
 		ec.unmarshalInputPoolFundingRuleConfigurationInput,
 		ec.unmarshalInputPoolFundingShareInput,
@@ -5815,6 +5908,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputRecordFundingInput,
 		ec.unmarshalInputRecordRepaymentInput,
 		ec.unmarshalInputRecordTransferInput,
+		ec.unmarshalInputRemoveHouseholdMemberInput,
 		ec.unmarshalInputRevokeHouseholdInvitationInput,
 		ec.unmarshalInputSetAllocationRuleInput,
 		ec.unmarshalInputSetAllocationRuleItemInput,
@@ -6873,6 +6967,29 @@ extend type Query {
   ): HouseholdInvitationConnection!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/leave_household_mutation.graphql", Input: `extend type Mutation {
+  leaveHousehold(
+    input: LeaveHouseholdInput!
+  ): LeaveHouseholdResult!
+}
+
+input LeaveHouseholdInput {
+  householdId: ID! @nodeID(of: "Household")
+}
+
+union LeaveHouseholdResult =
+  | LeaveHouseholdSuccess
+  | LeaveHouseholdUserError
+
+type LeaveHouseholdSuccess {
+  householdId: ID! @goField(forceResolver: true)
+}
+
+type LeaveHouseholdUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/ledger_entry.graphql", Input: `interface LedgerEntry implements Node {
   id: ID! @goField(forceResolver: true)
   occurredAt: DateTime!
@@ -7444,6 +7561,9 @@ input RecordAccountMovementInput {
   occurredAt: DateTime!
   description: String!
   idempotencyKey: String!
+  sourceDocumentId: ID
+  sourceReference: String
+  sourceAccountId: ID @nodeID(of: "Account")
 }
 
 type RecordAccountMovementUserError implements MutationError {
@@ -7606,6 +7726,30 @@ type RecurringExpenseConnection {
   edges: [RecurringExpenseEdge!]!
   pageInfo: PageInfo!
   totalCount: Int!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/remove_household_member_mutation.graphql", Input: `extend type Mutation {
+  removeHouseholdMember(
+    input: RemoveHouseholdMemberInput!
+  ): RemoveHouseholdMemberResult!
+}
+
+input RemoveHouseholdMemberInput {
+  householdId: ID! @nodeID(of: "Household")
+  memberId: ID! @nodeID(of: "Member")
+}
+
+union RemoveHouseholdMemberResult =
+  | RemoveHouseholdMemberSuccess
+  | RemoveHouseholdMemberUserError
+
+type RemoveHouseholdMemberSuccess {
+  householdId: ID! @goField(forceResolver: true)
+}
+
+type RemoveHouseholdMemberUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/revoke_household_invitation_mutation.graphql", Input: `extend type Mutation {
@@ -9581,6 +9725,20 @@ func (ec *executionContext) field_Mutation_createTag_args(ctx context.Context, r
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_leaveHousehold_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.LeaveHouseholdInput, error) {
+			return ec.unmarshalNLeaveHouseholdInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLeaveHouseholdInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_postPurchase_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -9657,6 +9815,20 @@ func (ec *executionContext) field_Mutation_recordTransfer_args(ctx context.Conte
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.RecordTransferInput, error) {
 			return ec.unmarshalNRecordTransferInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecordTransferInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_removeHouseholdMember_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.RemoveHouseholdMemberInput, error) {
+			return ec.unmarshalNRemoveHouseholdMemberInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRemoveHouseholdMemberInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -18032,6 +18204,75 @@ func (ec *executionContext) fieldContext_HouseholdInvitationEdge_node(_ context.
 	return fc, nil
 }
 
+func (ec *executionContext) _LeaveHouseholdSuccess_householdId(ctx context.Context, field graphql.CollectedField, obj *model.LeaveHouseholdSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LeaveHouseholdSuccess_householdId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.LeaveHouseholdSuccess().HouseholdID(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LeaveHouseholdSuccess_householdId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LeaveHouseholdSuccess", field, true, true, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _LeaveHouseholdUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.LeaveHouseholdUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LeaveHouseholdUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LeaveHouseholdUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LeaveHouseholdUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _LeaveHouseholdUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.LeaveHouseholdUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LeaveHouseholdUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LeaveHouseholdUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LeaveHouseholdUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _LedgerConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.LedgerConnection) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -19966,6 +20207,50 @@ func (ec *executionContext) fieldContext_Mutation_createTag(ctx context.Context,
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_leaveHousehold(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_leaveHousehold(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().LeaveHousehold(ctx, fc.Args["input"].(model.LeaveHouseholdInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.LeaveHouseholdResult) graphql.Marshaler {
+			return ec.marshalNLeaveHouseholdResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLeaveHouseholdResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_leaveHousehold(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type LeaveHouseholdResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_leaveHousehold_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_postPurchase(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -20224,6 +20509,50 @@ func (ec *executionContext) fieldContext_Mutation_recordTransfer(ctx context.Con
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_recordTransfer_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_removeHouseholdMember(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_removeHouseholdMember(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().RemoveHouseholdMember(ctx, fc.Args["input"].(model.RemoveHouseholdMemberInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.RemoveHouseholdMemberResult) graphql.Marshaler {
+			return ec.marshalNRemoveHouseholdMemberResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRemoveHouseholdMemberResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_removeHouseholdMember(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type RemoveHouseholdMemberResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_removeHouseholdMember_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -26232,6 +26561,75 @@ func (ec *executionContext) fieldContext_RecurringExpenseEdge_node(_ context.Con
 	return fc, nil
 }
 
+func (ec *executionContext) _RemoveHouseholdMemberSuccess_householdId(ctx context.Context, field graphql.CollectedField, obj *model.RemoveHouseholdMemberSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RemoveHouseholdMemberSuccess_householdId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.RemoveHouseholdMemberSuccess().HouseholdID(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RemoveHouseholdMemberSuccess_householdId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RemoveHouseholdMemberSuccess", field, true, true, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _RemoveHouseholdMemberUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.RemoveHouseholdMemberUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RemoveHouseholdMemberUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RemoveHouseholdMemberUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RemoveHouseholdMemberUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _RemoveHouseholdMemberUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.RemoveHouseholdMemberUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_RemoveHouseholdMemberUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_RemoveHouseholdMemberUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("RemoveHouseholdMemberUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _RepaymentTransferLedgerEntry_id(ctx context.Context, field graphql.CollectedField, obj *model.RepaymentTransferLedgerEntry) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -32210,6 +32608,56 @@ func (ec *executionContext) unmarshalInputCreateTagInput(ctx context.Context, ob
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputLeaveHouseholdInput(ctx context.Context, obj any) (model.LeaveHouseholdInput, error) {
+	var it model.LeaveHouseholdInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"householdId"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "householdId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Household")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.HouseholdID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputPersonalPoolFundingRuleInput(ctx context.Context, obj any) (model.PersonalPoolFundingRuleInput, error) {
 	var it model.PersonalPoolFundingRuleInput
 	if obj == nil {
@@ -33110,7 +33558,7 @@ func (ec *executionContext) unmarshalInputRecordAccountMovementInput(ctx context
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"householdId", "kind", "fromAccountId", "toAccountId", "amountYen", "occurredAt", "description", "idempotencyKey"}
+	fieldsInOrder := [...]string{"householdId", "kind", "fromAccountId", "toAccountId", "amountYen", "occurredAt", "description", "idempotencyKey", "sourceDocumentId", "sourceReference", "sourceAccountId"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -33233,6 +33681,49 @@ func (ec *executionContext) unmarshalInputRecordAccountMovementInput(ctx context
 				return it, err
 			}
 			it.IdempotencyKey = data
+		case "sourceDocumentId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceDocumentId"))
+			data, err := ec.unmarshalOID2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceDocumentID = data
+		case "sourceReference":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceReference"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceReference = data
+		case "sourceAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceAccountId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Account")
+				if err != nil {
+					var zeroVal *string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal *string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(*string); ok {
+				it.SourceAccountID = data
+			} else if tmp == nil {
+				it.SourceAccountID = nil
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
 		}
 	}
 	return it, nil
@@ -33935,6 +34426,83 @@ func (ec *executionContext) unmarshalInputRecordTransferInput(ctx context.Contex
 				return it, err
 			}
 			it.IdempotencyKey = data
+		}
+	}
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputRemoveHouseholdMemberInput(ctx context.Context, obj any) (model.RemoveHouseholdMemberInput, error) {
+	var it model.RemoveHouseholdMemberInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"householdId", "memberId"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "householdId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Household")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.HouseholdID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "memberId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("memberId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Member")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.MemberID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
 		}
 	}
 	return it, nil
@@ -36202,6 +36770,33 @@ func (ec *executionContext) _HouseholdInvitation(ctx context.Context, sel ast.Se
 	}
 }
 
+func (ec *executionContext) _LeaveHouseholdResult(ctx context.Context, sel ast.SelectionSet, obj model.LeaveHouseholdResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.LeaveHouseholdUserError:
+		return ec._LeaveHouseholdUserError(ctx, sel, &obj)
+	case *model.LeaveHouseholdUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LeaveHouseholdUserError(ctx, sel, obj)
+	case model.LeaveHouseholdSuccess:
+		return ec._LeaveHouseholdSuccess(ctx, sel, &obj)
+	case *model.LeaveHouseholdSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LeaveHouseholdSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of LeaveHouseholdResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 func (ec *executionContext) _LedgerEntry(ctx context.Context, sel ast.SelectionSet, obj model.LedgerEntry) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -36357,6 +36952,13 @@ func (ec *executionContext) _MutationError(ctx context.Context, sel ast.Selectio
 			return graphql.Null
 		}
 		return ec._RevokeHouseholdInvitationUserError(ctx, sel, obj)
+	case model.RemoveHouseholdMemberUserError:
+		return ec._RemoveHouseholdMemberUserError(ctx, sel, &obj)
+	case *model.RemoveHouseholdMemberUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RemoveHouseholdMemberUserError(ctx, sel, obj)
 	case model.RecordTransferUserError:
 		return ec._RecordTransferUserError(ctx, sel, &obj)
 	case *model.RecordTransferUserError:
@@ -36399,6 +37001,13 @@ func (ec *executionContext) _MutationError(ctx context.Context, sel ast.Selectio
 			return graphql.Null
 		}
 		return ec._PostPurchaseUserError(ctx, sel, obj)
+	case model.LeaveHouseholdUserError:
+		return ec._LeaveHouseholdUserError(ctx, sel, &obj)
+	case *model.LeaveHouseholdUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._LeaveHouseholdUserError(ctx, sel, obj)
 	case model.CreateTagUserError:
 		return ec._CreateTagUserError(ctx, sel, &obj)
 	case *model.CreateTagUserError:
@@ -37118,6 +37727,33 @@ func (ec *executionContext) _RecordTransferResult(ctx context.Context, sel ast.S
 			return typedObj
 		} else {
 			panic(fmt.Errorf("unexpected type %T; non-generated variants of RecordTransferResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
+func (ec *executionContext) _RemoveHouseholdMemberResult(ctx context.Context, sel ast.SelectionSet, obj model.RemoveHouseholdMemberResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.RemoveHouseholdMemberUserError:
+		return ec._RemoveHouseholdMemberUserError(ctx, sel, &obj)
+	case *model.RemoveHouseholdMemberUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RemoveHouseholdMemberUserError(ctx, sel, obj)
+	case model.RemoveHouseholdMemberSuccess:
+		return ec._RemoveHouseholdMemberSuccess(ctx, sel, &obj)
+	case *model.RemoveHouseholdMemberSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._RemoveHouseholdMemberSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of RemoveHouseholdMemberResult must implement graphql.Marshaler", obj))
 		}
 	}
 }
@@ -42726,6 +43362,120 @@ func (ec *executionContext) _HouseholdInvitationEdge(ctx context.Context, sel as
 	return out
 }
 
+var leaveHouseholdSuccessImplementors = []string{"LeaveHouseholdSuccess", "LeaveHouseholdResult"}
+
+func (ec *executionContext) _LeaveHouseholdSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.LeaveHouseholdSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, leaveHouseholdSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LeaveHouseholdSuccess")
+		case "householdId":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._LeaveHouseholdSuccess_householdId(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var leaveHouseholdUserErrorImplementors = []string{"LeaveHouseholdUserError", "LeaveHouseholdResult", "MutationError"}
+
+func (ec *executionContext) _LeaveHouseholdUserError(ctx context.Context, sel ast.SelectionSet, obj *model.LeaveHouseholdUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, leaveHouseholdUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("LeaveHouseholdUserError")
+		case "code":
+			out.Values[i] = ec._LeaveHouseholdUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._LeaveHouseholdUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var ledgerConnectionImplementors = []string{"LedgerConnection"}
 
 func (ec *executionContext) _LedgerConnection(ctx context.Context, sel ast.SelectionSet, obj *model.LedgerConnection) graphql.Marshaler {
@@ -43654,6 +44404,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "leaveHousehold":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_leaveHousehold(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "postPurchase":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_postPurchase(ctx, field)
@@ -43692,6 +44449,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "recordTransfer":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_recordTransfer(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "removeHouseholdMember":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_removeHouseholdMember(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -47692,6 +48456,120 @@ func (ec *executionContext) _RecurringExpenseEdge(ctx context.Context, sel ast.S
 	return out
 }
 
+var removeHouseholdMemberSuccessImplementors = []string{"RemoveHouseholdMemberSuccess", "RemoveHouseholdMemberResult"}
+
+func (ec *executionContext) _RemoveHouseholdMemberSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.RemoveHouseholdMemberSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, removeHouseholdMemberSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RemoveHouseholdMemberSuccess")
+		case "householdId":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._RemoveHouseholdMemberSuccess_householdId(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var removeHouseholdMemberUserErrorImplementors = []string{"RemoveHouseholdMemberUserError", "RemoveHouseholdMemberResult", "MutationError"}
+
+func (ec *executionContext) _RemoveHouseholdMemberUserError(ctx context.Context, sel ast.SelectionSet, obj *model.RemoveHouseholdMemberUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, removeHouseholdMemberUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RemoveHouseholdMemberUserError")
+		case "code":
+			out.Values[i] = ec._RemoveHouseholdMemberUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._RemoveHouseholdMemberUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var repaymentTransferLedgerEntryImplementors = []string{"RepaymentTransferLedgerEntry", "AccountBalanceSource", "LedgerEntry", "TransferLedgerEntry", "Node"}
 
 func (ec *executionContext) _RepaymentTransferLedgerEntry(ctx context.Context, sel ast.SelectionSet, obj *model.RepaymentTransferLedgerEntry) graphql.Marshaler {
@@ -51246,6 +52124,21 @@ func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.Selecti
 	return res
 }
 
+func (ec *executionContext) unmarshalNLeaveHouseholdInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLeaveHouseholdInput(ctx context.Context, v any) (model.LeaveHouseholdInput, error) {
+	res, err := ec.unmarshalInputLeaveHouseholdInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNLeaveHouseholdResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLeaveHouseholdResult(ctx context.Context, sel ast.SelectionSet, v model.LeaveHouseholdResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._LeaveHouseholdResult(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNLedgerConnection2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLedgerConnection(ctx context.Context, sel ast.SelectionSet, v *model.LedgerConnection) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -52193,6 +53086,21 @@ func (ec *executionContext) marshalNRecurringExpenseEdge2ᚖgithubᚗcomᚋwalnu
 		return graphql.Null
 	}
 	return ec._RecurringExpenseEdge(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNRemoveHouseholdMemberInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRemoveHouseholdMemberInput(ctx context.Context, v any) (model.RemoveHouseholdMemberInput, error) {
+	res, err := ec.unmarshalInputRemoveHouseholdMemberInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNRemoveHouseholdMemberResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRemoveHouseholdMemberResult(ctx context.Context, sel ast.SelectionSet, v model.RemoveHouseholdMemberResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._RemoveHouseholdMemberResult(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNRevokeHouseholdInvitationInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRevokeHouseholdInvitationInput(ctx context.Context, v any) (model.RevokeHouseholdInvitationInput, error) {

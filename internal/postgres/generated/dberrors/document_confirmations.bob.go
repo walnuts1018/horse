@@ -21,7 +21,7 @@ var DocumentConfirmationErrors = &documentConfirmationErrors{
 	ErrCheckDocumentConfirmationsTargetCheck: &CheckConstraintError{
 		schema:  "",
 		table:   "document_confirmations",
-		columns: []string{"purchase_id", "correction_id"},
+		columns: []string{"purchase_id", "correction_id", "account_movement_id"},
 		s:       "document_confirmations_target_check",
 	},
 }

@@ -10,12 +10,14 @@ import (
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/dm"
 	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
+	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -39,6 +41,125 @@ type AcceptCommand struct {
 	Token    string
 }
 
+type RemoveMemberCommand struct {
+	ActorID     string
+	HouseholdID string
+	MemberID    string
+}
+
+type LeaveHouseholdCommand struct {
+	MemberID    string
+	HouseholdID string
+}
+
+type MemberChange struct {
+	HouseholdID string
+}
+
+func (s *Service) RemoveMember(ctx context.Context, command RemoveMemberCommand) (MemberChange, error) {
+	return s.changeMembership(ctx, command.ActorID, command.HouseholdID, command.MemberID, false)
+}
+
+func (s *Service) LeaveHousehold(ctx context.Context, command LeaveHouseholdCommand) (MemberChange, error) {
+	return s.changeMembership(ctx, command.MemberID, command.HouseholdID, command.MemberID, true)
+}
+
+func (s *Service) changeMembership(ctx context.Context, actorValue, householdValue, memberValue string, leave bool) (MemberChange, error) {
+	actorID, err := gofrsuuid.FromString(actorValue)
+	if err != nil {
+		return MemberChange{}, apperror.ErrNotFound
+	}
+	householdID, err := gofrsuuid.FromString(householdValue)
+	if err != nil {
+		return MemberChange{}, apperror.ErrNotFound
+	}
+	memberID, err := gofrsuuid.FromString(memberValue)
+	if err != nil {
+		return MemberChange{}, apperror.ErrNotFound
+	}
+	if leave && actorID != memberID {
+		return MemberChange{}, apperror.ErrNotFound
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return MemberChange{}, err
+	}
+	defer txcleanup.Rollback(ctx, tx)
+	executor := bobpgx.NewTx(tx, nil)
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
+		return MemberChange{}, apperror.ErrNotFound
+	} else if err != nil {
+		return MemberChange{}, err
+	}
+
+	actor, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
+	)), sm.ForShare()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return MemberChange{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return MemberChange{}, err
+	}
+	if !leave && actor.Role != ownerRole {
+		return MemberChange{}, apperror.ErrNotFound
+	}
+
+	target, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return MemberChange{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return MemberChange{}, err
+	}
+	if target.Role == ownerRole {
+		members, err := models.HouseholdMembers.Query(sm.Where(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)))).All(ctx, executor)
+		if err != nil {
+			return MemberChange{}, err
+		}
+		owners := 0
+		for _, member := range members {
+			if member.Role == ownerRole {
+				owners++
+			}
+		}
+		if owners <= 1 {
+			return MemberChange{}, apperror.ErrConflict
+		}
+	}
+
+	if _, err := models.HouseholdMembers.Delete(dm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+	))).Exec(ctx, executor); err != nil {
+		return MemberChange{}, err
+	}
+	household, err := models.Households.Update(
+		um.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))),
+		um.SetCol("revision").To(models.Households.Columns.Revision.Plus(psql.Arg(1))),
+		um.SetCol("updated_at").To(psql.F("now")),
+	).One(ctx, executor)
+	if err != nil {
+		return MemberChange{}, err
+	}
+	eventType := "household.member.removed"
+	if leave {
+		eventType = "household.member.left"
+	}
+	if err := accounting.RecordEvent(ctx, executor, householdID, memberID, eventType, household.Revision, []string{"members"}, actorID); err != nil {
+		return MemberChange{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return MemberChange{}, err
+	}
+	return MemberChange{HouseholdID: householdID.String()}, nil
+}
+
 func (s *Service) Revoke(ctx context.Context, command RevokeCommand) (InvitationState, error) {
 	actorID, err := gofrsuuid.FromString(command.ActorID)
 	if err != nil {
@@ -57,13 +178,13 @@ func (s *Service) Revoke(ctx context.Context, command RevokeCommand) (Invitation
 	if err != nil {
 		return InvitationState{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	owner, err := models.HouseholdMembers.Query(sm.Where(psql.And(
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorID)),
 	)), sm.ForShare()).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && owner.Role != "OWNER" {
+	if errors.Is(err, sql.ErrNoRows) || err == nil && owner.Role != ownerRole {
 		return InvitationState{}, apperror.ErrNotFound
 	}
 	if err != nil {
@@ -123,7 +244,7 @@ func (s *Service) Accept(ctx context.Context, command AcceptCommand) (string, er
 	if err != nil {
 		return "", err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	invitation, err := models.HouseholdInvitations.Query(
 		sm.Where(models.HouseholdInvitations.Columns.TokenHash.EQ(psql.Arg(tokenHash[:]))),

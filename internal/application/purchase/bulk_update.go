@@ -17,6 +17,7 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/application/accounting"
+	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -71,7 +72,7 @@ func (s *Service) BulkUpdate(ctx context.Context, command BulkUpdateCommand) (Bu
 	if err != nil {
 		return BulkUpdateResult{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	targets := make([]bulkUpdateTargetState, 0, len(command.Targets))
 	var householdID gofrsuuid.UUID

@@ -24,6 +24,7 @@ import (
 	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
+	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
@@ -69,7 +70,7 @@ func (s *Service) Create(ctx context.Context, command CreateCommand, fingerprint
 	if err != nil {
 		return CreateResult{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	result, err := s.create(ctx, tx, command, fingerprint)
 	if err != nil {
 		return CreateResult{}, err
@@ -94,7 +95,7 @@ func (s *Service) Post(ctx context.Context, command PostCommand, fingerprint [sh
 	if err != nil {
 		return PostResult{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	result, err := s.post(ctx, tx, command, fingerprint, true)
 	if err != nil {
 		return PostResult{}, err
@@ -117,7 +118,7 @@ func (s *Service) CreateAndPost(ctx context.Context, command CreateCommand, fing
 	if err != nil {
 		return CreateResult{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

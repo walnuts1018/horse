@@ -74,6 +74,15 @@ export function receiptOccurredAt(purchasedAt?: string, manualDate?: string): st
 }
 
 export function statementConfirmationIssue(entry: StatementEntry): string | undefined {
+  if (entry.kind === "ACCOUNT_TRANSFER") {
+    if (!Number.isSafeInteger(entry.amount) || entry.amount === 0) {
+      return "振替金額を確認してください";
+    }
+    if (!entry.occurredAt || Number.isNaN(new Date(entry.occurredAt).getTime())) {
+      return "振替日を確認してください";
+    }
+    return undefined;
+  }
   if (entry.kind === "REFUND") {
     if (!Number.isSafeInteger(entry.amount) || entry.amount >= 0) {
       return "返金額を確認してください";
@@ -137,7 +146,11 @@ export type DocumentReview = {
   sha256?: string;
   duplicateOf?: string;
   hasEvidence?: boolean;
-  confirmations?: Array<{ sourceReference: string; purchaseId: string }>;
+  confirmations?: Array<{
+    sourceReference: string;
+    purchaseId: string;
+    accountMovementId?: string;
+  }>;
   result?: {
     receipt?: {
       merchant?: string;

@@ -25,7 +25,7 @@ import {
 function normalizeName(name: string) {
   return name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ja-JP");
 }
-import { importIdempotencyKey } from "../api/documents";
+import { importIdempotencyKey, recordStatementTransfer } from "../api/documents";
 import {
   receiptDateInputValue,
   receiptOccurredAt,
@@ -418,6 +418,51 @@ export function useImportConfirmation({
     onAdded(true);
   };
 
+  const confirmStatementTransfer = async (
+    document: DocumentReview,
+    entry: StatementEntry,
+    statementAccountId: string,
+    otherAccountId: string,
+  ) => {
+    if (entry.kind !== "ACCOUNT_TRANSFER") throw new Error("口座間振替の明細を選択してください");
+    const issue = statementConfirmationIssue(entry);
+    if (issue) throw new Error(issue);
+    const statementAccount = household.accounts.find(
+      (account) => account.id === statementAccountId,
+    );
+    const otherAccount = household.accounts.find((account) => account.id === otherAccountId);
+    if (
+      !statementAccount ||
+      !otherAccount ||
+      statementAccount.kind === "CARD" ||
+      otherAccount.kind === "CARD" ||
+      statementAccount.id === otherAccount.id
+    ) {
+      throw new Error("振替元と振替先の口座を選択してください");
+    }
+    const reference = statementSourceReference(entry);
+    const key = `${document.id}:${reference}`;
+    if (confirmedStatements.has(key)) return;
+    const fromAccountId = entry.amount < 0 ? statementAccount.id : otherAccount.id;
+    const toAccountId = entry.amount < 0 ? otherAccount.id : statementAccount.id;
+    await recordStatementTransfer({
+      householdId: household.id,
+      kind: "TRANSFER",
+      fromAccountId,
+      toAccountId,
+      amountYen: Math.abs(entry.amount),
+      occurredAt: new Date(entry.occurredAt).toISOString(),
+      description: entry.merchant,
+      idempotencyKey: await importIdempotencyKey(document.id, reference),
+      sourceDocumentId: document.id,
+      sourceReference: reference,
+      sourceAccountId: statementAccount.id,
+    });
+    setConfirmedStatements((current) => new Set(current).add(key));
+    setHasUnsavedChanges(false);
+    onAdded(true);
+  };
+
   return {
     recentPurchases,
     confirmedStatements,
@@ -447,5 +492,6 @@ export function useImportConfirmation({
     confirm,
     confirmStatement,
     confirmStatementRefund,
+    confirmStatementTransfer,
   };
 }

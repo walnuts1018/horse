@@ -20,6 +20,7 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
+	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -28,6 +29,7 @@ const maxMoney int64 = 1_000_000_000_000
 const (
 	movementOperation = "recordAccountMovement"
 	incomeOperation   = "recordExternalIncome"
+	transferKind      = "TRANSFER"
 )
 
 type Service struct {
@@ -51,6 +53,9 @@ type MovementCommand struct {
 	Description        string
 	IdempotencyKey     string
 	RequestFingerprint [sha256.Size]byte
+	SourceDocumentID   string
+	SourceReference    string
+	SourceAccountID    string
 }
 
 type IncomeCommand struct {
@@ -78,8 +83,12 @@ func (s *Service) RecordMovement(ctx context.Context, command MovementCommand) (
 	if command.AmountYen <= 0 || command.AmountYen > maxMoney || strings.TrimSpace(command.IdempotencyKey) == "" || len(command.IdempotencyKey) > 200 || command.OccurredAt.IsZero() {
 		return MovementResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid account movement"))
 	}
-	if command.Kind != "TRANSFER" && command.Kind != "CARD_BILL_PAYMENT" {
+	if command.Kind != transferKind && command.Kind != "CARD_BILL_PAYMENT" {
 		return MovementResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid account movement kind"))
+	}
+	statementProvided := command.SourceDocumentID != "" || command.SourceReference != "" || command.SourceAccountID != ""
+	if statementProvided && (command.SourceDocumentID == "" || command.SourceReference == "" || command.SourceAccountID == "" || command.Kind != transferKind || len(command.SourceReference) > 256) {
+		return MovementResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid statement transfer source"))
 	}
 	if len(command.Description) > 240 || command.FromAccountID == command.ToAccountID {
 		return MovementResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid account movement"))
@@ -104,7 +113,7 @@ func (s *Service) RecordMovement(ctx context.Context, command MovementCommand) (
 	if err != nil {
 		return MovementResult{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
 		return MovementResult{}, apperror.ErrNotFound
@@ -118,6 +127,11 @@ func (s *Service) RecordMovement(ctx context.Context, command MovementCommand) (
 		}
 		if !existing.ResourceID.Valid {
 			return MovementResult{}, apperror.ErrNotFound
+		}
+		if statementProvided {
+			if err := requireStatementMovementConfirmation(ctx, executor, householdID, existing.ResourceID.V, command.SourceDocumentID, command.SourceReference); err != nil {
+				return MovementResult{}, err
+			}
 		}
 		if err := tx.Rollback(ctx); err != nil {
 			return MovementResult{}, err
@@ -145,8 +159,22 @@ func (s *Service) RecordMovement(ctx context.Context, command MovementCommand) (
 	if err != nil {
 		return MovementResult{}, err
 	}
+	var statementEvidence *statementTransferEvidence
+	if statementProvided {
+		statementEvidence, err = loadStatementTransferEvidence(ctx, executor, householdID, command.SourceDocumentID, command.SourceReference)
+		if err != nil {
+			return MovementResult{}, err
+		}
+		statementAccountID, parseErr := parseID(command.SourceAccountID, "statement account")
+		if parseErr != nil {
+			return MovementResult{}, parseErr
+		}
+		if err := validateStatementTransfer(statementEvidence.Entry, statementAccountID, fromID, toID, command.AmountYen, command.OccurredAt); err != nil {
+			return MovementResult{}, err
+		}
+	}
 	switch command.Kind {
-	case "TRANSFER":
+	case transferKind:
 		if fromAccount.Kind == cardAccountKind || toAccount.Kind == cardAccountKind {
 			return MovementResult{}, apperror.Wrap(apperror.KindBadInput, errors.New("card accounts require a bill payment movement"))
 		}
@@ -184,6 +212,15 @@ func (s *Service) RecordMovement(ctx context.Context, command MovementCommand) (
 	if err != nil {
 		return MovementResult{}, err
 	}
+	if statementEvidence != nil {
+		movementID := row.ID
+		if _, err := models.DocumentConfirmations.Insert(&models.DocumentConfirmationSetter{
+			SourceDocumentID: &statementEvidence.DocumentID, SourceReference: &command.SourceReference,
+			HouseholdID: &householdID, AccountMovementID: &sql.Null[gofrsuuid.UUID]{V: movementID, Valid: true}, CreatedBy: &actorID,
+		}).Exec(ctx, executor); err != nil {
+			return MovementResult{}, err
+		}
+	}
 	if err := saveIdempotency(ctx, executor, householdID, movementID, command.IdempotencyKey, movementOperation, command.RequestFingerprint); err != nil {
 		return MovementResult{}, err
 	}
@@ -216,7 +253,7 @@ func (s *Service) RecordIncome(ctx context.Context, command IncomeCommand) (Inco
 	if err != nil {
 		return IncomeResult{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	existing, err := findIdempotent(ctx, executor, householdID, command.IdempotencyKey, incomeOperation)
 	if err == nil {

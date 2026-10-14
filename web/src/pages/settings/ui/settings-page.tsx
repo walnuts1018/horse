@@ -21,12 +21,16 @@ import styles from "./settings-page.module.css";
 
 export function SettingsPage({
   household,
+  viewerId,
+  onLeave,
   onRefresh,
   onNotice,
   onUnsavedChanges,
   isOwner,
 }: {
   household: Household;
+  viewerId: string | null;
+  onLeave: () => void;
   onRefresh: () => Promise<void>;
   onNotice: (message: string, kind?: "success" | "error" | "warning" | "info") => void;
   onUnsavedChanges: (unsaved: boolean) => void;
@@ -144,7 +148,17 @@ export function SettingsPage({
           onPendingChange={(pending) => changes.setPending("account-activity", pending)}
           onRecorded={balances.refreshAfterActivity}
         />
-        <SettingsMembersSection members={household.members} hidden={activeTab !== "members"} />
+        <SettingsMembersSection
+          householdId={household.id}
+          members={household.members}
+          viewerId={viewerId}
+          isOwner={isOwner}
+          hidden={activeTab !== "members"}
+          disabled={isPending("settings")}
+          onRefresh={onRefresh}
+          onLeave={onLeave}
+          onNotice={onNotice}
+        />
       </div>
     </>
   );

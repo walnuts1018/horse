@@ -78,6 +78,15 @@ var DocumentConfirmations = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		AccountMovementID: column{
+			Name:      "account_movement_id",
+			DBType:    "uuid",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: documentConfirmationIndexes{
 		DocumentConfirmationsPkey: index{
@@ -109,14 +118,23 @@ var DocumentConfirmations = Table[
 		Comment: "",
 	},
 	ForeignKeys: documentConfirmationForeignKeys{
-		DocumentConfirmationsDocumentConfirmationsCorrectionIDFkey: foreignKey{
+		DocumentConfirmationsDocumentConfirmationsAccountMovementFK: foreignKey{
 			constraint: constraint{
-				Name:    "document_confirmations.document_confirmations_correction_id_fkey",
-				Columns: []string{"correction_id"},
+				Name:    "document_confirmations.document_confirmations_account_movement_fk",
+				Columns: []string{"household_id", "account_movement_id"},
+				Comment: "",
+			},
+			ForeignTable:   "account_movements",
+			ForeignColumns: []string{"household_id", "id"},
+		},
+		DocumentConfirmationsDocumentConfirmationsCorrectionHouseholdFK: foreignKey{
+			constraint: constraint{
+				Name:    "document_confirmations.document_confirmations_correction_household_fk",
+				Columns: []string{"household_id", "correction_id"},
 				Comment: "",
 			},
 			ForeignTable:   "corrections",
-			ForeignColumns: []string{"id"},
+			ForeignColumns: []string{"household_id", "id"},
 		},
 		DocumentConfirmationsDocumentConfirmationsCreatedByFkey: foreignKey{
 			constraint: constraint{
@@ -168,28 +186,29 @@ var DocumentConfirmations = Table[
 		DocumentConfirmationsTargetCheck: check{
 			constraint: constraint{
 				Name:    "document_confirmations_target_check",
-				Columns: []string{"purchase_id", "correction_id"},
+				Columns: []string{"purchase_id", "correction_id", "account_movement_id"},
 				Comment: "",
 			},
-			Expression: "((purchase_id IS NOT NULL) <> (correction_id IS NOT NULL))",
+			Expression: "(num_nonnulls(purchase_id, correction_id, account_movement_id) = 1)",
 		},
 	},
 	Comment: "",
 }
 
 type documentConfirmationColumns struct {
-	SourceDocumentID column
-	HouseholdID      column
-	PurchaseID       column
-	CreatedBy        column
-	CreatedAt        column
-	SourceReference  column
-	CorrectionID     column
+	SourceDocumentID  column
+	HouseholdID       column
+	PurchaseID        column
+	CreatedBy         column
+	CreatedAt         column
+	SourceReference   column
+	CorrectionID      column
+	AccountMovementID column
 }
 
 func (c documentConfirmationColumns) AsSlice() []column {
 	return []column{
-		c.SourceDocumentID, c.HouseholdID, c.PurchaseID, c.CreatedBy, c.CreatedAt, c.SourceReference, c.CorrectionID,
+		c.SourceDocumentID, c.HouseholdID, c.PurchaseID, c.CreatedBy, c.CreatedAt, c.SourceReference, c.CorrectionID, c.AccountMovementID,
 	}
 }
 
@@ -204,7 +223,8 @@ func (i documentConfirmationIndexes) AsSlice() []index {
 }
 
 type documentConfirmationForeignKeys struct {
-	DocumentConfirmationsDocumentConfirmationsCorrectionIDFkey          foreignKey
+	DocumentConfirmationsDocumentConfirmationsAccountMovementFK         foreignKey
+	DocumentConfirmationsDocumentConfirmationsCorrectionHouseholdFK     foreignKey
 	DocumentConfirmationsDocumentConfirmationsCreatedByFkey             foreignKey
 	DocumentConfirmationsDocumentConfirmationsHouseholdIDFkey           foreignKey
 	DocumentConfirmationsDocumentConfirmationsHouseholdIDPurchaseIDFkey foreignKey
@@ -213,7 +233,7 @@ type documentConfirmationForeignKeys struct {
 
 func (f documentConfirmationForeignKeys) AsSlice() []foreignKey {
 	return []foreignKey{
-		f.DocumentConfirmationsDocumentConfirmationsCorrectionIDFkey, f.DocumentConfirmationsDocumentConfirmationsCreatedByFkey, f.DocumentConfirmationsDocumentConfirmationsHouseholdIDFkey, f.DocumentConfirmationsDocumentConfirmationsHouseholdIDPurchaseIDFkey, f.DocumentConfirmationsDocumentConfirmationsSourceDocumentIDFkey,
+		f.DocumentConfirmationsDocumentConfirmationsAccountMovementFK, f.DocumentConfirmationsDocumentConfirmationsCorrectionHouseholdFK, f.DocumentConfirmationsDocumentConfirmationsCreatedByFkey, f.DocumentConfirmationsDocumentConfirmationsHouseholdIDFkey, f.DocumentConfirmationsDocumentConfirmationsHouseholdIDPurchaseIDFkey, f.DocumentConfirmationsDocumentConfirmationsSourceDocumentIDFkey,
 	}
 }
 

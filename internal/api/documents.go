@@ -76,8 +76,9 @@ type documentAttachmentParent struct {
 }
 
 type documentConfirmation struct {
-	SourceReference string `json:"sourceReference"`
-	PurchaseID      string `json:"purchaseId"`
+	SourceReference   string `json:"sourceReference"`
+	PurchaseID        string `json:"purchaseId"`
+	AccountMovementID string `json:"accountMovementId,omitempty"`
 }
 
 func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
@@ -551,6 +552,7 @@ func (s *Server) loadDocumentConfirmations(ctx context.Context, document *docume
 	document.Confirmations = make([]documentConfirmation, 0)
 	for _, confirmation := range confirmations {
 		purchaseID := ""
+		accountMovementID := ""
 		if confirmation.PurchaseID.Valid {
 			purchaseID = confirmation.PurchaseID.V.String()
 		} else if confirmation.CorrectionID.Valid {
@@ -559,9 +561,11 @@ func (s *Server) loadDocumentConfirmations(ctx context.Context, document *docume
 				return err
 			}
 			purchaseID = correction.PurchaseID.String()
+		} else if confirmation.AccountMovementID.Valid {
+			accountMovementID = confirmation.AccountMovementID.V.String()
 		}
 		document.Confirmations = append(document.Confirmations, documentConfirmation{
-			SourceReference: confirmation.SourceReference, PurchaseID: purchaseID,
+			SourceReference: confirmation.SourceReference, PurchaseID: purchaseID, AccountMovementID: accountMovementID,
 		})
 	}
 	return nil

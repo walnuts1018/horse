@@ -70,7 +70,7 @@ CSV明細の永続参照は取引番号から行番号へ変更しました。Tr
 
 ### GraphQL Schema
 
-Mutation単位とドメイン型単位でSDLを分割し、gqlgenは`follow-schema`を使います。全38 Mutation操作が`Success | UserError`のResult unionを返し、共通`MutationError` interfaceを使います。Ledger、Settlement、Pool、Observation、PurchaseCorrection、AccountBalanceSourceも型の違いをinterface/unionで表しています。この構成はpiccaのADR 0002とSDL分割に沿うため、該当するレビュー指摘は解決済みとして`docs/reviews/graphql.md`から削除しました。根拠は`gqlgen.yml`、`graphql/*_mutation.graphql`、各domain SDLです。
+Mutation単位とドメイン型単位でSDLを分割し、gqlgenは`follow-schema`を使います。各Mutationは`Success | UserError`のResult unionを返し、共通`MutationError` interfaceを使います。Mutation Successにentity IDを含める場合は`@goField(forceResolver: true)`と`encodeNodeID`でRelay Global IDを返します。Ledger、Settlement、Pool、Observation、PurchaseCorrection、AccountBalanceSourceも型の違いをinterface/unionで表しています。この構成はpiccaのADR 0002とSDL分割に沿うため、該当するレビュー指摘は解決済みとして`docs/reviews/graphql.md`から削除しました。根拠は`gqlgen.yml`、`graphql/*_mutation.graphql`、各domain SDLです。
 
 nullable outputの静的監査では、明白にnon-nullへ変更できるfieldは見つかりませんでした。任意の関連ID・終了日・商品数量・OCRの観測日時など、nullableが値の欠損条件を表す箇所は維持します。default付きの`includeArchived`と`productSuggestions.first`はSDLでnon-nullに変更し、Relay operation variablesとResolver引数も更新しました。`ProductVariant.brand`と`packageSize`は未設定値をnullへ統一しました。`Budget`、`Tag`、`RecurringExpense`、`ProductCatalog`の一覧はConnection化し、Frontend read関数で全ページを取得します。これらのレビュー項目は解決済みです。
 
@@ -248,7 +248,7 @@ Resolverに残っていた世帯作成、デフォルト配賦・配賦ルール
 
 ### 2026年10月14日のApplication入力検証
 
-`validator/v10`を再利用する`inputvalidation.Check`をApplicationへ追加し、タグ・カテゴリ・商品別名・予算・定期支出の文字列空欄と最大長を検証します。GraphQLの必須値、scalar、Global ID形式はgqlgenに任せ、金額・期間・配賦・会計整合性は各Serviceに残します。境界検証の純粋関数テスト、対象ApplicationのGoテスト、`mise run lint`が成功しました。
+`validator/v10`を再利用する`inputvalidation.Check`をApplicationへ追加し、タグ・カテゴリ・商品別名・予算・定期支出の文字列空欄と最大長を検証します。今回、商品概念と商品規格の名称にも同じ検証を適用しました。商品名はDBの文字数上限と一致する240文字を受け付け、空のJANコードは拒否します。GraphQLの必須値、scalar、Global ID形式はgqlgenに任せ、金額・期間・配賦・会計整合性は各Serviceに残します。導入時に追加した境界検証テストと対象ApplicationのGoテスト、`mise run lint`が成功しています。
 
 ### Gemini利用予算の制御
 

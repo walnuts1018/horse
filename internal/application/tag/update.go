@@ -14,6 +14,7 @@ import (
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
 	"github.com/walnuts1018/horse/internal/application/inputvalidation"
+	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -61,7 +62,7 @@ func (s *Service) update(ctx context.Context, actorIDValue, tagIDValue string, b
 	if err != nil {
 		return Tag{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	row, err := models.Tags.Query(sm.Where(models.Tags.Columns.ID.EQ(psql.Arg(tagID))), sm.ForUpdate()).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {

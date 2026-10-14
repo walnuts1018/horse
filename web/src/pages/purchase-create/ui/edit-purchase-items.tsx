@@ -1,11 +1,13 @@
 import {
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
   type ClipboardEvent,
   type KeyboardEvent,
+  type Ref,
 } from "react";
 import { z } from "zod";
 
@@ -23,16 +25,20 @@ const purchaseItemSchema = z.object({
 });
 type CategorySource = "default" | "history" | "product" | "manual" | "restored";
 
+export type EditPurchaseItemsCommands = {
+  reset: () => void;
+  undo: () => void;
+  copy: (purchase: Purchase) => void;
+};
+
 export function EditPurchaseItems({
   householdId,
   merchant,
   household,
   history,
   value,
-  resetToken,
-  copiedPurchase,
+  commandsRef,
   classNames,
-  undoToken,
   onChange,
   onDirty,
   onUndoAvailabilityChange,
@@ -42,8 +48,7 @@ export function EditPurchaseItems({
   household: Household;
   history: Purchase[];
   value: PurchaseItemsValue;
-  resetToken: number;
-  copiedPurchase: Purchase | null;
+  commandsRef: Ref<EditPurchaseItemsCommands>;
   classNames: {
     itemHeading: string;
     itemTable: string;
@@ -52,7 +57,6 @@ export function EditPurchaseItems({
     entryHint: string;
     entryInputTarget: string;
   };
-  undoToken: number;
   onChange: (value: PurchaseItemsValue) => void;
   onDirty: () => void;
   onUndoAvailabilityChange: (available: boolean) => void;
@@ -71,9 +75,6 @@ export function EditPurchaseItems({
   const itemGridRef = useRef<HTMLDivElement>(null);
   const categorySource = useRef<CategorySource>(value.categoryId ? "restored" : "default");
   const composing = useRef(false);
-  const lastResetToken = useRef(resetToken);
-  const lastCopiedPurchase = useRef<Purchase | null>(null);
-  const lastUndoToken = useRef(undoToken);
   const enabledCategories = useMemo(
     () => household.categories.filter((category) => !category.archived),
     [household.categories],
@@ -137,52 +138,51 @@ export function EditPurchaseItems({
     (items: PurchaseDraftItem[]) => patchDraft({ items }),
     [patchDraft],
   );
-
-  useEffect(() => {
-    if (lastResetToken.current === resetToken) return;
-    lastResetToken.current = resetToken;
+  const rememberUndo = useCallback(
+    (items: PurchaseDraftItem[] | null) => {
+      setUndoItems(items);
+      onUndoAvailabilityChange(Boolean(items));
+    },
+    [onUndoAvailabilityChange],
+  );
+  const reset = useCallback(() => {
     const empty = emptyPurchaseItemsValue();
     categorySource.current = "default";
     setSelectedProductVariantId("");
-    setUndoItems(null);
+    rememberUndo(null);
     setProductSuggestions([]);
     update(empty);
-  }, [resetToken, update]);
-
-  useEffect(() => {
-    onUndoAvailabilityChange(Boolean(undoItems));
-  }, [undoItems, onUndoAvailabilityChange]);
-
-  useEffect(() => {
-    if (lastUndoToken.current === undoToken) return;
-    lastUndoToken.current = undoToken;
-    if (!undoItems) return;
+  }, [rememberUndo, update]);
+  const undo = useCallback(() => {
+    const previousItems = undoItems;
+    if (!previousItems) return;
     markDirty();
-    replaceItems(undoItems);
-    setUndoItems(null);
-  }, [undoToken, undoItems, markDirty, replaceItems]);
-
-  useEffect(() => {
-    if (!copiedPurchase || lastCopiedPurchase.current === copiedPurchase) return;
-    lastCopiedPurchase.current = copiedPurchase;
-    markDirty();
-    const items = copiedPurchase.items.map((item) => ({
-      key: crypto.randomUUID(),
-      name: item.name,
-      amount: String(item.amountYen),
-      categoryId: isEnabledCategory(item.categoryId) ? (item.categoryId ?? "") : "",
-      productVariantId: item.productVariantId ?? undefined,
-      allocations: item.allocations.map(({ poolId, weight }) => ({ poolId, weight })),
-      ...(item.quantityNumerator && item.quantityDenominator
-        ? {
-            quantity: `${item.quantityNumerator}/${item.quantityDenominator}`,
-            quantityUnit: item.quantityUnit ?? "",
-          }
-        : {}),
-    }));
-    setUndoItems(draft.items);
-    replaceItems(items);
-  }, [copiedPurchase, draft.items, markDirty, isEnabledCategory, replaceItems]);
+    replaceItems(previousItems);
+    rememberUndo(null);
+  }, [undoItems, markDirty, replaceItems, rememberUndo]);
+  const copy = useCallback(
+    (purchase: Purchase) => {
+      markDirty();
+      const items = purchase.items.map((item) => ({
+        key: crypto.randomUUID(),
+        name: item.name,
+        amount: String(item.amountYen),
+        categoryId: isEnabledCategory(item.categoryId) ? (item.categoryId ?? "") : "",
+        productVariantId: item.productVariantId ?? undefined,
+        allocations: item.allocations.map(({ poolId, weight }) => ({ poolId, weight })),
+        ...(item.quantityNumerator && item.quantityDenominator
+          ? {
+              quantity: `${item.quantityNumerator}/${item.quantityDenominator}`,
+              quantityUnit: item.quantityUnit ?? "",
+            }
+          : {}),
+      }));
+      rememberUndo(draftRef.current.items);
+      replaceItems(items);
+    },
+    [markDirty, isEnabledCategory, rememberUndo, replaceItems],
+  );
+  useImperativeHandle(commandsRef, () => ({ reset, undo, copy }), [reset, undo, copy]);
 
   useEffect(() => {
     const query = draft.itemName.trim();
@@ -253,7 +253,7 @@ export function EditPurchaseItems({
       ...(selectedProductVariantId ? { productVariantId: selectedProductVariantId } : {}),
       allocations: [],
     };
-    setUndoItems(draft.items);
+    rememberUndo(draft.items);
     update({
       ...draft,
       items: [...draft.items, item],
@@ -405,7 +405,7 @@ export function EditPurchaseItems({
       .filter((cells) => cells[0] && cells[1] && /^¥?[\d,]+$/.test(cells[1]));
     if (!parsed.length) return;
     markDirty();
-    setUndoItems(draft.items);
+    rememberUndo(draft.items);
     replaceItems([
       ...draft.items,
       ...parsed.map(([name, amount]) => {
@@ -434,7 +434,7 @@ export function EditPurchaseItems({
   const removeItem = (key: string) => {
     if (!draft.items.some((item) => item.key === key)) return;
     markDirty();
-    setUndoItems(draft.items);
+    rememberUndo(draft.items);
     replaceItems(draft.items.filter((item) => item.key !== key));
   };
   return (

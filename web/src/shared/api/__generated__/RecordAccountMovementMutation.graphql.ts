@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<f770ceb3957c09bc32ef12a6662f7534>>
+ * @generated SignedSource<<f330fe96fd693193fb801d1e106dd0d7>>
  * @lightSyntaxTransform
  */
 
@@ -18,6 +18,9 @@ export type RecordAccountMovementInput = {
   idempotencyKey: string;
   kind: AccountMovementKind;
   occurredAt: string;
+  sourceAccountId?: string | null | undefined;
+  sourceDocumentId?: string | null | undefined;
+  sourceReference?: string | null | undefined;
   toAccountId: string;
 };
 export type RecordAccountMovementMutation$variables = {

@@ -17,6 +17,9 @@ input RecordAccountMovementInput {
   occurredAt: DateTime!
   description: String!
   idempotencyKey: String!
+  sourceDocumentId: ID
+  sourceReference: String
+  sourceAccountId: ID @nodeID(of: "Account")
 }
 
 type RecordAccountMovementUserError implements MutationError {

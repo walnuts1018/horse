@@ -57,6 +57,22 @@ describe("statement purchase confirmation", () => {
     expect(statementConfirmationIssue(entry)).toBeUndefined();
   });
 
+  it("accepts signed account transfers and rejects zero or unsafe amounts", () => {
+    expect(
+      statementConfirmationIssue({ ...entry, kind: "ACCOUNT_TRANSFER", amount: -100 }),
+    ).toBeUndefined();
+    expect(statementConfirmationIssue({ ...entry, kind: "ACCOUNT_TRANSFER", amount: 0 })).toBe(
+      "振替金額を確認してください",
+    );
+    expect(
+      statementConfirmationIssue({
+        ...entry,
+        kind: "ACCOUNT_TRANSFER",
+        amount: Number.MAX_SAFE_INTEGER + 1,
+      }),
+    ).toBe("振替金額を確認してください");
+  });
+
   it("allows negative refund rows and rejects non-negative refund rows", () => {
     expect(statementConfirmationIssue({ ...entry, kind: "REFUND", amount: -100 })).toBeUndefined();
     expect(statementConfirmationIssue({ ...entry, kind: "REFUND", amount: 100 })).toBe(

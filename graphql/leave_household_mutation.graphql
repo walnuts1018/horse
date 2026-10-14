@@ -1,0 +1,22 @@
+extend type Mutation {
+  leaveHousehold(
+    input: LeaveHouseholdInput!
+  ): LeaveHouseholdResult!
+}
+
+input LeaveHouseholdInput {
+  householdId: ID! @nodeID(of: "Household")
+}
+
+union LeaveHouseholdResult =
+  | LeaveHouseholdSuccess
+  | LeaveHouseholdUserError
+
+type LeaveHouseholdSuccess {
+  householdId: ID! @goField(forceResolver: true)
+}
+
+type LeaveHouseholdUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

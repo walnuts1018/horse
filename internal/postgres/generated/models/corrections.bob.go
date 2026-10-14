@@ -64,7 +64,7 @@ type correctionR struct {
 	Purchase                *Purchase                   // corrections.corrections_household_id_purchase_id_fkey
 	Journal                 *Journal                    // corrections.corrections_journal_id_fkey
 	PurchaseItem            *PurchaseItem               // corrections.corrections_purchase_id_item_id_fkey
-	DocumentConfirmations   DocumentConfirmationSlice   // document_confirmations.document_confirmations_correction_id_fkey
+	DocumentConfirmations   DocumentConfirmationSlice   // document_confirmations.document_confirmations_correction_household_fk
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -82,7 +82,7 @@ type correctionRLoaded struct {
 	Purchase                bool // corrections.corrections_household_id_purchase_id_fkey
 	Journal                 bool // corrections.corrections_journal_id_fkey
 	PurchaseItem            bool // corrections.corrections_purchase_id_item_id_fkey
-	DocumentConfirmations   bool // document_confirmations.document_confirmations_correction_id_fkey
+	DocumentConfirmations   bool // document_confirmations.document_confirmations_correction_household_fk
 }
 
 func buildCorrectionColumns(tableName string) correctionColumns {
@@ -1057,23 +1057,29 @@ func (os CorrectionSlice) PurchaseItem(mods ...bob.Mod[*dialect.SelectQuery]) Pu
 // DocumentConfirmations starts a query for related objects on document_confirmations
 func (o *Correction) DocumentConfirmations(mods ...bob.Mod[*dialect.SelectQuery]) DocumentConfirmationsQuery {
 	return DocumentConfirmations.Query(append(mods,
-		sm.Where(DocumentConfirmations.Columns.CorrectionID.EQ(psql.Arg(o.ID))),
+		sm.Where(DocumentConfirmations.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(DocumentConfirmations.Columns.CorrectionID.EQ(psql.Arg(o.ID))),
 	)...)
 }
 
 func (os CorrectionSlice) DocumentConfirmations(mods ...bob.Mod[*dialect.SelectQuery]) DocumentConfirmationsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
 	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
 
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
 		pkID = append(pkID, o.ID)
 	}
-	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
 
 	return DocumentConfirmations.Query(append(mods,
-		sm.Where(DocumentConfirmations.Columns.CorrectionID.EQ(PKArgExpr)),
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "CorrectionID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "CorrectionID"),
+		)).As("bob_rel_keys").On(DocumentConfirmations.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), DocumentConfirmations.Columns.CorrectionID.EQ(psql.Quote("bob_rel_keys", "CorrectionID"))),
 	)...)
 }
 
@@ -1596,6 +1602,7 @@ func (correction0 *Correction) AttachPurchaseItem(ctx context.Context, exec bob.
 
 func insertCorrectionDocumentConfirmations0(ctx context.Context, exec bob.Executor, documentConfirmations1 []*DocumentConfirmationSetter, correction0 *Correction) (DocumentConfirmationSlice, error) {
 	for i := range documentConfirmations1 {
+		documentConfirmations1[i].HouseholdID = func() *uuid.UUID { return &correction0.HouseholdID }()
 		documentConfirmations1[i].CorrectionID = func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: correction0.ID, Valid: true}; return &v }()
 	}
 
@@ -1609,6 +1616,7 @@ func insertCorrectionDocumentConfirmations0(ctx context.Context, exec bob.Execut
 
 func attachCorrectionDocumentConfirmations0(ctx context.Context, exec bob.Executor, count int, documentConfirmations1 DocumentConfirmationSlice, correction0 *Correction) (DocumentConfirmationSlice, error) {
 	setter := &DocumentConfirmationSetter{
+		HouseholdID:  func() *uuid.UUID { return &correction0.HouseholdID }(),
 		CorrectionID: func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: correction0.ID, Valid: true}; return &v }(),
 	}
 
@@ -1846,6 +1854,7 @@ func (w correctionWhereR[Q]) HasDocumentConfirmations(filters ...bob.Mod[*dialec
 	q := psql.Select(
 		sm.Columns(psql.Raw("1")),
 		sm.From(DocumentConfirmations.NameExpr()),
+		sm.Where(DocumentConfirmations.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(DocumentConfirmations.Columns.CorrectionID.EQ(w.cols.ID)),
 	)
 	q.Apply(filters...)
@@ -3013,34 +3022,28 @@ func (os CorrectionSlice) LoadDocumentConfirmations(ctx context.Context, exec bo
 		o.R.DocumentConfirmations = nil
 		o.R.Loaded.DocumentConfirmations = true
 	}
-	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
-	correctionByKey := make(map[uuid.UUID][]*Correction, len(os))
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
 
-		correctionByKey[o.ID] = append(correctionByKey[o.ID], o)
-	}
+		for _, rel := range documentConfirmations {
 
-	for _, rel := range documentConfirmations {
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
 
-		if !rel.CorrectionID.Valid {
-			continue
-		}
-
-		owners, ok := correctionByKey[rel.CorrectionID.V]
-		if !ok {
-			continue
-		}
-
-		for _, o := range owners {
+			if !rel.CorrectionID.Valid {
+				continue
+			}
+			if !(rel.CorrectionID.Valid && o.ID == rel.CorrectionID.V) {
+				continue
+			}
 
 			rel.R.Correction = o
 			rel.R.Loaded.Correction = true
 
 			o.R.DocumentConfirmations = append(o.R.DocumentConfirmations, rel)
-
 		}
 	}
 
@@ -3147,6 +3150,7 @@ func buildCorrectionCountPreloader() correctionCountPreloader {
 					sm.Columns(psql.Raw("count(*)")),
 
 					sm.From(DocumentConfirmations.NameAsExpr()),
+					sm.Where(psql.Quote(DocumentConfirmations.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
 					sm.Where(psql.Quote(DocumentConfirmations.Alias(), "correction_id").EQ(psql.Quote(parent, "id"))),
 				}
 				subqueryMods = append(subqueryMods, mods...)
@@ -3527,18 +3531,21 @@ func (os CorrectionSlice) LoadCountDocumentConfirmations(ctx context.Context, ex
 
 	// Build the IN arg expression from parent PKs
 
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
 	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
 		pkID = append(pkID, o.ID)
 	}
-	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
 
 	// countResult holds one scanned row from the batch count query.
 	// FK columns are aliased to the parent PK column names for direct map lookup.
 	type countResult struct {
+		HouseholdID uuid.UUID
+
 		ID    uuid.UUID
 		Count int64
 	}
@@ -3546,6 +3553,7 @@ func (os CorrectionSlice) LoadCountDocumentConfirmations(ctx context.Context, ex
 	batchMods := []bob.Mod[*dialect.SelectQuery]{
 		// SELECT fk AS parent_pk, count(*)
 		sm.Columns(
+			DocumentConfirmations.Columns.HouseholdID.As("household_id"),
 			DocumentConfirmations.Columns.CorrectionID.As("id"),
 			psql.Raw("count(*) as count"),
 		),
@@ -3553,8 +3561,22 @@ func (os CorrectionSlice) LoadCountDocumentConfirmations(ctx context.Context, ex
 		sm.From(DocumentConfirmations.NameAsExpr()),
 
 		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
-		sm.Where(DocumentConfirmations.Columns.CorrectionID.EQ(PKArgExpr)),
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "CorrectionID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "CorrectionID"),
+		)).As("bob_rel_keys").On(
+			DocumentConfirmations.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			DocumentConfirmations.Columns.CorrectionID.EQ(psql.Quote("bob_rel_keys", "CorrectionID")),
+		),
 		// GROUP BY fk columns
+		sm.GroupBy(DocumentConfirmations.Columns.HouseholdID),
 		sm.GroupBy(DocumentConfirmations.Columns.CorrectionID),
 	}
 	batchMods = append(batchMods, mods...)
@@ -3567,16 +3589,29 @@ func (os CorrectionSlice) LoadCountDocumentConfirmations(ctx context.Context, ex
 		return err
 	}
 
-	// Single-column FK: direct map lookup
-	countMap := make(map[uuid.UUID]int64, len(results))
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
 	for _, r := range results {
-		countMap[r.ID] = r.Count
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
 	}
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
-		count := countMap[o.ID]
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
 		o.C.DocumentConfirmations = &count
 	}
 
@@ -3737,7 +3772,7 @@ func buildCorrectionJoins[Q dialect.Joinable](cols correctionColumns, typ string
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, DocumentConfirmations.NameExpr().As(to.Alias())).On(
-						to.CorrectionID.EQ(cols.ID),
+						to.HouseholdID.EQ(cols.HouseholdID), to.CorrectionID.EQ(cols.ID),
 					))
 				}
 

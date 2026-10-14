@@ -1,10 +1,10 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 import type { Household, Purchase } from "../../../shared/api";
 import type { PurchaseDraftItem } from "../../../shared/lib";
 import type { PurchaseItemsValue } from "../model/purchase-items";
 
-import { EditPurchaseItems } from "./edit-purchase-items";
+import { EditPurchaseItems, type EditPurchaseItemsCommands } from "./edit-purchase-items";
 
 export function PurchaseItemsComposer({
   householdId,
@@ -12,9 +12,7 @@ export function PurchaseItemsComposer({
   household,
   history,
   value,
-  resetToken,
-  copiedPurchase,
-  undoToken,
+  commandsRef,
   itemTotal,
   hasDraftContent,
   hasUnsavedChanges,
@@ -30,9 +28,7 @@ export function PurchaseItemsComposer({
   household: Household;
   history: Purchase[];
   value: PurchaseItemsValue;
-  resetToken: number;
-  copiedPurchase: Purchase | null;
-  undoToken: number;
+  commandsRef: Ref<EditPurchaseItemsCommands>;
   itemTotal: number;
   hasDraftContent: boolean;
   hasUnsavedChanges: boolean;
@@ -63,9 +59,7 @@ export function PurchaseItemsComposer({
           household={household}
           history={history}
           value={value}
-          resetToken={resetToken}
-          copiedPurchase={copiedPurchase}
-          undoToken={undoToken}
+          commandsRef={commandsRef}
           classNames={{
             itemHeading: classNames.itemHeading,
             itemTable: classNames.itemTable,

@@ -9,6 +9,16 @@ import {
   type PurchaseDraft,
 } from "../../../shared/lib";
 
+export function createPurchaseDraftWriteQueue() {
+  let tail = Promise.resolve();
+
+  return (write: () => Promise<void>) => {
+    const pending = tail.then(write);
+    tail = pending.catch(() => {});
+    return pending;
+  };
+}
+
 export function usePurchaseDraft({
   memberId,
   householdId,
@@ -29,23 +39,34 @@ export function usePurchaseDraft({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState("");
+  const scope = JSON.stringify([memberId, householdId]);
   const draftRef = useRef(draft);
   const restoreRef = useRef(restore);
   const onLoadErrorRef = useRef(onLoadError);
   const onUnsavedChangesRef = useRef(onUnsavedChanges);
   const timer = useRef<number | null>(null);
+  const writeDraft = useRef(createPurchaseDraftWriteQueue());
   const skipNextSave = useRef(false);
   const hasLocalDraft = useRef(false);
   const editVersion = useRef(0);
-  const scope = JSON.stringify([memberId, householdId]);
+  const mounted = useRef(false);
+  const scopeRef = useRef(scope);
 
   // refはレンダー中に読み書きすると再レンダーで巻き戻るため、コミット後に最新値を反映する
   useEffect(() => {
     draftRef.current = draft;
+    scopeRef.current = scope;
     restoreRef.current = restore;
     onLoadErrorRef.current = onLoadError;
     onUnsavedChangesRef.current = onUnsavedChanges;
   });
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const markUnsaved = useCallback(() => {
     editVersion.current += 1;
@@ -54,34 +75,39 @@ export function usePurchaseDraft({
     setHasUnsavedChanges(true);
   }, []);
 
-  const persistDraft = useCallback(async () => {
-    const current = draft;
-    const version = editVersion.current;
-    const hasContent =
-      hasLocalDraft.current ||
-      Boolean(
-        current.merchant.trim() ||
-        current.itemName.trim() ||
-        current.itemAmount ||
-        current.items.length,
-      );
-    setSaveError("");
-    try {
-      if (hasContent) await savePurchaseDraft(memberId, householdId, current);
-      else await deletePurchaseDraft(memberId, householdId);
-      setSavedAt(new Date());
-      if (editVersion.current === version) {
-        onUnsavedChangesRef.current(false);
-        setHasUnsavedChanges(false);
+  const persistDraft = useCallback(
+    async (current = draftRef.current) => {
+      const version = editVersion.current;
+      const hasContent =
+        hasLocalDraft.current ||
+        Boolean(
+          current.merchant.trim() ||
+          current.itemName.trim() ||
+          current.itemAmount ||
+          current.items.length,
+        );
+      if (mounted.current && scopeRef.current === scope) setSaveError("");
+      try {
+        await writeDraft.current(() =>
+          hasContent
+            ? savePurchaseDraft(memberId, householdId, current)
+            : deletePurchaseDraft(memberId, householdId),
+        );
+        if (mounted.current && scopeRef.current === scope && editVersion.current === version) {
+          setSavedAt(new Date());
+          onUnsavedChangesRef.current(false);
+          setHasUnsavedChanges(false);
+        }
+      } catch (reason) {
+        if (mounted.current && scopeRef.current === scope && editVersion.current === version) {
+          onUnsavedChangesRef.current(true);
+          setSaveError(errorMessage(reason));
+          setHasUnsavedChanges(true);
+        }
       }
-    } catch (reason) {
-      if (editVersion.current === version) {
-        onUnsavedChangesRef.current(true);
-        setSaveError(errorMessage(reason));
-        setHasUnsavedChanges(true);
-      }
-    }
-  }, [memberId, householdId, draft]);
+    },
+    [memberId, householdId, scope],
+  );
 
   useEffect(() => {
     let active = true;
@@ -111,11 +137,14 @@ export function usePurchaseDraft({
       return;
     }
     if (timer.current !== null) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => void persistDraft(), 450);
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
+      void persistDraft(draft);
+    }, 450);
     return () => {
       if (timer.current !== null) window.clearTimeout(timer.current);
     };
-  }, [scope, storageReady, draftScope, persistDraft]);
+  }, [scope, storageReady, draftScope, draft, persistDraft]);
 
   useEffect(
     () => () => {
@@ -129,20 +158,32 @@ export function usePurchaseDraft({
           current.itemAmount ||
           current.items.length
         )
-          void savePurchaseDraft(memberId, householdId, current);
-        else void deletePurchaseDraft(memberId, householdId);
+          void writeDraft
+            .current(() => savePurchaseDraft(memberId, householdId, current))
+            .catch(() => {});
+        else
+          void writeDraft.current(() => deletePurchaseDraft(memberId, householdId)).catch(() => {});
       }
     },
     [memberId, householdId, storageReady, draftScope, scope],
   );
 
   const queued = useCallback(() => {
+    editVersion.current += 1;
     skipNextSave.current = true;
     hasLocalDraft.current = false;
+    void writeDraft
+      .current(() => deletePurchaseDraft(memberId, householdId))
+      .catch((reason) => {
+        if (!mounted.current) return;
+        onUnsavedChangesRef.current(true);
+        setSaveError(errorMessage(reason));
+        setHasUnsavedChanges(true);
+      });
     setSavedAt(null);
     onUnsavedChangesRef.current(false);
     setHasUnsavedChanges(false);
-  }, []);
+  }, [memberId, householdId]);
 
   const cancelScheduledSave = useCallback(() => {
     if (timer.current !== null) window.clearTimeout(timer.current);

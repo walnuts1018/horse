@@ -1,0 +1,23 @@
+extend type Mutation {
+  removeHouseholdMember(
+    input: RemoveHouseholdMemberInput!
+  ): RemoveHouseholdMemberResult!
+}
+
+input RemoveHouseholdMemberInput {
+  householdId: ID! @nodeID(of: "Household")
+  memberId: ID! @nodeID(of: "Member")
+}
+
+union RemoveHouseholdMemberResult =
+  | RemoveHouseholdMemberSuccess
+  | RemoveHouseholdMemberUserError
+
+type RemoveHouseholdMemberSuccess {
+  householdId: ID! @goField(forceResolver: true)
+}
+
+type RemoveHouseholdMemberUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

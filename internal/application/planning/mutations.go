@@ -17,6 +17,7 @@ import (
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
 	"github.com/walnuts1018/horse/internal/application/inputvalidation"
+	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -126,7 +127,7 @@ func (s *Service) SetBudget(ctx context.Context, command BudgetCommand) (BudgetR
 	if err != nil {
 		return BudgetResult{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); err != nil {
 		return BudgetResult{}, err
@@ -185,7 +186,7 @@ func (s *Service) ArchiveBudget(ctx context.Context, actorID, householdID, budge
 	if err != nil {
 		return BudgetResult{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	row, err := models.Budgets.Query(sm.Where(psql.And(models.Budgets.Columns.ID.EQ(psql.Arg(id)), models.Budgets.Columns.HouseholdID.EQ(psql.Arg(hhID)))), sm.ForUpdate()).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -243,7 +244,7 @@ func (s *Service) SetRecurringExpense(ctx context.Context, command RecurringExpe
 	if err != nil {
 		return RecurringExpenseResult{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); err != nil {
 		return RecurringExpenseResult{}, err
@@ -302,7 +303,7 @@ func (s *Service) ArchiveRecurringExpense(ctx context.Context, actorID, househol
 	if err != nil {
 		return RecurringExpenseResult{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
 	row, err := models.RecurringExpenses.Query(sm.Where(psql.And(models.RecurringExpenses.Columns.ID.EQ(psql.Arg(id)), models.RecurringExpenses.Columns.HouseholdID.EQ(psql.Arg(hhID)))), sm.ForUpdate()).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {

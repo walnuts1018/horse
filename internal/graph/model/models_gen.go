@@ -100,6 +100,10 @@ type CreateTagResult interface {
 	IsCreateTagResult()
 }
 
+type LeaveHouseholdResult interface {
+	IsLeaveHouseholdResult()
+}
+
 type LedgerEntry interface {
 	IsNode()
 	IsLedgerEntry()
@@ -150,6 +154,10 @@ type RecordRepaymentResult interface {
 
 type RecordTransferResult interface {
 	IsRecordTransferResult()
+}
+
+type RemoveHouseholdMemberResult interface {
+	IsRemoveHouseholdMemberResult()
 }
 
 type RevokeHouseholdInvitationResult interface {
@@ -1074,6 +1082,27 @@ type HouseholdInvitationEdge struct {
 	Node   HouseholdInvitationVariant `json:"node"`
 }
 
+type LeaveHouseholdInput struct {
+	HouseholdID string `json:"householdId"`
+}
+
+type LeaveHouseholdSuccess struct {
+	HouseholdID string `json:"householdId"`
+}
+
+func (LeaveHouseholdSuccess) IsLeaveHouseholdResult() {}
+
+type LeaveHouseholdUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (LeaveHouseholdUserError) IsLeaveHouseholdResult() {}
+
+func (LeaveHouseholdUserError) IsMutationError()                {}
+func (this LeaveHouseholdUserError) GetCode() MutationErrorCode { return this.Code }
+func (this LeaveHouseholdUserError) GetMessage() string         { return this.Message }
+
 type LedgerConnection struct {
 	Edges      []*LedgerEdge `json:"edges"`
 	PageInfo   *PageInfo     `json:"pageInfo"`
@@ -1531,14 +1560,17 @@ type Query struct {
 }
 
 type RecordAccountMovementInput struct {
-	HouseholdID    string              `json:"householdId"`
-	Kind           AccountMovementKind `json:"kind"`
-	FromAccountID  string              `json:"fromAccountId"`
-	ToAccountID    string              `json:"toAccountId"`
-	AmountYen      Long                `json:"amountYen"`
-	OccurredAt     DateTime            `json:"occurredAt"`
-	Description    string              `json:"description"`
-	IdempotencyKey string              `json:"idempotencyKey"`
+	HouseholdID      string              `json:"householdId"`
+	Kind             AccountMovementKind `json:"kind"`
+	FromAccountID    string              `json:"fromAccountId"`
+	ToAccountID      string              `json:"toAccountId"`
+	AmountYen        Long                `json:"amountYen"`
+	OccurredAt       DateTime            `json:"occurredAt"`
+	Description      string              `json:"description"`
+	IdempotencyKey   string              `json:"idempotencyKey"`
+	SourceDocumentID *string             `json:"sourceDocumentId,omitempty"`
+	SourceReference  *string             `json:"sourceReference,omitempty"`
+	SourceAccountID  *string             `json:"sourceAccountId,omitempty"`
 }
 
 type RecordAccountMovementSuccess struct {
@@ -1701,6 +1733,28 @@ type RecurringExpenseEdge struct {
 	Cursor string            `json:"cursor"`
 	Node   *RecurringExpense `json:"node"`
 }
+
+type RemoveHouseholdMemberInput struct {
+	HouseholdID string `json:"householdId"`
+	MemberID    string `json:"memberId"`
+}
+
+type RemoveHouseholdMemberSuccess struct {
+	HouseholdID string `json:"householdId"`
+}
+
+func (RemoveHouseholdMemberSuccess) IsRemoveHouseholdMemberResult() {}
+
+type RemoveHouseholdMemberUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (RemoveHouseholdMemberUserError) IsRemoveHouseholdMemberResult() {}
+
+func (RemoveHouseholdMemberUserError) IsMutationError()                {}
+func (this RemoveHouseholdMemberUserError) GetCode() MutationErrorCode { return this.Code }
+func (this RemoveHouseholdMemberUserError) GetMessage() string         { return this.Message }
 
 type RepaymentTransferLedgerEntry struct {
 	ID          string       `json:"id"`

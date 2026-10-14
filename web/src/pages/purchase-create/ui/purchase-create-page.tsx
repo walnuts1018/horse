@@ -1,6 +1,8 @@
 import { Check, ChevronLeft, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import type { EditPurchaseItemsCommands } from "./edit-purchase-items";
+
 import { readHouseholdPurchases } from "../../../entities/purchase";
 import { type Household, type Purchase } from "../../../shared/api";
 import { errorMessage, usePurchaseOutbox } from "../../../shared/lib";
@@ -45,9 +47,8 @@ export function PurchaseCreatePage({
   const [merchant, setMerchant] = useState("");
   const [occurredAt, setOccurredAt] = useState(localDateTime);
   const [itemsValue, setItemsValue] = useState<PurchaseItemsValue>(emptyPurchaseItemsValue);
-  const [itemsResetToken, setItemsResetToken] = useState(0);
-  const [undoToken, setUndoToken] = useState(0);
   const [undoAvailable, setUndoAvailable] = useState(false);
+  const itemsCommands = useRef<EditPurchaseItemsCommands>(null);
   const [history, setHistory] = useState<Purchase[]>([]);
   const markUnsavedRef = useRef<() => void>(() => {});
   const markUnsaved = useCallback(() => markUnsavedRef.current(), []);
@@ -177,8 +178,7 @@ export function PurchaseCreatePage({
       setOccurredAt(localDateTime());
       payments.reset();
       setItemsValue(emptyPurchaseItemsValue());
-      setItemsResetToken((token) => token + 1);
-      setUndoAvailable(false);
+      itemsCommands.current?.reset();
     },
   });
   const { pending, message, setMessage, submit } = submission;
@@ -193,6 +193,7 @@ export function PurchaseCreatePage({
     markUnsaved();
     setMerchant(purchase.merchant);
     setCopiedPurchase({ ...purchase });
+    itemsCommands.current?.copy(purchase);
     setMessage("");
   };
   if (!storageReady)
@@ -256,9 +257,7 @@ export function PurchaseCreatePage({
         household={household}
         history={history}
         value={itemsValue}
-        resetToken={itemsResetToken}
-        copiedPurchase={copiedPurchase}
-        undoToken={undoToken}
+        commandsRef={itemsCommands}
         itemTotal={itemTotal}
         hasDraftContent={hasDraftContent}
         hasUnsavedChanges={hasUnsavedChanges}
@@ -281,7 +280,7 @@ export function PurchaseCreatePage({
           <button
             type="button"
             className="button button-soft"
-            onClick={() => setUndoToken((token) => token + 1)}
+            onClick={() => itemsCommands.current?.undo()}
           >
             <Undo2 size={16} />
             元に戻す

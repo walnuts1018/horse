@@ -4,6 +4,7 @@ import {
   isPersonalPool,
   isSharedPool,
   type Household,
+  type Pool,
   type SharedPoolSettlementPolicy,
 } from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib";
@@ -14,6 +15,56 @@ import {
   type AccountKind,
   type PoolKind,
 } from "../api/account-settings";
+
+type FundingDraft = {
+  ownerMemberId: string;
+  policy: SharedPoolSettlementPolicy;
+  weights: Record<string, string>;
+};
+
+type FundingDrafts = Record<string, FundingDraft>;
+
+function initialFundingDraft(pool: Pool, household: Household): FundingDraft {
+  return {
+    ownerMemberId: pool.__typename === "PersonalPool" ? pool.ownerMemberId : "",
+    policy: pool.__typename === "SharedPool" ? pool.settlementPolicy : "BALANCE_TO_STANDARD",
+    weights: Object.fromEntries(
+      household.members.map((member) => [
+        member.id,
+        String(pool.fundingShares.find((share) => share.memberId === member.id)?.weight ?? ""),
+      ]),
+    ),
+  };
+}
+
+export function reconcileFundingDrafts(
+  household: Household,
+  currentHouseholdId: string,
+  current: FundingDrafts,
+): FundingDrafts {
+  return Object.fromEntries(
+    household.pools.map((pool) => {
+      const initial = initialFundingDraft(pool, household);
+      const existing = currentHouseholdId === household.id ? current[pool.id] : undefined;
+      if (!existing) return [pool.id, initial];
+
+      return [
+        pool.id,
+        {
+          ...existing,
+          weights: Object.fromEntries(
+            household.members.map((member) => [
+              member.id,
+              member.id in existing.weights
+                ? existing.weights[member.id]
+                : initial.weights[member.id],
+            ]),
+          ),
+        },
+      ];
+    }),
+  );
+}
 
 export function useAccountSettings({
   household,
@@ -41,15 +92,9 @@ export function useAccountSettings({
     return date.toISOString().slice(0, 10);
   });
   const [fundingDrafts, setFundingDrafts] = useState<
-    Record<
-      string,
-      {
-        ownerMemberId: string;
-        policy: SharedPoolSettlementPolicy;
-        weights: Record<string, string>;
-      }
-    >
+    FundingDrafts
   >({});
+  const fundingDraftHouseholdId = useRef(household.id);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -58,27 +103,12 @@ export function useAccountSettings({
   }, [onFormClean, onNotice]);
 
   useEffect(() => {
-    setFundingDrafts(
-      Object.fromEntries(
-        household.pools.map((pool) => [
-          pool.id,
-          {
-            ownerMemberId: pool.__typename === "PersonalPool" ? pool.ownerMemberId : "",
-            policy:
-              pool.__typename === "SharedPool" ? pool.settlementPolicy : "BALANCE_TO_STANDARD",
-            weights: Object.fromEntries(
-              household.members.map((member) => [
-                member.id,
-                String(
-                  pool.fundingShares.find((share) => share.memberId === member.id)?.weight ?? "",
-                ),
-              ]),
-            ),
-          },
-        ]),
-      ),
+    const currentHouseholdId = fundingDraftHouseholdId.current;
+    fundingDraftHouseholdId.current = household.id;
+    setFundingDrafts((current) =>
+      reconcileFundingDrafts(household, currentHouseholdId, current),
     );
-  }, [household.pools, household.members]);
+  }, [household]);
 
   const addPool = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();

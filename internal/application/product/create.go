@@ -14,13 +14,15 @@ import (
 	"github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
+	"github.com/walnuts1018/horse/internal/application/inputvalidation"
+	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 type CreateConceptCommand struct {
 	ActorID     string
 	HouseholdID string
-	Name        string
+	Name        string `validate:"notblank,max=240"`
 	CategoryID  *string
 }
 
@@ -30,10 +32,11 @@ type CreatedConcept struct {
 
 func (s *Service) CreateConcept(ctx context.Context, command CreateConceptCommand) (CreatedConcept, error) {
 	name := strings.TrimSpace(command.Name)
-	normalizedName := normalizeText(name)
-	if normalizedName == "" || len(name) > 240 {
-		return CreatedConcept{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid product concept name"))
+	command.Name = name
+	if err := inputvalidation.Check(command); err != nil {
+		return CreatedConcept{}, err
 	}
+	normalizedName := normalizeText(name)
 	householdID, err := parseProductID(command.HouseholdID, apperror.KindBadInput)
 	if err != nil {
 		return CreatedConcept{}, err
@@ -55,7 +58,7 @@ func (s *Service) CreateConcept(ctx context.Context, command CreateConceptComman
 	if err != nil {
 		return CreatedConcept{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := pgx.NewTx(tx, nil)
 	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForShare()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
 		return CreatedConcept{}, apperror.ErrNotFound
@@ -98,10 +101,10 @@ type CreateVariantCommand struct {
 	ActorID     string
 	HouseholdID string
 	ConceptID   string
-	Name        string
+	Name        string `validate:"notblank,max=240"`
 	Brand       *string
 	PackageSize *string
-	Barcode     *string
+	Barcode     *string `validate:"omitempty,notblank"`
 }
 
 type CreatedVariant struct {
@@ -110,10 +113,11 @@ type CreatedVariant struct {
 
 func (s *Service) CreateVariant(ctx context.Context, command CreateVariantCommand) (CreatedVariant, error) {
 	name := strings.TrimSpace(command.Name)
-	normalizedName := normalizeText(name)
-	if normalizedName == "" || len(name) > 240 || command.Barcode != nil && strings.TrimSpace(*command.Barcode) == "" {
-		return CreatedVariant{}, apperror.Wrap(apperror.KindBadInput, errors.New("invalid product variant"))
+	command.Name = name
+	if err := inputvalidation.Check(command); err != nil {
+		return CreatedVariant{}, err
 	}
+	normalizedName := normalizeText(name)
 	householdID, err := parseProductID(command.HouseholdID, apperror.KindBadInput)
 	if err != nil {
 		return CreatedVariant{}, err
@@ -137,7 +141,7 @@ func (s *Service) CreateVariant(ctx context.Context, command CreateVariantComman
 	if err != nil {
 		return CreatedVariant{}, err
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	defer txcleanup.Rollback(ctx, tx)
 	executor := pgx.NewTx(tx, nil)
 	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForShare()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
 		return CreatedVariant{}, apperror.ErrNotFound

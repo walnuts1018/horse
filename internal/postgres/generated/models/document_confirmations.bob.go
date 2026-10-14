@@ -26,13 +26,14 @@ import (
 
 // DocumentConfirmation is an object representing the database table.
 type DocumentConfirmation struct {
-	SourceDocumentID uuid.UUID           `db:"source_document_id,pk" `
-	HouseholdID      uuid.UUID           `db:"household_id" `
-	PurchaseID       sql.Null[uuid.UUID] `db:"purchase_id" `
-	CreatedBy        uuid.UUID           `db:"created_by" `
-	CreatedAt        time.Time           `db:"created_at" `
-	SourceReference  string              `db:"source_reference,pk" `
-	CorrectionID     sql.Null[uuid.UUID] `db:"correction_id" `
+	SourceDocumentID  uuid.UUID           `db:"source_document_id,pk" `
+	HouseholdID       uuid.UUID           `db:"household_id" `
+	PurchaseID        sql.Null[uuid.UUID] `db:"purchase_id" `
+	CreatedBy         uuid.UUID           `db:"created_by" `
+	CreatedAt         time.Time           `db:"created_at" `
+	SourceReference   string              `db:"source_reference,pk" `
+	CorrectionID      sql.Null[uuid.UUID] `db:"correction_id" `
+	AccountMovementID sql.Null[uuid.UUID] `db:"account_movement_id" `
 
 	R documentConfirmationR `db:"-" `
 }
@@ -49,11 +50,12 @@ type DocumentConfirmationsQuery = *psql.ViewQuery[*DocumentConfirmation, Documen
 
 // documentConfirmationR is where relationships are stored.
 type documentConfirmationR struct {
-	Correction      *Correction     // document_confirmations.document_confirmations_correction_id_fkey
-	CreatedByMember *Member         // document_confirmations.document_confirmations_created_by_fkey
-	Household       *Household      // document_confirmations.document_confirmations_household_id_fkey
-	Purchase        *Purchase       // document_confirmations.document_confirmations_household_id_purchase_id_fkey
-	SourceDocument  *SourceDocument // document_confirmations.document_confirmations_source_document_id_fkey
+	AccountMovement *AccountMovement // document_confirmations.document_confirmations_account_movement_fk
+	Correction      *Correction      // document_confirmations.document_confirmations_correction_household_fk
+	CreatedByMember *Member          // document_confirmations.document_confirmations_created_by_fkey
+	Household       *Household       // document_confirmations.document_confirmations_household_id_fkey
+	Purchase        *Purchase        // document_confirmations.document_confirmations_household_id_purchase_id_fkey
+	SourceDocument  *SourceDocument  // document_confirmations.document_confirmations_source_document_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -62,7 +64,8 @@ type documentConfirmationR struct {
 
 // documentConfirmationRLoaded tracks which relationships on DocumentConfirmation have been loaded.
 type documentConfirmationRLoaded struct {
-	Correction      bool // document_confirmations.document_confirmations_correction_id_fkey
+	AccountMovement bool // document_confirmations.document_confirmations_account_movement_fk
+	Correction      bool // document_confirmations.document_confirmations_correction_household_fk
 	CreatedByMember bool // document_confirmations.document_confirmations_created_by_fkey
 	Household       bool // document_confirmations.document_confirmations_household_id_fkey
 	Purchase        bool // document_confirmations.document_confirmations_household_id_purchase_id_fkey
@@ -71,7 +74,7 @@ type documentConfirmationRLoaded struct {
 
 func buildDocumentConfirmationColumns(tableName string) documentConfirmationColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"source_document_id", "household_id", "purchase_id", "created_by", "created_at", "source_reference", "correction_id",
+		"source_document_id", "household_id", "purchase_id", "created_by", "created_at", "source_reference", "correction_id", "account_movement_id",
 	)
 
 	if tableName != "" {
@@ -79,28 +82,30 @@ func buildDocumentConfirmationColumns(tableName string) documentConfirmationColu
 	}
 
 	return documentConfirmationColumns{
-		ColumnsExpr:      columnsExpr,
-		tableAlias:       tableName,
-		SourceDocumentID: buildDocumentConfirmationColumn(tableName, "source_document_id"),
-		HouseholdID:      buildDocumentConfirmationColumn(tableName, "household_id"),
-		PurchaseID:       buildDocumentConfirmationColumn(tableName, "purchase_id"),
-		CreatedBy:        buildDocumentConfirmationColumn(tableName, "created_by"),
-		CreatedAt:        buildDocumentConfirmationColumn(tableName, "created_at"),
-		SourceReference:  buildDocumentConfirmationColumn(tableName, "source_reference"),
-		CorrectionID:     buildDocumentConfirmationColumn(tableName, "correction_id"),
+		ColumnsExpr:       columnsExpr,
+		tableAlias:        tableName,
+		SourceDocumentID:  buildDocumentConfirmationColumn(tableName, "source_document_id"),
+		HouseholdID:       buildDocumentConfirmationColumn(tableName, "household_id"),
+		PurchaseID:        buildDocumentConfirmationColumn(tableName, "purchase_id"),
+		CreatedBy:         buildDocumentConfirmationColumn(tableName, "created_by"),
+		CreatedAt:         buildDocumentConfirmationColumn(tableName, "created_at"),
+		SourceReference:   buildDocumentConfirmationColumn(tableName, "source_reference"),
+		CorrectionID:      buildDocumentConfirmationColumn(tableName, "correction_id"),
+		AccountMovementID: buildDocumentConfirmationColumn(tableName, "account_movement_id"),
 	}
 }
 
 type documentConfirmationColumns struct {
 	expr.ColumnsExpr
-	tableAlias       string
-	SourceDocumentID documentConfirmationColumn
-	HouseholdID      documentConfirmationColumn
-	PurchaseID       documentConfirmationColumn
-	CreatedBy        documentConfirmationColumn
-	CreatedAt        documentConfirmationColumn
-	SourceReference  documentConfirmationColumn
-	CorrectionID     documentConfirmationColumn
+	tableAlias        string
+	SourceDocumentID  documentConfirmationColumn
+	HouseholdID       documentConfirmationColumn
+	PurchaseID        documentConfirmationColumn
+	CreatedBy         documentConfirmationColumn
+	CreatedAt         documentConfirmationColumn
+	SourceReference   documentConfirmationColumn
+	CorrectionID      documentConfirmationColumn
+	AccountMovementID documentConfirmationColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -146,17 +151,18 @@ func (c documentConfirmationColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type DocumentConfirmationSetter struct {
-	SourceDocumentID *uuid.UUID           `db:"source_document_id,pk" `
-	HouseholdID      *uuid.UUID           `db:"household_id" `
-	PurchaseID       *sql.Null[uuid.UUID] `db:"purchase_id" `
-	CreatedBy        *uuid.UUID           `db:"created_by" `
-	CreatedAt        *time.Time           `db:"created_at" `
-	SourceReference  *string              `db:"source_reference,pk" `
-	CorrectionID     *sql.Null[uuid.UUID] `db:"correction_id" `
+	SourceDocumentID  *uuid.UUID           `db:"source_document_id,pk" `
+	HouseholdID       *uuid.UUID           `db:"household_id" `
+	PurchaseID        *sql.Null[uuid.UUID] `db:"purchase_id" `
+	CreatedBy         *uuid.UUID           `db:"created_by" `
+	CreatedAt         *time.Time           `db:"created_at" `
+	SourceReference   *string              `db:"source_reference,pk" `
+	CorrectionID      *sql.Null[uuid.UUID] `db:"correction_id" `
+	AccountMovementID *sql.Null[uuid.UUID] `db:"account_movement_id" `
 }
 
 func (s DocumentConfirmationSetter) SetColumns() []string {
-	vals := make([]string, 0, 7)
+	vals := make([]string, 0, 8)
 	if s.SourceDocumentID != nil {
 		vals = append(vals, "source_document_id")
 	}
@@ -177,6 +183,9 @@ func (s DocumentConfirmationSetter) SetColumns() []string {
 	}
 	if s.CorrectionID != nil {
 		vals = append(vals, "correction_id")
+	}
+	if s.AccountMovementID != nil {
+		vals = append(vals, "account_movement_id")
 	}
 	return vals
 }
@@ -237,6 +246,15 @@ func (s DocumentConfirmationSetter) Overwrite(t *DocumentConfirmation) {
 				return *new(sql.Null[uuid.UUID])
 			}
 			v := s.CorrectionID
+			return *v
+		}()
+	}
+	if s.AccountMovementID != nil {
+		t.AccountMovementID = func() sql.Null[uuid.UUID] {
+			if s.AccountMovementID == nil {
+				return *new(sql.Null[uuid.UUID])
+			}
+			v := s.AccountMovementID
 			return *v
 		}()
 	}
@@ -320,6 +338,17 @@ func (s *DocumentConfirmationSetter) Apply(q *dialect.InsertQuery) {
 				v := s.CorrectionID
 				return *v
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.AccountMovementID == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[uuid.UUID] {
+				if s.AccountMovementID == nil {
+					return *new(sql.Null[uuid.UUID])
+				}
+				v := s.AccountMovementID
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -328,7 +357,7 @@ func (s DocumentConfirmationSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s DocumentConfirmationSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 7)
+	exprs := make([]bob.Expression, 0, 8)
 
 	if s.SourceDocumentID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -379,6 +408,13 @@ func (s DocumentConfirmationSetter) Expressions(prefix ...string) []bob.Expressi
 		}})
 	}
 
+	if s.AccountMovementID != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "account_movement_id")...),
+			psql.Arg(s.AccountMovementID),
+		}})
+	}
+
 	return exprs
 }
 
@@ -389,7 +425,7 @@ func documentConfirmationScanMapper(ctx context.Context, cols []string) (scan.Be
 		idx int
 		dst func(o *DocumentConfirmation) any
 	}
-	targets := make([]target, 0, 7)
+	targets := make([]target, 0, 8)
 	for i, col := range cols {
 		switch col {
 		case "source_document_id":
@@ -406,6 +442,8 @@ func documentConfirmationScanMapper(ctx context.Context, cols []string) (scan.Be
 			targets = append(targets, target{i, func(o *DocumentConfirmation) any { return &o.SourceReference }})
 		case "correction_id":
 			targets = append(targets, target{i, func(o *DocumentConfirmation) any { return &o.CorrectionID }})
+		case "account_movement_id":
+			targets = append(targets, target{i, func(o *DocumentConfirmation) any { return &o.AccountMovementID }})
 		}
 	}
 
@@ -685,33 +723,61 @@ func (o DocumentConfirmationSlice) ReloadAll(ctx context.Context, exec bob.Execu
 	return nil
 }
 
-// Correction starts a query for related objects on corrections
-func (o *DocumentConfirmation) Correction(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionsQuery {
-	return Corrections.Query(append(mods,
-		sm.Where(Corrections.Columns.ID.EQ(psql.Arg(o.CorrectionID))),
+// AccountMovement starts a query for related objects on account_movements
+func (o *DocumentConfirmation) AccountMovement(mods ...bob.Mod[*dialect.SelectQuery]) AccountMovementsQuery {
+	return AccountMovements.Query(append(mods,
+		sm.Where(AccountMovements.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(AccountMovements.Columns.ID.EQ(psql.Arg(o.AccountMovementID))),
 	)...)
 }
 
-func (os DocumentConfirmationSlice) Correction(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionsQuery {
-	pkCorrectionID := make(pgtypes.Array[sql.Null[uuid.UUID]], 0, len(os))
+func (os DocumentConfirmationSlice) AccountMovement(mods ...bob.Mod[*dialect.SelectQuery]) AccountMovementsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
 
-	// the array is only a filter (semi-join), so duplicate keys can be
-	// dropped before they are sent over the wire
-	seenCorrectionID := make(map[sql.Null[uuid.UUID]]struct{}, len(os))
+	pkAccountMovementID := make(pgtypes.Array[sql.Null[uuid.UUID]], 0, len(os))
+
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
-		if _, ok := seenCorrectionID[o.CorrectionID]; ok {
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkAccountMovementID = append(pkAccountMovementID, o.AccountMovementID)
+	}
+
+	return AccountMovements.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkAccountMovementID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
+		)).As("bob_rel_keys").On(AccountMovements.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), AccountMovements.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
+	)...)
+}
+
+// Correction starts a query for related objects on corrections
+func (o *DocumentConfirmation) Correction(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionsQuery {
+	return Corrections.Query(append(mods,
+		sm.Where(Corrections.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(Corrections.Columns.ID.EQ(psql.Arg(o.CorrectionID))),
+	)...)
+}
+
+func (os DocumentConfirmationSlice) Correction(mods ...bob.Mod[*dialect.SelectQuery]) CorrectionsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkCorrectionID := make(pgtypes.Array[sql.Null[uuid.UUID]], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
 			continue
 		}
-		seenCorrectionID[o.CorrectionID] = struct{}{}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
 		pkCorrectionID = append(pkCorrectionID, o.CorrectionID)
 	}
-	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkCorrectionID), "uuid[]"))
 
 	return Corrections.Query(append(mods,
-		sm.Where(Corrections.Columns.ID.EQ(PKArgExpr)),
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkCorrectionID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
+		)).As("bob_rel_keys").On(Corrections.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), Corrections.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
 	)...)
 }
 
@@ -834,8 +900,60 @@ func (os DocumentConfirmationSlice) SourceDocument(mods ...bob.Mod[*dialect.Sele
 	)...)
 }
 
+func attachDocumentConfirmationAccountMovement0(ctx context.Context, exec bob.Executor, count int, documentConfirmation0 *DocumentConfirmation, accountMovement1 *AccountMovement) (*DocumentConfirmation, error) {
+	setter := &DocumentConfirmationSetter{
+		HouseholdID:       func() *uuid.UUID { return &accountMovement1.HouseholdID }(),
+		AccountMovementID: func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: accountMovement1.ID, Valid: true}; return &v }(),
+	}
+
+	err := documentConfirmation0.Update(ctx, exec, setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachDocumentConfirmationAccountMovement0: %w", err)
+	}
+
+	return documentConfirmation0, nil
+}
+
+func (documentConfirmation0 *DocumentConfirmation) InsertAccountMovement(ctx context.Context, exec bob.Executor, related *AccountMovementSetter) error {
+	var err error
+
+	accountMovement1, err := AccountMovements.Insert(related).One(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("inserting related objects: %w", err)
+	}
+
+	_, err = attachDocumentConfirmationAccountMovement0(ctx, exec, 1, documentConfirmation0, accountMovement1)
+	if err != nil {
+		return err
+	}
+
+	documentConfirmation0.R.AccountMovement = accountMovement1
+	documentConfirmation0.R.Loaded.AccountMovement = true
+
+	accountMovement1.R.DocumentConfirmations = append(accountMovement1.R.DocumentConfirmations, documentConfirmation0)
+
+	return nil
+}
+
+func (documentConfirmation0 *DocumentConfirmation) AttachAccountMovement(ctx context.Context, exec bob.Executor, accountMovement1 *AccountMovement) error {
+	var err error
+
+	_, err = attachDocumentConfirmationAccountMovement0(ctx, exec, 1, documentConfirmation0, accountMovement1)
+	if err != nil {
+		return err
+	}
+
+	documentConfirmation0.R.AccountMovement = accountMovement1
+	documentConfirmation0.R.Loaded.AccountMovement = true
+
+	accountMovement1.R.DocumentConfirmations = append(accountMovement1.R.DocumentConfirmations, documentConfirmation0)
+
+	return nil
+}
+
 func attachDocumentConfirmationCorrection0(ctx context.Context, exec bob.Executor, count int, documentConfirmation0 *DocumentConfirmation, correction1 *Correction) (*DocumentConfirmation, error) {
 	setter := &DocumentConfirmationSetter{
+		HouseholdID:  func() *uuid.UUID { return &correction1.HouseholdID }(),
 		CorrectionID: func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: correction1.ID, Valid: true}; return &v }(),
 	}
 
@@ -1086,15 +1204,16 @@ func (documentConfirmation0 *DocumentConfirmation) AttachSourceDocument(ctx cont
 }
 
 type documentConfirmationWhere[Q psql.Filterable] struct {
-	cols             documentConfirmationColumns
-	SourceDocumentID psql.WhereMod[Q, uuid.UUID]
-	HouseholdID      psql.WhereMod[Q, uuid.UUID]
-	PurchaseID       psql.WhereNullMod[Q, uuid.UUID]
-	CreatedBy        psql.WhereMod[Q, uuid.UUID]
-	CreatedAt        psql.WhereMod[Q, time.Time]
-	SourceReference  psql.WhereMod[Q, string]
-	CorrectionID     psql.WhereNullMod[Q, uuid.UUID]
-	R                documentConfirmationWhereR[Q]
+	cols              documentConfirmationColumns
+	SourceDocumentID  psql.WhereMod[Q, uuid.UUID]
+	HouseholdID       psql.WhereMod[Q, uuid.UUID]
+	PurchaseID        psql.WhereNullMod[Q, uuid.UUID]
+	CreatedBy         psql.WhereMod[Q, uuid.UUID]
+	CreatedAt         psql.WhereMod[Q, time.Time]
+	SourceReference   psql.WhereMod[Q, string]
+	CorrectionID      psql.WhereNullMod[Q, uuid.UUID]
+	AccountMovementID psql.WhereNullMod[Q, uuid.UUID]
+	R                 documentConfirmationWhereR[Q]
 }
 
 func (documentConfirmationWhere[Q]) AliasedAs(alias string) documentConfirmationWhere[Q] {
@@ -1103,15 +1222,16 @@ func (documentConfirmationWhere[Q]) AliasedAs(alias string) documentConfirmation
 
 func buildDocumentConfirmationWhere[Q psql.Filterable](cols documentConfirmationColumns) documentConfirmationWhere[Q] {
 	return documentConfirmationWhere[Q]{
-		cols:             cols,
-		SourceDocumentID: psql.Where[Q, uuid.UUID](cols.SourceDocumentID.Expression),
-		HouseholdID:      psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
-		PurchaseID:       psql.WhereNull[Q, uuid.UUID](cols.PurchaseID.Expression),
-		CreatedBy:        psql.Where[Q, uuid.UUID](cols.CreatedBy.Expression),
-		CreatedAt:        psql.Where[Q, time.Time](cols.CreatedAt.Expression),
-		SourceReference:  psql.Where[Q, string](cols.SourceReference.Expression),
-		CorrectionID:     psql.WhereNull[Q, uuid.UUID](cols.CorrectionID.Expression),
-		R:                documentConfirmationWhereR[Q]{cols: cols},
+		cols:              cols,
+		SourceDocumentID:  psql.Where[Q, uuid.UUID](cols.SourceDocumentID.Expression),
+		HouseholdID:       psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
+		PurchaseID:        psql.WhereNull[Q, uuid.UUID](cols.PurchaseID.Expression),
+		CreatedBy:         psql.Where[Q, uuid.UUID](cols.CreatedBy.Expression),
+		CreatedAt:         psql.Where[Q, time.Time](cols.CreatedAt.Expression),
+		SourceReference:   psql.Where[Q, string](cols.SourceReference.Expression),
+		CorrectionID:      psql.WhereNull[Q, uuid.UUID](cols.CorrectionID.Expression),
+		AccountMovementID: psql.WhereNull[Q, uuid.UUID](cols.AccountMovementID.Expression),
+		R:                 documentConfirmationWhereR[Q]{cols: cols},
 	}
 }
 
@@ -1122,6 +1242,21 @@ type documentConfirmationWhereR[Q psql.Filterable] struct {
 	cols documentConfirmationColumns
 }
 
+// HasAccountMovement filters parents that have a matching AccountMovement using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to AccountMovements).
+func (w documentConfirmationWhereR[Q]) HasAccountMovement(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(AccountMovements.NameExpr()),
+		sm.Where(AccountMovements.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(AccountMovements.Columns.ID.EQ(w.cols.AccountMovementID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasCorrection filters parents that have a matching Correction using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -1130,6 +1265,7 @@ func (w documentConfirmationWhereR[Q]) HasCorrection(filters ...bob.Mod[*dialect
 	q := psql.Select(
 		sm.Columns(psql.Raw("1")),
 		sm.From(Corrections.NameExpr()),
+		sm.Where(Corrections.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(Corrections.Columns.ID.EQ(w.cols.CorrectionID)),
 	)
 	q.Apply(filters...)
@@ -1199,6 +1335,19 @@ func (o *DocumentConfirmation) Preload(name string, retrieved any) error {
 	}
 
 	switch name {
+	case "AccountMovement":
+		rel, ok := retrieved.(*AccountMovement)
+		if !ok {
+			return fmt.Errorf("documentConfirmation cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.AccountMovement = rel
+		o.R.Loaded.AccountMovement = true
+
+		if rel != nil {
+			rel.R.DocumentConfirmations = DocumentConfirmationSlice{o}
+		}
+		return nil
 	case "Correction":
 		rel, ok := retrieved.(*Correction)
 		if !ok {
@@ -1270,6 +1419,7 @@ func (o *DocumentConfirmation) Preload(name string, retrieved any) error {
 }
 
 type documentConfirmationPreloader struct {
+	AccountMovement func(...psql.PreloadOption) psql.Preloader
 	Correction      func(...psql.PreloadOption) psql.Preloader
 	CreatedByMember func(...psql.PreloadOption) psql.Preloader
 	Household       func(...psql.PreloadOption) psql.Preloader
@@ -1279,6 +1429,19 @@ type documentConfirmationPreloader struct {
 
 func buildDocumentConfirmationPreloader() documentConfirmationPreloader {
 	return documentConfirmationPreloader{
+		AccountMovement: func(opts ...psql.PreloadOption) psql.Preloader {
+			return psql.Preload[*AccountMovement, AccountMovementSlice](psql.PreloadRel{
+				Name: "AccountMovement",
+				Sides: []psql.PreloadSide{
+					{
+						From:        DocumentConfirmations,
+						To:          AccountMovements,
+						FromColumns: []string{"household_id", "account_movement_id"},
+						ToColumns:   []string{"household_id", "id"},
+					},
+				},
+			}, AccountMovements.Columns.Names(), accountMovementScanMapperNullable, opts...)
+		},
 		Correction: func(opts ...psql.PreloadOption) psql.Preloader {
 			return psql.Preload[*Correction, CorrectionSlice](psql.PreloadRel{
 				Name: "Correction",
@@ -1286,8 +1449,8 @@ func buildDocumentConfirmationPreloader() documentConfirmationPreloader {
 					{
 						From:        DocumentConfirmations,
 						To:          Corrections,
-						FromColumns: []string{"correction_id"},
-						ToColumns:   []string{"id"},
+						FromColumns: []string{"household_id", "correction_id"},
+						ToColumns:   []string{"household_id", "id"},
 					},
 				},
 			}, Corrections.Columns.Names(), correctionScanMapperNullable, opts...)
@@ -1348,6 +1511,7 @@ func buildDocumentConfirmationPreloader() documentConfirmationPreloader {
 }
 
 type documentConfirmationThenLoader[Q orm.Loadable] struct {
+	AccountMovement func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Correction      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByMember func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Household       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
@@ -1356,6 +1520,9 @@ type documentConfirmationThenLoader[Q orm.Loadable] struct {
 }
 
 func buildDocumentConfirmationThenLoader[Q orm.Loadable]() documentConfirmationThenLoader[Q] {
+	type AccountMovementLoadInterface interface {
+		LoadAccountMovement(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type CorrectionLoadInterface interface {
 		LoadCorrection(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
@@ -1373,6 +1540,12 @@ func buildDocumentConfirmationThenLoader[Q orm.Loadable]() documentConfirmationT
 	}
 
 	return documentConfirmationThenLoader[Q]{
+		AccountMovement: thenLoadBuilder[Q](
+			"AccountMovement",
+			func(ctx context.Context, exec bob.Executor, retrieved AccountMovementLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadAccountMovement(ctx, exec, mods...)
+			},
+		),
 		Correction: thenLoadBuilder[Q](
 			"Correction",
 			func(ctx context.Context, exec bob.Executor, retrieved CorrectionLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -1404,6 +1577,75 @@ func buildDocumentConfirmationThenLoader[Q orm.Loadable]() documentConfirmationT
 			},
 		),
 	}
+}
+
+// LoadAccountMovement loads the documentConfirmation's AccountMovement into the .R struct
+func (o *DocumentConfirmation) LoadAccountMovement(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.AccountMovement = nil
+	o.R.Loaded.AccountMovement = false
+
+	related, err := o.AccountMovement(mods...).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	related.R.DocumentConfirmations = DocumentConfirmationSlice{o}
+
+	o.R.AccountMovement = related
+	o.R.Loaded.AccountMovement = true
+	return nil
+}
+
+// LoadAccountMovement loads the documentConfirmation's AccountMovement into the .R struct
+func (os DocumentConfirmationSlice) LoadAccountMovement(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	accountMovements, err := os.AccountMovement(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.AccountMovement = nil
+		o.R.Loaded.AccountMovement = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range accountMovements {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+			if !o.AccountMovementID.Valid {
+				continue
+			}
+
+			if !(o.AccountMovementID.Valid && o.AccountMovementID.V == rel.ID) {
+				continue
+			}
+
+			rel.R.DocumentConfirmations = append(rel.R.DocumentConfirmations, o)
+
+			o.R.AccountMovement = rel
+			break
+		}
+	}
+
+	return nil
 }
 
 // LoadCorrection loads the documentConfirmation's Correction into the .R struct
@@ -1447,39 +1689,28 @@ func (os DocumentConfirmationSlice) LoadCorrection(ctx context.Context, exec bob
 		o.R.Correction = nil
 		o.R.Loaded.Correction = true
 	}
-	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
-	documentConfirmationByKey := make(map[uuid.UUID][]*DocumentConfirmation, len(os))
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
 
-		// NULL never matches any row in SQL, so don't add it to the map
-		if !o.CorrectionID.Valid {
-			continue
-		}
+		for _, rel := range corrections {
 
-		documentConfirmationByKey[o.CorrectionID.V] = append(documentConfirmationByKey[o.CorrectionID.V], o)
-	}
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+			if !o.CorrectionID.Valid {
+				continue
+			}
 
-	for _, rel := range corrections {
-
-		owners, ok := documentConfirmationByKey[rel.ID]
-		if !ok {
-			continue
-		}
-
-		for _, o := range owners {
-
-			// to-one: keep only the first matching child (matches the previous break)
-			if o.R.Correction != nil {
+			if !(o.CorrectionID.Valid && o.CorrectionID.V == rel.ID) {
 				continue
 			}
 
 			rel.R.DocumentConfirmations = append(rel.R.DocumentConfirmations, o)
 
 			o.R.Correction = rel
-
+			break
 		}
 	}
 
@@ -1782,6 +2013,7 @@ func (os DocumentConfirmationSlice) LoadSourceDocument(ctx context.Context, exec
 
 type documentConfirmationJoins[Q dialect.Joinable] struct {
 	typ             string
+	AccountMovement modAs[Q, accountMovementColumns]
 	Correction      modAs[Q, correctionColumns]
 	CreatedByMember modAs[Q, memberColumns]
 	Household       modAs[Q, householdColumns]
@@ -1796,6 +2028,20 @@ func (j documentConfirmationJoins[Q]) aliasedAs(alias string) documentConfirmati
 func buildDocumentConfirmationJoins[Q dialect.Joinable](cols documentConfirmationColumns, typ string) documentConfirmationJoins[Q] {
 	return documentConfirmationJoins[Q]{
 		typ: typ,
+		AccountMovement: modAs[Q, accountMovementColumns]{
+			c: AccountMovements.Columns,
+			f: func(to accountMovementColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, AccountMovements.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.AccountMovementID),
+					))
+				}
+
+				return mods
+			},
+		},
 		Correction: modAs[Q, correctionColumns]{
 			c: Corrections.Columns,
 			f: func(to correctionColumns) bob.Mod[Q] {
@@ -1803,7 +2049,7 @@ func buildDocumentConfirmationJoins[Q dialect.Joinable](cols documentConfirmatio
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, Corrections.NameExpr().As(to.Alias())).On(
-						to.ID.EQ(cols.CorrectionID),
+						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.CorrectionID),
 					))
 				}
 
