@@ -1,10 +1,10 @@
 # Gemini連携の未解決項目
 
-## 1. Google側のquota上限と回復時刻
+## 1. Google側quota上限の自動取得
 
-Worker間で共有するRPM・TPM・RPD予約をPostgreSQLへ保存し、`CountTokens`の入力数を呼び出し前に予約します。成功時は実績のprompt token数へ更新します。`GEMINI_QUOTA_LIMITS`にroute/model別の上限がなければ予約制御は無効です。無料Projectのquota超過で有料Projectへ切り替えず、`Retry-After`または予約枠が空くまで待ちます。
+Worker間で共有するRPM・TPM・RPD予約、`CountTokens`による入力token予約、成功後の実績prompt token数への精算、`America/Los_Angeles`の暦日によるRPD集計、429時の共有cooldownは実装済みです。route/model別上限は`GEMINI_QUOTA_LIMITS`で設定し、未設定の組み合わせでは予約制御を行いません。無料Projectのquota超過時は有料Projectへ切り替えず、`Retry-After`または予約枠が空くまで再試行します。
 
-RPD予約は`America/Los_Angeles`の暦日で集計し、日次上限到達後は次の太平洋時間午前0時まで再試行を待ちます。DST切替日も現地の暦日境界を使います。Google AI StudioはProject・modelごとの実際のRPM・TPM・RPD上限を表示しますが、このアプリからその上限値を取得する公開APIは確認できていません。上限値の動的取得とGoogle側の実際のquota回復時刻の取得は未対応です。[Gemini APIのrate limits](https://ai.google.dev/gemini-api/docs/rate-limits)を参照してください。
+コードはGoogle AI StudioやGemini APIから実際のRPM・TPM・RPD上限、quota回復時刻を取得しません。運用者が確認した値を`GEMINI_QUOTA_LIMITS`へ設定する必要があります。Google側から値を自動取得する公開APIが利用可能になった場合は、その取得方法とquota仕様を確認して追加を検討します。[Gemini APIのrate limits](https://ai.google.dev/gemini-api/docs/rate-limits)を参照してください。
 
 ## 2. Batch API
 
