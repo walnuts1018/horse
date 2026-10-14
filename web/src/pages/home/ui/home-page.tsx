@@ -9,7 +9,7 @@ import { type Household, type HomeDashboardQuery, type Purchase } from "../../..
 import { japanMonth } from "../../../shared/lib";
 import { EmptyState } from "../../../shared/ui";
 import { homeDashboardQuery } from "../model/home-summary";
-import { readPendingImportStatus } from "../model/pending-imports";
+import { pendingImportMessage, readPendingImportStatus } from "../model/pending-imports";
 import { SetupGuidance } from "./setup-guidance";
 
 import "./home-page.css";
@@ -87,6 +87,9 @@ export function HomePage({
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
+  const pendingImportStatusMessage = pendingImports.data
+    ? pendingImportMessage(pendingImports.data)
+    : undefined;
   const homeSummary = {
     dailySpending: dashboard.homeSummary.dailySpending.map((day) => ({
       date: day.date,
@@ -191,24 +194,7 @@ export function HomePage({
           </span>
           <span>
             <b>レシートを取り込む</b>
-            {pendingImports.data?.kind === "attention" ? (
-              <small>
-                {pendingImports.data.hasMore
-                  ? "確認・再解析が必要"
-                  : [
-                      pendingImports.data.reviewCount > 0
-                        ? `確認待ち ${pendingImports.data.reviewCount}件`
-                        : "",
-                      pendingImports.data.failedCount > 0
-                        ? `解析失敗 ${pendingImports.data.failedCount}件`
-                        : "",
-                    ]
-                      .filter(Boolean)
-                      .join("・")}
-              </small>
-            ) : pendingImports.data?.kind === "processing" ? (
-              <small>AI解析中</small>
-            ) : null}
+            {pendingImportStatusMessage && <small>{pendingImportStatusMessage}</small>}
           </span>
           <ChevronRight aria-hidden="true" />
         </Link>

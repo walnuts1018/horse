@@ -16,6 +16,32 @@ const reviewStatuses = new Set(["READY", "REVIEW", "COMPLETED", "SUCCEEDED", "DO
 const failedStatuses = new Set(["FAILED"]);
 const terminalStatuses = new Set([...reviewStatuses, ...failedStatuses, "DUPLICATE"]);
 
+export function summarizePendingImports(statuses: string[], hasMore: boolean): PendingImportStatus {
+  const normalizedStatuses = statuses.map((status) => status.toUpperCase());
+  const reviewCount = normalizedStatuses.filter((status) => reviewStatuses.has(status)).length;
+  const failedCount = normalizedStatuses.filter((status) => failedStatuses.has(status)).length;
+  if (reviewCount > 0 || failedCount > 0) {
+    return { kind: "attention", reviewCount, failedCount, hasMore };
+  }
+  if (normalizedStatuses.some((status) => !terminalStatuses.has(status))) {
+    return { kind: "processing" };
+  }
+  return { kind: "none" };
+}
+
+export function pendingImportMessage(status: PendingImportStatus): string | undefined {
+  if (status.kind === "none") return undefined;
+  if (status.kind === "processing") return "AI解析中";
+  if (status.hasMore) return "確認・再解析が必要";
+
+  return [
+    status.reviewCount > 0 ? `確認待ち ${status.reviewCount}件` : "",
+    status.failedCount > 0 ? `解析失敗 ${status.failedCount}件` : "",
+  ]
+    .filter(Boolean)
+    .join("・");
+}
+
 function isPendingImportPage(value: unknown): value is PendingImportPage {
   if (!isRecord(value)) return false;
   const documents = value.documents;
@@ -44,14 +70,8 @@ export async function readPendingImportStatus(
   const value: unknown = await response.json();
   if (!isPendingImportPage(value)) throw new Error("未確認の取り込みを取得できませんでした");
 
-  const statuses = value.documents.map((document) => document.status.toUpperCase());
-  const reviewCount = statuses.filter((status) => reviewStatuses.has(status)).length;
-  const failedCount = statuses.filter((status) => failedStatuses.has(status)).length;
-  if (reviewCount > 0 || failedCount > 0) {
-    return { kind: "attention", reviewCount, failedCount, hasMore: value.nextCursor !== null };
-  }
-  if (statuses.some((status) => !terminalStatuses.has(status))) {
-    return { kind: "processing" };
-  }
-  return { kind: "none" };
+  return summarizePendingImports(
+    value.documents.map((document) => document.status),
+    value.nextCursor !== null,
+  );
 }
