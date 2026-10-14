@@ -23,7 +23,7 @@ type FundingDraft = {
   weights: Record<string, string>;
 };
 
-type FundingDrafts = Record<string, FundingDraft>;
+type FundingDrafts = Partial<Record<string, FundingDraft>>;
 
 function initialFundingDraft(pool: Pool, household: Household): FundingDraft {
   return {
