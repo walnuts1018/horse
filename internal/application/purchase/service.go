@@ -157,6 +157,16 @@ func (s *Service) CreateAndPost(ctx context.Context, command CreateCommand, fing
 	return created, nil
 }
 
+func purchaseOrigin(input CreateCommand) string {
+	if input.Origin != "" {
+		return input.Origin
+	}
+	if input.SourceDocumentID != nil {
+		return "AI"
+	}
+	return manualOrigin
+}
+
 func validateCreateCommand(input CreateCommand) error {
 	if input.IdempotencyKey == "" || len(input.IdempotencyKey) > 200 || len(input.Items) == 0 || len(input.Items) > 200 {
 		return fmt.Errorf("%w: invalid purchase", ErrBadInput)
@@ -164,14 +174,7 @@ func validateCreateCommand(input CreateCommand) error {
 	if input.SourceReference != nil && (input.SourceDocumentID == nil || len(*input.SourceReference) > 256 || strings.ContainsAny(*input.SourceReference, "\r\n")) {
 		return fmt.Errorf("%w: source reference requires a document and must be valid", ErrBadInput)
 	}
-	origin := input.Origin
-	if origin == "" {
-		origin = manualOrigin
-		if input.SourceDocumentID != nil {
-			origin = "AI"
-		}
-	}
-	if origin != "AI" && origin != manualOrigin && origin != "UNKNOWN" {
+	if origin := purchaseOrigin(input); origin != "AI" && origin != manualOrigin && origin != "UNKNOWN" {
 		return fmt.Errorf("%w: invalid purchase origin", ErrBadInput)
 	}
 	if len(strings.TrimSpace(input.Merchant)) > 240 {
@@ -187,26 +190,9 @@ func validateCreateCommand(input CreateCommand) error {
 }
 
 func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fingerprint [sha256.Size]byte) (CreateResult, error) {
-	if input.IdempotencyKey == "" || len(input.IdempotencyKey) > 200 || len(input.Items) == 0 || len(input.Items) > 200 {
-		return CreateResult{}, fmt.Errorf("%w: invalid purchase", ErrBadInput)
-	}
-	if input.SourceReference != nil && (input.SourceDocumentID == nil || len(*input.SourceReference) > 256 || strings.ContainsAny(*input.SourceReference, "\r\n")) {
-		return CreateResult{}, fmt.Errorf("%w: source reference requires a document and must be valid", ErrBadInput)
-	}
-	origin := input.Origin
-	if origin == "" {
-		origin = manualOrigin
-		if input.SourceDocumentID != nil {
-			origin = "AI"
-		}
-	}
-	if origin != "AI" && origin != manualOrigin && origin != "UNKNOWN" {
-		return CreateResult{}, fmt.Errorf("%w: invalid purchase origin", ErrBadInput)
-	}
+	// 入力検証は公開メソッドでトランザクション開始前に実行する。
+	origin := purchaseOrigin(input)
 	merchant := strings.TrimSpace(input.Merchant)
-	if len(merchant) > 240 {
-		return CreateResult{}, fmt.Errorf("%w: merchant name is too long", ErrBadInput)
-	}
 	householdUUID, err := parseUUID(input.HouseholdID, "household")
 	if err != nil {
 		return CreateResult{}, err
