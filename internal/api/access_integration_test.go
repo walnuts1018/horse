@@ -60,6 +60,12 @@ func (s *previewTestStore) Put(_ context.Context, householdID, _ string, data []
 	return householdID + "/originals/" + hash, hash, nil
 }
 
+func (s *previewTestStore) PutAnalysis(_ context.Context, householdID, documentID, _ string, data []byte) (string, string, error) {
+	s.putHouseholdIDs = append(s.putHouseholdIDs, householdID)
+	hash := ingestion.DocumentHash(data)
+	return householdID + "/analysis/" + documentID + "/" + hash, hash, nil
+}
+
 func (s *previewTestStore) Get(_ context.Context, key, mimeType string) (ingestion.Document, error) {
 	s.gets++
 	s.getKeys = append(s.getKeys, key)
@@ -328,7 +334,7 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if uploadedDocument.ObjectKey == uploadedDocument.AnalysisObjectKey.V || uploadedDocument.MimeType != "image/png" || !uploadedDocument.AnalysisObjectKey.Valid || uploadedDocument.AnalysisMimeType.V != "image/png" {
+	if uploadedDocument.ObjectKey == uploadedDocument.AnalysisObjectKey.V || !strings.HasPrefix(uploadedDocument.AnalysisObjectKey.V, householdID+"/analysis/"+uploadedID+"/") || uploadedDocument.MimeType != "image/png" || !uploadedDocument.AnalysisObjectKey.Valid || uploadedDocument.AnalysisMimeType.V != "image/png" {
 		t.Fatalf("original and analysis objects were not stored separately: original=%q/%q analysis=%q/%q", uploadedDocument.ObjectKey, uploadedDocument.MimeType, uploadedDocument.AnalysisObjectKey.V, uploadedDocument.AnalysisMimeType.V)
 	}
 	uploadedContentRequest := httptest.NewRequest(http.MethodGet, "/documents/"+uploadedID+"/content", nil)
@@ -563,6 +569,30 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	}
 	if _, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(unconfirmedDocumentUUID)))).One(ctx, executor); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("unconfirmed source document metadata remains: %v", err)
+	}
+	sharedAnalysisKey := householdID + "/originals/shared-analysis-object"
+	sharedTargetID, sharedReferenceID, sharedJobID := uuid.NewV7().String(), uuid.NewV7().String(), uuid.NewV7().String()
+	sharedTargetUUID, sharedReferenceUUID, sharedJobUUID := mustIntegrationUUID(t, sharedTargetID), mustIntegrationUUID(t, sharedReferenceID), mustIntegrationUUID(t, sharedJobID)
+	sharedTargetHash, sharedReferenceHash := "access-test:"+sharedTargetID, "access-test:"+sharedReferenceID
+	sharedTargetObjectKey, sharedReferenceObjectKey := householdID+"/originals/"+sharedTargetID, sharedAnalysisKey
+	sharedAnalysisObject := sql.Null[string]{V: sharedAnalysisKey, Valid: true}
+	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &sharedTargetUUID, HouseholdID: &householdUUID, Sha256: &sharedTargetHash, ObjectKey: &sharedTargetObjectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &ownerUUID, AnalysisObjectKey: &sharedAnalysisObject, AnalysisMimeType: &analysisMIMEValue, AnalysisTransform: &analysisTransform}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &sharedReferenceUUID, HouseholdID: &householdUUID, Sha256: &sharedReferenceHash, ObjectKey: &sharedReferenceObjectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &ownerUUID}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{ID: &sharedJobUUID, HouseholdID: &householdUUID, SourceDocumentID: &sharedTargetUUID, Status: &unconfirmedStatus}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	deletesBeforeShared := len(store.deletes)
+	deleteRequest = httptest.NewRequest(http.MethodDelete, "/documents/"+sharedTargetID, nil)
+	deleteRequest.Header.Set("Origin", "http://horse.test")
+	deleteRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	deleteResponse = httptest.NewRecorder()
+	server.ServeHTTP(deleteResponse, deleteRequest)
+	if deleteResponse.Code != http.StatusNoContent || len(store.deletes) != deletesBeforeShared+1 || store.deletes[deletesBeforeShared] != sharedTargetObjectKey {
+		t.Fatalf("document deletion removed a shared object: status=%d object deletions=%v body=%s", deleteResponse.Code, store.deletes[deletesBeforeShared:], deleteResponse.Body.String())
 	}
 	documentsRequest = httptest.NewRequest(http.MethodGet, "/documents?householdId="+householdID, nil)
 	documentsRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})

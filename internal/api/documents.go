@@ -242,13 +242,30 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
+	var analysisStored bool
+	var transactionCommitted bool
+	defer func() {
+		if !analysisStored || transactionCommitted {
+			return
+		}
+		_ = tx.Rollback(context.WithoutCancel(r.Context()))
+		store, ok := s.cfg.Store.(documentDeleter)
+		if !ok {
+			s.logger.WarnContext(r.Context(), "analysis image compensation failed", "error", errors.New("document storage does not support deletion"))
+			return
+		}
+		if err := s.deleteDocumentObjectIfUnreferenced(context.WithoutCancel(r.Context()), store, analysisKey, gofrsuuid.Nil); err != nil {
+			s.logger.WarnContext(r.Context(), "analysis image compensation failed", "error", err)
+		}
+	}()
 	if len(analysisData) > 0 {
-		analysisKey, _, err = s.cfg.Store.Put(r.Context(), householdID, analysisMIME, analysisData)
+		analysisKey, _, err = s.cfg.Store.PutAnalysis(r.Context(), householdID, document.ID.String(), analysisMIME, analysisData)
 		if err != nil {
 			s.logger.ErrorContext(r.Context(), "analysis image storage failed", "error", err)
 			http.Error(w, "analysis image storage failed", http.StatusBadGateway)
 			return
 		}
+		analysisStored = true
 		analysisObjectKey := sql.Null[string]{V: analysisKey, Valid: true}
 		analysisMIMEType := sql.Null[string]{V: analysisMIME, Valid: true}
 		transformJSON, err := json.Marshal(analysisTransform)
@@ -283,6 +300,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "document registration failed", http.StatusInternalServerError)
 		return
 	}
+	transactionCommitted = true
 	s.publishDocumentJobs(r.Context(), queuedJobIDs)
 	result, err := s.documentResponse(r.Context(), bobpgx.NewPool(s.db), document)
 	if err != nil {

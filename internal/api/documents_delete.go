@@ -117,19 +117,21 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	if document.AnalysisObjectKey.Valid {
-		if err := store.Delete(r.Context(), document.AnalysisObjectKey.V); err != nil {
-			s.logger.ErrorContext(r.Context(), "analysis image deletion failed", "error", err)
+	deletedKeys := make(map[string]struct{}, 2)
+	for _, key := range []string{document.AnalysisObjectKey.V, document.ObjectKey} {
+		if key == "" {
+			continue
+		}
+		if _, deleted := deletedKeys[key]; deleted {
+			continue
+		}
+		deletedKeys[key] = struct{}{}
+		if err := s.deleteDocumentObjectIfUnreferenced(r.Context(), store, key, document.ID); err != nil {
+			s.logger.ErrorContext(r.Context(), "document object deletion failed", "error", err)
 			http.Error(w, "document deletion failed", http.StatusBadGateway)
 
 			return
 		}
-	}
-	if err := store.Delete(r.Context(), document.ObjectKey); err != nil {
-		s.logger.ErrorContext(r.Context(), "document deletion failed", "error", err)
-		http.Error(w, "document deletion failed", http.StatusBadGateway)
-
-		return
 	}
 	finalTx, err := s.db.Begin(r.Context())
 	if err != nil {
@@ -169,6 +171,24 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) deleteDocumentObjectIfUnreferenced(ctx context.Context, store documentDeleter, key string, documentID gofrsuuid.UUID) error {
+	filter := psql.Or(
+		models.SourceDocuments.Columns.ObjectKey.EQ(psql.Arg(key)),
+		models.SourceDocuments.Columns.AnalysisObjectKey.EQ(psql.Arg(key)),
+	)
+	if documentID != gofrsuuid.Nil {
+		filter = psql.And(psql.Not(models.SourceDocuments.Columns.ID.EQ(psql.Arg(documentID))), filter)
+	}
+	referenced, err := models.SourceDocuments.Query(sm.Where(filter)).Exists(ctx, bobpgx.NewPool(s.db))
+	if err != nil {
+		return err
+	}
+	if referenced {
+		return nil
+	}
+	return store.Delete(ctx, key)
 }
 
 type documentDeletionStatusError struct {

@@ -49,6 +49,7 @@ const (
 
 type DocumentStore interface {
 	Put(context.Context, string, string, []byte) (string, string, error)
+	PutAnalysis(context.Context, string, string, string, []byte) (string, string, error)
 	Get(context.Context, string, string) (ingestion.Document, error)
 }
 
