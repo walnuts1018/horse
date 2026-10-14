@@ -126,7 +126,7 @@ export function ImportDocumentReview({
       )}
       <div className={styles.evidenceReviewLayout}>
         <div className={styles.evidenceEditColumn}>
-          {!!document.result?.receipt?.items?.length && (
+          {document.result?.receipt && (
             <ReceiptReview
               household={household}
               selectedDocument={document}
@@ -140,6 +140,8 @@ export function ImportDocumentReview({
               setReviewTargetIndex={review.setReviewTargetIndex}
               setReceiptPayments={review.setReceiptPayments}
               editItem={review.editItem}
+              addItem={review.addReceiptItem}
+              deleteItem={review.deleteReceiptItem}
               itemAllocationsFor={review.itemAllocationsFor}
               editItemAllocations={review.editReceiptItemAllocations}
               onPurchaseDateChange={(date) => review.editPurchaseDate(document.id, date)}

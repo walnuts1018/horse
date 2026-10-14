@@ -1,5 +1,5 @@
-import { Check, X } from "lucide-react";
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { Check, Plus, X } from "lucide-react";
+import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 import type { Household } from "../../../shared/api";
 
@@ -13,6 +13,7 @@ import {
 } from "../model/imports";
 import { addReceiptPayment, updateReceiptPaymentAmount } from "../model/receipt-payment-split";
 import { parseReceiptReviewAmountDraft } from "../model/receipt-review-amount";
+import { ensureReceiptItemKeys } from "../model/receipt-review-draft";
 import {
   candidateAmountDifferences,
   candidateAmountForItem,
@@ -34,6 +35,8 @@ type ReceiptReviewProps = {
   setReviewTargetIndex: Dispatch<SetStateAction<number>>;
   setReceiptPayments: Dispatch<SetStateAction<Record<string, ReceiptPaymentDraft[] | undefined>>>;
   editItem: (documentId: string, index: number, patch: Partial<ExtractedItem>) => void;
+  addItem: (documentId: string) => void;
+  deleteItem: (documentId: string, itemKey: string) => void;
   itemAllocationsFor: (
     documentId: string,
     itemKey: string,
@@ -72,6 +75,8 @@ export function ReceiptReview({
   setReviewTargetIndex,
   setReceiptPayments,
   editItem,
+  addItem,
+  deleteItem,
   itemAllocationsFor,
   editItemAllocations,
   onPurchaseDateChange,
@@ -87,12 +92,26 @@ export function ReceiptReview({
   onConfirm,
 }: ReceiptReviewProps) {
   const [amountDrafts, setAmountDrafts] = useState<Record<string, Record<string, string>>>({});
+  const focusNewItem = useRef(false);
   const result = selectedDocument.result;
   const receipt = result?.receipt;
-  const receiptItems = receipt?.items;
-  if (!result || !receipt || !receiptItems?.length) return null;
+  const receiptItems = ensureReceiptItemKeys(receipt?.items ?? []);
+  if (!result || !receipt) return null;
+  const itemsChanged = Boolean(
+    (result as typeof result & { reviewReceiptItemsChanged?: boolean }).reviewReceiptItemsChanged,
+  );
   const candidates = result.candidates ?? [];
-  const amountDifferences = candidateAmountDifferences(candidates, receiptItems);
+  const amountDifferences = itemsChanged
+    ? []
+    : candidateAmountDifferences(candidates, receiptItems);
+  const validReceiptItems =
+    receiptItems.length > 0 &&
+    receiptItems.every(
+      (item) =>
+        item.name.trim().length > 0 &&
+        Number.isSafeInteger(item.grossAmount) &&
+        item.grossAmount >= (item.verification === "MANUAL" ? 1 : 0),
+    );
   const defaultAllocations =
     household.defaultAllocation.length > 0
       ? household.defaultAllocation
@@ -100,6 +119,27 @@ export function ReceiptReview({
           poolId: pool.id,
           weight: pool.defaultShareWeight || 1,
         }));
+  const updateAmountDraftKeys = (previousItems: ExtractedItem[], nextItems: ExtractedItem[]) => {
+    const previousKeys = ensureReceiptItemKeys(previousItems);
+    const nextKeys = ensureReceiptItemKeys(nextItems);
+    setAmountDrafts((current) => {
+      const previousDrafts = current[selectedDocument.id] ?? {};
+      const nextDrafts: Record<string, string> = {};
+      for (const [index, previousItem] of previousKeys.entries()) {
+        const nextItem = nextKeys.find((item) => item.key === previousItem.key);
+        if (!nextItem?.key) continue;
+        const previousKey = previousItems[index]?.key ?? `item-${index}`;
+        const value = previousDrafts[previousKey] ?? previousDrafts[previousItem.key ?? ""];
+        if (
+          Object.hasOwn(previousDrafts, previousKey) ||
+          Object.hasOwn(previousDrafts, previousItem.key ?? "")
+        ) {
+          nextDrafts[nextItem.key] = value;
+        }
+      }
+      return { ...current, [selectedDocument.id]: nextDrafts };
+    });
+  };
   return (
     <div className="receipt-review">
       {reviewTargets.length > 0 && (
@@ -262,6 +302,7 @@ export function ReceiptReview({
             購入額 {yen(receiptTotal(selectedDocument))}
           </small>
         </div>
+        {!receiptItems.length && <p className="receipt-items-empty">品目がありません。</p>}
         {receiptItems.map((item, index) => (
           <div
             className={`receipt-item-review ${amountDifferences.some((difference) => difference.index === index) ? "receipt-item-candidate-difference" : ""}`}
@@ -271,13 +312,21 @@ export function ReceiptReview({
               <input
                 id={`receipt-review-item-${index}`}
                 aria-label="品名"
+                ref={(element) => {
+                  if (item.verification !== "MANUAL" || index !== receiptItems.length - 1) return;
+                  if (!element || !focusNewItem.current) return;
+                  focusNewItem.current = false;
+                  element.focus();
+                }}
                 value={item.name}
                 onChange={(event) =>
                   editItem(selectedDocument.id, index, { name: event.target.value })
                 }
               />
               <small>
-                {item.verification} · {Math.round(item.confidence * 100)}%
+                {item.verification === "MANUAL"
+                  ? "手入力"
+                  : `${item.verification} · ${Math.round(item.confidence * 100)}%`}
               </small>
               {amountDifferences.some((difference) => difference.index === index) && (
                 <small className="candidate-difference-label">候補差あり</small>
@@ -322,7 +371,7 @@ export function ReceiptReview({
             </div>
             <label>
               帳簿に登録する金額
-              <small>レシート印字額 {yen(item.printedAmount)}</small>{" "}¥
+              <small>レシート印字額 {yen(item.printedAmount)}</small> ¥
               {(() => {
                 const itemKey = item.key ?? `item-${index}`;
                 const amount = effectiveReceiptItemAmount(
@@ -374,6 +423,9 @@ export function ReceiptReview({
                   />
                 );
               })()}
+              {item.verification === "MANUAL" && item.grossAmount < 1 && (
+                <small role="alert">1円以上を入力してください。</small>
+              )}
             </label>
             <details className="receipt-measure-details">
               <summary>数量・印字単価</summary>
@@ -462,8 +514,39 @@ export function ReceiptReview({
                 />
               </label>
             </details>
+            <button
+              className="text-button receipt-item-delete"
+              type="button"
+              aria-label={`${item.name || `品目${index + 1}`}を削除`}
+              onClick={() => {
+                const itemKey = item.key ?? `item-${index}`;
+                const keyedItems = ensureReceiptItemKeys(receiptItems);
+                const stableItemKey = keyedItems[index]?.key ?? itemKey;
+                updateAmountDraftKeys(
+                  receiptItems,
+                  keyedItems.filter((entry) => entry.key !== stableItemKey),
+                );
+                deleteItem(selectedDocument.id, stableItemKey);
+              }}
+            >
+              <X size={16} />
+              品目を削除
+            </button>
           </div>
         ))}
+        <button
+          type="button"
+          className="text-button receipt-item-add"
+          onClick={() => {
+            const keyedItems = ensureReceiptItemKeys(receiptItems);
+            updateAmountDraftKeys(receiptItems, keyedItems);
+            focusNewItem.current = true;
+            addItem(selectedDocument.id);
+          }}
+        >
+          <Plus size={14} />
+          品目を追加
+        </button>
         {!!candidates.length && (
           <div className="candidate-review" id="receipt-review-candidates" tabIndex={-1}>
             <div className="panel-heading">
@@ -472,21 +555,27 @@ export function ReceiptReview({
                 <h3>計算候補</h3>
               </div>
             </div>
+            {itemsChanged && (
+              <small>品目構成を変更したため税額候補は無効です。金額を確認してください。</small>
+            )}
             {candidates.map((candidate, candidateIndex) => {
               const differences = amountDifferences.flatMap((difference) => {
                 const amount = candidateAmountForItem(candidate, difference);
                 return amount ? [amount] : [];
               });
-              const interpretationLabels = candidateInterpretationLabels(candidate, {
-                items: receiptItems,
-                taxGroups: receipt.taxGroups ?? [],
-              });
+              const interpretationLabels = itemsChanged
+                ? []
+                : candidateInterpretationLabels(candidate, {
+                    items: receiptItems,
+                    taxGroups: receipt.taxGroups ?? [],
+                  });
               const selected = selectedCandidates[selectedDocument.id] === candidate.id;
               return (
                 <div className="candidate-option-row" key={candidate.id}>
                   <button
                     type="button"
                     className={`candidate-option ${selected ? "candidate-selected" : ""}`}
+                    disabled={itemsChanged}
                     onClick={() => {
                       markUnsaved();
                       if (!selected) {
@@ -510,7 +599,9 @@ export function ReceiptReview({
                           {label}
                         </small>
                       ))}
-                      {interpretationLabels.length === 0 && <small>税区分変更なし</small>}
+                      {!itemsChanged && interpretationLabels.length === 0 && (
+                        <small>税区分変更なし</small>
+                      )}
                       {differences.slice(0, 3).map((difference) => (
                         <small className="candidate-amount-difference" key={difference.index}>
                           {difference.name} {yen(difference.amount)}
@@ -570,7 +661,7 @@ export function ReceiptReview({
         <button
           type="button"
           className="button button-primary button-wide"
-          disabled={pending || !purchaseDate}
+          disabled={pending || !purchaseDate || !validReceiptItems}
           onClick={() => onConfirm()}
         >
           <Check size={16} />

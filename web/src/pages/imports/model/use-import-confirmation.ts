@@ -17,6 +17,13 @@ import {
 } from "./receipt-confirmation";
 import { receiptPaymentAccountId } from "./receipt-payment-account";
 import {
+  addManualReceiptItem as appendManualReceiptItem,
+  deleteReceiptItemByKey,
+  ensureReceiptItemKeys,
+  rekeyReceiptConfirmationAfterStructureChange,
+  rekeyReceiptItemValues,
+} from "./receipt-review-draft";
+import {
   createStatementExternalIncomeInput,
   createStatementPurchaseInput,
   statementConfirmationKey,
@@ -53,6 +60,14 @@ import {
 } from "./imports";
 
 type ReceiptItemAllocation = { poolId: string; weight: number };
+
+function receiptItemsChanged(document?: DocumentReview) {
+  return Boolean(
+    document?.result &&
+    (document.result as typeof document.result & { reviewReceiptItemsChanged?: boolean })
+      .reviewReceiptItemsChanged,
+  );
+}
 
 export function useImportConfirmation({
   household,
@@ -98,7 +113,9 @@ export function useImportConfirmation({
   const selectedDocumentId = selectedDocument?.id ?? "";
   const confirmationState = selectedDocument?.receiptConfirmationState;
   const defaultCandidate = selectedDocument
-    ? uniqueConsistentReceiptCandidate(selectedDocument)
+    ? receiptItemsChanged(selectedDocument)
+      ? undefined
+      : uniqueConsistentReceiptCandidate(selectedDocument)
     : undefined;
   const storedCandidateId = confirmationState?.selectedCandidate?.id;
   const storedCandidateIsCurrent = selectedDocument?.result?.candidates?.some(
@@ -106,9 +123,10 @@ export function useImportConfirmation({
   );
   const selectedCandidates = selectedDocument
     ? {
-        [selectedDocument.id]: storedCandidateIsCurrent
-          ? storedCandidateId!
-          : (defaultCandidate?.id ?? ""),
+        [selectedDocument.id]:
+          !receiptItemsChanged(selectedDocument) && storedCandidateIsCurrent
+            ? storedCandidateId!
+            : (defaultCandidate?.id ?? ""),
       }
     : {};
   const manualAmountOverrides = selectedDocument
@@ -145,6 +163,7 @@ export function useImportConfirmation({
     action,
   ) => {
     if (!selectedDocument) return;
+    if (receiptItemsChanged(selectedDocument)) return;
     updateReceiptConfirmationState(selectedDocument.id, (state, document) => {
       const current = {
         [document.id]:
@@ -291,7 +310,8 @@ export function useImportConfirmation({
             (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
           );
           const needsCandidateSelection =
-            (selectedDocument.result.candidates?.length ?? 0) > 0 && !selectedCandidate;
+            receiptItemsChanged(selectedDocument) ||
+            ((selectedDocument.result.candidates?.length ?? 0) > 0 && !selectedCandidate);
           const paymentsTotal = paymentDraftFor(selectedDocument).reduce(
             (total, payment) => total + payment.amountYen,
             0,
@@ -313,9 +333,10 @@ export function useImportConfirmation({
                   {
                     key: "amount",
                     label: "金額差異",
-                    elementId: needsCandidateSelection
-                      ? "receipt-review-candidates"
-                      : "receipt-review-amount-reason",
+                    elementId:
+                      receiptItemsChanged(selectedDocument) || !needsCandidateSelection
+                        ? "receipt-review-amount-reason"
+                        : "receipt-review-candidates",
                   },
                 ]
               : []),
@@ -349,31 +370,91 @@ export function useImportConfirmation({
   const editItem = (documentId: string, index: number, patch: Partial<ExtractedItem>) => {
     editedReceiptDocuments.current.add(documentId);
     markUnsaved();
+    const document = selectedDocument?.id === documentId ? selectedDocument : undefined;
+    const originalItems = document?.result?.receipt?.items;
+    if (originalItems) {
+      const keyedItems = ensureReceiptItemKeys(originalItems);
+      const survivingKeys = new Set(keyedItems.flatMap((item) => (item.key ? [item.key] : [])));
+      updateReceiptConfirmationState(documentId, (state) => {
+        const rekeyedManualAmountOverrides = rekeyReceiptItemValues(
+          state.manualAmountOverrides,
+          originalItems,
+          keyedItems,
+          survivingKeys,
+        );
+        const rekeyedItemAllocations = rekeyReceiptItemValues(
+          state.itemAllocations,
+          originalItems,
+          keyedItems,
+          survivingKeys,
+        );
+        return {
+          ...state,
+          ...(rekeyedManualAmountOverrides
+            ? { manualAmountOverrides: rekeyedManualAmountOverrides }
+            : {}),
+          ...(rekeyedItemAllocations ? { itemAllocations: rekeyedItemAllocations } : {}),
+        };
+      });
+    }
     setDocuments((current) =>
-      current.map((document) =>
-        document.id !== documentId || !document.result?.receipt?.items
-          ? document
-          : {
-              ...document,
-              result: {
-                ...document.result,
-                receipt: {
-                  ...document.result.receipt,
-                  items: document.result.receipt.items.map((item, itemIndex) => {
-                    if (itemIndex !== index) return item;
-                    const nameChanged = patch.name !== undefined && patch.name !== item.name;
-                    return {
-                      ...item,
-                      ...patch,
-                      ...(nameChanged ? { productVariantId: null } : {}),
-                    };
-                  }),
-                },
-              },
-            },
-      ),
+      current.map((entry) => {
+        if (entry.id !== documentId || !entry.result?.receipt?.items) return entry;
+        const items = ensureReceiptItemKeys(entry.result.receipt.items).map((item, itemIndex) => {
+          if (itemIndex !== index) return item;
+          const nameChanged = patch.name !== undefined && patch.name !== item.name;
+          return Object.assign({}, item, patch, nameChanged ? { productVariantId: null } : {});
+        });
+        return {
+          ...entry,
+          result: { ...entry.result, receipt: { ...entry.result.receipt, items } },
+        };
+      }),
     );
   };
+
+  const changeReceiptItemStructure = (
+    documentId: string,
+    action: "add" | { deleteKey: string },
+  ) => {
+    if (!selectedDocument || selectedDocument.id !== documentId) return;
+    const originalItems = selectedDocument.result?.receipt?.items;
+    if (!originalItems) return;
+    const keyedItems = ensureReceiptItemKeys(originalItems);
+    const nextItems =
+      action === "add"
+        ? appendManualReceiptItem(keyedItems, `manual:${crypto.randomUUID()}`)
+        : deleteReceiptItemByKey(keyedItems, action.deleteKey);
+    if (nextItems.length === keyedItems.length) return;
+    editedReceiptDocuments.current.add(documentId);
+    markUnsaved();
+    updateReceiptConfirmationState(documentId, (state) => {
+      return rekeyReceiptConfirmationAfterStructureChange(
+        state,
+        originalItems,
+        keyedItems,
+        nextItems,
+      );
+    });
+    setDocuments((current) =>
+      current.map((entry) => {
+        if (entry.id !== documentId || !entry.result?.receipt) return entry;
+        const result = Object.assign(
+          {
+            ...entry.result,
+            balanced: false,
+            receipt: { ...entry.result.receipt, items: nextItems },
+          },
+          { reviewReceiptItemsChanged: true },
+        );
+        return { ...entry, result };
+      }),
+    );
+  };
+
+  const addReceiptItem = (documentId: string) => changeReceiptItemStructure(documentId, "add");
+  const deleteReceiptItem = (documentId: string, itemKey: string) =>
+    changeReceiptItemStructure(documentId, { deleteKey: itemKey });
 
   const editReceiptItemAllocations = (
     documentId: string,
@@ -440,14 +521,27 @@ export function useImportConfirmation({
     const overrideReason = manualAmountOverrideReasons[document.id]?.trim() ?? "";
     const requiresOverrideReason =
       hasManualAmountOverrides(document.id) ||
+      receiptItemsChanged(document) ||
       (candidate ? !candidate.consistent : !document.result?.balanced);
+    if (
+      items.some(
+        (item) =>
+          !item.name.trim() ||
+          !Number.isSafeInteger(item.grossAmount) ||
+          item.grossAmount < (item.verification === "MANUAL" ? 1 : 0),
+      )
+    ) {
+      throw new Error("品名と金額を確認してください");
+    }
     const paymentDraft = paymentDraftFor(document);
     const purchaseInput = createReceiptPurchaseInput({
       document,
       householdId: household.id,
       occurredAt,
       candidateId: candidateID,
-      requiresCandidateSelection: Boolean(document.result?.candidates?.length && !candidate),
+      requiresCandidateSelection: Boolean(
+        !receiptItemsChanged(document) && document.result?.candidates?.length && !candidate,
+      ),
       requiresOverrideReason,
       overrideReason,
       paymentDraft,
@@ -780,6 +874,8 @@ export function useImportConfirmation({
     receiptTotal,
     paymentDraftFor,
     editItem,
+    addReceiptItem,
+    deleteReceiptItem,
     editMerchant,
     resetConfirmation,
     confirm,

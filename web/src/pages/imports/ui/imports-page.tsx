@@ -548,7 +548,6 @@ export function ImportsPage({
           {message && <InlineError message={message} />}
         </section>
       </div>
-      {message && <InlineError message={message} />}
       <div className="import-note">
         <ShieldCheck size={17} />
         <span>原本は帳簿の品目と紐づけて確認できます</span>

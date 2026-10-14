@@ -2,7 +2,7 @@ import type {
   ImportReceiptConfirmationState,
   ImportReceiptDraft,
 } from "../../../shared/lib/purchase-storage";
-import type { DocumentReview } from "./imports";
+import type { DocumentReview, ExtractedItem } from "./imports";
 
 import { isRecord } from "../../../shared/lib/guard";
 
@@ -20,13 +20,170 @@ function equal(left: unknown, right: unknown): boolean {
   );
 }
 
-function isReceiptItem(value: unknown): value is Record<string, unknown> {
+function isReceiptItem(value: unknown): value is Record<string, unknown> & ExtractedItem {
   return (
     isRecord(value) &&
     typeof value.name === "string" &&
     typeof value.printedAmount === "number" &&
     typeof value.grossAmount === "number"
   );
+}
+
+function sourceIdentity(item: ExtractedItem): string {
+  return JSON.stringify([
+    item.name.trim().replace(/\s+/g, " ").toLocaleLowerCase("ja-JP"),
+    item.printedAmount,
+    item.discount ?? null,
+    item.priceBasis ?? null,
+    item.taxGroup ?? null,
+    item.region
+      ? [item.region.page, item.region.top, item.region.left, item.region.bottom, item.region.right]
+      : null,
+  ]);
+}
+
+function sourceRegionIdentity(item: ExtractedItem): string | undefined {
+  if (!item.region) return undefined;
+  return JSON.stringify([
+    item.printedAmount,
+    item.region.page,
+    item.region.top,
+    item.region.left,
+    item.region.bottom,
+    item.region.right,
+  ]);
+}
+
+function hasSourceKey(item: ExtractedItem): item is ExtractedItem & { key: string } {
+  return typeof item.key === "string" && item.key.length > 0 && !/^item-\d+$/.test(item.key);
+}
+
+export function ensureReceiptItemKeys(items: ExtractedItem[]): ExtractedItem[] {
+  const occurrences = new Map<string, number>();
+  return items.map((item) => {
+    if (hasSourceKey(item)) return item;
+    const identity = sourceIdentity(item);
+    const occurrence = occurrences.get(identity) ?? 0;
+    occurrences.set(identity, occurrence + 1);
+    return { ...item, key: `source:${encodeURIComponent(identity)}:${occurrence}` };
+  });
+}
+
+export function createManualReceiptItem(key: string): ExtractedItem {
+  return {
+    key,
+    name: "",
+    printedAmount: 0,
+    grossAmount: 0,
+    confidence: 0,
+    verification: "MANUAL",
+  };
+}
+
+export function addManualReceiptItem(items: ExtractedItem[], key: string): ExtractedItem[] {
+  return [...ensureReceiptItemKeys(items), createManualReceiptItem(key)];
+}
+
+export function deleteReceiptItemByKey(items: ExtractedItem[], itemKey: string): ExtractedItem[] {
+  return ensureReceiptItemKeys(items).filter((item) => item.key !== itemKey);
+}
+
+export function rekeyReceiptItemValues<T>(
+  values: Record<string, T> | undefined,
+  originalItems: ExtractedItem[],
+  keyedItems: ExtractedItem[],
+  survivingKeys: Set<string>,
+): Record<string, T> | undefined {
+  if (!values) return undefined;
+  const originalKeyedItems = ensureReceiptItemKeys(originalItems);
+  const keyedByOriginalKey = new Map(
+    originalKeyedItems.map((item, index) => [item.key, keyedItems[index]]),
+  );
+  const rekeyed: Record<string, T> = {};
+  for (const [key, value] of Object.entries(values)) {
+    const legacy = /^item-(\d+)$/.exec(key);
+    const currentItem = legacy
+      ? keyedItems[Number(legacy[1])]
+      : (keyedByOriginalKey.get(key) ?? keyedItems.find((item) => item.key === key));
+    if (currentItem?.key && survivingKeys.has(currentItem.key)) {
+      rekeyed[currentItem.key] = value;
+    }
+  }
+  return rekeyed;
+}
+
+export function rekeyReceiptConfirmationAfterStructureChange(
+  state: ImportReceiptConfirmationState,
+  originalItems: ExtractedItem[],
+  keyedItems: ExtractedItem[],
+  nextItems: ExtractedItem[],
+): ImportReceiptConfirmationState {
+  const survivingKeys = new Set(nextItems.flatMap((item) => (item.key ? [item.key] : [])));
+  const manualAmountOverrides = rekeyReceiptItemValues(
+    state.manualAmountOverrides,
+    originalItems,
+    keyedItems,
+    survivingKeys,
+  );
+  const itemAllocations = rekeyReceiptItemValues(
+    state.itemAllocations,
+    originalItems,
+    keyedItems,
+    survivingKeys,
+  );
+  const {
+    selectedCandidate: _selectedCandidate,
+    manualAmountOverrides: _manualAmountOverrides,
+    itemAllocations: _itemAllocations,
+    manualAmountOverrideReason: _manualAmountOverrideReason,
+    ...rest
+  } = state;
+  return {
+    ...rest,
+    ...(manualAmountOverrides && Object.keys(manualAmountOverrides).length
+      ? { manualAmountOverrides }
+      : {}),
+    ...(itemAllocations && Object.keys(itemAllocations).length ? { itemAllocations } : {}),
+  };
+}
+
+function sourceKey(key: string | undefined): boolean {
+  return Boolean(key?.startsWith("source:"));
+}
+
+function uniqueSourceMatch(item: ExtractedItem, values: ExtractedItem[]): number[] {
+  const identity = sourceIdentity(item);
+  return values.flatMap((candidate, index) =>
+    sourceIdentity(candidate) === identity ? [index] : [],
+  );
+}
+
+function matchItem(
+  item: ExtractedItem,
+  values: ExtractedItem[],
+  allowSourceOccurrence = false,
+): number[] {
+  if (item.key && !sourceKey(item.key))
+    return values.flatMap((candidate, index) => (candidate.key === item.key ? [index] : []));
+  if (item.key) {
+    const exactKey = values.flatMap((candidate, index) =>
+      candidate.key === item.key ? [index] : [],
+    );
+    if (exactKey.length && allowSourceOccurrence) return exactKey;
+  }
+  const byIdentity = uniqueSourceMatch(item, values);
+  if (byIdentity.length) return byIdentity;
+  const regionIdentity = sourceRegionIdentity(item);
+  if (!regionIdentity) return [];
+  return values.flatMap((candidate, index) =>
+    sourceRegionIdentity(candidate) === regionIdentity ? [index] : [],
+  );
+}
+
+function sameExceptKey(left: ExtractedItem, right: ExtractedItem): boolean {
+  const { key: _leftKey, ...leftFields } = left;
+  const { key: _rightKey, ...rightFields } = right;
+  return equal(leftFields, rightFields);
 }
 
 function mergeEdits(
@@ -38,38 +195,11 @@ function mergeEdits(
 ): unknown {
   if (equal(base, edited)) return latest;
   if (Array.isArray(base) && Array.isArray(edited)) {
-    const merged = Array.isArray(latest) ? [...latest] : [];
-    const baseItems = base.filter(isReceiptItem);
-    const editedItems = edited.filter(isReceiptItem);
-    const latestItems = Array.isArray(latest) ? latest.filter(isReceiptItem) : [];
-    if (
-      (path === "receipt.items" || path.endsWith(".receipt.items")) &&
-      baseItems.length === base.length &&
-      editedItems.length === edited.length &&
-      Array.isArray(latest) &&
-      latestItems.length === latest.length
-    ) {
-      for (let index = 0; index < baseItems.length; index += 1) {
-        if (equal(baseItems[index], editedItems[index])) continue;
-        const original = baseItems[index];
-        const matches = latestItems.flatMap((item, latestIndex) =>
-          item.printedAmount === original.printedAmount ? [latestIndex] : [],
-        );
-        if (matches.length !== 1) {
-          conflicts.push(`品目${index + 1}`);
-          continue;
-        }
-        const latestIndex = matches[0];
-        merged[latestIndex] = mergeEdits(
-          original,
-          editedItems[index],
-          latestItems[latestIndex],
-          conflicts,
-          `${path}[${index}]`,
-        );
-      }
-      return merged;
+    const isReceiptItems = path === "receipt.items" || path.endsWith(".receipt.items");
+    if (isReceiptItems) {
+      return mergeReceiptItems(base, edited, latest, conflicts);
     }
+    const merged = Array.isArray(latest) ? [...latest] : [];
     for (let index = 0; index < base.length; index += 1) {
       if (index >= edited.length) {
         merged.splice(index, 1);
@@ -110,6 +240,97 @@ function mergeEdits(
   return edited;
 }
 
+function mergeReceiptItems(
+  baseValue: unknown[],
+  editedValue: unknown[],
+  latestValue: unknown,
+  conflicts: string[],
+): unknown[] {
+  if (!baseValue.every(isReceiptItem) || !editedValue.every(isReceiptItem)) {
+    conflicts.push("品目");
+    return Array.isArray(latestValue) ? latestValue : [];
+  }
+  const baseItems = ensureReceiptItemKeys(baseValue);
+  const editedItems = ensureReceiptItemKeys(editedValue);
+  const latestItems =
+    Array.isArray(latestValue) && latestValue.every(isReceiptItem)
+      ? ensureReceiptItemKeys(latestValue)
+      : [];
+  const output: Array<ExtractedItem | undefined> = [...latestItems];
+  const usedEdited = new Set<number>();
+
+  for (let baseIndex = 0; baseIndex < baseItems.length; baseIndex += 1) {
+    const baseItem = baseItems[baseIndex];
+    let editedMatches = matchItem(baseItem, editedItems, true).filter(
+      (index) => !usedEdited.has(index),
+    );
+    if (editedMatches.length === 0) {
+      const sameAmountBase = baseItems.filter(
+        (item) => item.printedAmount === baseItem.printedAmount,
+      );
+      const legacyIndexes = new Set(
+        editedValue.flatMap((value, index) =>
+          isReceiptItem(value) && !hasSourceKey(value) ? [index] : [],
+        ),
+      );
+      const sameAmountEdited = editedItems.filter(
+        (item, index) =>
+          legacyIndexes.has(index) &&
+          !usedEdited.has(index) &&
+          item.printedAmount === baseItem.printedAmount,
+      );
+      if (sameAmountBase.length === 1 && sameAmountEdited.length === 1) {
+        editedMatches = [editedItems.indexOf(sameAmountEdited[0])];
+      }
+    }
+    if (editedMatches.length > 1) {
+      conflicts.push(`品目${baseIndex + 1}`);
+      continue;
+    }
+    if (editedMatches.length === 0) {
+      const latestMatches = matchItem(baseItem, latestItems);
+      if (latestMatches.length !== 1) {
+        conflicts.push(`品目${baseIndex + 1}`);
+        continue;
+      }
+      const latestIndex = latestMatches[0];
+      output[latestIndex] = undefined;
+      continue;
+    }
+    const editedIndex = editedMatches[0];
+    usedEdited.add(editedIndex);
+    const editedItem = editedItems[editedIndex];
+    if (sameExceptKey(baseItem, editedItem)) continue;
+    const latestMatches = matchItem(baseItem, latestItems);
+    if (latestMatches.length !== 1) {
+      conflicts.push(`品目${baseIndex + 1}`);
+      continue;
+    }
+    const latestIndex = latestMatches[0];
+    const mergedItem = mergeEdits(
+      baseItem,
+      editedItem,
+      latestItems[latestIndex],
+      conflicts,
+      `receipt.items[${baseIndex}]`,
+    );
+    if (!isReceiptItem(mergedItem)) {
+      conflicts.push(`品目${baseIndex + 1}`);
+      continue;
+    }
+    output[latestIndex] = mergedItem;
+  }
+
+  for (let editedIndex = 0; editedIndex < editedItems.length; editedIndex += 1) {
+    if (usedEdited.has(editedIndex)) continue;
+    const item = editedItems[editedIndex];
+    if (baseItems.some((baseItem) => baseItem.key === item.key)) continue;
+    const { region: _region, ...manualItem } = item;
+    output.push(manualItem);
+  }
+  return output.flatMap((item) => (item ? [item] : []));
+}
+
 export function reconcileReceiptReviewDraft(
   document: DocumentReview,
   draft: ImportReceiptDraft,
@@ -131,62 +352,66 @@ export function reconcileReceiptConfirmationState(
 ): { state: ImportReceiptConfirmationState | undefined; conflicts: string[] } {
   if (!state) return { state, conflicts: [] };
   const conflicts: string[] = [];
-  const baseItems = receiptItems(baseResult);
-  const latestItems = receiptItems(latestResult);
+  const baseItems = ensureReceiptItemKeys(receiptItems(baseResult));
+  const latestItems = ensureReceiptItemKeys(receiptItems(latestResult));
   const mapItemKeys = <T>(values: Record<string, T> | undefined) => {
     if (!values) return undefined;
     const mapped: Record<string, T> = {};
     for (const [key, value] of Object.entries(values)) {
-      const match = /^item-(\d+)$/.exec(key);
-      const baseItem = match ? baseItems[Number(match[1])] : undefined;
-      if (!baseItem) continue;
-      const matches = latestItems.flatMap((item, index) =>
-        item.printedAmount === baseItem.printedAmount ? [index] : [],
-      );
-      const matchedIndex = matches.at(0);
-      if (matches.length !== 1 || matchedIndex === undefined) {
-        conflicts.push(`品目${Number(match?.[1] ?? 0) + 1}の確認状態`);
+      if (key.startsWith("manual:")) {
+        mapped[key] = value;
         continue;
       }
-      const targetItem = latestItems[matchedIndex];
-      const targetKey =
-        typeof targetItem.key === "string" ? targetItem.key : `item-${matchedIndex}`;
-      mapped[targetKey] = value;
+      const legacyIndex = /^item-(\d+)$/.exec(key);
+      const baseItem = legacyIndex
+        ? baseItems[Number(legacyIndex[1])]
+        : baseItems.find((item) => item.key === key);
+      if (!baseItem) continue;
+      const matches = matchItem(baseItem, latestItems);
+      if (matches.length !== 1) {
+        conflicts.push(`品目${baseItems.indexOf(baseItem) + 1}の確認状態`);
+        continue;
+      }
+      const target = latestItems[matches[0]];
+      if (target.key) mapped[target.key] = value;
     }
     return mapped;
   };
+
   let selectedCandidate = state.selectedCandidate;
   if (selectedCandidate) {
     const candidates = latestResult?.candidates ?? [];
-    const remappedAmounts = selectedCandidate.amounts.map((amount, baseIndex) => {
-      const baseItem = baseItems[baseIndex];
-      if (!baseItem) return undefined;
-      const indexes = latestItems.flatMap((item, index) =>
-        item.printedAmount === baseItem.printedAmount ? [index] : [],
-      );
-      return indexes.length === 1 ? { index: indexes[0], amount } : undefined;
-    });
+    const remappedAmounts =
+      selectedCandidate.amounts.length === baseItems.length
+        ? selectedCandidate.amounts.map((amount, baseIndex) => {
+            const baseItem = baseItems[baseIndex];
+            const indexes = matchItem(baseItem, latestItems);
+            return indexes.length === 1 ? { index: indexes[0], amount } : undefined;
+          })
+        : [];
     const amountsInLatestOrder =
       remappedAmounts.length === latestItems.length && remappedAmounts.every(Boolean)
         ? latestItems.map(
             (_, index) => remappedAmounts.find((entry) => entry?.index === index)?.amount,
           )
-        : selectedCandidate.amounts;
-    const matches = candidates.filter(
-      (candidate) =>
-        candidate.computedTotal === selectedCandidate?.computedTotal &&
-        candidate.amounts.length === amountsInLatestOrder.length &&
-        candidate.amounts.every((amount, index) => amount === amountsInLatestOrder[index]),
-    );
-    const sameID = candidates.filter((candidate) => candidate.id === selectedCandidate?.id);
-    const candidate =
-      matches.length === 1 ? matches[0] : sameID.length === 1 ? sameID[0] : undefined;
-    if (candidate) selectedCandidate = { ...candidate };
-    else {
+        : undefined;
+    const matches = amountsInLatestOrder
+      ? candidates.filter(
+          (candidate) =>
+            candidate.computedTotal === selectedCandidate?.computedTotal &&
+            candidate.amounts.length === amountsInLatestOrder.length &&
+            candidate.amounts.every((amount, index) => amount === amountsInLatestOrder[index]),
+        )
+      : [];
+    const candidate = matches.length === 1 ? matches[0] : undefined;
+    if (candidate && candidate.amounts.length === latestItems.length) {
+      selectedCandidate = { ...candidate };
+    } else {
       conflicts.push("税額候補の選択");
       selectedCandidate = undefined;
     }
   }
+
   return {
     state: {
       ...(selectedCandidate ? { selectedCandidate } : {}),

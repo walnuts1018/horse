@@ -4,8 +4,12 @@ import type { ImportReceiptDraft } from "../../../shared/lib/purchase-storage";
 import type { DocumentReview } from "./imports";
 
 import {
+  addManualReceiptItem,
+  deleteReceiptItemByKey,
+  ensureReceiptItemKeys,
   reconcileReceiptConfirmationState,
   reconcileReceiptReviewDraft,
+  rekeyReceiptConfirmationAfterStructureChange,
 } from "./receipt-review-draft";
 
 function item(name: string, printedAmount: number, grossAmount: number, confidence = 0.9) {
@@ -40,7 +44,7 @@ describe("reconcileReceiptReviewDraft", () => {
         receipt: {
           merchant: "更新店舗",
           items: [
-            item("更新商品", 100, 110, 0.99),
+            item("AI商品", 100, 110, 0.99),
             item("更新された未編集商品", 220, 220, 0.99),
             item("新商品", 300, 300),
           ],
@@ -58,11 +62,11 @@ describe("reconcileReceiptReviewDraft", () => {
     expect(reconcileReceiptReviewDraft(latest, draft).document.result).toEqual({
       receipt: {
         merchant: "修正店舗",
-        items: [
+        items: ensureReceiptItemKeys([
           item("修正商品", 100, 110, 0.99),
           item("更新された未編集商品", 220, 220, 0.99),
           item("新商品", 300, 300),
-        ],
+        ]),
       },
       issues: ["新指摘"],
     });
@@ -89,10 +93,9 @@ describe("reconcileReceiptReviewDraft", () => {
       editedResult: draftResult(editedResult),
     });
 
-    expect(reconciled.document.result?.receipt?.items).toEqual([
-      item("パン", 100, 110),
-      item("低脂肪乳", 200, 220),
-    ]);
+    expect(reconciled.document.result?.receipt?.items).toEqual(
+      ensureReceiptItemKeys([item("パン", 100, 110), item("低脂肪乳", 200, 220)]),
+    );
     expect(reconciled.conflicts).toEqual([]);
   });
 
@@ -115,6 +118,129 @@ describe("reconcileReceiptReviewDraft", () => {
 
     expect(reconciled.document.result?.receipt?.items?.[0]?.name).toBe("ヨーグルト");
     expect(reconciled.conflicts).toEqual(["品目1"]);
+  });
+
+  it("削除した品目だけを再解析結果から除き、順序が変わっても別品目を残す", () => {
+    const baseItems = [item("りんご", 100, 100), item("牛乳", 200, 200)];
+    const baseResult = { receipt: { items: baseItems } };
+    const editedResult = { receipt: { items: [baseItems[1]] } };
+    const latest: DocumentReview = {
+      id: "document-1",
+      status: "SUCCEEDED",
+      result: { receipt: { items: [item("牛乳", 200, 210), item("りんご", 100, 100)] } },
+    };
+
+    const reconciled = reconcileReceiptReviewDraft(latest, {
+      householdId: "household-1",
+      documentId: latest.id,
+      baseResult: draftResult(baseResult),
+      editedResult: draftResult(editedResult),
+    });
+
+    expect(reconciled.document.result?.receipt?.items?.map((entry) => entry.name)).toEqual([
+      "牛乳",
+    ]);
+    expect(reconciled.conflicts).toEqual([]);
+  });
+
+  it("追加した品目を維持し、AIの証拠regionを追加品目へコピーしない", () => {
+    const original = {
+      ...item("パン", 100, 100),
+      region: { page: 1, top: 0.1, left: 0.1, bottom: 0.2, right: 0.5 },
+    };
+    const manual = { ...item("手入力品目", 300, 300), key: "manual:one" };
+    const baseResult = { receipt: { items: [original] } };
+    const editedResult = { receipt: { items: [original, manual] } };
+    const latest: DocumentReview = {
+      id: "document-1",
+      status: "SUCCEEDED",
+      result: { receipt: { items: [original, item("新しいAI品目", 200, 200)] } },
+    };
+
+    const reconciled = reconcileReceiptReviewDraft(latest, {
+      householdId: "household-1",
+      documentId: latest.id,
+      baseResult: draftResult(baseResult),
+      editedResult: draftResult(editedResult),
+    });
+    const resultItems = reconciled.document.result?.receipt?.items ?? [];
+
+    expect(resultItems.map((entry) => entry.name)).toEqual(["パン", "新しいAI品目", "手入力品目"]);
+    expect(resultItems.at(-1)?.region).toBeUndefined();
+  });
+
+  it("同じ印字情報の品目を再解析後に一意に識別できない削除は適用しない", () => {
+    const duplicate = item("同じ商品", 100, 100);
+    const baseResult = { receipt: { items: [duplicate, duplicate] } };
+    const editedResult = { receipt: { items: [duplicate] } };
+    const latest: DocumentReview = {
+      id: "document-1",
+      status: "SUCCEEDED",
+      result: { receipt: { items: [duplicate, duplicate] } },
+    };
+
+    const reconciled = reconcileReceiptReviewDraft(latest, {
+      householdId: "household-1",
+      documentId: latest.id,
+      baseResult: draftResult(baseResult),
+      editedResult: draftResult(editedResult),
+    });
+
+    expect(reconciled.document.result?.receipt?.items).toHaveLength(2);
+    expect(reconciled.conflicts).toEqual(["品目2"]);
+  });
+});
+
+describe("receipt item structure changes", () => {
+  it("追加品目へ証拠regionを作らず、既存品目のkeyを維持する", () => {
+    const original = [
+      {
+        ...item("パン", 100, 100),
+        key: "item-0",
+        region: { page: 1, top: 0.1, left: 0.1, bottom: 0.2, right: 0.5 },
+      },
+    ];
+    const added = addManualReceiptItem(original, "manual:new");
+
+    expect(added[0].key).toBe(ensureReceiptItemKeys(original)[0].key);
+    expect(added[0].region).toEqual(original[0].region);
+    expect(added[1].key).toBe("manual:new");
+    expect(added[1].region).toBeUndefined();
+  });
+
+  it("削除品目の金額・配賦・訂正理由を破棄し、残存keyと決済だけを保つ", () => {
+    const original = [item("パン", 100, 100), item("牛乳", 200, 200)];
+    const keyed = ensureReceiptItemKeys(original);
+    const removedKey = keyed[0].key!;
+    const retainedKey = keyed[1].key!;
+    const nextItems = deleteReceiptItemByKey(keyed, removedKey);
+    const state = rekeyReceiptConfirmationAfterStructureChange(
+      {
+        selectedCandidate: {
+          id: "candidate",
+          amounts: [100, 200],
+          computedTotal: 300,
+          consistent: true,
+          issues: [],
+        },
+        manualAmountOverrides: { [removedKey]: 101, [retainedKey]: 201 },
+        manualAmountOverrideReason: "OCRの読み間違い",
+        itemAllocations: {
+          [removedKey]: [{ poolId: "pool-1", weight: 100 }],
+          [retainedKey]: [{ poolId: "pool-2", weight: 100 }],
+        },
+        payments: [{ key: "payment", paymentAccountId: "account-1", amountYen: 300 }],
+      },
+      original,
+      keyed,
+      nextItems,
+    );
+
+    expect(state).toEqual({
+      manualAmountOverrides: { [retainedKey]: 201 },
+      itemAllocations: { [retainedKey]: [{ poolId: "pool-2", weight: 100 }] },
+      payments: [{ key: "payment", paymentAccountId: "account-1", amountYen: 300 }],
+    });
   });
 });
 
@@ -150,12 +276,13 @@ describe("reconcileReceiptConfirmationState", () => {
       itemAllocations: { "item-1": [{ poolId: "pool-1", weight: 100 }] },
     });
 
+    const keyedLatestItems = ensureReceiptItemKeys(latestResult.receipt.items);
     expect(reconciled.state).toEqual({
       selectedCandidate: latestResult.candidates[0],
-      manualAmountOverrides: { "item-1": 111 },
+      manualAmountOverrides: { [keyedLatestItems[1].key!]: 111 },
       manualAmountOverrideReason: "印字額を確認",
       payments: [{ key: "manual", paymentAccountId: "account-1", amountYen: 331 }],
-      itemAllocations: { "item-0": [{ poolId: "pool-1", weight: 100 }] },
+      itemAllocations: { [keyedLatestItems[0].key!]: [{ poolId: "pool-1", weight: 100 }] },
     });
     expect(reconciled.conflicts).toEqual([]);
   });

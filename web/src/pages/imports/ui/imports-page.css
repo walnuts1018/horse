@@ -336,6 +336,32 @@
   padding: 10px;
 }
 
+.receipt-item-add,
+.receipt-item-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.receipt-item-add {
+  justify-self: start;
+  margin: 4px 0 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+.receipt-item-delete {
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+.receipt-items-empty {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .candidate-selected {
   border-color: var(--green);
   background: var(--green-wash);
