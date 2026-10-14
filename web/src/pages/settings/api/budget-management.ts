@@ -9,10 +9,10 @@ import {
   createBudgetMutation,
   updateBudgetMutation,
 } from "../../../entities/budget";
-import { commitSettingsMutation } from "./commit-mutation";
+import { commitGraphQLMutationResult } from "../../../shared/api";
 
 export function createBudget(input: CreateBudgetMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     CreateBudgetMutation,
     NonNullable<CreateBudgetMutation["response"]["createBudget"]["result"]>
   >(
@@ -25,7 +25,7 @@ export function createBudget(input: CreateBudgetMutation["variables"]["input"]) 
 }
 
 export function updateBudget(input: UpdateBudgetMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     UpdateBudgetMutation,
     NonNullable<UpdateBudgetMutation["response"]["updateBudget"]["result"]>
   >(
@@ -38,7 +38,7 @@ export function updateBudget(input: UpdateBudgetMutation["variables"]["input"]) 
 }
 
 export function archiveBudget(input: ArchiveBudgetMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     ArchiveBudgetMutation,
     NonNullable<ArchiveBudgetMutation["response"]["archiveBudget"]["result"]>
   >(

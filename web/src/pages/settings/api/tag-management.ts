@@ -1,10 +1,13 @@
-import type { ArchiveTagMutation, CreateTagMutation, UpdateTagMutation } from "../../../shared/api";
-
 import { archiveTagMutation, createTagMutation, updateTagMutation } from "../../../entities/tag";
-import { commitSettingsMutation } from "./commit-mutation";
+import {
+  commitGraphQLMutationResult,
+  type ArchiveTagMutation,
+  type CreateTagMutation,
+  type UpdateTagMutation,
+} from "../../../shared/api";
 
 export function createTag(input: CreateTagMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     CreateTagMutation,
     NonNullable<CreateTagMutation["response"]["createTag"]["result"]>
   >(
@@ -17,7 +20,7 @@ export function createTag(input: CreateTagMutation["variables"]["input"]) {
 }
 
 export function updateTag(input: UpdateTagMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     UpdateTagMutation,
     NonNullable<UpdateTagMutation["response"]["updateTag"]["result"]>
   >(
@@ -30,7 +33,7 @@ export function updateTag(input: UpdateTagMutation["variables"]["input"]) {
 }
 
 export function archiveTag(input: ArchiveTagMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     ArchiveTagMutation,
     NonNullable<ArchiveTagMutation["response"]["archiveTag"]["result"]>
   >(

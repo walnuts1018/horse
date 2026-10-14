@@ -4,7 +4,7 @@ import type {
   SetPoolFundingRuleMutation,
 } from "../../../shared/api";
 
-import { commitSettingsMutation } from "./commit-mutation";
+import { commitGraphQLMutationResult } from "../../../shared/api";
 import {
   createAccountMutation,
   createPoolMutation,
@@ -15,7 +15,7 @@ export type PoolKind = CreatePoolMutation["variables"]["input"]["kind"];
 export type AccountKind = CreateAccountMutation["variables"]["input"]["kind"];
 
 export function createAccount(input: CreateAccountMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     CreateAccountMutation,
     NonNullable<CreateAccountMutation["response"]["createAccount"]["result"]>
   >(
@@ -28,7 +28,7 @@ export function createAccount(input: CreateAccountMutation["variables"]["input"]
 }
 
 export function createPool(input: CreatePoolMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     CreatePoolMutation,
     NonNullable<CreatePoolMutation["response"]["createPool"]["result"]>
   >(
@@ -41,7 +41,7 @@ export function createPool(input: CreatePoolMutation["variables"]["input"]) {
 }
 
 export function setPoolFundingRule(input: SetPoolFundingRuleMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     SetPoolFundingRuleMutation,
     NonNullable<SetPoolFundingRuleMutation["response"]["setPoolFundingRule"]["result"]>
   >(

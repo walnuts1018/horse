@@ -8,6 +8,7 @@ import {
 } from "../../../entities/product";
 import {
   getRelayEnvironment,
+  commitGraphQLMutationResult,
   type AllocationRule,
   type AllocationRulesQuery,
   type AllocationRulesQuery$data,
@@ -16,7 +17,6 @@ import {
   type SetAllocationRuleMutation,
   type SetProductAliasMutation,
 } from "../../../shared/api";
-import { commitSettingsMutation } from "./commit-mutation";
 import { allocationRulesQuery, setAllocationRuleMutation } from "./operations";
 
 export async function readAllocationRules(householdId: string, after?: string) {
@@ -74,7 +74,7 @@ export function readCatalog(householdId: string) {
 }
 
 export function setAllocationRule(input: SetAllocationRuleMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     SetAllocationRuleMutation,
     NonNullable<SetAllocationRuleMutation["response"]["setAllocationRule"]["result"]>
   >(
@@ -87,7 +87,7 @@ export function setAllocationRule(input: SetAllocationRuleMutation["variables"][
 }
 
 export function createCatalogConcept(input: CreateProductConceptMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     CreateProductConceptMutation,
     NonNullable<CreateProductConceptMutation["response"]["createProductConcept"]["result"]>
   >(
@@ -100,7 +100,7 @@ export function createCatalogConcept(input: CreateProductConceptMutation["variab
 }
 
 export function createCatalogVariant(input: CreateProductVariantMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     CreateProductVariantMutation,
     NonNullable<CreateProductVariantMutation["response"]["createProductVariant"]["result"]>
   >(
@@ -113,7 +113,7 @@ export function createCatalogVariant(input: CreateProductVariantMutation["variab
 }
 
 export function createCatalogAlias(input: SetProductAliasMutation["variables"]["input"]) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     SetProductAliasMutation,
     NonNullable<SetProductAliasMutation["response"]["setProductAlias"]["result"]>
   >(

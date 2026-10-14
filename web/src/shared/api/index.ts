@@ -1,5 +1,11 @@
 export * from "./household";
 export * from "./monthly-spending";
+export {
+  assertGraphQLMutationSuccess,
+  commitGraphQLMutation,
+  commitGraphQLMutationResult,
+  readGraphQLMutationResult,
+} from "./commit-mutation";
 export type { HouseholdQuery, HouseholdQuery$data } from "./__generated__/HouseholdQuery.graphql";
 export type {
   HouseholdsQuery,

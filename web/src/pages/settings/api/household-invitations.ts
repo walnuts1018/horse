@@ -1,7 +1,9 @@
-import { commitMutation, fetchQuery, graphql } from "react-relay";
+import { fetchQuery, graphql } from "react-relay";
 
 import {
+  commitGraphQLMutation,
   getRelayEnvironment,
+  readGraphQLMutationResult,
   type CreateHouseholdInvitationMutation$data,
   type HouseholdInvitationsQuery,
   type HouseholdInvitationsQuery$data,
@@ -68,37 +70,21 @@ export function createHouseholdInvitation(input: {
   householdId: string;
   expiresAt: string;
 }): Promise<CreatedHouseholdInvitation> {
-  return new Promise((resolve, reject) =>
-    commitMutation<CreateHouseholdInvitationOperation>(getRelayEnvironment(), {
-      mutation: createHouseholdInvitationMutation,
-      variables: { input },
-      onCompleted: (response, errors) => {
-        if (errors?.length) {
-          reject(new Error(errors[0].message));
-          return;
-        }
-        const result = response.createHouseholdInvitation;
-        switch (result.__typename) {
-          case "CreateHouseholdInvitationSuccess": {
-            if (!result.result) {
-              reject(new Error("招待を発行できませんでした"));
-              return;
-            }
-            resolve({
-              token: result.result.token,
-              invitation: mapHouseholdInvitation(result.result.invitation),
-            });
-            return;
-          }
-          case "MutationError":
-            reject(new Error(result.message ?? "招待を発行できませんでした"));
-            return;
-          default:
-            reject(new Error(`未対応の招待発行結果です: ${result.__typename}`));
-        }
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<CreateHouseholdInvitationOperation, CreatedHouseholdInvitation>(
+    createHouseholdInvitationMutation,
+    { input },
+    (response) => {
+      const result = readGraphQLMutationResult(
+        response.createHouseholdInvitation,
+        "CreateHouseholdInvitationSuccess",
+        "招待を発行できませんでした",
+        "未対応の招待発行結果です",
+      );
+      return {
+        token: result.token,
+        invitation: mapHouseholdInvitation(result.invitation),
+      };
+    },
   );
 }
 
@@ -106,33 +92,17 @@ export function revokeHouseholdInvitation(input: {
   householdId: string;
   invitationId: string;
 }): Promise<void> {
-  return new Promise((resolve, reject) =>
-    commitMutation<RevokeHouseholdInvitationOperation>(getRelayEnvironment(), {
-      mutation: revokeHouseholdInvitationMutation,
-      variables: { input },
-      onCompleted: (response, errors) => {
-        if (errors?.length) {
-          reject(new Error(errors[0].message));
-          return;
-        }
-        const result = response.revokeHouseholdInvitation;
-        switch (result.__typename) {
-          case "RevokeHouseholdInvitationSuccess":
-            if (!result.result) {
-              reject(new Error("招待を失効できませんでした"));
-              return;
-            }
-            resolve();
-            return;
-          case "MutationError":
-            reject(new Error(result.message ?? "招待を失効できませんでした"));
-            return;
-          default:
-            reject(new Error(`未対応の招待失効結果です: ${result.__typename}`));
-        }
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<RevokeHouseholdInvitationOperation, void>(
+    revokeHouseholdInvitationMutation,
+    { input },
+    (response) => {
+      readGraphQLMutationResult(
+        response.revokeHouseholdInvitation,
+        "RevokeHouseholdInvitationSuccess",
+        "招待を失効できませんでした",
+        "未対応の招待失効結果です",
+      );
+    },
   );
 }
 

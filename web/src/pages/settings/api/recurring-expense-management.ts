@@ -9,12 +9,12 @@ import {
   createRecurringExpenseMutation,
   updateRecurringExpenseMutation,
 } from "../../../entities/recurring-expense";
-import { commitSettingsMutation } from "./commit-mutation";
+import { commitGraphQLMutationResult } from "../../../shared/api";
 
 export function createRecurringExpense(
   input: CreateRecurringExpenseMutation["variables"]["input"],
 ) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     CreateRecurringExpenseMutation,
     NonNullable<CreateRecurringExpenseMutation["response"]["createRecurringExpense"]["result"]>
   >(
@@ -29,7 +29,7 @@ export function createRecurringExpense(
 export function updateRecurringExpense(
   input: UpdateRecurringExpenseMutation["variables"]["input"],
 ) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     UpdateRecurringExpenseMutation,
     NonNullable<UpdateRecurringExpenseMutation["response"]["updateRecurringExpense"]["result"]>
   >(
@@ -44,7 +44,7 @@ export function updateRecurringExpense(
 export function archiveRecurringExpense(
   input: ArchiveRecurringExpenseMutation["variables"]["input"],
 ) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     ArchiveRecurringExpenseMutation,
     NonNullable<ArchiveRecurringExpenseMutation["response"]["archiveRecurringExpense"]["result"]>
   >(

@@ -7,6 +7,7 @@ import {
   recordExternalIncomeMutation,
 } from "../../../entities/ledger";
 import {
+  commitGraphQLMutationResult,
   getRelayEnvironment,
   type AccountIncomesQuery,
   type AccountIncomesQuery$data,
@@ -15,7 +16,6 @@ import {
   type RecordAccountMovementMutation,
   type RecordExternalIncomeMutation,
 } from "../../../shared/api";
-import { commitSettingsMutation } from "./commit-mutation";
 
 type AccountMovementRecord =
   AccountMovementsQuery$data["accountMovements"]["edges"][number]["node"];
@@ -143,7 +143,7 @@ function mapIncome(record: AccountIncomeRecord): AccountActivityIncome {
 export function recordAccountActivityIncome(
   input: RecordExternalIncomeMutation["variables"]["input"],
 ) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     RecordExternalIncomeMutation,
     NonNullable<RecordExternalIncomeMutation["response"]["recordExternalIncome"]["result"]>
   >(
@@ -158,7 +158,7 @@ export function recordAccountActivityIncome(
 export function recordAccountActivityMovement(
   input: RecordAccountMovementMutation["variables"]["input"],
 ) {
-  return commitSettingsMutation<
+  return commitGraphQLMutationResult<
     RecordAccountMovementMutation,
     NonNullable<RecordAccountMovementMutation["response"]["recordAccountMovement"]["result"]>
   >(

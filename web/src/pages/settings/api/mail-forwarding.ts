@@ -1,7 +1,10 @@
-import { commitMutation, fetchQuery, graphql } from "react-relay";
+import { fetchQuery, graphql } from "react-relay";
 
 import {
   getRelayEnvironment,
+  assertGraphQLMutationSuccess,
+  commitGraphQLMutation,
+  readGraphQLMutationResult,
   type HouseholdMailForwardingStatusQuery,
   type HouseholdMailForwardingStatusQuery$data,
   type IssueHouseholdMailForwardingMutation$data,
@@ -50,85 +53,51 @@ export async function readMailForwardingStatus(
 export function issueMailForwardingAddress(
   householdId: string,
 ): Promise<IssuedMailForwardingAddress> {
-  return new Promise((resolve, reject) =>
-    commitMutation<IssueOperation>(getRelayEnvironment(), {
-      mutation: issueHouseholdMailForwardingMutation,
-      variables: { input: { householdId } },
-      onCompleted: (response, errors) => {
-        if (errors?.length) return reject(new Error(errors[0].message));
-        const result = response.issueHouseholdMailForwarding;
-        if (result.__typename === "IssueHouseholdMailForwardingSuccess") {
-          resolve({
-            address: result.result.address,
-            createdAt: result.result.status.createdAt,
-          });
-          return;
-        }
-        reject(
-          new Error(
-            result.__typename === "HouseholdMailForwardingUserError"
-              ? result.message
-              : `未対応の転送先発行結果です: ${result.__typename}`,
-          ),
-        );
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<IssueOperation, IssuedMailForwardingAddress>(
+    issueHouseholdMailForwardingMutation,
+    { input: { householdId } },
+    (response) => {
+      const result = readGraphQLMutationResult(
+        response.issueHouseholdMailForwarding,
+        "IssueHouseholdMailForwardingSuccess",
+        "転送先を発行できませんでした",
+        "未対応の転送先発行結果です",
+      );
+      return { address: result.address, createdAt: result.status.createdAt };
+    },
   );
 }
 
 export function rotateMailForwardingAddress(
   householdId: string,
 ): Promise<IssuedMailForwardingAddress> {
-  return new Promise((resolve, reject) =>
-    commitMutation<RotateOperation>(getRelayEnvironment(), {
-      mutation: rotateHouseholdMailForwardingMutation,
-      variables: { input: { householdId } },
-      onCompleted: (response, errors) => {
-        if (errors?.length) return reject(new Error(errors[0].message));
-        const result = response.rotateHouseholdMailForwarding;
-        if (result.__typename === "RotateHouseholdMailForwardingSuccess") {
-          resolve({
-            address: result.result.address,
-            createdAt: result.result.status.createdAt,
-          });
-          return;
-        }
-        reject(
-          new Error(
-            result.__typename === "HouseholdMailForwardingUserError"
-              ? result.message
-              : `未対応の転送先再発行結果です: ${result.__typename}`,
-          ),
-        );
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<RotateOperation, IssuedMailForwardingAddress>(
+    rotateHouseholdMailForwardingMutation,
+    { input: { householdId } },
+    (response) => {
+      const result = readGraphQLMutationResult(
+        response.rotateHouseholdMailForwarding,
+        "RotateHouseholdMailForwardingSuccess",
+        "転送先を再発行できませんでした",
+        "未対応の転送先再発行結果です",
+      );
+      return { address: result.address, createdAt: result.status.createdAt };
+    },
   );
 }
 
 export function revokeMailForwardingAddress(householdId: string): Promise<void> {
-  return new Promise((resolve, reject) =>
-    commitMutation<RevokeOperation>(getRelayEnvironment(), {
-      mutation: revokeHouseholdMailForwardingMutation,
-      variables: { input: { householdId } },
-      onCompleted: (response, errors) => {
-        if (errors?.length) return reject(new Error(errors[0].message));
-        const result = response.revokeHouseholdMailForwarding;
-        if (result.__typename === "RevokeHouseholdMailForwardingSuccess") {
-          resolve();
-          return;
-        }
-        reject(
-          new Error(
-            result.__typename === "HouseholdMailForwardingUserError"
-              ? result.message
-              : `未対応の転送先無効化結果です: ${result.__typename}`,
-          ),
-        );
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<RevokeOperation, void>(
+    revokeHouseholdMailForwardingMutation,
+    { input: { householdId } },
+    (response) => {
+      assertGraphQLMutationSuccess(
+        response.revokeHouseholdMailForwarding,
+        "RevokeHouseholdMailForwardingSuccess",
+        "転送先を無効化できませんでした",
+        "未対応の転送先無効化結果です",
+      );
+    },
   );
 }
 

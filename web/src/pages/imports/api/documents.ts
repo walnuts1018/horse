@@ -1,5 +1,3 @@
-import { commitMutation } from "react-relay";
-
 import type { DocumentFilters, DocumentReview } from "../model/imports";
 
 import {
@@ -11,9 +9,9 @@ import {
   linkStatementAccountMovementMutation,
   linkStatementAccountIncomeMutation,
 } from "../../../entities/ledger";
-import { linkStatementRefundCorrectionMutation } from "./operations";
 import {
-  getRelayEnvironment,
+  assertGraphQLMutationSuccess,
+  commitGraphQLMutation,
   type RecordAccountMovementMutation,
   type RecordExternalIncomeMutation,
   type RecordRepaymentMutation,
@@ -24,6 +22,7 @@ import {
   type LinkStatementAccountIncomeMutation,
 } from "../../../shared/api";
 import { asRecord } from "../model/imports";
+import { linkStatementRefundCorrectionMutation } from "./operations";
 
 export const documentListURL = (householdId: string, filters: DocumentFilters, after?: string) => {
   const query = new URLSearchParams({ householdId, first: "50" });
@@ -69,174 +68,129 @@ export const importIdempotencyKey = async (documentId: string, sourceReference: 
 export function recordStatementAccountMovement(
   input: RecordAccountMovementMutation["variables"]["input"],
 ) {
-  return new Promise<void>((resolve, reject) =>
-    commitMutation<RecordAccountMovementMutation>(getRelayEnvironment(), {
-      mutation: recordAccountMovementMutation,
-      variables: { input },
-      onCompleted: (response, errors) => {
-        if (errors?.length) {
-          reject(new Error(errors[0].message));
-          return;
-        }
-        const result = response.recordAccountMovement;
-        if (result.__typename === "RecordAccountMovementSuccess") {
-          resolve();
-          return;
-        }
-        reject(new Error(result.message || "口座間振替を記録できませんでした"));
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<RecordAccountMovementMutation, void>(
+    recordAccountMovementMutation,
+    { input },
+    (response) => {
+      assertGraphQLMutationSuccess(
+        response.recordAccountMovement,
+        "RecordAccountMovementSuccess",
+        "口座間振替を記録できませんでした",
+        () => "口座間振替を記録できませんでした",
+      );
+    },
   );
 }
 
 export function linkStatementRefundCorrection(
   input: LinkStatementRefundCorrectionMutation["variables"]["input"],
 ) {
-  return new Promise<void>((resolve, reject) =>
-    commitMutation<LinkStatementRefundCorrectionMutation>(getRelayEnvironment(), {
-      mutation: linkStatementRefundCorrectionMutation,
-      variables: { input },
-      onCompleted: (response, errors) => {
-        if (errors?.length) return reject(new Error(errors[0].message));
-        if (response.linkStatementRefundCorrection.__typename === "LinkStatementRefundCorrectionSuccess") {
-          return resolve();
-        }
-        reject(
-          new Error(
-            response.linkStatementRefundCorrection.__typename === "LinkStatementRefundCorrectionUserError"
-              ? response.linkStatementRefundCorrection.message || "返金記録に紐付けられませんでした"
-              : "返金記録に紐付けられませんでした",
-          ),
-        );
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<LinkStatementRefundCorrectionMutation, void>(
+    linkStatementRefundCorrectionMutation,
+    { input },
+    (response) => {
+      assertGraphQLMutationSuccess(
+        response.linkStatementRefundCorrection,
+        "LinkStatementRefundCorrectionSuccess",
+        "返金記録に紐付けられませんでした",
+        () => "返金記録に紐付けられませんでした",
+      );
+    },
   );
 }
 
 export function recordStatementExternalIncome(
   input: RecordExternalIncomeMutation["variables"]["input"],
 ) {
-  return new Promise<void>((resolve, reject) =>
-    commitMutation<RecordExternalIncomeMutation>(getRelayEnvironment(), {
-      mutation: recordExternalIncomeMutation,
-      variables: { input },
-      onCompleted: (response, errors) => {
-        if (errors?.length) {
-          reject(new Error(errors[0].message));
-          return;
-        }
-        const result = response.recordExternalIncome;
-        if (result.__typename === "RecordExternalIncomeSuccess") {
-          resolve();
-          return;
-        }
-        reject(new Error(result.message || "外部入金を記録できませんでした"));
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<RecordExternalIncomeMutation, void>(
+    recordExternalIncomeMutation,
+    { input },
+    (response) => {
+      assertGraphQLMutationSuccess(
+        response.recordExternalIncome,
+        "RecordExternalIncomeSuccess",
+        "外部入金を記録できませんでした",
+        () => "外部入金を記録できませんでした",
+      );
+    },
   );
 }
 
 export function recordStatementLoan(input: RecordTransferMutation["variables"]["input"]) {
-  return new Promise<void>((resolve, reject) =>
-    commitMutation<RecordTransferMutation>(getRelayEnvironment(), {
-      mutation: recordTransferMutation,
-      variables: { input },
-      onCompleted: (response, errors) => {
-        if (errors?.length) return reject(new Error(errors[0].message));
-        const result = response.recordTransfer;
-        if (result.__typename === "RecordTransferSuccess") return resolve();
-        reject(new Error(result.message || "貸付を記録できませんでした"));
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<RecordTransferMutation, void>(
+    recordTransferMutation,
+    { input },
+    (response) => {
+      assertGraphQLMutationSuccess(
+        response.recordTransfer,
+        "RecordTransferSuccess",
+        "貸付を記録できませんでした",
+        () => "貸付を記録できませんでした",
+      );
+    },
   );
 }
 
 export function recordStatementRepayment(input: RecordRepaymentMutation["variables"]["input"]) {
-  return new Promise<void>((resolve, reject) =>
-    commitMutation<RecordRepaymentMutation>(getRelayEnvironment(), {
-      mutation: recordRepaymentMutation,
-      variables: { input },
-      onCompleted: (response, errors) => {
-        if (errors?.length) return reject(new Error(errors[0].message));
-        const result = response.recordRepayment;
-        if (result.__typename === "RecordRepaymentSuccess") return resolve();
-        reject(new Error(result.message || "返済を記録できませんでした"));
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<RecordRepaymentMutation, void>(
+    recordRepaymentMutation,
+    { input },
+    (response) => {
+      assertGraphQLMutationSuccess(
+        response.recordRepayment,
+        "RecordRepaymentSuccess",
+        "返済を記録できませんでした",
+        () => "返済を記録できませんでした",
+      );
+    },
   );
 }
 
 export function linkStatementTransfer(input: LinkStatementTransferMutation["variables"]["input"]) {
-  return new Promise<void>((resolve, reject) =>
-    commitMutation<LinkStatementTransferMutation>(getRelayEnvironment(), {
-      mutation: linkStatementTransferMutation,
-      variables: { input },
-      onCompleted: (response, errors) => {
-        if (errors?.length) return reject(new Error(errors[0].message));
-        const result = response.linkStatementTransfer;
-        if (result.__typename === "LinkStatementTransferSuccess") return resolve();
-        reject(
-          new Error(
-            result.__typename === "LinkStatementTransferUserError"
-              ? result.message
-              : "明細を既存取引に紐付けできませんでした",
-          ),
-        );
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<LinkStatementTransferMutation, void>(
+    linkStatementTransferMutation,
+    { input },
+    (response) => {
+      assertGraphQLMutationSuccess(
+        response.linkStatementTransfer,
+        "LinkStatementTransferSuccess",
+        "明細を既存取引に紐付けできませんでした",
+        () => "明細を既存取引に紐付けできませんでした",
+      );
+    },
   );
 }
 
 export function linkStatementAccountMovement(
   input: LinkStatementAccountMovementMutation["variables"]["input"],
 ) {
-  return new Promise<void>((resolve, reject) =>
-    commitMutation<LinkStatementAccountMovementMutation>(getRelayEnvironment(), {
-      mutation: linkStatementAccountMovementMutation,
-      variables: { input },
-      onCompleted: (response, errors) => {
-        if (errors?.length) return reject(new Error(errors[0].message));
-        const result = response.linkStatementAccountMovement;
-        if (result.__typename === "LinkStatementAccountMovementSuccess") return resolve();
-        reject(
-          new Error(
-            result.__typename === "LinkStatementAccountMovementUserError"
-              ? result.message
-              : "口座移動に紐付けできませんでした",
-          ),
-        );
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<LinkStatementAccountMovementMutation, void>(
+    linkStatementAccountMovementMutation,
+    { input },
+    (response) => {
+      assertGraphQLMutationSuccess(
+        response.linkStatementAccountMovement,
+        "LinkStatementAccountMovementSuccess",
+        "口座移動に紐付けできませんでした",
+        () => "口座移動に紐付けできませんでした",
+      );
+    },
   );
 }
 
 export function linkStatementAccountIncome(
   input: LinkStatementAccountIncomeMutation["variables"]["input"],
 ) {
-  return new Promise<void>((resolve, reject) =>
-    commitMutation<LinkStatementAccountIncomeMutation>(getRelayEnvironment(), {
-      mutation: linkStatementAccountIncomeMutation,
-      variables: { input },
-      onCompleted: (response, errors) => {
-        if (errors?.length) return reject(new Error(errors[0].message));
-        const result = response.linkStatementAccountIncome;
-        if (result.__typename === "LinkStatementAccountIncomeSuccess") return resolve();
-        reject(
-          new Error(
-            result.__typename === "LinkStatementAccountIncomeUserError"
-              ? result.message
-              : "入金明細を既存の入金に紐付けできませんでした",
-          ),
-        );
-      },
-      onError: reject,
-    }),
+  return commitGraphQLMutation<LinkStatementAccountIncomeMutation, void>(
+    linkStatementAccountIncomeMutation,
+    { input },
+    (response) => {
+      assertGraphQLMutationSuccess(
+        response.linkStatementAccountIncome,
+        "LinkStatementAccountIncomeSuccess",
+        "入金明細を既存の入金に紐付けできませんでした",
+        () => "入金明細を既存の入金に紐付けできませんでした",
+      );
+    },
   );
 }
