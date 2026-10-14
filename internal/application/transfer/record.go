@@ -11,7 +11,6 @@ import (
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
@@ -311,7 +310,7 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		var repaid int64
 		for _, repayment := range repayments {
 			var ok bool
-			repaid, ok = checkedAdd(repaid, repayment.AmountYen)
+			repaid, ok = accounting.Add(repaid, repayment.AmountYen)
 			if !ok {
 				return Result{}, fmt.Errorf("%w: repayment total is too large", ErrBadInput)
 			}
@@ -394,7 +393,7 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 	}).Exec(ctx, executor); err != nil {
 		return Result{}, err
 	}
-	if err := writeEvent(ctx, tx, householdID, ledgerID, "transfer.recorded", 1, []string{"amountYen", "kind"}, actorID); err != nil {
+	if err := accounting.RecordEvent(ctx, executor, householdID, ledgerID, "transfer.recorded", 1, []string{"amountYen", "kind"}, actorID); err != nil {
 		return Result{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -523,12 +522,4 @@ func requireHouseholdMember(ctx context.Context, executor bob.Executor, househol
 		return ErrNotFound
 	}
 	return nil
-}
-
-func checkedAdd(left, right int64) (int64, bool) {
-	return accounting.Add(left, right)
-}
-
-func writeEvent(ctx context.Context, tx pgx.Tx, householdID, entityID gofrsuuid.UUID, eventType string, revision int64, fields []string, actorID gofrsuuid.UUID) error {
-	return accounting.RecordEvent(ctx, bobpgx.NewTx(tx, nil), householdID, entityID, eventType, revision, fields, actorID)
 }
