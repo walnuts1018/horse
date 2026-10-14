@@ -310,6 +310,10 @@ MAX_TOKENSや不正生成JSONでGemini呼び出しに失敗した場合も、応
 
 モバイルドロワーをBase UI Dialogで実装し、フォーカス移動・復帰、Escape、背景操作制限を有効にしました。追加ボタンのアイコン色を白にし、家庭切り替えボタンは家庭が複数ある場合だけ操作可能にしました。ホームのSetupGuidanceを概要より前に移し、ホームCSSの重複定義を統合しました。添付親子の選択時に一覧外の文書を単独取得し、フィルターやページネーションをまたいでレビューを続けられるようにしました。Frontend型検査、Vitest対象5ファイル17件、markuplint、stylelint、oxfmt、FSD検査が成功しました。具体的な修正対象がなくなったため`docs/reviews/design2.md`を削除しました。
 
+### Gemini SchemaとGo型の契約
+
+`receiptSchema()`と`statementSchema()`はGoの出力型と別に定義しています。`TestStatementSchemaMatchesExtractionModel`を追加し、Schemaのfield、JSON型、必須項目と座標範囲を`StatementEntry`に照合しました。ReceiptとStatementの双方にSchema契約テストがあるため、二重定義そのものを生成方式へ移す指摘を`docs/reviews/be-architecture.md`から削除しました。Schema変更時は該当テストを更新します。
+
 取り込みフィルターの適用条件をTanStack RouterのURL検索値へ集約しました。ブラウザの戻る・進むで条件が復元され、未適用の入力値は現在のURL位置に結び付けて保持します。Frontend型検査、対象Vitest、oxlint、Steigerが成功しました。家庭メンバー管理には、OWNERロールを既存メンバーへ移譲するMutationと確認操作を追加しました。ロール変更と監査イベントを同一transactionで保存し、移譲後の権限、本人移譲の拒否、再移譲をTestcontainers統合テストで確認しました。
 
 ### 2026年10月14日の部分返品とメール添付レビュー
