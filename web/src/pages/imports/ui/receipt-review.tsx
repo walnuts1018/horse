@@ -164,6 +164,7 @@ export function ReceiptReview({
   const compactReview =
     result.balanced === true &&
     !selectedDocument.duplicateOf &&
+    (result.issues?.length ?? 0) === 0 &&
     allReceiptItemsReviewed &&
     reviewTargets.length === 0;
   const summaryPayments = paymentDraftFor(selectedDocument);
@@ -201,6 +202,51 @@ export function ReceiptReview({
       [selectedDocument.id]: reason,
     }));
   };
+  const navigateToIssue = (issue: string) => {
+    const itemNumber = issue.match(/品目\s*(\d+)/)?.[1];
+    const itemIndex = itemNumber ? Number(itemNumber) - 1 : -1;
+    if (itemIndex >= 0 && itemIndex < receiptItems.length) {
+      const item = receiptItems[itemIndex];
+      const itemKey = item.key ?? `item-${itemIndex}`;
+      const targetId = `receipt-review-item-${encodeURIComponent(itemKey)}`;
+      const targetIndex = reviewTargets.findIndex((target) => target.elementId === targetId);
+      if (targetIndex >= 0) setReviewTargetIndex(targetIndex);
+      selectReceiptEvidenceItem(selectedDocument.id, {
+        itemKey,
+        index: itemIndex,
+        focusEditor: true,
+      });
+      document.getElementById(targetId)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      itemNameInputs.current.get(itemKey)?.focus({ preventScroll: true });
+      return;
+    }
+
+    const target = /決済|支払/.test(issue)
+      ? reviewTargets.find((entry) => entry.elementId === "receipt-review-payments")
+      : /購入日|日付/.test(issue)
+        ? reviewTargets.find((entry) => entry.elementId === "receipt-review-purchase-date")
+        : /税|金額|合計|候補/.test(issue)
+          ? reviewTargets.find((entry) => entry.key === "amount")
+          : reviewTargets[0];
+    if (target) {
+      setReviewTargetIndex(reviewTargets.indexOf(target));
+      return;
+    }
+
+    if (receiptItems.length === 0) return;
+    const firstItem = receiptItems[0];
+    const itemKey = firstItem.key ?? "item-0";
+    selectReceiptEvidenceItem(selectedDocument.id, {
+      itemKey,
+      index: 0,
+      focusEditor: true,
+    });
+    document.getElementById(`receipt-review-item-${encodeURIComponent(itemKey)}`)?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+    itemNameInputs.current.get(itemKey)?.focus({ preventScroll: true });
+  };
   const setReceiptItemReviewState = (itemKey: string, state: ReceiptItemReviewState) => {
     markUnsaved();
     setReceiptItemReviewStates((current) => ({
@@ -234,6 +280,25 @@ export function ReceiptReview({
   };
   return (
     <div className="receipt-review">
+      {(result.issues?.length ?? 0) > 0 && (
+        <section className={styles.receiptIssues} aria-label="確認が必要な項目">
+          <h3>確認が必要な項目</h3>
+          <ul>
+            {result.issues?.map((issue) => (
+              <li key={issue}>
+                <span>{issue}</span>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => navigateToIssue(issue)}
+                >
+                  該当箇所へ
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {(receiptItems.length > 0 || reviewTargets.length > 0) && (
         <section className="panel-heading" aria-label="確認順">
           <div aria-live="polite">

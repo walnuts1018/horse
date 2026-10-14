@@ -10,6 +10,34 @@
   background: var(--surface);
 }
 
+.receiptIssues {
+  margin: 0 0 14px;
+  border: 1px solid var(--danger, #b42318);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 12px;
+}
+
+.receiptIssues h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.receiptIssues ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.receiptIssues li {
+  padding-left: 2px;
+}
+
+.receiptIssues li > span {
+  margin-right: 8px;
+}
+
 .receiptSequence > div {
   display: grid;
   gap: 3px;
