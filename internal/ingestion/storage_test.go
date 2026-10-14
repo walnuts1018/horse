@@ -75,6 +75,106 @@ func TestObjectStorePutPreservesOriginalAndRejectsConflictingContent(t *testing.
 	}
 }
 
+func TestObjectStorePutAnalysisUsesDocumentScopedNamespaceAndIsIdempotent(t *testing.T) {
+	t.Parallel()
+	data := []byte("analysis image bytes")
+	hash := DocumentHash(data)
+	objects := make(map[string][]byte)
+	var putCalls, headCalls, getCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := strings.TrimPrefix(r.URL.Path, "/horse/")
+		switch r.Method {
+		case http.MethodPut:
+			putCalls++
+			if r.Header.Get("If-None-Match") != "*" || r.Header.Get("X-Amz-Meta-Sha256") != hash || r.Header.Get("X-Amz-Server-Side-Encryption") != "" {
+				t.Errorf("PutAnalysis sent unexpected controls: headers=%v", r.Header)
+			}
+			body, err := io.ReadAll(r.Body)
+			if err != nil || !bytes.Equal(body, data) {
+				t.Errorf("PutAnalysis changed analysis bytes: %q, %v", body, err)
+			}
+			if _, exists := objects[key]; exists {
+				w.WriteHeader(http.StatusPreconditionFailed)
+				_, _ = fmt.Fprint(w, `<Error><Code>PreconditionFailed</Code><Message>object already exists</Message></Error>`)
+				return
+			}
+			objects[key] = bytes.Clone(body)
+			w.Header().Set("ETag", `"stored"`)
+		case http.MethodHead:
+			headCalls++
+			stored, exists := objects[key]
+			if !exists {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Length", fmt.Sprint(len(stored)))
+			w.Header().Set("X-Amz-Meta-Sha256", hash)
+		case http.MethodGet:
+			getCalls++
+			stored, exists := objects[key]
+			if !exists {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Length", fmt.Sprint(len(stored)))
+			_, _ = w.Write(stored)
+		default:
+			t.Errorf("unexpected S3 method: %s", r.Method)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+	store := newTestObjectStore(t, server)
+
+	firstKey, firstHash, err := store.PutAnalysis(t.Context(), "household", "document-1", mimeTypeJPEG, data)
+	wantKey := "household/analysis/document-1/" + hash
+	if err != nil || firstKey != wantKey || firstHash != hash {
+		t.Fatalf("analysis upload failed: key=%q hash=%q err=%v", firstKey, firstHash, err)
+	}
+	repeatedKey, repeatedHash, err := store.PutAnalysis(t.Context(), "household", "document-1", mimeTypeJPEG, data)
+	if err != nil || repeatedKey != firstKey || repeatedHash != firstHash {
+		t.Fatalf("repeated analysis upload was not idempotent: key=%q hash=%q err=%v", repeatedKey, repeatedHash, err)
+	}
+	otherKey, otherHash, err := store.PutAnalysis(t.Context(), "household", "document-2", mimeTypeJPEG, data)
+	if err != nil || otherKey == firstKey || otherHash != firstHash || otherKey != "household/analysis/document-2/"+hash {
+		t.Fatalf("analysis objects were not scoped by document ID: key=%q hash=%q err=%v", otherKey, otherHash, err)
+	}
+	if len(objects) != 2 || putCalls != 3 || headCalls != 1 || getCalls != 1 {
+		t.Fatalf("unexpected analysis object operations: objects=%d put=%d head=%d get=%d", len(objects), putCalls, headCalls, getCalls)
+	}
+}
+
+func TestObjectStorePutAnalysisRejectsInvalidInputs(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("invalid input reached S3: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	store := newTestObjectStore(t, server)
+
+	for _, input := range []struct {
+		name        string
+		householdID string
+		documentID  string
+		mimeType    string
+		data        []byte
+	}{
+		{name: "empty data", householdID: "household", documentID: "document", mimeType: mimeTypeJPEG},
+		{name: "household path separator", householdID: "household/other", documentID: "document", mimeType: mimeTypeJPEG, data: []byte("image")},
+		{name: "document path separator", householdID: "household", documentID: "../document", mimeType: mimeTypeJPEG, data: []byte("image")},
+		{name: "non-image MIME type", householdID: "household", documentID: "document", mimeType: "application/pdf", data: []byte("image")},
+		{name: "malformed MIME type", householdID: "household", documentID: "document", mimeType: "image/\r\n", data: []byte("image")},
+	} {
+		t.Run(input.name, func(t *testing.T) {
+			t.Parallel()
+			if _, _, err := store.PutAnalysis(t.Context(), input.householdID, input.documentID, input.mimeType, input.data); err == nil {
+				t.Fatal("invalid analysis input was accepted")
+			}
+		})
+	}
+}
+
 func TestObjectStoreGetReadsExistingSSEVersionThroughS3(t *testing.T) {
 	t.Parallel()
 	data := []byte("legacy encrypted receipt")

@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"mime"
 	"net/url"
 	"os"
 	"strings"
@@ -154,6 +155,40 @@ func (s *ObjectStore) Put(ctx context.Context, householdID, mimeType string, dat
 		return "", "", errors.New("store original document failed")
 	}
 	return key, hash, nil
+}
+
+func (s *ObjectStore) PutAnalysis(ctx context.Context, householdID, documentID, mimeType string, data []byte) (string, string, error) {
+	if len(data) == 0 || len(data) > MaxDocumentBytes {
+		return "", "", errors.New("invalid analysis document size")
+	}
+	if !validObjectPathSegment(householdID) || !validObjectPathSegment(documentID) {
+		return "", "", errors.New("invalid analysis document identifier")
+	}
+	mediaType, _, err := mime.ParseMediaType(mimeType)
+	if err != nil || !strings.HasPrefix(mediaType, "image/") {
+		return "", "", errors.New("invalid analysis document MIME type")
+	}
+
+	hash := DocumentHash(data)
+	key := householdID + "/analysis/" + documentID + "/" + hash
+	_, err = s.Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: new(s.Bucket), Key: new(key), Body: bytes.NewReader(data), ContentLength: new(int64(len(data))),
+		ContentType: new(mimeType), IfNoneMatch: new("*"), Metadata: map[string]string{"sha256": hash},
+	})
+	if err != nil {
+		var apiError smithy.APIError
+		if errors.As(err, &apiError) && apiError.ErrorCode() == "PreconditionFailed" {
+			if verifyErr := s.verifyExistingObject(ctx, key, mimeType, "sha256", hash, len(data), data); verifyErr == nil {
+				return key, hash, nil
+			}
+		}
+		return "", "", errors.New("store analysis document failed")
+	}
+	return key, hash, nil
+}
+
+func validObjectPathSegment(value string) bool {
+	return value != "" && !strings.ContainsAny(value, "/\\.")
 }
 
 func (s *ObjectStore) verifyExistingObject(ctx context.Context, key, mimeType, metadataKey, identity string, storedLength int, data []byte) error {
