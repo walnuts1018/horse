@@ -36,6 +36,8 @@ func Where[Q psql.Filterable]() struct {
 	FundingObligations              fundingObligationWhere[Q]
 	FundingSchedules                fundingScheduleWhere[Q]
 	GeminiQuotaCooldowns            geminiQuotaCooldownWhere[Q]
+	GeminiQuotaReservationLocks     geminiQuotaReservationLockWhere[Q]
+	GeminiQuotaReservations         geminiQuotaReservationWhere[Q]
 	HouseholdEvents                 householdEventWhere[Q]
 	HouseholdInvitations            householdInvitationWhere[Q]
 	HouseholdMailForwardings        householdMailForwardingWhere[Q]
@@ -93,6 +95,8 @@ func Where[Q psql.Filterable]() struct {
 		FundingObligations              fundingObligationWhere[Q]
 		FundingSchedules                fundingScheduleWhere[Q]
 		GeminiQuotaCooldowns            geminiQuotaCooldownWhere[Q]
+		GeminiQuotaReservationLocks     geminiQuotaReservationLockWhere[Q]
+		GeminiQuotaReservations         geminiQuotaReservationWhere[Q]
 		HouseholdEvents                 householdEventWhere[Q]
 		HouseholdInvitations            householdInvitationWhere[Q]
 		HouseholdMailForwardings        householdMailForwardingWhere[Q]
@@ -149,6 +153,8 @@ func Where[Q psql.Filterable]() struct {
 		FundingObligations:              buildFundingObligationWhere[Q](FundingObligations.Columns),
 		FundingSchedules:                buildFundingScheduleWhere[Q](FundingSchedules.Columns),
 		GeminiQuotaCooldowns:            buildGeminiQuotaCooldownWhere[Q](GeminiQuotaCooldowns.Columns),
+		GeminiQuotaReservationLocks:     buildGeminiQuotaReservationLockWhere[Q](GeminiQuotaReservationLocks.Columns),
+		GeminiQuotaReservations:         buildGeminiQuotaReservationWhere[Q](GeminiQuotaReservations.Columns),
 		HouseholdEvents:                 buildHouseholdEventWhere[Q](HouseholdEvents.Columns),
 		HouseholdInvitations:            buildHouseholdInvitationWhere[Q](HouseholdInvitations.Columns),
 		HouseholdMailForwardings:        buildHouseholdMailForwardingWhere[Q](HouseholdMailForwardings.Columns),

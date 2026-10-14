@@ -420,7 +420,7 @@ Importsの8 Mutationで繰り返していたsuccess union判定を`shared/api`�
 
 ### 2026年10月14日の共有Gemini cooldown
 
-Gemini 429の`Retry-After`または既存のjob retry delayを、DBの`(project_route, model)`単位の`blocked_until`へ保存します。全Workerが呼び出し前に共有状態を確認し、短いcooldownで長いcooldownを上書きしません。根拠のないRPM・TPM・RPD上限値や無料枠回復時刻は設定せず、既存の有料切替とSpend Cap判断も変更しません。migration checksum生成、取り込みテスト、Testcontainers PostgreSQL統合テスト、差分lintが成功しました。実際のquota上限値がないため、429前の予約制御と回復予測は未解決として`docs/reviews/gemini.md`に残しています。
+Gemini 429の`Retry-After`または既存のjob retry delayをDBの`(project_route, model)`単位の`blocked_until`へ保存します。加えて、確認済みのroute/model別RPM・TPM・RPD値を`GEMINI_QUOTA_LIMITS`で設定できるようにし、PostgreSQLのroute/model lock下で入力token数とrequest数を予約します。事前token数は`CountTokens`の結果、成功後は実績のprompt token数を使用します。未設定のroute/modelでは既存挙動を維持し、実測していない上限値は設定しません。無料Projectのquota超過で有料Projectへ自動切替しません。rolling windowではGoogle AI StudioのRPD reset時刻を予測できないため、回復予測は未解決として`docs/reviews/gemini.md`に残します。
 
 ### 2026年10月14日のSettings tab URL
 

@@ -27,6 +27,7 @@ type Worker struct {
 	GeminiProModel      string   `env:"GEMINI_PRO_MODEL"`
 	USDJPYRate          *float64 `env:"USDJPY_RATE" validate:"omitempty,gt=0"`
 	GeminiUSDJPYRate    *float64 `env:"GEMINI_USDJPY_RATE" validate:"omitempty,gt=0"`
+	GeminiQuotaLimits   string   `env:"GEMINI_QUOTA_LIMITS"`
 	USDJPYRateSource    string   `env:"USDJPY_RATE_SOURCE"`
 	USDJPYRateAsOf      string   `env:"USDJPY_RATE_AS_OF" validate:"omitempty,datetime=2006-01-02"`
 	OCRURL              string   `env:"OCR_URL"`
@@ -46,6 +47,9 @@ func (c Worker) Validate() error {
 	}, Worker{})
 	if err := validate.Struct(c); err != nil {
 		return fmt.Errorf("invalid worker configuration: %w", err)
+	}
+	if _, err := ParseGeminiQuotaLimits(c.GeminiQuotaLimits); err != nil {
+		return fmt.Errorf("invalid worker Gemini quota configuration: %w", err)
 	}
 	return nil
 }

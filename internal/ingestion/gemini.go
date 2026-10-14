@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -44,11 +45,12 @@ type Gemini struct {
 }
 
 type GeminiRequestOptions struct {
-	ThinkingLevel string
-	ServiceTier   string
-	Reason        string
-	Guidance      []string
-	SourceKind    string
+	ThinkingLevel      string
+	ServiceTier        string
+	Reason             string
+	Guidance           []string
+	SourceKind         string
+	ReserveInputTokens func(context.Context, int64) (func(context.Context, int64) error, error)
 }
 
 type Document struct {
@@ -224,13 +226,34 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 	if statementSource {
 		responseSchema = statementSchema()
 	}
-	result, err := client.Models.GenerateContent(ctx, g.Model, []*genai.Content{{Role: "user", Parts: parts}}, &genai.GenerateContentConfig{
+	contents := []*genai.Content{{Role: "user", Parts: parts}}
+	generationConfig := &genai.GenerateContentConfig{
 		ResponseMIMEType:   "application/json",
 		ResponseJsonSchema: responseSchema,
 		MaxOutputTokens:    int32(MaxOutputTokens),
 		ThinkingConfig:     &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevel(strings.ToUpper(run.ThinkingLevel))},
 		ServiceTier:        genai.ServiceTier(run.ServiceTier),
-	})
+	}
+	var settleQuota func(context.Context, int64) error
+	if options.ReserveInputTokens != nil {
+		countedTokens, err := client.Models.CountTokens(ctx, g.Model, contents, nil)
+		if err != nil {
+			if apiErr, ok := errors.AsType[genai.APIError](err); ok {
+				return finish(Receipt{}, providerError(apiErr, responseCapture))
+			}
+			if responseCapture.statusCode == http.StatusOK {
+				return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "malformed_provider_json"})
+			}
+			return finish(Receipt{}, fmt.Errorf("count input tokens: %w", err))
+		}
+		settleQuota, err = options.ReserveInputTokens(ctx, int64(countedTokens.TotalTokens))
+		if err != nil {
+			return finish(Receipt{}, err)
+		}
+	}
+	responseCapture.statusCode = 0
+	responseCapture.header = nil
+	result, err := client.Models.GenerateContent(ctx, g.Model, contents, generationConfig)
 	if err != nil {
 		if apiErr, ok := errors.AsType[genai.APIError](err); ok {
 			return finish(Receipt{}, providerError(apiErr, responseCapture))
@@ -244,6 +267,11 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 		run.InputTokens = int64(result.UsageMetadata.PromptTokenCount)
 		run.OutputTokens = int64(result.UsageMetadata.CandidatesTokenCount + result.UsageMetadata.ThoughtsTokenCount)
 		usageAvailable = true
+	}
+	if settleQuota != nil && usageAvailable {
+		if err := settleQuota(ctx, run.InputTokens); err != nil {
+			return finish(Receipt{}, fmt.Errorf("settle Gemini quota reservation: %w", err))
+		}
 	}
 	if result == nil || len(result.Candidates) == 0 || result.Candidates[0] == nil || result.Candidates[0].FinishReason != genai.FinishReasonStop {
 		return finish(Receipt{}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "incomplete_generation"})

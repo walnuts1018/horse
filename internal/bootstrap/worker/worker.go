@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -58,6 +59,19 @@ func provideRuntime(settings config.Worker, telemetry telemetryResult, database 
 		closeRuntimeResources(telemetry.telemetry, database.database)
 		return nil, err
 	}
+	configuredQuotaLimits, err := config.ParseGeminiQuotaLimits(settings.GeminiQuotaLimits)
+	if err != nil {
+		closeRuntimeResources(telemetry.telemetry, database.database)
+		return nil, fmt.Errorf("parse Gemini quota limits: %w", err)
+	}
+	quotaLimits := make(map[ingestion.GeminiQuotaKey]ingestion.GeminiQuotaLimit, len(configuredQuotaLimits))
+	for key, limit := range configuredQuotaLimits {
+		quotaLimits[ingestion.GeminiQuotaKey{ProjectRoute: key.ProjectRoute, Model: key.Model}] = ingestion.GeminiQuotaLimit{
+			RequestsPerMinute: limit.RequestsPerMinute,
+			InputTokensMinute: limit.InputTokensMinute,
+			RequestsPerDay:    limit.RequestsPerDay,
+		}
+	}
 	worker := ingestion.Worker{
 		DB:            database.database,
 		Store:         store.store,
@@ -71,6 +85,7 @@ func provideRuntime(settings config.Worker, telemetry telemetryResult, database 
 			USDJPYRate:       settings.EffectiveUSDJPYRate(),
 			USDJPYRateSource: settings.EffectiveUSDJPYRateSource(),
 			USDJPYRateAsOf:   settings.USDJPYRateAsOf,
+			QuotaLimits:      quotaLimits,
 		},
 		OCR: ingestion.OCR{Endpoint: settings.OCRURL},
 	}

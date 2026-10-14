@@ -1,10 +1,10 @@
 # Gemini連携の未解決項目
 
-## 1. RPM・TPM・RPDの予約制御と回復予測
+## 1. 無料枠回復時刻の予測
 
-Worker間で共有する429 cooldownをDBへ記録し、`Retry-After`または既存jobの再試行バックオフが切れるまで同じproject routeとmodelへの呼び出しを待つようにしました。quota上限前にRPM・TPM・RPDを調整する予約制御と、無料枠の回復時刻予測はありません。
+Worker間で共有するRPM・TPM・RPD予約をPostgreSQLへ保存し、`CountTokens`の入力数を呼び出し前に予約します。成功時は実績のprompt token数へ更新します。`GEMINI_QUOTA_LIMITS`にroute/model別の上限がなければ予約制御は無効です。無料Projectのquota超過で有料Projectへ切り替えず、`Retry-After`または予約枠が空くまで待ちます。
 
-実際のモデル別上限値を確認できた場合は、その値と`Retry-After`実測に基づく分散制御を検討してください。無料Projectの429で有料Projectへ切り替えない既存方針は維持します。
+現在のRPD予約は直近24時間のrolling windowです。Google AI Studioのモデル別上限値を取得して太平洋時間の午前0時に行われるRPD resetを予測する処理はありません。実際の上限値の確認とreset時刻に基づく回復予測を実装してください。[Gemini APIのrate limits](https://ai.google.dev/gemini-api/docs/rate-limits)を参照してください。
 
 ## 2. Flex tierとBatch APIの到達経路
 

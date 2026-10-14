@@ -56,6 +56,7 @@ type GeminiRouter struct {
 	Free             Gemini
 	Paid             Gemini
 	RateControl      GeminiRateControl
+	QuotaLimits      map[GeminiQuotaKey]GeminiQuotaLimit
 	FlashModel       string
 	LiteModel        string
 	ProModel         string
@@ -217,7 +218,27 @@ func (r GeminiRouter) extractWithClient(ctx context.Context, client Gemini, mode
 			return Receipt{}, ExtractionRun{}, fmt.Errorf("wait for shared Gemini cooldown: %w", err)
 		}
 	}
-	receipt, run, err := client.ExtractRun(ctx, document, hints, GeminiRequestOptions{ThinkingLevel: thinking, ServiceTier: routeTier, Guidance: options.Guidance, Reason: options.Reason, SourceKind: sourceKind})
+	requestOptions := GeminiRequestOptions{ThinkingLevel: thinking, ServiceTier: routeTier, Guidance: options.Guidance, Reason: options.Reason, SourceKind: sourceKind}
+	if r.RateControl != nil {
+		if limits, ok := r.QuotaLimits[GeminiQuotaKey{ProjectRoute: client.ProjectRoute, Model: model}]; ok {
+			requestOptions.ReserveInputTokens = func(ctx context.Context, inputTokens int64) (func(context.Context, int64) error, error) {
+				reservationID, retryAfter, reserveErr := r.RateControl.Reserve(ctx, client.ProjectRoute, model, inputTokens, limits)
+				if reserveErr != nil {
+					if errors.Is(reserveErr, errGeminiQuotaRequestTooLarge) {
+						return nil, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "input_exceeds_quota"}
+					}
+					return nil, reserveErr
+				}
+				if reservationID == "" {
+					return nil, &GeminiAPIError{Kind: GeminiFailureQuota, Code: "quota_reservation_deferred", RetryAfter: retryAfter}
+				}
+				return func(ctx context.Context, actualInputTokens int64) error {
+					return r.RateControl.Settle(ctx, reservationID, actualInputTokens)
+				}, nil
+			}
+		}
+	}
+	receipt, run, err := client.ExtractRun(ctx, document, hints, requestOptions)
 	if r.RateControl != nil {
 		apiErr, ok := errors.AsType[*GeminiAPIError](err)
 		if ok && apiErr.Kind == GeminiFailureQuota {

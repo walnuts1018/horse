@@ -1,6 +1,7 @@
 package ingestion
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -64,6 +65,63 @@ func TestGeminiRouterRetriesQuotaOnFreeRouteBeforeUsingPaid(t *testing.T) {
 	if got := retryDelay(err, 1); got != 3*time.Second {
 		t.Fatalf("worker retry delay = %s, want Retry-After 3s", got)
 	}
+}
+
+func TestGeminiRouterReservesCountedInputTokens(t *testing.T) {
+	t.Parallel()
+
+	countCalls, generateCalls := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, ":countTokens"):
+			countCalls++
+			_, _ = io.WriteString(w, `{"totalTokens":7}`)
+		case strings.Contains(r.URL.Path, ":generateContent"):
+			generateCalls++
+			writeGeminiSuccess(w, `{"merchant":"Market","purchasedAt":"2026-10-14T10:00:00+09:00","currency":"JPY","items":[{"name":"Tea","printedAmount":100,"grossAmount":100,"confidence":1}],"taxGroups":[],"discount":0,"total":100,"payments":[],"warnings":[]}`)
+		default:
+			t.Errorf("unexpected Gemini endpoint %q", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	rateControl := &recordingGeminiRateControl{}
+	router := GeminiRouter{
+		Free:        Gemini{APIKey: testFreeGeminiAPIKey, Project: "free-id", Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()},
+		RateControl: rateControl,
+		QuotaLimits: map[GeminiQuotaKey]GeminiQuotaLimit{
+			{ProjectRoute: ProjectFree, Model: ModelReceipt}: {RequestsPerMinute: 5, InputTokensMinute: 100, RequestsPerDay: 20},
+		},
+	}
+	_, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypeJPEG, Data: []byte("synthetic image")}, nil, GeminiRouteOptions{Purpose: JobPurposeInteractive})
+	if err != nil {
+		t.Fatalf("generate with quota reservation: %v (%#v)", err, runs)
+	}
+	if countCalls != 1 || generateCalls != 1 || rateControl.reservedInputTokens < 7 || rateControl.settledInputTokens != 1000 {
+		t.Fatalf("count=%d generate=%d reserved tokens=%d settled tokens=%d", countCalls, generateCalls, rateControl.reservedInputTokens, rateControl.settledInputTokens)
+	}
+}
+
+type recordingGeminiRateControl struct {
+	reservedInputTokens int64
+	settledInputTokens  int64
+}
+
+func (*recordingGeminiRateControl) Wait(context.Context, string, string) error { return nil }
+
+func (*recordingGeminiRateControl) RecordCooldown(context.Context, string, string, time.Duration) error {
+	return nil
+}
+
+func (c *recordingGeminiRateControl) Reserve(_ context.Context, _, _ string, inputTokens int64, _ GeminiQuotaLimit) (string, time.Duration, error) {
+	c.reservedInputTokens = inputTokens
+	return "reservation", 0, nil
+}
+
+func (c *recordingGeminiRateControl) Settle(_ context.Context, _ string, actualInputTokens int64) error {
+	c.settledInputTokens = actualInputTokens
+	return nil
 }
 
 func TestGeminiRouterEmailLiteQuotaUsesFreeFlashBeforePaid(t *testing.T) {
