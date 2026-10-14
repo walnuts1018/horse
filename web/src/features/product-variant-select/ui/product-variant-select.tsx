@@ -1,10 +1,11 @@
 import { Combobox } from "@base-ui/react/combobox";
-import { useId, useRef } from "react";
+import { useId, useRef, useState } from "react";
 
 import type { ProductSuggestion } from "../../../entities/product";
 
 import { ProductCandidateList } from "./product-candidate-list";
 import { ProductCandidateOption } from "./product-candidate-option";
+import { INITIAL_CANDIDATE_COUNT, visibleProductCandidates } from "./product-candidate-visibility";
 
 import "./product-variant-select.css";
 
@@ -43,8 +44,11 @@ export function ProductVariantSelect({
 }) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [expandedForQuery, setExpandedForQuery] = useState<string | null>(null);
   const currentSelection = selectedSuggestion?.variant.id === value ? selectedSuggestion : null;
   const search = query.trim();
+  const expanded = expandedForQuery === query;
+  const visibleSuggestions = visibleProductCandidates(suggestions, expanded);
 
   return (
     <div className="product-variant-select">
@@ -98,7 +102,7 @@ export function ProductVariantSelect({
             <Combobox.Popup className="product-variant-select__popup">
               <ProductCandidateList
                 empty={!loading && !error && search.length >= 2 && "商品候補がありません"}
-                candidates={suggestions.map((suggestion) => ({
+                candidates={visibleSuggestions.map((suggestion) => ({
                   id: suggestion.variant.id,
                   disabled: suggestion.variant.id === value,
                   content: (
@@ -123,6 +127,18 @@ export function ProductVariantSelect({
           </Combobox.Positioner>
         </div>
       </Combobox.Root>
+      {suggestions.length > INITIAL_CANDIDATE_COUNT && !expanded && !loading && !error && (
+        <button
+          className="product-variant-select__more"
+          type="button"
+          onClick={() => {
+            setExpandedForQuery(query);
+            inputRef.current?.focus();
+          }}
+        >
+          もっと見る（残り{suggestions.length - INITIAL_CANDIDATE_COUNT}件）
+        </button>
+      )}
     </div>
   );
 }

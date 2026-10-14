@@ -60,8 +60,21 @@
   font: inherit;
 }
 
+.product-variant-select__more {
+  min-height: 44px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 6px 8px;
+  color: var(--green-dark);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .product-variant-select__combobox input:focus-visible,
 .product-variant-select__selected button:focus-visible,
+.product-variant-select__more:focus-visible,
 .product-variant-select__popup [role="option"]:focus-visible {
   outline: 2px solid var(--green);
   outline-offset: 2px;
