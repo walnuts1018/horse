@@ -234,6 +234,7 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	if err != nil {
 		return UpdateResult{}, err
 	}
+	accountingPlan := buildPurchaseItemAccountingPlan(status, payments, updatePayments, plan.allocationsChanged, deferAccountingSync)
 	if accountingChanged != nil {
 		*accountingChanged = *accountingChanged || plan.allocationsChanged
 	}
@@ -314,14 +315,8 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	if err := applyItemAllocationPlan(ctx, executor, item, plan); err != nil {
 		return UpdateResult{}, err
 	}
-	if updatePayments {
-		validated, err := validatePayments(ctx, tx, householdID, payments)
-		if err != nil {
-			return UpdateResult{}, err
-		}
-		if err := replaceUpdatePayments(ctx, executor, purchase, validated); err != nil {
-			return UpdateResult{}, err
-		}
+	if err := applyPurchaseItemPaymentPlan(ctx, tx, executor, householdID, purchase, accountingPlan); err != nil {
+		return UpdateResult{}, err
 	}
 	if _, err := models.Purchases.Update(um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchase.ID))),
 		um.SetCol("revision").To(models.Purchases.Columns.Revision.Plus(psql.Arg(int64(1)))), um.SetCol("updated_at").To(psql.F("now")),
@@ -331,10 +326,8 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	if err := accounting.RecordEvent(ctx, executor, householdID, itemUUID, "purchase.item.updated", plan.revision, command.ChangedFields, actorUUID); err != nil {
 		return UpdateResult{}, err
 	}
-	if status == postedStatus && plan.allocationsChanged && !deferAccountingSync {
-		if err := syncPostedPurchaseAccounting(ctx, executor, purchase); err != nil {
-			return UpdateResult{}, err
-		}
+	if err := applyPurchaseItemAccountingSync(ctx, executor, purchase, accountingPlan); err != nil {
+		return UpdateResult{}, err
 	}
 	if ownsTransaction {
 		if err := tx.Commit(ctx); err != nil {
@@ -514,23 +507,9 @@ func adjustedPurchasePayments(ctx context.Context, executor bob.Executor, purcha
 	if len(payments) == 0 {
 		return nil, false, nil
 	}
-	weights := make([]domain.Weight, 0, len(payments))
-	for _, payment := range payments {
-		weights = append(weights, domain.Weight{PoolID: payment.AccountID, Value: payment.AmountYen})
-	}
-	amounts, err := domain.Allocate(newTotal, weights)
+	adjusted, err := adjustPaymentsToTotal(payments, newTotal)
 	if err != nil {
 		return nil, false, fmt.Errorf("%w: %w", ErrBadInput, err)
-	}
-	amountByAccount := make(map[string]int64, len(amounts))
-	for _, amount := range amounts {
-		amountByAccount[amount.PoolID] = amount.Amount
-	}
-	adjusted := make([]Payment, 0, len(payments))
-	for _, payment := range payments {
-		if amount := amountByAccount[payment.AccountID]; amount > 0 {
-			adjusted = append(adjusted, Payment{AccountID: payment.AccountID, AmountYen: amount})
-		}
 	}
 	return adjusted, true, nil
 }
