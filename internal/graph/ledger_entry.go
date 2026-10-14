@@ -39,7 +39,15 @@ func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.Ledg
 		if err != nil {
 			return nil, err
 		}
-		member := findValue(household.Members, func(member *model.Member) bool { return member.ID == *value.FromMemberID })
+		householdID, err := uuid.FromString(value.HouseholdID)
+		if err != nil {
+			return nil, err
+		}
+		membersByHousehold, err := loadHouseholdMemberIndex(ctx, db, []uuid.UUID{householdID})
+		if err != nil {
+			return nil, err
+		}
+		member := membersByHousehold[householdID][*value.FromMemberID]
 		pool := findValue(household.PoolVariants, func(pool model.PoolVariant) bool { return poolData(pool).ID == *value.PoolID })
 		if member == nil || pool == nil {
 			return nil, ErrNotFound
@@ -49,12 +57,16 @@ func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.Ledg
 		if value.FromMemberID == nil || value.ToMemberID == nil || value.TransferID == nil {
 			return nil, errors.New("transfer ledger entry is incomplete")
 		}
-		household, err := loadHousehold(ctx, db, value.HouseholdID, householdFields{members: true, pools: true})
+		householdID, err := uuid.FromString(value.HouseholdID)
 		if err != nil {
 			return nil, err
 		}
-		fromMember := findValue(household.Members, func(member *model.Member) bool { return member.ID == *value.FromMemberID })
-		toMember := findValue(household.Members, func(member *model.Member) bool { return member.ID == *value.ToMemberID })
+		membersByHousehold, err := loadHouseholdMemberIndex(ctx, db, []uuid.UUID{householdID})
+		if err != nil {
+			return nil, err
+		}
+		fromMember := membersByHousehold[householdID][*value.FromMemberID]
+		toMember := membersByHousehold[householdID][*value.ToMemberID]
 		if fromMember == nil || toMember == nil {
 			return nil, ErrNotFound
 		}

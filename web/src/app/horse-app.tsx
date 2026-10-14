@@ -490,7 +490,7 @@ export function App() {
           )}
           <div className="page-content" key={householdId ?? "no-household"}>
             <householdRouteContext.Provider value={routeContext}>
-              <GraphQLErrorBoundary key={pathname}>
+              <GraphQLErrorBoundary key={returnTo}>
                 <Suspense
                   fallback={<div className="loading-screen">購入履歴を読み込んでいます</div>}
                 >

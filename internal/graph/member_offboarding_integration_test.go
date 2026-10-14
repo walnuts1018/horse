@@ -124,6 +124,13 @@ func TestHouseholdMemberOffboarding(t *testing.T) {
 	).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}
+	historicalFunding, err := resolver.recordFunding(ownerContext, model.RecordFundingInput{
+		HouseholdID: household.ID, MemberID: initialMemberID.String(), PoolID: pool.ID,
+		AmountYen: 1250, OccurredAt: timeString(time.Now().UTC()), IdempotencyKey: "offboarding:historical-funding",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	journalID, sourceID := generatedUUID(newID()), generatedUUID(newID())
 	sourceKind, idempotencyKey := "TEST", "offboarding:"+initialMemberID.String()
 	occurredAt := time.Now().UTC()
@@ -239,6 +246,35 @@ func TestHouseholdMemberOffboarding(t *testing.T) {
 	}
 	if !departedMembership.LeftAt.Valid {
 		t.Fatal("departed member membership has no left_at timestamp")
+	}
+	query := &queryResolver{Resolver: &Resolver{DB: db}}
+	pageSize := 100
+	ledgerContext := ledgerContextWithQuery(t, secondOwnerContext, "query { ledger { totalCount } }")
+	ledger, err := query.ledger(ledgerContext, household.ID, nil, nil, &pageSize, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var historicalEntry *model.FundingLedgerEntry
+	for _, edge := range ledger.Edges {
+		if entry, ok := edge.Node.(*model.FundingLedgerEntry); ok && entry.ID == historicalFunding.ID {
+			historicalEntry = entry
+			break
+		}
+	}
+	if historicalEntry == nil || historicalEntry.Member.ID != initialMemberID.String() || historicalEntry.Member.DisplayName != initialMemberName {
+		t.Fatalf("historical funding entry = %#v, want departed member %s", historicalEntry, initialMemberName)
+	}
+	globalID, err := encodeNodeID(nodeTypeLedgerEntry, historicalFunding.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := query.node(secondOwnerContext, globalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeEntry, ok := node.(*model.FundingLedgerEntry)
+	if !ok || nodeEntry.Member.ID != initialMemberID.String() {
+		t.Fatalf("historical funding node = %#v, want departed member %s", node, initialMemberID)
 	}
 	journalEntries, err := models.JournalEntries.Query(sm.Where(psql.And(
 		models.JournalEntries.Columns.JournalID.EQ(psql.Arg(journalID)),

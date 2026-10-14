@@ -128,6 +128,13 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
     message: string;
   } | null>(null);
   const moreError = moreErrorState?.requestKey === requestKey ? moreErrorState.message : "";
+  const [refreshErrorState, setRefreshErrorState] = useState<{
+    requestKey: string;
+    message: string;
+  } | null>(null);
+  const refreshError =
+    refreshErrorState?.requestKey === requestKey ? refreshErrorState.message : "";
+  const displayedMoreError = moreError || refreshError;
   useEffect(() => {
     activeRequestKey.current = requestKey;
   }, [requestKey]);
@@ -199,8 +206,19 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
   }, []);
   const refresh = useCallback(() => {
     setMoreErrorState(null);
-    refetch(variables, { fetchPolicy: "network-only" });
-  }, [refetch, variables]);
+    setRefreshErrorState(null);
+    refetch(variables, {
+      fetchPolicy: "network-only",
+      onComplete: (error) => {
+        if (activeRequestKey.current !== requestKey) return;
+        if (error)
+          setRefreshErrorState({
+            requestKey,
+            message: error.message || "購入履歴を取得できませんでした",
+          });
+      },
+    });
+  }, [refetch, requestKey, variables]);
   const scheduleRefresh = useCallback(() => {
     if (subscriptionRefreshTimer.current !== null) return;
     subscriptionRefreshTimer.current = setTimeout(() => {
@@ -210,6 +228,10 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
   }, [refresh]);
   const loadMore = useCallback(() => {
     if (!hasNext || isLoadingNext) return;
+    if (refreshError) {
+      refresh();
+      return;
+    }
     setMoreErrorState(null);
     loadNext(first, {
       onComplete: (error) => {
@@ -220,7 +242,7 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
           });
       },
     });
-  }, [first, hasNext, isLoadingNext, loadNext, requestKey]);
+  }, [first, hasNext, isLoadingNext, loadNext, refresh, refreshError, requestKey]);
 
   useEffect(() => {
     const subscription = requestSubscription<PurchaseChangesSubscription>(getRelayEnvironment(), {
@@ -270,16 +292,17 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
   }, [data.purchases.syncCursor, householdId, options.search, scheduleRefresh]);
 
   useEffect(() => {
-    if (options.loadAll && hasNext && !isLoadingNext && !moreError) {
+    if (options.loadAll && hasNext && !isLoadingNext && !displayedMoreError) {
       // Relayのページングは同期的にsetStateするため、effect直後ではなくマイクロタスクで起動する
       queueMicrotask(loadMore);
     }
-  }, [hasNext, isLoadingNext, loadMore, moreError, options.loadAll]);
+  }, [displayedMoreError, hasNext, isLoadingNext, loadMore, options.loadAll]);
 
   return {
     purchases,
     loadingMore: isLoadingNext,
-    moreError,
+    moreError: displayedMoreError,
+    refreshError,
     hasNextPage: hasNext,
     totalCount: data.purchases.totalCount,
     correctionPages,

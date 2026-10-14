@@ -16,6 +16,12 @@ export function useHouseholdLedger(householdId: string, first = 100) {
     HouseholdLedgerFragment$key
   >(householdLedgerFragment, query);
   const [moreError, setMoreError] = useState("");
+  const [refreshErrorState, setRefreshErrorState] = useState<{
+    householdId: string;
+    message: string;
+  } | null>(null);
+  const refreshError =
+    refreshErrorState?.householdId === householdId ? refreshErrorState.message : "";
   const entries: LedgerEntry[] = data.ledger.edges.map(({ node }) => {
     const kind =
       node.__typename === "FundingLedgerEntry"
@@ -46,23 +52,38 @@ export function useHouseholdLedger(householdId: string, first = 100) {
   });
   const refresh = useCallback(() => {
     setMoreError("");
-    refetch(variables, { fetchPolicy: "network-only" });
-  }, [refetch, variables]);
+    setRefreshErrorState(null);
+    refetch(variables, {
+      fetchPolicy: "network-only",
+      onComplete: (error) => {
+        if (error)
+          setRefreshErrorState({
+            householdId,
+            message: error.message || "入金・送金の記録を取得できませんでした",
+          });
+      },
+    });
+  }, [householdId, refetch, variables]);
   const loadMore = useCallback(() => {
     if (!hasNext || isLoadingNext) return;
+    if (refreshError) {
+      refresh();
+      return;
+    }
     setMoreError("");
     loadNext(first, {
       onComplete: (error) => {
         if (error) setMoreError(error.message || "入金・送金の記録を取得できませんでした");
       },
     });
-  }, [first, hasNext, isLoadingNext, loadNext]);
+  }, [first, hasNext, isLoadingNext, loadNext, refresh, refreshError]);
 
   return {
     entries,
     hasNextPage: hasNext,
     loadingMore: isLoadingNext,
-    moreError,
+    moreError: moreError || refreshError,
+    refreshError,
     loadMore,
     refresh,
   };

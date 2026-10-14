@@ -346,17 +346,26 @@ func (b *nodeBatch) loadFinancialNodes(ctx context.Context) error {
 		}
 		membersByHousehold := make(map[string]map[string]*model.Member, len(households))
 		poolsByHousehold := make(map[string]map[string]*model.Pool, len(households))
+		householdIDs := make([]uuid.UUID, 0, len(households))
 		for _, household := range households {
-			membersByHousehold[household.ID] = make(map[string]*model.Member, len(household.Members))
-			for _, member := range household.Members {
-				membersByHousehold[household.ID][member.ID] = member
+			householdID, err := uuid.FromString(household.ID)
+			if err != nil {
+				return err
 			}
+			householdIDs = append(householdIDs, householdID)
 			poolsByHousehold[household.ID] = make(map[string]*model.Pool, len(household.PoolVariants))
 			for _, pool := range household.PoolVariants {
 				if value := poolData(pool); value != nil {
 					poolsByHousehold[household.ID][value.ID] = value
 				}
 			}
+		}
+		membersByUUID, err := loadHouseholdMemberIndex(ctx, r.DB, householdIDs)
+		if err != nil {
+			return err
+		}
+		for householdID, members := range membersByUUID {
+			membersByHousehold[householdID.String()] = members
 		}
 		loanRows := make(models.TransferSlice, 0)
 		loanIDs := make([]bob.Expression, 0)

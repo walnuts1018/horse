@@ -29,63 +29,82 @@ export function ObservationLedger({
 
   return (
     <section className="panel ledger-list">
-      {unmatched.loading ? (
+      {unmatched.loading && unmatched.observations.length === 0 ? (
         <div className="skeleton-list">
           <i />
           <i />
           <i />
         </div>
-      ) : unmatched.error ? (
-        <InlineError message={unmatched.error} />
-      ) : unmatched.observations.length === 0 ? (
-        <div className="empty-state compact">
-          <BookOpen />
-          <span>照合候補がありません</span>
-        </div>
       ) : (
-        unmatched.observations.map((observation) => (
-          <div
-            className="ledger-entry"
-            key={`${observation.documentId}-${observation.sourceReference}`}
-          >
-            <div className="merchant-icon">{observation.sourceKind.slice(0, 1)}</div>
-            <div className="purchase-description">
-              <b>{observation.merchant || "店舗未入力"}</b>
-              <span>
-                {observation.sourceKind} · {observation.sourceReference}
-                {observation.orderId ? ` · 注文 ${observation.orderId}` : ""}
-                {observation.transactionId ? ` · 取引 ${observation.transactionId}` : ""}
-              </span>
-            </div>
-            <div className="purchase-meta">
-              <b>{yen(observation.amountYen)}</b>
-              <span>
-                {observation.__typename === "ConfirmedObservation" ? "照合済み" : "未照合"}
-              </span>
-              {observation.__typename === "ConfirmedObservation" && (
-                <small>
-                  {observation.purchase.merchant} ·{" "}
-                  {new Date(observation.purchase.occurredAt).toLocaleDateString("ja-JP")}
-                </small>
-              )}
-            </div>
-            <a
-              href={`/documents/${encodeURIComponent(observation.documentId)}/content`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              原本を開く
-            </a>
-            {observation.__typename === "UnmatchedObservation" && (
-              <ObservationLinker
-                household={household}
-                observation={observation}
-                onConfirmed={unmatched.refresh}
-                onDirtyChange={reportObservationDirty}
-              />
-            )}
-          </div>
-        ))
+        <>
+          {unmatched.error && (
+            <>
+              <InlineError message={unmatched.error} />
+              <div className={styles.more}>
+                <button
+                  className="button button-soft"
+                  type="button"
+                  disabled={unmatched.loading}
+                  onClick={unmatched.refresh}
+                >
+                  {unmatched.loading ? "読み込み中" : "再試行"}
+                </button>
+              </div>
+            </>
+          )}
+          {unmatched.observations.length === 0 ? (
+            unmatched.error ? null : (
+              <div className="empty-state compact">
+                <BookOpen />
+                <span>照合候補がありません</span>
+              </div>
+            )
+          ) : (
+            unmatched.observations.map((observation) => (
+              <div
+                className="ledger-entry"
+                key={`${observation.documentId}-${observation.sourceReference}`}
+              >
+                <div className="merchant-icon">{observation.sourceKind.slice(0, 1)}</div>
+                <div className="purchase-description">
+                  <b>{observation.merchant || "店舗未入力"}</b>
+                  <span>
+                    {observation.sourceKind} · {observation.sourceReference}
+                    {observation.orderId ? ` · 注文 ${observation.orderId}` : ""}
+                    {observation.transactionId ? ` · 取引 ${observation.transactionId}` : ""}
+                  </span>
+                </div>
+                <div className="purchase-meta">
+                  <b>{yen(observation.amountYen)}</b>
+                  <span>
+                    {observation.__typename === "ConfirmedObservation" ? "照合済み" : "未照合"}
+                  </span>
+                  {observation.__typename === "ConfirmedObservation" && (
+                    <small>
+                      {observation.purchase.merchant} ·{" "}
+                      {new Date(observation.purchase.occurredAt).toLocaleDateString("ja-JP")}
+                    </small>
+                  )}
+                </div>
+                <a
+                  href={`/documents/${encodeURIComponent(observation.documentId)}/content`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  原本を開く
+                </a>
+                {observation.__typename === "UnmatchedObservation" && (
+                  <ObservationLinker
+                    household={household}
+                    observation={observation}
+                    onConfirmed={unmatched.refresh}
+                    onDirtyChange={reportObservationDirty}
+                  />
+                )}
+              </div>
+            ))
+          )}
+        </>
       )}
       {unmatched.moreError && <InlineError message={unmatched.moreError} />}
       {unmatched.hasNextPage && (

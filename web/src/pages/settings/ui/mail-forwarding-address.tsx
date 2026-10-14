@@ -1,5 +1,5 @@
 import { Check, Copy } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { errorMessage } from "../../../shared/lib";
 import {
@@ -28,6 +28,8 @@ export function MailForwardingAddress({
 }) {
   const [status, setStatus] = useState<MailForwardingAddressStatus | null>(null);
   const [statusHouseholdId, setStatusHouseholdId] = useState("");
+  const [statusLoadFailedFor, setStatusLoadFailedFor] = useState("");
+  const statusRequestId = useRef(0);
   const [issued, setIssued] = useState<IssuedMailForwardingAddress | null>(null);
   const [pending, setPending] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -37,22 +39,28 @@ export function MailForwardingAddress({
     onNoticeRef.current = onNotice;
   }, [onNotice]);
 
-  useEffect(() => {
-    let current = true;
+  const loadStatus = useCallback(() => {
+    const requestId = ++statusRequestId.current;
     void readMailForwardingStatus(householdId)
       .then((result) => {
-        if (!current) return;
+        if (requestId !== statusRequestId.current) return;
         setStatus(result);
         setStatusHouseholdId(householdId);
         setIssued(null);
       })
       .catch((reason) => {
-        if (current) onNoticeRef.current(errorMessage(reason), "error");
+        if (requestId !== statusRequestId.current) return;
+        setStatusLoadFailedFor(householdId);
+        onNoticeRef.current(errorMessage(reason), "error");
       });
-    return () => {
-      current = false;
-    };
   }, [householdId]);
+
+  useEffect(() => {
+    loadStatus();
+    return () => {
+      statusRequestId.current += 1;
+    };
+  }, [loadStatus]);
 
   const activeStatus = statusHouseholdId === householdId ? status : null;
   const statusLoaded = statusHouseholdId === householdId;
@@ -116,8 +124,12 @@ export function MailForwardingAddress({
             {new Date(activeStatus.createdAt).toLocaleString("ja-JP")}
           </time>
         </div>
-      ) : (
+      ) : statusLoaded ? (
         <p>未発行</p>
+      ) : statusLoadFailedFor === householdId ? (
+        <p>転送先の状態を読み込めませんでした。</p>
+      ) : (
+        <p>転送先の状態を読み込み中です。</p>
       )}
       {issued && (
         <div className={styles.address}>
@@ -141,7 +153,19 @@ export function MailForwardingAddress({
         </div>
       )}
       <div className={styles.actions}>
-        {activeStatus ? (
+        {!statusLoaded && statusLoadFailedFor === householdId ? (
+          <button
+            className="button button-primary"
+            type="button"
+            disabled={disabled || pending}
+            onClick={() => {
+              setStatusLoadFailedFor("");
+              loadStatus();
+            }}
+          >
+            再試行
+          </button>
+        ) : activeStatus ? (
           <>
             <button
               className="button button-soft"

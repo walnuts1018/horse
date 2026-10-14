@@ -161,6 +161,35 @@ func householdIDs(ids map[gofrsuuid.UUID]*model.Household) []bob.Expression {
 	return args
 }
 
+func loadHouseholdMemberIndex(ctx context.Context, db *pgxpool.Pool, householdIDs []gofrsuuid.UUID) (map[gofrsuuid.UUID]map[string]*model.Member, error) {
+	result := make(map[gofrsuuid.UUID]map[string]*model.Member, len(householdIDs))
+	if len(householdIDs) == 0 {
+		return result, nil
+	}
+	args := make([]bob.Expression, len(householdIDs))
+	for index, householdID := range householdIDs {
+		args[index] = psql.Arg(householdID)
+	}
+	memberships, err := models.HouseholdMembers.Query(sm.Where(models.HouseholdMembers.Columns.HouseholdID.In(args...))).All(ctx, queryExecutor(db))
+	if err != nil {
+		return nil, err
+	}
+	if err := memberships.LoadMember(ctx, queryExecutor(db)); err != nil {
+		return nil, err
+	}
+	for _, membership := range memberships {
+		members := result[membership.HouseholdID]
+		if members == nil {
+			members = make(map[string]*model.Member)
+			result[membership.HouseholdID] = members
+		}
+		members[membership.MemberID.String()] = &model.Member{
+			ID: membership.MemberID.String(), DisplayName: membership.R.Member.DisplayName, Role: model.MemberRole(membership.Role),
+		}
+	}
+	return result, nil
+}
+
 func loadHouseholdDetails(ctx context.Context, db *pgxpool.Pool, households map[gofrsuuid.UUID]*model.Household, allocationVersions map[gofrsuuid.UUID]int64, fields householdFields) error {
 	if len(households) == 0 || !(fields.members || fields.accounts || fields.categories || fields.pools || fields.defaultAllocation) {
 		return nil
