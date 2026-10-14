@@ -207,7 +207,7 @@ func (s *Service) ArchiveBudget(ctx context.Context, actorID, householdID, budge
 		return BudgetResult{}, ErrConflict
 	}
 	revisionValue := row.Revision + 1
-	if _, err := models.Budgets.Update((&models.BudgetSetter{Archived: &archived, Revision: &revisionValue}).UpdateMod(), um.Where(models.Budgets.Columns.ID.EQ(psql.Arg(id)))).Exec(ctx, executor); err != nil {
+	if _, err := models.Budgets.Update((&models.BudgetSetter{Archived: &archived, Revision: &revisionValue}).UpdateMod(), um.Where(models.Budgets.Columns.ID.EQ(psql.Arg(id))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
 		return BudgetResult{}, err
 	}
 	if err := accounting.RecordEvent(ctx, executor, hhID, id, "budget.archived", revisionValue, []string{"archived"}, actor); err != nil {
@@ -324,7 +324,7 @@ func (s *Service) ArchiveRecurringExpense(ctx context.Context, actorID, househol
 		return RecurringExpenseResult{}, ErrConflict
 	}
 	revisionValue := row.Revision + 1
-	if _, err := models.RecurringExpenses.Update((&models.RecurringExpenseSetter{Archived: &archived, Revision: &revisionValue}).UpdateMod(), um.Where(models.RecurringExpenses.Columns.ID.EQ(psql.Arg(id)))).Exec(ctx, executor); err != nil {
+	if _, err := models.RecurringExpenses.Update((&models.RecurringExpenseSetter{Archived: &archived, Revision: &revisionValue}).UpdateMod(), um.Where(models.RecurringExpenses.Columns.ID.EQ(psql.Arg(id))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
 		return RecurringExpenseResult{}, err
 	}
 	if err := accounting.RecordEvent(ctx, executor, hhID, id, "recurring_expense.archived", revisionValue, []string{"archived"}, actor); err != nil {

@@ -140,45 +140,6 @@ APIは原本の全行を一括処理する方式ではなく、安定したカ�
 
 これにより、大量のカード明細を取り込んでも照合処理を実用的な負荷に抑えられます。
 
-## 1. P2：オフライン送信成功後の画面更新失敗が、送信エラーと混同される
-
-該当コード：[use-purchase-outbox-sender.ts](https://github.com/walnuts1018/horse/blob/main/web/src/app/model/use-purchase-outbox-sender.ts#L79-L130)
-
-現在の処理は以下の順序です。
-
-```
-await createAndPostPurchase(request.input);
-await completePurchaseOutbox(...);
-await refreshHousehold(...);
-showNotice("買い物を帳簿に追加しました", "success");
-```
-
-これらが同じ `try/catch` に入っています。
-
-そのため、購入登録が成功し、Outboxからも削除されたあと、`refreshHousehold()` だけが失敗すると、送信失敗と同じcatchに入ります。
-
-しかし、すでにOutboxから削除されているため、`markPurchaseOutboxFailed()` はそのエントリを失敗状態に戻せません。
-
-結果として、購入が保存されたにもかかわらず成功通知が表示されず、失敗したように見えるケースがあります。
-
-改善するには、サーバーへの登録成功・Outboxの確定・画面表示の更新を異なる失敗境界として扱います。
-
-登録成功後の画面更新に失敗した場合は、「保存済みですが最新表示の取得に失敗しました」と表示し、表示の再取得だけを可能にしてください。
-
-## 1. P2：定期支出と予算のアーカイブで `updated_at` が更新されない
-
-該当コード：[planning/mutations.go](https://github.com/walnuts1018/horse/blob/main/internal/application/planning/mutations.go)
-
-`ArchiveBudget()` と `ArchiveRecurringExpense()` は `archived` と `revision` を更新しています。
-
-しかし通常の更新処理と異なり、`updated_at` を更新していません。
-
-DBには両テーブルとも `updated_at` カラムが存在します。少なくとも確認したマイグレーションには、その更新を自動化するトリガーはありません。
-
-現状のままだと、アーカイブした日時と `updated_at` が一致せず、「最後に変更された日時」の意味が不正確になります。
-
-修正は小さく、両操作で `updated_at = now()` を指定すれば十分です。通常更新・アーカイブ更新が共通の更新ヘルパーを使う構造にするとなおよいでしょう。
-
 ## 11. P2：一部の月別グラフが負の金額を正しく表現できない
 
 該当コード：[analysis-breakdown.tsx](https://github.com/walnuts1018/horse/blob/main/web/src/pages/analysis/ui/analysis-breakdown.tsx#L81-L91)

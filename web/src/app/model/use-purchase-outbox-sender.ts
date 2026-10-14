@@ -24,6 +24,18 @@ export function shouldAutoNavigateAfterPurchase(input: {
   );
 }
 
+export async function refreshHouseholdAfterPurchase(
+  refreshHousehold: (id: string) => Promise<void>,
+  householdId: string,
+): Promise<boolean> {
+  try {
+    await refreshHousehold(householdId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function usePurchaseOutboxSender({
   viewerId,
   households,
@@ -91,8 +103,16 @@ export function usePurchaseOutboxSender({
           await createAndPostPurchase(request.input);
           await completePurchaseOutbox(viewerId, entry.input.householdId, key, owner);
           if (currentHouseholdId() === request.input.householdId) {
-            await refreshHousehold(request.input.householdId);
-            showNotice("買い物を帳簿に追加しました", "success");
+            const refreshed = await refreshHouseholdAfterPurchase(
+              refreshHousehold,
+              request.input.householdId,
+            );
+            showNotice(
+              refreshed
+                ? "買い物を帳簿に追加しました"
+                : "購入を追加しました。帳簿を再読み込みしてください",
+              refreshed ? "success" : "error",
+            );
           }
           if (
             shouldAutoNavigateAfterPurchase({

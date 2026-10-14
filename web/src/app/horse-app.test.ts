@@ -11,6 +11,7 @@ vi.mock("../shared/ui", () => ({}));
 vi.mock("./graphql-error-boundary", () => ({ GraphQLErrorBoundary: () => null }));
 
 import { shouldAutoNavigateAfterPurchase } from "./horse-app";
+import { refreshHouseholdAfterPurchase } from "./model/use-purchase-outbox-sender";
 
 describe("purchase outbox navigation", () => {
   it("新しい入力がある場合は先行送信の完了で帳簿へ遷移しない", () => {
@@ -33,5 +34,18 @@ describe("purchase outbox navigation", () => {
         hasUnsavedChanges: false,
       }),
     ).toBe(true);
+  });
+});
+
+describe("purchase outbox refresh", () => {
+  it("購入一覧の再取得に失敗しても購入確定の成功扱いを維持する", async () => {
+    const refreshHousehold = vi.fn(async () => {
+      throw new Error("refresh failed");
+    });
+
+    await expect(refreshHouseholdAfterPurchase(refreshHousehold, "household-1")).resolves.toBe(
+      false,
+    );
+    expect(refreshHousehold).toHaveBeenCalledWith("household-1");
   });
 });
