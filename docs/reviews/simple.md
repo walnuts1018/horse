@@ -62,7 +62,7 @@ type ItemChanges struct {
 
 このような型を用意すれば、例えば商品名だけを変更するときに、配賦や支払情報を変更する必要があるのかがコード上で明確になります。
 
-通常更新と一括更新は`itemChangePlan`を共有し、配賦の再計算と`ItemAllocations`の更新を必要な変更に限るようになりました。この点は改善済みです。一方、`updateItem()`には入力検証、権限確認、ロック、DB更新、商品学習、監査イベント、仕訳同期などが残っており、変更計画も配賦やリビジョンの一部を扱うものです。支払や仕訳を含む変更全体の計画化と適用処理の分離は引き続き改善候補です。
+通常更新と一括更新は`itemChangePlan`を共有し、配賦の再計算と`ItemAllocations`の更新を必要な変更に限るようになりました。この点は改善済みです。一方、変更計画は主に明細項目と配賦を扱い、支払調整や仕訳同期の要否は`updateItem()`内の処理に残ります。入力検証、権限確認、ロック、DB更新、商品学習、監査イベントも同じユースケースに含まれています。支払や仕訳を含む変更全体の計画化と適用処理の分離は引き続き改善候補です。
 
 ### 2. GraphQLの巨大な一括組み立て処理を見直す
 
@@ -117,9 +117,9 @@ Worker / MailboxPoller
   └─ 同じ DocumentService を利用
 ```
 
-実際、メール添付ファイルの登録処理は、`documents.go`の317〜346行と`mailbox_poller.go`の227〜255行にほぼ同じ内容で存在します。
+世帯所属の確認は`internal/application/document.Service.RequireHouseholdMember()`に切り出され、アップロード処理から利用されています。個別文書の取得・更新でも`documentForMember()`が文書の世帯に対する所属を確認します。この認可経路は整備されています。
 
-両者が同じApplicationサービスを使うようにすれば、重複コードを減らせるだけでなく、手動アップロードとメール取り込みで挙動がずれることも防ぎやすくなります。
+一方、アップロード、添付登録、ストレージ保存、ジョブ作成は引き続きHTTPハンドラにあり、メール添付ファイルの登録も`documents.go`と`mailbox_poller.go`に分かれています。登録処理を共通Applicationサービスへ移し、手動アップロードとメール取り込みの差分を整理する課題は残っています。
 
 ## 4. 通常更新・一括更新・まとめて保存が別々の実装になっている
 
@@ -171,25 +171,15 @@ GraphQLなどの公開API
 | 対象 | 確認した問題 | 推奨する改善 |
 | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
 | [GraphQL Node解決](https://github.com/walnuts1018/horse/blob/main/internal/graph/nodes.go#L22-L106) | バッチ対応Nodeだけを取得する場合は世帯参照にとどめるよう改善された。その他のNode種別では世帯一覧をロードして探索する経路が残る | 残るNode種別も種別とIDに応じて直接取得し、世帯スコープを確認する |
-| [購入一覧クエリ](https://github.com/walnuts1018/horse/blob/main/internal/graph/query_purchases.go#L26) | フィルタ処理は`PurchaseFilter`、ページネーションは専用構造体へ整理された。一方、GraphQL resolverの`purchases()`は引数が多く、金額条件を可変長引数で受け取る | resolver境界の引数も構造化し、フィルタ組み立てとページネーションの分離を進める |
-| [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離された。`Do()`にはDB操作や権限確認などのユースケース調整が残る | `Do()`に残る処理の責務と順序を整理する |
-| [GraphQLエラー変換](https://github.com/walnuts1018/horse/blob/main/internal/graph/errors.go) | Application共通エラーに加えて、各機能固有のエラーを手動列挙して分類している | すべてのApplicationで既存の`apperror`を統一使用 |
-| [Gemini Router](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/router.go#L81-L199) | 無料・有料、Flash-Lite・Flashのフォールバックが多重の条件分岐になっている | まず実行候補の順序をデータとして生成し、共通の試行処理で順に実行 |
+| [購入一覧クエリ](https://github.com/walnuts1018/horse/blob/main/internal/graph/query_purchases.go#L26) | GraphQL APIは`PurchaseFilter`入力を受け取り、ページネーションも専用構造体に整理された。一方、resolverから内部の`purchases()`へ各フィールドを再展開し、金額条件だけ別の可変長引数で渡している | `PurchaseFilter`を内部クエリまで維持し、フィルタ変換の重複と可変長引数をなくす |
+| [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離され、`Do()`にはDB操作、権限確認、ロック、冪等性処理などが残る | ユースケース処理の責務と順序を整理する |
+| [GraphQLエラー変換](https://github.com/walnuts1018/horse/blob/main/internal/graph/errors.go) | Transferは`apperror`を利用する一方、Fundingなど一部のApplicationには独自エラーが残り、GraphQL側で機能別に列挙して分類している | 残るApplicationのエラーを`apperror`へ統一し、GraphQL側の互換判定を整理する |
+| [Gemini Router](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/router.go#L81-L199) | ルート候補の生成はデータ化され、共通ループで試行する形に改善された。一方、候補の実行条件、次候補の探索、フォールバック理由の記録が`Generate()`に残る | 候補選択とフォールバック状態の扱いを分離し、ルーティングの条件を追いやすくする |
 | [抽出Worker](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/worker_extract.go#L10-L141) | OCR、AI抽出、品質検証、再実行、Pro再検証が一つの流れに密集 | 初回抽出と再検証を共通のパイプライン部品に整理 |
 | [Geminiクライアント](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/gemini.go#L74-L313) | HTTPクライアント設定、プロンプト、API呼び出し、Quota、応答解釈が同じメソッドにある | Provider Adapter、Prompt、Response Decoder、Usage計測に分離 |
 | [数量・単価](https://github.com/walnuts1018/horse/blob/main/internal/graph/purchase_item_measure.go) | GraphQL側と購入Application側で、数量や単価の検証ロジックが分散 | 共通の`Measure`値オブジェクトに検証を集約 |
 
-### エラー処理は比較的簡単に大きく改善できる
-
-既存の`internal/application/apperror`はよい土台です。
-
-しかし、[transfer/record.go](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L26-L30)には独自の`ErrBadInput`、`ErrConflict`、`ErrNotFound`が存在します。
-
-その結果、GraphQL層では複数パッケージのエラーを個別に判定しています。
-
-この独立性に実質的なメリットはありません。各Applicationから共通の`apperror`を返すよう統一すれば、GraphQLやHTTP側はエラーの種類を一度だけ判定すればよくなります。
-
-これは変更範囲が比較的小さく、可読性改善とコード削減の両方を期待できます。
+Application共通エラーの利用はTransferなどで進みましたが、Fundingなどには独自エラーが残り、GraphQLの`ApplicationErrorKind()`にも互換判定が残っています。残存する独自エラーを`apperror`に統一し、互換判定を段階的に削除する余地があります。
 
 ### 小さな自前ユーティリティも整理する
 
