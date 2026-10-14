@@ -1,8 +1,11 @@
+import { useLayoutEffect, useRef } from "react";
+
 import type { Household, ProductConcept, PurchaseItem } from "../../../shared/api";
 import type { LedgerItemDraft } from "../model/purchase-item-draft";
 
 import { EditPurchaseItemAllocations } from "../../../entities/purchase";
 import { isOneOf } from "../../../shared/lib";
+import { amountInputCaret, formatAmountInput } from "../lib/amount-input";
 import { LedgerProductVariantSelect } from "./ledger-product-variant-select";
 
 function allocationsInPoolOrder<T extends { poolId: string }>(
@@ -47,6 +50,16 @@ export function PurchaseItemEditor({
     household.pools,
   );
   const normalizedDefaultAllocations = allocationsInPoolOrder(defaultAllocations, household.pools);
+  const amountInput = useRef<HTMLInputElement>(null);
+  const pendingAmountCaret = useRef<number | null>(null);
+  const amountYen = draft?.amountYen ?? String(item.amountYen);
+  useLayoutEffect(() => {
+    const input = amountInput.current;
+    const caret = pendingAmountCaret.current;
+    if (input && caret !== null && document.activeElement === input)
+      input.setSelectionRange(caret, caret);
+    pendingAmountCaret.current = null;
+  });
   return (
     <>
       <input
@@ -119,10 +132,18 @@ export function PurchaseItemEditor({
         </>
       )}
       <input
+        ref={amountInput}
         aria-label="金額"
         inputMode="numeric"
-        value={draft?.amountYen ?? String(item.amountYen)}
-        onChange={(event) => onChange({ amountYen: event.target.value.replace(/\D/g, "") })}
+        value={formatAmountInput(amountYen)}
+        onChange={(event) => {
+          const value = event.currentTarget.value;
+          pendingAmountCaret.current = amountInputCaret(
+            value,
+            event.currentTarget.selectionStart ?? value.length,
+          );
+          onChange({ amountYen: value.replace(/\D/g, "") });
+        }}
       />
       <details className="item-measure-details">
         <summary>数量・印字単価</summary>

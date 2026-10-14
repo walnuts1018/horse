@@ -90,7 +90,7 @@ export function SettlementTransferForm({
           onChange={(event) => onFromChange(event.target.value)}
         >
           {household.members.map((member) => (
-            <option value={member.id} key={member.id}>
+            <option value={member.id} key={member.id} disabled={member.id === transferTo}>
               {member.displayName}
             </option>
           ))}
@@ -104,7 +104,7 @@ export function SettlementTransferForm({
           onChange={(event) => onToChange(event.target.value)}
         >
           {household.members.map((member) => (
-            <option value={member.id} key={member.id}>
+            <option value={member.id} key={member.id} disabled={member.id === transferFrom}>
               {member.displayName}
             </option>
           ))}

@@ -6,7 +6,7 @@
   border: 0;
   background: none;
   color: #5f6d65;
-  font-size: 10px;
+  font-size: 12px;
   cursor: pointer;
   margin-bottom: 12px;
 }
@@ -39,7 +39,7 @@
   border-radius: 6px;
   padding: 8px;
   color: #596a60;
-  font-size: 10px;
+  font-size: 12px;
   text-align: left;
   cursor: pointer;
 }
@@ -55,7 +55,7 @@
 .suggestions button span {
   margin-left: auto;
   color: #5f6d65;
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .payment-allocation-field > .field-legend {
@@ -85,7 +85,7 @@
   background: #fcfdfb;
   color: #425249;
   padding: 0 10px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .payment-allocation-row .yen-input {
@@ -108,7 +108,7 @@
   border: 0;
   background: none;
   color: #39755f;
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.4;
   cursor: pointer;
 }
@@ -128,7 +128,7 @@
 
 .payment-balanced {
   color: #39755f;
-  font-size: 10px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -147,7 +147,7 @@
 }
 
 .entry-default {
-  font-size: 9px;
+  font-size: 12px;
   padding: 7px 10px;
   border-radius: 7px;
   background: #f4f7f3;
@@ -163,7 +163,7 @@
   display: block;
   margin: 8px 0 0 8px;
   color: #a43c32;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .item-table-head,
@@ -180,7 +180,7 @@
 .item-table-head {
   padding: 0 8px 9px;
   color: #5f6d65;
-  font-size: 9px;
+  font-size: 12px;
   border-bottom: 1px solid #edf0ed;
 }
 
@@ -200,7 +200,7 @@
 
 .item-index {
   color: #5f6d65;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .item-edit-row > input,
@@ -211,7 +211,7 @@
   border: 1px solid transparent;
   background: transparent;
   color: #56655c;
-  font-size: 10px;
+  font-size: 12px;
   border-radius: 6px;
   padding: 0 7px;
   min-width: 0;
@@ -234,7 +234,7 @@
 
 .yen-input > span {
   color: #5f6d65;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .yen-input input {
@@ -258,7 +258,7 @@
   border-radius: 7px;
   background: #f3f7f2;
   color: #5f6d65;
-  font-size: 9px;
+  font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -274,7 +274,7 @@
   justify-content: center;
   gap: 8px;
   color: #5f6d65;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .empty-items svg {
@@ -322,7 +322,7 @@
   background: transparent;
   padding: 0 7px;
   color: #43554a;
-  font-size: 11px;
+  font-size: 12px;
   outline: none;
 }
 
@@ -354,7 +354,7 @@
 
 .amount-wrap > span {
   color: #5f6d65;
-  font-size: 10px;
+  font-size: 12px;
   margin-left: 7px;
 }
 
@@ -370,7 +370,7 @@
   border: 0;
   background: transparent;
   color: #5f6d65;
-  font-size: 10px;
+  font-size: 12px;
   padding: 0 4px;
 }
 
@@ -380,7 +380,7 @@
   background: #eaf4ed;
   color: #3b8068;
   padding: 0 11px;
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -388,13 +388,13 @@
   display: flex;
   justify-content: space-between;
   color: #5f6d65;
-  font-size: 8px;
+  font-size: 12px;
   padding: 9px 4px 0;
 }
 
 .entry-hint kbd {
   padding: 1px 4px;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .product-suggestions button {
@@ -405,7 +405,7 @@
   flex-basis: 100%;
   padding-left: 20px;
   color: #5f6d65;
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .selected-product-label {
@@ -414,7 +414,7 @@
   gap: 8px;
   margin-top: 4px;
   color: #4b7a58;
-  font-size: 8px;
+  font-size: 12px;
 }
 
 .selected-product-label button {
@@ -441,13 +441,13 @@
 
 .composer-bottom > div:first-child > span {
   display: block;
-  font-size: 9px;
+  font-size: 12px;
   color: #5f6d65;
   margin-top: 4px;
 }
 
 .total-label {
-  font-size: 10px;
+  font-size: 12px;
   color: #5f6d65;
 }
 
@@ -466,7 +466,7 @@
 
 .composer-actions .button {
   height: 38px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .allocation-popup {
@@ -508,7 +508,7 @@
   }
 
   .allocation-chip {
-    font-size: 8px;
+    font-size: 12px;
     padding: 0 5px;
   }
 }
@@ -521,7 +521,7 @@
 
   .payment-allocation-row > select {
     height: 34px;
-    font-size: 10px;
+    font-size: 12px;
     padding: 0 7px;
   }
 
@@ -538,7 +538,7 @@
   }
 
   .entry-default {
-    font-size: 8px;
+    font-size: 12px;
   }
 
   .item-edit-row > .row-remove,
@@ -565,7 +565,7 @@
   .item-edit-row > input {
     grid-column: 1;
     grid-row: 1;
-    font-size: 10px;
+    font-size: 12px;
     min-height: 44px;
   }
 
@@ -580,14 +580,14 @@
     grid-row: 2;
     height: 23px;
     padding-left: 7px;
-    font-size: 8px;
+    font-size: 12px;
   }
 
   .allocation-chip {
     grid-column: 2;
     grid-row: 2;
     min-height: 44px;
-    font-size: 8px;
+    font-size: 12px;
   }
 
   .empty-items {
@@ -633,7 +633,7 @@
   }
 
   .entry-hint {
-    font-size: 7px;
+    font-size: 12px;
   }
 
   .composer-bottom {
@@ -650,7 +650,7 @@
   }
 
   .composer-bottom > div:first-child > span {
-    font-size: 8px;
+    font-size: 12px;
   }
 
   .composer-actions {
@@ -660,7 +660,7 @@
   .composer-actions .button {
     height: 35px;
     padding: 0 9px;
-    font-size: 9px;
+    font-size: 12px;
     gap: 5px;
   }
 
@@ -682,7 +682,7 @@
   .entry-hint kbd,
   .product-suggestions button > small,
   .selected-product-label {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .selected-product-label button {

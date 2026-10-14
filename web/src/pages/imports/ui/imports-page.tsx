@@ -94,6 +94,8 @@ export function ImportsPage({
     selected,
     setSelected,
     nextDocumentCursor,
+    loadingDocuments,
+    documentLoadFailed,
     loadingOlderDocuments,
     editedReceiptDocuments,
     clearReceiptDraft,
@@ -541,6 +543,10 @@ export function ImportsPage({
             onDeleteDocument={(document) => void removeDocument(document)}
             onReclassifyAttachment={(document, kind) => void reclassifyAttachment(document, kind)}
             nextCursor={nextDocumentCursor}
+            loadingDocuments={loadingDocuments}
+            documentLoadFailed={documentLoadFailed}
+            hasActiveFilters={Object.values(documentFilters).some(Boolean)}
+            onRetryLoadDocuments={() => void refreshDocuments()}
             loadingOlder={loadingOlderDocuments}
             onLoadOlder={() => void loadOlderDocuments()}
             pending={pending}

@@ -10,6 +10,14 @@
   background: var(--surface);
 }
 
+.documentListEmpty {
+  display: block;
+  margin: 0;
+  padding: 20px 8px;
+  color: var(--muted);
+  text-align: center;
+}
+
 .receiptIssues {
   margin: 0 0 14px;
   border: 1px solid var(--danger, #b42318);

@@ -39,6 +39,10 @@ export function ImportDocumentList({
   onDeleteDocument,
   onReclassifyAttachment,
   nextCursor,
+  loadingDocuments,
+  documentLoadFailed,
+  hasActiveFilters,
+  onRetryLoadDocuments,
   loadingOlder,
   onLoadOlder,
   pending,
@@ -61,6 +65,10 @@ export function ImportDocumentList({
   onDeleteDocument: (document: DocumentReview) => void;
   onReclassifyAttachment: (document: DocumentReview, sourceKind: StatementSourceKind) => void;
   nextCursor: string | null;
+  loadingDocuments: boolean;
+  documentLoadFailed: boolean;
+  hasActiveFilters: boolean;
+  onRetryLoadDocuments: () => void;
   loadingOlder: boolean;
   onLoadOlder: () => void;
   pending: boolean;
@@ -205,6 +213,29 @@ export function ImportDocumentList({
           </button>
         </div>
       ))}
+      {documents.length === 0 && files.length === 0 && (
+        <>
+          <output className={styles.documentListEmpty}>
+            {loadingDocuments
+              ? "取り込み履歴を読み込み中…"
+              : documentLoadFailed
+                ? "取り込み履歴を表示できません"
+                : hasActiveFilters
+                  ? "条件に一致する原本はありません"
+                  : "取り込み履歴はありません"}
+          </output>
+          {documentLoadFailed && (
+            <button
+              type="button"
+              className="button button-soft button-wide"
+              disabled={loadingDocuments}
+              onClick={onRetryLoadDocuments}
+            >
+              {loadingDocuments ? "読み込み中…" : "再読み込み"}
+            </button>
+          )}
+        </>
+      )}
       {documents.map((document) => {
         const receipt = document.result?.receipt;
         const merchant = receipt?.merchant?.trim();

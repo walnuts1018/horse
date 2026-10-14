@@ -324,6 +324,8 @@ export function useImportDocuments(
     selected,
     setSelected,
     nextDocumentCursor,
+    loadingDocuments: query.isFetching,
+    documentLoadFailed: query.isError,
     loadingOlderDocuments: query.isFetchingNextPage,
     editedReceiptDocuments,
     clearReceiptDraft,
