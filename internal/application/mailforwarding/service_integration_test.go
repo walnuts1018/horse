@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base32"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -24,17 +25,22 @@ import (
 func TestForwardingAddressLifecycle(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	databaseURL, terminate, err := testinfra.StartPostgres(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := terminate(context.WithoutCancel(t.Context())); err != nil {
-			t.Errorf("terminate PostgreSQL container: %v", err)
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	var err error
+	if databaseURL == "" {
+		var terminate func(context.Context) error
+		databaseURL, terminate, err = testinfra.StartPostgres(ctx)
+		if err != nil {
+			t.Fatal(err)
 		}
-	})
-	if err := testinfra.ApplyMigrations(ctx, databaseURL); err != nil {
-		t.Fatal(err)
+		t.Cleanup(func() {
+			if err := terminate(context.WithoutCancel(t.Context())); err != nil {
+				t.Errorf("terminate PostgreSQL container: %v", err)
+			}
+		})
+		if err := testinfra.ApplyMigrations(ctx, databaseURL); err != nil {
+			t.Fatal(err)
+		}
 	}
 	db, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
