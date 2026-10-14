@@ -12,6 +12,7 @@ import {
   loadPurchaseDefaults,
   savePurchaseDefaults,
 } from "../model/purchase-defaults";
+import { pendingPurchaseEntryAmount } from "../model/purchase-entry-total";
 import {
   emptyPurchaseItemsValue,
   restorePurchaseItemsValue,
@@ -155,7 +156,9 @@ function PurchaseCreatePageContent({
   const isEnabledCategory = (id: string | null | undefined): id is string =>
     Boolean(id && enabledCategories.some((category) => category.id === id));
   const { itemName, itemAmount, items } = itemsValue;
-  const itemTotal = sum(items.map((item) => Number(item.amount) || 0));
+  const itemTotal =
+    sum(items.map((item) => Number(item.amount) || 0)) +
+    pendingPurchaseEntryAmount(itemName, itemAmount);
   const payments = usePurchasePayments(
     household,
     itemTotal,

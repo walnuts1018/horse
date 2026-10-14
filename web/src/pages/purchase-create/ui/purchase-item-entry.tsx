@@ -126,7 +126,6 @@ export function PurchaseItemEntry({
                 : "";
             }}
             filter={null}
-            autoHighlight
           >
             <Combobox.Input
               ref={nameRef}

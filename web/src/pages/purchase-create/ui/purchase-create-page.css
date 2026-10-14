@@ -237,6 +237,18 @@
   align-items: center;
   border-radius: 6px;
   padding: 0 3px;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+}
+
+.yen-input:focus-within {
+  border-color: #286d58;
+  outline: 2px solid #286d58;
+  outline-offset: 2px;
+}
+
+.yen-input input:focus-visible {
+  outline: none;
 }
 
 .yen-input > span {
@@ -334,7 +346,7 @@
 }
 
 .entry-input-wrap:focus-within {
-  outline: 3px solid rgb(40 109 88 / 0.24);
+  outline: 2px solid #286d58;
   outline-offset: 2px;
   border-radius: 5px;
 }
@@ -655,7 +667,7 @@
   .item-edit-row select {
     grid-column: 1;
     grid-row: 2;
-    height: 23px;
+    height: 44px;
     padding-left: 7px;
     font-size: 12px;
   }
@@ -712,13 +724,13 @@
 
   .entry-category select,
   .entry-category-button {
-    height: 31px;
+    height: 44px;
   }
 
   .button-add {
     grid-column: 2;
     grid-row: 2;
-    height: 31px;
+    height: 44px;
     justify-self: stretch;
     justify-content: center;
   }

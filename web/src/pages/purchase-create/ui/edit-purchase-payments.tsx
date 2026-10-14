@@ -1,6 +1,6 @@
 /* oxlint-disable jsx-a11y/prefer-tag-over-role */
 import { Plus, X } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import type { Household, Purchase } from "../../../shared/api";
 import type { PaymentDraft } from "../model/purchase-payments";
@@ -28,6 +28,7 @@ function PaymentAccountPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const composing = useRef(false);
   const selected = accounts.find((account) => account.id === payment.paymentAccountId);
   const filtered = accounts.filter((account) =>
     account.name.toLocaleLowerCase("ja-JP").includes(query.trim().toLocaleLowerCase("ja-JP")),
@@ -71,7 +72,14 @@ function PaymentAccountPicker({
           setActiveIndex(0);
           setOpen(true);
         }}
+        onCompositionStart={() => {
+          composing.current = true;
+        }}
+        onCompositionEnd={() => {
+          composing.current = false;
+        }}
         onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing || composing.current) return;
           if (event.key === "ArrowDown") {
             event.preventDefault();
             setActiveIndex((current) => Math.min(current + 1, Math.max(filtered.length - 1, 0)));

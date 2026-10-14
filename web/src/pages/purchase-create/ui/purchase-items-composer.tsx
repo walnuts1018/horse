@@ -4,6 +4,7 @@ import type { Household, Purchase } from "../../../shared/api";
 import type { PurchaseDraftItem } from "../../../shared/lib";
 import type { PurchaseItemsValue } from "../model/purchase-items";
 
+import { pendingPurchaseEntryAmount } from "../model/purchase-entry-total";
 import { EditPurchaseItems, type EditPurchaseItemsCommands } from "./edit-purchase-items";
 
 export function PurchaseItemsComposer({
@@ -52,6 +53,7 @@ export function PurchaseItemsComposer({
 }) {
   const items: PurchaseDraftItem[] = value.items;
   const uncategorizedItemCount = items.filter((item) => !item.categoryId).length;
+  const hasPendingItem = pendingPurchaseEntryAmount(value.itemName, value.itemAmount) > 0;
 
   return (
     <>
@@ -80,7 +82,7 @@ export function PurchaseItemsComposer({
       <div className={`composer-bottom ${classNames.bottom}`}>
         <div>
           <div className="total-label">
-            合計 <strong>{yen(itemTotal)}</strong>
+            {hasPendingItem ? "合計（入力中を含む）" : "合計"} <strong>{yen(itemTotal)}</strong>
           </div>
           <span>
             {items.length}品目
