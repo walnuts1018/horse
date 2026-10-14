@@ -27,6 +27,7 @@ export function useSettlementFunding({
   onRecorded: () => Promise<void>;
 }) {
   const [pendingFunding, setPendingFunding] = useState<Record<string, FundingIntent>>({});
+  const [fundingAmounts, setFundingAmounts] = useState<Partial<Record<string, string>>>({});
   const [fundingSourceAccounts, setFundingSourceAccounts] = useState<Record<string, string>>({});
   const [fundingDestinationAccountId, setFundingDestinationAccountId] = useState("");
   const [savedFundingSourceAccounts, setSavedFundingSourceAccounts] = useState<
@@ -37,7 +38,14 @@ export function useSettlementFunding({
     household.members.some(
       (member) =>
         (fundingSourceAccounts[member.id] ?? "") !== (savedFundingSourceAccounts[member.id] ?? ""),
-    ) || fundingDestinationAccountId !== savedFundingDestinationAccountId;
+    ) ||
+    fundingDestinationAccountId !== savedFundingDestinationAccountId ||
+    (settlement?.lines.some(
+      (line) =>
+        fundingAmounts[line.memberId] != null &&
+        fundingAmounts[line.memberId] !== String(line.amountDueYen),
+    ) ??
+      false);
 
   useEffect(() => {
     //保存済み入金意図の復元と同期setStateはeffect直後ではなくマイクロタスクで走らせる
@@ -57,14 +65,29 @@ export function useSettlementFunding({
 
   const record = async (memberId: string) => {
     const line = settlement?.lines.find((row) => row.memberId === memberId);
-    const amountYen = line?.amountDueYen ?? 0;
+    let existingIntent: FundingIntent | null;
+    try {
+      existingIntent = getFundingIntent(household.id, memberId);
+    } catch (reason) {
+      setError(errorMessage(reason));
+      return;
+    }
+    if (!existingIntent && (!line || line.amountDueYen <= 0)) return;
+    const amountText = fundingAmounts[memberId] ?? String(line?.amountDueYen ?? 0);
+    const amountYen = existingIntent?.input.amountYen ?? Number(amountText);
     const sourceAccountId = fundingSourceAccounts[memberId] ?? "";
     const destinationAccountId = fundingDestinationAccountId;
+    if (
+      !existingIntent &&
+      (!Number.isSafeInteger(amountYen) || amountYen <= 0 || amountYen > 1_000_000_000_000)
+    ) {
+      setError("今回の入金額には1円以上の整数を入力してください");
+      return;
+    }
     setPending(true);
     setError("");
     setSuccess("");
     try {
-      const existingIntent = getFundingIntent(household.id, memberId);
       if (amountYen <= 0 && !existingIntent) return;
       const idempotencyKey = makeIdempotencyKey();
       const intent = existingIntent ?? {
@@ -94,6 +117,11 @@ export function useSettlementFunding({
         delete next[memberId];
         return next;
       });
+      setFundingAmounts((current) => {
+        const next = { ...current };
+        delete next[memberId];
+        return next;
+      });
       setSavedFundingSourceAccounts((current) => ({
         ...current,
         [memberId]: intent.input.sourceAccountId ?? "",
@@ -112,6 +140,11 @@ export function useSettlementFunding({
   };
 
   const restore = (memberId: string) => {
+    setFundingAmounts((current) => {
+      const next = { ...current };
+      delete next[memberId];
+      return next;
+    });
     setFundingSourceAccounts((current) => ({
       ...current,
       [memberId]: savedFundingSourceAccounts[memberId] ?? "",
@@ -121,6 +154,7 @@ export function useSettlementFunding({
 
   return {
     fundingDestinationAccountId,
+    fundingAmounts,
     fundingSourceAccounts,
     hasUnsavedFunding,
     pendingFunding,
@@ -129,6 +163,7 @@ export function useSettlementFunding({
     savedFundingDestinationAccountId,
     savedFundingSourceAccounts,
     setFundingDestinationAccountId,
+    setFundingAmounts,
     setFundingSourceAccounts,
   };
 }

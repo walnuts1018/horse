@@ -6,6 +6,12 @@ import { makeIdempotencyKey, type Household } from "../../../shared/api";
 import { enqueuePurchase, errorMessage, type PurchaseDraftItem } from "../../../shared/lib";
 import { convertPurchaseItems } from "./purchase-items";
 
+type SubmissionOverrides = {
+  items: PurchaseDraftItem[];
+  paymentAmount: (payment: PaymentDraft) => number;
+  paymentDifference: number;
+};
+
 export function usePurchaseSubmission({
   memberId,
   household,
@@ -35,9 +41,12 @@ export function usePurchaseSubmission({
   const [message, setMessage] = useState("");
   const saving = useRef(false);
 
-  const submit = async (event: SyntheticEvent) => {
+  const submit = async (event: SyntheticEvent, overrides?: SubmissionOverrides) => {
     event.preventDefault();
     if (saving.current) return;
+    const submittedItems = overrides?.items ?? items;
+    const submittedPaymentAmount = overrides?.paymentAmount ?? paymentAmount;
+    const submittedPaymentDifference = overrides?.paymentDifference ?? paymentDifference;
     if (!memberId.trim()) {
       setMessage("ログイン中のメンバーを確認できません");
       return;
@@ -46,7 +55,7 @@ export function usePurchaseSubmission({
       setMessage("この家計簿のメンバーを確認できません");
       return;
     }
-    if (!items.length) {
+    if (!submittedItems.length) {
       setMessage("品目を1つ以上追加してください");
       return;
     }
@@ -56,8 +65,10 @@ export function usePurchaseSubmission({
     }
     if (
       !paymentRows.length ||
-      paymentRows.some((payment) => !payment.paymentAccountId || paymentAmount(payment) < 1) ||
-      paymentDifference !== 0
+      paymentRows.some(
+        (payment) => !payment.paymentAccountId || submittedPaymentAmount(payment) < 1,
+      ) ||
+      submittedPaymentDifference !== 0
     ) {
       setMessage("決済元と金額を確認してください");
       return;
@@ -78,9 +89,9 @@ export function usePurchaseSubmission({
           origin: "MANUAL",
           paymentAllocations: paymentRows.map((payment) => ({
             paymentAccountId: payment.paymentAccountId,
-            amountYen: paymentAmount(payment),
+            amountYen: submittedPaymentAmount(payment),
           })),
-          items: convertPurchaseItems(items),
+          items: convertPurchaseItems(submittedItems),
         },
         memberId,
       );

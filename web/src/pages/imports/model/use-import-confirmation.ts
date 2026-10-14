@@ -10,7 +10,11 @@ import type {
   StatementEntry,
 } from "./imports";
 
-import { createReceiptPurchaseInput, effectiveReceiptItemAmount } from "./receipt-confirmation";
+import {
+  createReceiptPurchaseInput,
+  effectiveReceiptItemAmount,
+  uniqueConsistentReceiptCandidate,
+} from "./receipt-confirmation";
 import { receiptPaymentAccountId } from "./receipt-payment-account";
 import {
   createStatementExternalIncomeInput,
@@ -93,8 +97,19 @@ export function useImportConfirmation({
   const [manualPurchaseDates, setManualPurchaseDates] = useState<Record<string, string>>({});
   const selectedDocumentId = selectedDocument?.id ?? "";
   const confirmationState = selectedDocument?.receiptConfirmationState;
+  const defaultCandidate = selectedDocument
+    ? uniqueConsistentReceiptCandidate(selectedDocument)
+    : undefined;
+  const storedCandidateId = confirmationState?.selectedCandidate?.id;
+  const storedCandidateIsCurrent = selectedDocument?.result?.candidates?.some(
+    (candidate) => candidate.id === storedCandidateId,
+  );
   const selectedCandidates = selectedDocument
-    ? { [selectedDocument.id]: confirmationState?.selectedCandidate?.id ?? "" }
+    ? {
+        [selectedDocument.id]: storedCandidateIsCurrent
+          ? storedCandidateId!
+          : (defaultCandidate?.id ?? ""),
+      }
     : {};
   const manualAmountOverrides = selectedDocument
     ? { [selectedDocument.id]: confirmationState?.manualAmountOverrides ?? {} }
@@ -132,7 +147,12 @@ export function useImportConfirmation({
     if (!selectedDocument) return;
     updateReceiptConfirmationState(selectedDocument.id, (state, document) => {
       const current = {
-        [document.id]: state.selectedCandidate?.id ?? "",
+        [document.id]:
+          (document.result?.candidates?.some(
+            (candidate) => candidate.id === state.selectedCandidate?.id,
+          )
+            ? state.selectedCandidate?.id
+            : uniqueConsistentReceiptCandidate(document)?.id) ?? "",
       };
       const next = typeof action === "function" ? action(current) : action;
       const selectedId = next[document.id];
@@ -427,7 +447,7 @@ export function useImportConfirmation({
       householdId: household.id,
       occurredAt,
       candidateId: candidateID,
-      requiresCandidateSelection: Boolean(document.result?.candidates?.length),
+      requiresCandidateSelection: Boolean(document.result?.candidates?.length && !candidate),
       requiresOverrideReason,
       overrideReason,
       paymentDraft,

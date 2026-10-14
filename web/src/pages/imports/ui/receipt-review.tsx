@@ -489,11 +489,6 @@ export function ReceiptReview({
                     className={`candidate-option ${selected ? "candidate-selected" : ""}`}
                     onClick={() => {
                       markUnsaved();
-                      setAmountDrafts((current) => {
-                        const next = { ...current };
-                        delete next[selectedDocument.id];
-                        return next;
-                      });
                       if (!selected) {
                         setManualAmountOverrides((current) => {
                           const next = { ...current };
@@ -509,12 +504,13 @@ export function ReceiptReview({
                   >
                     <span>
                       <b>候補{candidateIndex + 1}</b>
+                      <small>税解釈候補</small>
                       {interpretationLabels.map((label) => (
                         <small className="candidate-interpretation-label" key={label}>
                           {label}
                         </small>
                       ))}
-                      {interpretationLabels.length === 0 && <small>税区分の詳細なし</small>}
+                      {interpretationLabels.length === 0 && <small>税区分変更なし</small>}
                       {differences.slice(0, 3).map((difference) => (
                         <small className="candidate-amount-difference" key={difference.index}>
                           {difference.name} {yen(difference.amount)}
@@ -522,7 +518,7 @@ export function ReceiptReview({
                       ))}
                       {differences.length > 3 && <small>ほか{differences.length - 3}品目</small>}
                       <small>
-                        {candidate.consistent ? "合計一致" : "合計差異"}
+                        {candidate.consistent ? "計算一致" : "計算不一致"}
                         {candidate.issues.length ? ` · ${candidate.issues.join("、")}` : ""}
                       </small>
                     </span>

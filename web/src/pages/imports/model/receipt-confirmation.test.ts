@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { DocumentReview } from "./imports";
 
-import { createReceiptPurchaseInput } from "./receipt-confirmation";
+import {
+  createReceiptPurchaseInput,
+  uniqueConsistentReceiptCandidate,
+} from "./receipt-confirmation";
 
 describe("createReceiptPurchaseInput", () => {
   const document: DocumentReview = {
@@ -119,5 +122,77 @@ describe("createReceiptPurchaseInput", () => {
         suggestedCategoryIds: [],
       }),
     ).toThrow("決済内訳と購入額を一致させてください");
+  });
+});
+
+describe("uniqueConsistentReceiptCandidate", () => {
+  const candidateDocument: DocumentReview = {
+    id: "document-1",
+    status: "REVIEW",
+    result: {
+      receipt: {
+        items: [
+          {
+            key: "item-1",
+            name: "牛乳",
+            printedAmount: 200,
+            grossAmount: 220,
+            confidence: 1,
+            verification: "VERIFIED",
+          },
+          {
+            key: "item-2",
+            name: "パン",
+            printedAmount: 100,
+            grossAmount: 110,
+            confidence: 1,
+            verification: "VERIFIED",
+          },
+        ],
+      },
+      candidates: [
+        {
+          id: "candidate-1",
+          amounts: [210, 105],
+          computedTotal: 315,
+          consistent: true,
+          issues: [],
+        },
+      ],
+      computedTotal: 315,
+      balanced: true,
+    },
+  };
+
+  it("合計が検証済みの候補が一件だけの場合に返す", () => {
+    expect(uniqueConsistentReceiptCandidate(candidateDocument)).toEqual(
+      candidateDocument.result?.candidates?.[0],
+    );
+  });
+
+  it("複数候補または不整合の候補を自動選択しない", () => {
+    const candidate = candidateDocument.result?.candidates?.[0];
+    if (!candidate) throw new Error("候補fixtureがありません");
+    const documents: DocumentReview[] = [
+      {
+        ...candidateDocument,
+        result: {
+          ...candidateDocument.result,
+          candidates: [candidate, { ...candidate, id: "candidate-2" }],
+        },
+      },
+      {
+        ...candidateDocument,
+        result: { ...candidateDocument.result, balanced: false },
+      },
+      {
+        ...candidateDocument,
+        result: { ...candidateDocument.result, computedTotal: 316 },
+      },
+    ];
+
+    for (const document of documents) {
+      expect(uniqueConsistentReceiptCandidate(document)).toBeUndefined();
+    }
   });
 });

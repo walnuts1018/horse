@@ -134,6 +134,36 @@
   margin-top: 2px;
 }
 
+.settlement-account-select {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  text-align: left;
+}
+
+.settlement-account-select > span {
+  color: #5f6d65;
+  font-size: 11px;
+}
+
+.settlement-account-select select,
+.settlement-account-select input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid #dce4de;
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: #fff;
+  color: #34463b;
+  font: inherit;
+  font-size: 12px;
+}
+
+.settlement-account-select input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .settlement-amount .text-button {
   padding-right: 0;
   font-size: 12px;

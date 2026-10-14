@@ -30,6 +30,7 @@ export type EditPurchaseItemsCommands = {
   reset: () => void;
   undo: () => void;
   copy: (purchase: Purchase) => void;
+  prepareForSubmit: () => PurchaseDraftItem[] | null;
 };
 
 export function EditPurchaseItems({
@@ -75,6 +76,7 @@ export function EditPurchaseItems({
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const [undoItems, setUndoItems] = useState<PurchaseDraftItem[] | null>(null);
   const [focused, setFocused] = useState<"name" | "amount" | null>(null);
+  const [invalidEntryField, setInvalidEntryField] = useState<"name" | "amount" | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
   const itemGridRef = useRef<HTMLDivElement>(null);
@@ -185,7 +187,49 @@ export function EditPurchaseItems({
     },
     [markDirty, isEnabledCategory, rememberUndo, update],
   );
-  useImperativeHandle(commandsRef, () => ({ reset, undo, copy }), [reset, undo, copy]);
+  const prepareForSubmit = useCallback(() => {
+    const current = draftRef.current;
+    if (!current.itemName && !current.itemAmount) {
+      if (current.items.length) {
+        setInvalidEntryField(null);
+        return current.items;
+      }
+      setInvalidEntryField("name");
+      setFocused("name");
+      nameRef.current?.focus();
+      return null;
+    }
+    const parsed = purchaseItemSchema.safeParse({
+      name: current.itemName,
+      amount: current.itemAmount,
+    });
+    if (!parsed.success) {
+      const field = current.itemName.trim() ? "amount" : "name";
+      setInvalidEntryField(field);
+      setFocused(field);
+      (field === "name" ? nameRef : amountRef).current?.focus();
+      return null;
+    }
+    setInvalidEntryField(null);
+    return [
+      ...current.items,
+      {
+        key: crypto.randomUUID(),
+        ...parsed.data,
+        categoryId: effectiveCategoryId,
+        ...(current.selectedProductVariantId
+          ? { productVariantId: current.selectedProductVariantId }
+          : {}),
+        allocations: [],
+      },
+    ];
+  }, [effectiveCategoryId]);
+  useImperativeHandle(commandsRef, () => ({ reset, undo, copy, prepareForSubmit }), [
+    reset,
+    undo,
+    copy,
+    prepareForSubmit,
+  ]);
 
   useEffect(() => {
     const query = draft.itemName.trim();
@@ -247,6 +291,7 @@ export function EditPurchaseItems({
       categoryId: "",
     });
     setProductSuggestionResponse(null);
+    setInvalidEntryField(null);
     setFocused("name");
     nameRef.current?.focus();
   };
@@ -467,6 +512,7 @@ export function EditPurchaseItems({
         amountRef={amountRef}
         onNameChange={(name) => {
           markDirty();
+          setInvalidEntryField(null);
           changeItemName(name);
         }}
         onNameFocus={() => {
@@ -487,6 +533,7 @@ export function EditPurchaseItems({
         onSuggestionHover={setActiveSuggestionIndex}
         onAmountChange={(amount) => {
           markDirty();
+          setInvalidEntryField(null);
           update({ ...draft, itemAmount: amount.replace(/\D/g, "") });
         }}
         onAmountFocus={() => setFocused("amount")}
@@ -497,6 +544,7 @@ export function EditPurchaseItems({
           updateCategory(id);
         }}
         onAdd={addItem}
+        invalidEntryField={invalidEntryField}
       />
     </>
   );

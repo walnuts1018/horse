@@ -35,6 +35,7 @@ export function PurchaseItemEntry({
   onAmountKey,
   onCategoryChange,
   onAdd,
+  invalidEntryField,
 }: {
   itemName: string;
   itemAmount: string;
@@ -65,6 +66,7 @@ export function PurchaseItemEntry({
   onAmountKey: (event: KeyboardEvent<HTMLInputElement>) => void;
   onCategoryChange: (id: string) => void;
   onAdd: () => void;
+  invalidEntryField: "name" | "amount" | null;
 }) {
   const visibleSuggestionCount =
     productSuggestions.length > 0 && !selectedProductVariantId
@@ -88,6 +90,10 @@ export function PurchaseItemEntry({
             enterKeyHint="next"
             placeholder="品名を入力"
             aria-label="品名"
+            aria-invalid={invalidEntryField === "name"}
+            aria-describedby={
+              invalidEntryField === "name" ? "purchase-item-entry-error" : undefined
+            }
             role="combobox"
             aria-autocomplete="list"
             aria-controls="purchase-item-suggestions"
@@ -178,6 +184,10 @@ export function PurchaseItemEntry({
             onPaste={onPaste}
             placeholder="金額"
             aria-label="金額"
+            aria-invalid={invalidEntryField === "amount"}
+            aria-describedby={
+              invalidEntryField === "amount" ? "purchase-item-entry-error" : undefined
+            }
           />
         </div>
         <select
@@ -202,6 +212,13 @@ export function PurchaseItemEntry({
           <span>品目を追加</span>
         </button>
       </div>
+      {invalidEntryField && (
+        <small className="entry-error" id="purchase-item-entry-error" role="alert">
+          {invalidEntryField === "name"
+            ? "品名を入力してください"
+            : "1円以上の金額を入力してください"}
+        </small>
+      )}
       <div className={`entry-hint ${classNames.entryHint}`}>
         <span>
           <kbd>Enter</kbd>で品名から金額へ、もう一度で追加

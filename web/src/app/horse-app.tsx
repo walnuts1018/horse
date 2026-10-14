@@ -1,12 +1,5 @@
 import { Dialog } from "@base-ui/react/dialog";
-import {
-  Link,
-  Outlet,
-  useBlocker,
-  useNavigate,
-  useParams,
-  useRouterState,
-} from "@tanstack/react-router";
+import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
   AlertCircle,
@@ -37,17 +30,15 @@ import {
   type SubmitEvent,
 } from "react";
 
+import type { AppPage } from "./app-page";
+
 import { createHousehold } from "../entities/household";
 import { useCreateAndPostPurchase } from "../entities/purchase";
 import { errorMessage, usePurchaseOutbox } from "../shared/lib";
 import { Notice, type NoticeKind } from "../shared/ui";
-import { isAppPage, type AppPage } from "./app-page";
 import { GraphQLErrorBoundary } from "./graphql-error-boundary";
-import {
-  createUnsavedChangesRegistry,
-  hasSameNavigationTarget,
-  householdRouteContext,
-} from "./household-route-context";
+import { createUnsavedChangesRegistry, householdRouteContext } from "./household-route-context";
+import { useHouseholdNavigation } from "./model/use-household-navigation";
 import { useHouseholdSession } from "./model/use-household-session";
 import { usePendingInvitation } from "./model/use-pending-invitation";
 import {
@@ -75,16 +66,21 @@ function getServerMobileViewport(): null {
 }
 
 export function App() {
-  const navigate = useNavigate({ from: "/" });
-  const params = useParams({ strict: false });
-  const householdId = "householdId" in params ? params.householdId : undefined;
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const returnTo = useRouterState({
     select: (state) => `${state.location.pathname}${state.location.searchStr}`,
   });
-  const page = appPageFromPath(pathname);
   const createAndPostPurchase = useCreateAndPostPurchase();
   const [unsavedChangesRegistry] = useState(createUnsavedChangesRegistry);
+  const {
+    householdId,
+    page,
+    pathname,
+    navigateToHouseholdPage,
+    navigateToPage,
+    getCurrentPage,
+    onNavigateToPurchase,
+    onBackFromPurchase,
+  } = useHouseholdNavigation(unsavedChangesRegistry);
   const hasUnsavedChanges = useUnsavedChanges(unsavedChangesRegistry);
   const [mobileMenu, setMobileMenu] = useState(false);
   const isMobileViewport = useSyncExternalStore(
@@ -96,14 +92,7 @@ export function App() {
   const [notice, setNotice] = useState<{ message: string; kind: NoticeKind } | null>(null);
   const noticeTimeout = useRef<number | undefined>(undefined);
   const [loggingOut, setLoggingOut] = useState(false);
-  const currentPage = useRef(page);
-  const purchaseCreatePreviousPage = useRef<AppPage>("home");
   const appShellRef = useRef<HTMLDivElement>(null);
-
-  // レンダー中のref書き込みは並行レンダーで壊れるため、コミット後に最新値を反映する
-  useEffect(() => {
-    currentPage.current = page;
-  }, [page]);
   const previousPage = useRef(page);
   useEffect(() => {
     if (previousPage.current === page) return;
@@ -111,56 +100,12 @@ export function App() {
     setMobileMenu(false);
   }, [page]);
 
-  useBlocker({
-    shouldBlockFn: ({ current, next }) => {
-      if (hasSameNavigationTarget(current, next)) return false;
-      return (
-        unsavedChangesRegistry.hasUnsavedChanges() &&
-        !window.confirm("未保存の変更を破棄しますか？")
-      );
-    },
-    enableBeforeUnload: false,
-  });
-
-  const navigateToHouseholdPage = useCallback(
-    (id: string, nextPage: AppPage, replace = false) => {
-      const toByPage = {
-        home: "/households/$householdId",
-        ledger: "/households/$householdId/ledger",
-        new: "/households/$householdId/new",
-        settlement: "/households/$householdId/settlement",
-        analysis: "/households/$householdId/analysis",
-        imports: "/households/$householdId/imports",
-        settings: "/households/$householdId/settings",
-      } as const;
-      void navigate({
-        to: toByPage[nextPage],
-        params: { householdId: id },
-        search: true,
-        replace,
-      });
-    },
-    [navigate],
-  );
-
-  const navigateToPage = useCallback(
-    (nextPage: AppPage) => {
-      if (page === nextPage) return;
-      if (nextPage === "new") {
-        if (page !== "new") purchaseCreatePreviousPage.current = page;
-      }
-      if (householdId) navigateToHouseholdPage(householdId, nextPage);
-    },
-    [page, householdId, navigateToHouseholdPage],
-  );
-
   const showNotice = useCallback((message: string, kind: NoticeKind = "info") => {
     if (noticeTimeout.current !== undefined) window.clearTimeout(noticeTimeout.current);
     setNotice({ message, kind });
     noticeTimeout.current = window.setTimeout(() => setNotice(null), 3200);
   }, []);
 
-  const getCurrentPage = useCallback(() => currentPage.current, []);
   const session = useHouseholdSession({
     householdId,
     page,
@@ -222,17 +167,13 @@ export function App() {
   const reportUnsavedChanges = useCallback(
     (unsaved: boolean) => {
       unsavedChangesRegistry.report(unsavedChangesRegistrationId, unsaved);
-      if (unsaved && currentPage.current === "new") clearAutoNavigate();
+      if (unsaved && getCurrentPage() === "new") clearAutoNavigate();
     },
-    [unsavedChangesRegistrationId, unsavedChangesRegistry, clearAutoNavigate],
+    [unsavedChangesRegistrationId, unsavedChangesRegistry, getCurrentPage, clearAutoNavigate],
   );
   useEffect(
     () => () => unsavedChangesRegistry.clear(unsavedChangesRegistrationId),
     [unsavedChangesRegistrationId, unsavedChangesRegistry],
-  );
-  const onBackFromPurchase = useCallback(
-    () => navigateToPage(purchaseCreatePreviousPage.current),
-    [navigateToPage],
   );
   const currentOutbox = outbox.entries.filter(
     (entry) => entry.input.householdId === activeHousehold?.id,
@@ -266,9 +207,6 @@ export function App() {
       setLoggingOut(false);
     }
   };
-  const onNavigateToPurchase = useCallback(() => {
-    if (page !== "new") purchaseCreatePreviousPage.current = page;
-  }, [page]);
   const routeContext = useMemo(
     () => ({
       household: activeHousehold,
@@ -495,7 +433,7 @@ export function App() {
                       event.preventDefault();
                       return;
                     }
-                    if (page !== "new") purchaseCreatePreviousPage.current = page;
+                    onNavigateToPurchase();
                   }}
                   aria-disabled={!household}
                   tabIndex={household ? undefined : -1}
@@ -601,7 +539,7 @@ export function App() {
             params={{ householdId: householdId ?? "" }}
             search
             onClick={() => {
-              if (page !== "new") purchaseCreatePreviousPage.current = page;
+              onNavigateToPurchase();
             }}
           >
             <Plus />
@@ -679,11 +617,6 @@ function pageTitle(page: AppPage) {
       settings: "設定",
     } as Record<AppPage, string>
   )[page];
-}
-
-function appPageFromPath(pathname: string): AppPage {
-  const child = /^\/households\/[^/]+\/([^/]+)\/?$/.exec(pathname)?.[1];
-  return isAppPage(child) ? child : "home";
 }
 
 function EmptyHousehold({

@@ -24,8 +24,13 @@ export function EditPurchaseItemAllocations({
       return "標準";
     if (allocations.length === 1)
       return `${pools.find((pool) => pool.id === allocations[0].poolId)?.name ?? "口座"} 100%`;
+    const totalWeight = allocations.reduce((sum, allocation) => sum + allocation.weight, 0);
     return allocations
-      .map((allocation) => pools.find((pool) => pool.id === allocation.poolId)?.name ?? "口座")
+      .map((allocation) => {
+        const name = pools.find((pool) => pool.id === allocation.poolId)?.name ?? "口座";
+        const percentage = Math.round((allocation.weight / totalWeight) * 100);
+        return `${name} ${percentage}%`;
+      })
       .join(" / ");
   };
 

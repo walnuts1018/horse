@@ -7,9 +7,11 @@ import {
   canDeleteDocument,
   isCsvFile,
   isEmailFile,
+  receiptDateInputValue,
   sourceKindLabel,
   statusLabel,
   uploadSourceKinds,
+  yen,
   type DocumentFilters,
   type DocumentReview,
   type PendingUpload,
@@ -173,62 +175,83 @@ export function ImportDocumentList({
           </button>
         </div>
       ))}
-      {documents.map((document) => (
-        <div className="persisted-document-row" key={document.id}>
-          <button
-            type="button"
-            className={`file-review-row review-select ${selected === document.id ? "review-selected" : ""}`}
-            disabled={document.deletionPending}
-            onClick={() => onSelectDocument(document.id)}
-          >
-            <span className="file-thumb">
-              <FileImage />
-            </span>
-            <div>
-              <b>
-                {document.name ??
-                  `${sourceKindLabel(document.sourceKind)} · ${document.id.slice(0, 8)}`}
-              </b>
-              <small>
-                {statusLabel(document.status)}
-                {document.duplicateOf ? " · 重複候補" : ""}
-              </small>
-              {document.attachmentParent && (
-                <small>メール添付 · {document.attachmentParent.name}</small>
-              )}
-            </div>
-            <ChevronRight size={15} />
-          </button>
-          {document.status.toUpperCase() === "FAILED" && (
+      {documents.map((document) => {
+        const receipt = document.result?.receipt;
+        const merchant = receipt?.merchant?.trim();
+        const title =
+          merchant ||
+          document.name ||
+          `${sourceKindLabel(document.sourceKind)} · ${document.id.slice(0, 8)}`;
+        const amount =
+          document.result?.computedTotal ??
+          receipt?.items?.reduce((total, item) => total + item.grossAmount, 0);
+        const purchasedAt = receiptDateInputValue(receipt?.purchasedAt);
+        return (
+          <div className="persisted-document-row" key={document.id}>
             <button
               type="button"
-              className="text-button"
-              disabled={pending}
-              onClick={() => onRetryDocument(document)}
+              className={`file-review-row review-select ${selected === document.id ? "review-selected" : ""}`}
+              disabled={document.deletionPending}
+              onClick={() => onSelectDocument(document.id)}
             >
-              再抽出
+              <span className="file-thumb">
+                <FileImage />
+              </span>
+              <div>
+                <b>{title}</b>
+                <small>
+                  {statusLabel(document.status)}
+                  {document.duplicateOf ? " · 重複候補" : ""}
+                </small>
+                {receipt && (
+                  <small>
+                    {[
+                      purchasedAt,
+                      amount === undefined ? "" : yen(amount),
+                      receipt.items ? `${receipt.items.length}品目` : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </small>
+                )}
+                {merchant && document.name && <small>{document.name}</small>}
+                {document.attachmentParent && (
+                  <small>メール添付 · {document.attachmentParent.name}</small>
+                )}
+              </div>
+              <ChevronRight size={15} />
             </button>
-          )}
-          {canDeleteDocument(document) && (
-            <button
-              type="button"
-              className="text-button"
-              disabled={pending}
-              onClick={() => onDeleteDocument(document)}
-            >
-              <Trash2 size={15} />
-              {document.deletionPending ? "削除を再試行" : "原本を削除"}
-            </button>
-          )}
-          {canReclassifyAttachment(document) && (
-            <AttachmentReclassification
-              document={document}
-              pending={pending}
-              onReclassify={onReclassifyAttachment}
-            />
-          )}
-        </div>
-      ))}
+            {document.status.toUpperCase() === "FAILED" && (
+              <button
+                type="button"
+                className="text-button"
+                disabled={pending}
+                onClick={() => onRetryDocument(document)}
+              >
+                再抽出
+              </button>
+            )}
+            {canDeleteDocument(document) && (
+              <button
+                type="button"
+                className="text-button"
+                disabled={pending}
+                onClick={() => onDeleteDocument(document)}
+              >
+                <Trash2 size={15} />
+                {document.deletionPending ? "削除を再試行" : "原本を削除"}
+              </button>
+            )}
+            {canReclassifyAttachment(document) && (
+              <AttachmentReclassification
+                document={document}
+                pending={pending}
+                onReclassify={onReclassifyAttachment}
+              />
+            )}
+          </div>
+        );
+      })}
       {nextCursor && (
         <button
           className="button button-soft button-wide"

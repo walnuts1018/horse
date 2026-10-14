@@ -114,11 +114,15 @@ export function SettlementPage({
         pending={pending}
         pendingFunding={funding.pendingFunding}
         fundingSourceAccounts={funding.fundingSourceAccounts}
+        fundingAmounts={funding.fundingAmounts}
         fundingDestinationAccountId={funding.fundingDestinationAccountId}
         savedFundingSourceAccounts={funding.savedFundingSourceAccounts}
         savedFundingDestinationAccountId={funding.savedFundingDestinationAccountId}
         onFundingSourceChange={(memberId, accountId) =>
           funding.setFundingSourceAccounts((current) => ({ ...current, [memberId]: accountId }))
+        }
+        onFundingAmountChange={(memberId, amount) =>
+          funding.setFundingAmounts((current) => ({ ...current, [memberId]: amount }))
         }
         onFundingDestinationChange={funding.setFundingDestinationAccountId}
         onRecordFunding={(memberId) => void funding.record(memberId)}

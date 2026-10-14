@@ -13,10 +13,12 @@ export function SettlementPreview({
   pending,
   pendingFunding,
   fundingSourceAccounts,
+  fundingAmounts,
   fundingDestinationAccountId,
   savedFundingSourceAccounts,
   savedFundingDestinationAccountId,
   onFundingSourceChange,
+  onFundingAmountChange,
   onFundingDestinationChange,
   onRecordFunding,
   onRestoreFunding,
@@ -28,10 +30,12 @@ export function SettlementPreview({
   pending: boolean;
   pendingFunding: Partial<Record<string, FundingIntent>>;
   fundingSourceAccounts: Record<string, string>;
+  fundingAmounts: Partial<Record<string, string>>;
   fundingDestinationAccountId: string;
   savedFundingSourceAccounts: Record<string, string>;
   savedFundingDestinationAccountId: string;
   onFundingSourceChange: (memberId: string, accountId: string) => void;
+  onFundingAmountChange: (memberId: string, amount: string) => void;
   onFundingDestinationChange: (accountId: string) => void;
   onRecordFunding: (memberId: string) => void;
   onRestoreFunding: (memberId: string) => void;
@@ -163,6 +167,22 @@ export function SettlementPreview({
                         ))}
                     </select>
                   </label>
+                  <label className="settlement-account-select">
+                    <span>今回の入金額</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={1_000_000_000_000}
+                      step={1}
+                      value={
+                        fundingAmounts[line.memberId] ?? String(Math.max(line.amountDueYen, 1))
+                      }
+                      disabled={pending || Boolean(pendingIntent) || line.amountDueYen <= 0}
+                      aria-label={`${line.memberName}の今回の入金額`}
+                      onChange={(event) => onFundingAmountChange(line.memberId, event.target.value)}
+                    />
+                  </label>
                   <button
                     className="text-button"
                     type="button"
@@ -171,18 +191,23 @@ export function SettlementPreview({
                   >
                     {pendingIntent
                       ? `入金を再試行 (${formatSettlementYen(pendingIntent.input.amountYen)})`
-                      : "入金を記録"}
+                      : (fundingAmounts[line.memberId] ?? String(line.amountDueYen)) ===
+                          String(line.amountDueYen)
+                        ? "予定額を入金"
+                        : "変更額を入金"}
                   </button>
                   {((fundingSourceAccounts[line.memberId] ?? "") !==
                     (savedFundingSourceAccounts[line.memberId] ?? "") ||
-                    fundingDestinationAccountId !== savedFundingDestinationAccountId) && (
+                    fundingDestinationAccountId !== savedFundingDestinationAccountId ||
+                    (fundingAmounts[line.memberId] != null &&
+                      fundingAmounts[line.memberId] !== String(line.amountDueYen))) && (
                     <button
                       className="text-button"
                       type="button"
                       disabled={pending}
                       onClick={() => onRestoreFunding(line.memberId)}
                     >
-                      選択を戻す
+                      入力を戻す
                     </button>
                   )}
                 </div>

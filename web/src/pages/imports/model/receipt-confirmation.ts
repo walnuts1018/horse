@@ -1,6 +1,27 @@
 import type { CreatePurchaseInput } from "../../../shared/api";
 import type { DocumentReview, ExtractedItem, ReceiptPaymentDraft } from "./imports";
 
+export function uniqueConsistentReceiptCandidate(document: DocumentReview) {
+  const receipt = document.result?.receipt;
+  const candidates = document.result?.candidates ?? [];
+  if (!receipt?.items?.length || candidates.length !== 1 || document.result?.balanced !== true) {
+    return undefined;
+  }
+  const [candidate] = candidates;
+  const total = candidate.amounts.reduce((sum, amount) => sum + amount, 0);
+  if (
+    !candidate.consistent ||
+    candidate.amounts.length !== receipt.items.length ||
+    !candidate.amounts.every((amount) => Number.isSafeInteger(amount) && amount >= 0) ||
+    !Number.isSafeInteger(total) ||
+    candidate.computedTotal !== total ||
+    candidate.computedTotal !== document.result.computedTotal
+  ) {
+    return undefined;
+  }
+  return candidate;
+}
+
 type ReceiptConfirmationInput = {
   document: DocumentReview;
   householdId: string;
@@ -51,7 +72,7 @@ export function createReceiptPurchaseInput({
 
   if (!items.length) throw new Error("確定できる品目がありません");
   if (!occurredAt) throw new Error("購入日を入力してください");
-  if (requiresCandidateSelection && !candidateId) throw new Error("税計算候補を選択してください");
+  if (requiresCandidateSelection && !candidate) throw new Error("税計算候補を選択してください");
   if (requiresOverrideReason && overrideReason.length < 3) {
     throw new Error("金額の訂正理由を入力してください");
   }

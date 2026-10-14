@@ -1,5 +1,5 @@
 import { Check, ChevronLeft, Undo2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 
 import type { EditPurchaseItemsCommands } from "./edit-purchase-items";
 
@@ -237,6 +237,24 @@ function PurchaseCreatePageContent({
     },
   });
   const { pending, message, setMessage, submit } = submission;
+  const handleSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
+    const submittedItems = itemsCommands.current?.prepareForSubmit();
+    if (!submittedItems) {
+      event.preventDefault();
+      return;
+    }
+    const submittedItemTotal = sum(submittedItems.map((item) => Number(item.amount) || 0));
+    const submittedPaymentAmount = (payment: (typeof paymentRows)[number]) =>
+      paymentAutoTotal && paymentRows.length === 1 ? submittedItemTotal : payments.amount(payment);
+    const submittedPaymentDifference =
+      submittedItemTotal -
+      paymentRows.reduce((total, payment) => total + submittedPaymentAmount(payment), 0);
+    void submit(event, {
+      items: submittedItems,
+      paymentAmount: submittedPaymentAmount,
+      paymentDifference: submittedPaymentDifference,
+    });
+  };
   const hasDraftContent = Boolean(merchant.trim() || itemName.trim() || itemAmount || items.length);
   const draftStatus = hasUnsavedChanges
     ? "未保存"
@@ -257,7 +275,7 @@ function PurchaseCreatePageContent({
       </main>
     );
   return (
-    <form className={`composer ${styles.composer}`} onSubmit={submit}>
+    <form className={`composer ${styles.composer}`} onSubmit={handleSubmit}>
       <div className={`composer-heading ${styles.heading}`}>
         <div>
           <button type="button" className="back-link" onClick={onBack}>
@@ -341,7 +359,12 @@ function PurchaseCreatePageContent({
         <button
           type="submit"
           className="button button-primary"
-          disabled={pending || !outbox.ready || Boolean(outbox.storageError) || items.length === 0}
+          disabled={
+            pending ||
+            !outbox.ready ||
+            Boolean(outbox.storageError) ||
+            (!items.length && !itemName.trim() && !itemAmount.trim())
+          }
         >
           {pending ? "保存中" : "保存して送信"}
           <Check size={16} />
