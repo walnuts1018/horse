@@ -24,7 +24,7 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-const maxSharedPurchaseDraftPayloadBytes = 256 * 1024
+const maxSharedPurchaseDraftInputBytes = 256 * 1024
 
 type SharedPurchaseDraft struct {
 	ID          string
@@ -41,7 +41,7 @@ type UpdateSharedPurchaseDraftResult struct {
 }
 
 func (s *Service) CreateSharedPurchaseDraft(ctx context.Context, actorID, householdID, payload string) (SharedPurchaseDraft, error) {
-	if len(payload) > maxSharedPurchaseDraftPayloadBytes {
+	if len(payload) > maxSharedPurchaseDraftInputBytes {
 		return SharedPurchaseDraft{}, fmt.Errorf("%w: shared purchase draft payload exceeds size limit", ErrBadInput)
 	}
 	householdUUID, err := parseUUID(householdID, "household")
@@ -274,7 +274,7 @@ func validateSharedDraftReferences(ctx context.Context, executor bob.Executor, h
 
 func validateSharedPurchaseDraftPayload(payload string) (sharedPurchaseDraftReferences, jsontext.Value, error) {
 	invalid := sharedPurchaseDraftReferences{}
-	if len(payload) == 0 || len(payload) > maxSharedPurchaseDraftPayloadBytes {
+	if len(payload) == 0 || len(payload) > maxSharedPurchaseDraftInputBytes {
 		return invalid, nil, fmt.Errorf("%w: shared purchase draft payload has invalid size", ErrBadInput)
 	}
 	var root map[string]jsontext.Value

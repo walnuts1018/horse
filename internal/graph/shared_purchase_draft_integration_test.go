@@ -93,6 +93,22 @@ func TestSharedPurchaseDraftUsesMembershipAndRevisionCAS(t *testing.T) {
 		}
 	}
 
+	const maxPayloadBytes = 256 * 1024
+	largePayloadPrefix := `{"merchant":"`
+	largePayloadMiddle := `","occurredAt":"","itemName":"","itemAmount":"","categoryId":"","items":[`
+	largePayloadSuffix := `]}`
+	item := `{"key":"","name":"","amount":"","categoryId":"","allocations":[{"poolId":"","weight":0}]}`
+	itemCount := (maxPayloadBytes - len(largePayloadPrefix) - len(largePayloadMiddle) - len(largePayloadSuffix)) / (len(item) + 1)
+	items := strings.TrimSuffix(strings.Repeat(item+",", itemCount), ",")
+	merchantLength := maxPayloadBytes - len(largePayloadPrefix) - len(largePayloadMiddle) - len(items) - len(largePayloadSuffix)
+	largePayload := largePayloadPrefix + strings.Repeat("x", merchantLength) + largePayloadMiddle + items + largePayloadSuffix
+	if len(largePayload) != maxPayloadBytes {
+		t.Fatalf("maximum-sized payload length = %d, want %d", len(largePayload), maxPayloadBytes)
+	}
+	if _, err := service.CreateSharedPurchaseDraft(ctx, owner.String(), householdID.String(), largePayload); err != nil {
+		t.Fatalf("create maximum-sized shared draft: %v", err)
+	}
+
 	foreignCategory, err := gofrsuuid.NewV7()
 	if err != nil {
 		t.Fatal(err)
