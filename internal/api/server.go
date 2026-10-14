@@ -46,6 +46,7 @@ const (
 	graphErrorCodeJSONKey         = "code"
 	graphErrorCodeUnauthenticated = "UNAUTHENTICATED"
 	graphUnauthenticatedMessage   = "authentication required"
+	maxGraphQLOperationNameLength = 128
 )
 
 type DocumentStore interface {
@@ -169,10 +170,8 @@ func (s *Server) newGraphQLHandler() *handler.Server {
 
 func (s *Server) logGraphQLProtocolRejection(ctx context.Context, err *gqlerror.Error) {
 	attrs := []any{"graphql_error_code", err.Extensions[graphErrorCodeJSONKey]}
-	if graphql.HasOperationContext(ctx) {
-		if operationName := graphql.GetOperationContext(ctx).OperationName; operationName != "" && len(operationName) <= 128 {
-			attrs = append(attrs, "operation", operationName)
-		}
+	if operationName := graphQLOperationName(ctx); operationName != "" {
+		attrs = append(attrs, "operation", operationName)
 	}
 	s.logger.WarnContext(ctx, "GraphQL protocol request rejected", attrs...)
 }
@@ -182,12 +181,21 @@ func (s *Server) logGraphQLInputRejection(ctx context.Context, err error) {
 	if path := graphQLFieldPath(ctx); path != "" {
 		attrs = append(attrs, "graphql_path", path)
 	}
-	if graphql.HasOperationContext(ctx) {
-		if operation := graphql.GetOperationContext(ctx); operation.Operation != nil && operation.Operation.Name != "" {
-			attrs = append(attrs, "operation", operation.Operation.Name)
-		}
+	if operationName := graphQLOperationName(ctx); operationName != "" {
+		attrs = append(attrs, "operation", operationName)
 	}
 	s.logger.InfoContext(ctx, "GraphQL input rejected", attrs...)
+}
+
+func graphQLOperationName(ctx context.Context) string {
+	if !graphql.HasOperationContext(ctx) {
+		return ""
+	}
+	operation := graphql.GetOperationContext(ctx).Operation
+	if operation == nil || operation.Name == "" || len(operation.Name) > maxGraphQLOperationNameLength {
+		return ""
+	}
+	return operation.Name
 }
 
 func (s *Server) logGraphQLResolverFailure(ctx context.Context, err error) {

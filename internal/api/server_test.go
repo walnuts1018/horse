@@ -190,15 +190,33 @@ func TestLogGraphQLInputRejectionOmitsErrorMessage(t *testing.T) {
 	var output bytes.Buffer
 	server := New(nil, nil, slog.New(slog.NewTextHandler(&output, nil)), Config{})
 	field := &graphql.FieldContext{Field: graphql.CollectedField{Field: &ast.Field{Name: "purchaseChanges"}}}
-	ctx := graphql.WithFieldContext(t.Context(), field)
+	operation := &graphql.OperationContext{Operation: &ast.OperationDefinition{Name: "PurchaseProbe"}}
+	ctx := graphql.WithOperationContext(t.Context(), operation)
+	ctx = graphql.WithFieldContext(ctx, field)
 	server.logGraphQLInputRejection(ctx, errors.New("private cursor value"))
 
 	log := output.String()
 	if !strings.Contains(log, "graphql_path=purchaseChanges") {
 		t.Errorf("log does not include the resolver path: %s", log)
 	}
+	if !strings.Contains(log, "operation=PurchaseProbe") {
+		t.Errorf("log does not include the operation name: %s", log)
+	}
 	if strings.Contains(log, "private cursor value") {
 		t.Errorf("log includes rejected input: %s", log)
+	}
+}
+
+func TestLogGraphQLInputRejectionOmitsLongOperationName(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	server := New(nil, nil, slog.New(slog.NewTextHandler(&output, nil)), Config{})
+	operationName := strings.Repeat("a", maxGraphQLOperationNameLength+1)
+	operation := &graphql.OperationContext{Operation: &ast.OperationDefinition{Name: operationName}}
+	ctx := graphql.WithOperationContext(t.Context(), operation)
+	server.logGraphQLInputRejection(ctx, errors.New("private cursor value"))
+	if strings.Contains(output.String(), operationName) {
+		t.Fatalf("log contains an overlong operation name: %s", output.String())
 	}
 }
 
