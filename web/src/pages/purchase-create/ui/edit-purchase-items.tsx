@@ -16,6 +16,7 @@ import type { PurchaseDraftItem } from "../../../shared/lib";
 import { readProductSuggestions, type ProductSuggestion } from "../../../entities/product";
 import { type Household, type Purchase } from "../../../shared/api";
 import { parsePastedPurchaseItems } from "../model/pasted-purchase-items";
+import { productSuggestionsForQuery } from "../model/product-suggestions";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
 import { PurchaseItemEntry } from "./purchase-item-entry";
 import { PurchaseItemsGrid } from "./purchase-items-grid";
@@ -65,7 +66,11 @@ export function EditPurchaseItems({
   const draftRef = useRef(draft);
   const onChangeRef = useRef(onChange);
   const selectedProductVariantId = draft.selectedProductVariantId;
-  const [productSuggestions, setProductSuggestions] = useState<ProductSuggestion[]>([]);
+  const [productSuggestionResponse, setProductSuggestionResponse] = useState<{
+    query: string;
+    suggestions: ProductSuggestion[];
+  } | null>(null);
+  const productSuggestions = productSuggestionsForQuery(draft.itemName, productSuggestionResponse);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const [undoItems, setUndoItems] = useState<PurchaseDraftItem[] | null>(null);
@@ -124,6 +129,9 @@ export function EditPurchaseItems({
   const updateCategory = useCallback((id: string) => patchDraft({ categoryId: id }), [patchDraft]);
   const changeItemName = useCallback(
     (name: string) => {
+      if (name.trim() !== draftRef.current.itemName.trim()) {
+        setProductSuggestionResponse(null);
+      }
       setActiveSuggestionIndex(-1);
       setSuggestionsDismissed(false);
       patchDraft({ itemName: name, selectedProductVariantId: "" });
@@ -145,7 +153,7 @@ export function EditPurchaseItems({
   const reset = useCallback(() => {
     const empty = emptyPurchaseItemsValue();
     rememberUndo(null);
-    setProductSuggestions([]);
+    setProductSuggestionResponse(null);
     update(empty);
   }, [rememberUndo, update]);
   const undo = useCallback(() => {
@@ -184,7 +192,7 @@ export function EditPurchaseItems({
   useEffect(() => {
     const query = draft.itemName.trim();
     if (query.length < 2) {
-      queueMicrotask(() => setProductSuggestions([]));
+      queueMicrotask(() => setProductSuggestionResponse(null));
       return;
     }
     let active = true;
@@ -192,12 +200,12 @@ export function EditPurchaseItems({
       void readProductSuggestions(householdId, query, merchant.trim() || null, 6)
         .then((result) => {
           if (!active) return;
-          setProductSuggestions(result);
+          setProductSuggestionResponse({ query, suggestions: result });
           setActiveSuggestionIndex(-1);
         })
         .catch(() => {
           if (!active) return;
-          setProductSuggestions([]);
+          setProductSuggestionResponse({ query, suggestions: [] });
           setActiveSuggestionIndex(-1);
         });
     }, 220);
@@ -240,7 +248,7 @@ export function EditPurchaseItems({
       selectedProductVariantId: "",
       categoryId: "",
     });
-    setProductSuggestions([]);
+    setProductSuggestionResponse(null);
     setFocused("name");
     nameRef.current?.focus();
   };
@@ -250,6 +258,7 @@ export function EditPurchaseItems({
     setFocused("amount");
   };
   const selectProductSuggestion = (candidate: ProductSuggestion) => {
+    if (!productSuggestions.includes(candidate)) return;
     markDirty();
     patchDraft({
       itemName: candidate.matchedName || draft.itemName.trim(),
@@ -258,7 +267,7 @@ export function EditPurchaseItems({
         ? { categoryId: candidate.concept.categoryId }
         : {}),
     });
-    setProductSuggestions([]);
+    setProductSuggestionResponse(null);
     amountRef.current?.focus();
     setFocused("amount");
   };
