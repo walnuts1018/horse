@@ -32,7 +32,7 @@
     "react-dom": "^19.1.1",
     "react-relay": "^21.0.1",
     "relay-runtime": "^21.0.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@feature-sliced/steiger-plugin": "^0.7.0",
