@@ -59,7 +59,7 @@ type ledgerEntryR struct {
 	Household        *Household // ledger_entries.ledger_entries_household_id_fkey
 	Pool             *Pool      // ledger_entries.ledger_entries_household_id_pool_id_fkey
 	Purchase         *Purchase  // ledger_entries.ledger_entries_household_id_source_purchase_id_fkey
-	Journal          *Journal   // ledger_entries.ledger_entries_journal_id_fkey
+	Journal          *Journal   // ledger_entries.ledger_entries_household_journal_fkey
 	ToMemberMember   *Member    // ledger_entries.ledger_entries_to_member_id_fkey
 	Transfer         *Transfer  // transfers.transfers_ledger_entry_id_fkey
 	// Loaded reports whether each relationship has been loaded.
@@ -74,7 +74,7 @@ type ledgerEntryRLoaded struct {
 	Household        bool // ledger_entries.ledger_entries_household_id_fkey
 	Pool             bool // ledger_entries.ledger_entries_household_id_pool_id_fkey
 	Purchase         bool // ledger_entries.ledger_entries_household_id_source_purchase_id_fkey
-	Journal          bool // ledger_entries.ledger_entries_journal_id_fkey
+	Journal          bool // ledger_entries.ledger_entries_household_journal_fkey
 	ToMemberMember   bool // ledger_entries.ledger_entries_to_member_id_fkey
 	Transfer         bool // transfers.transfers_ledger_entry_id_fkey
 }
@@ -981,23 +981,29 @@ func (os LedgerEntrySlice) Purchase(mods ...bob.Mod[*dialect.SelectQuery]) Purch
 // Journal starts a query for related objects on journals
 func (o *LedgerEntry) Journal(mods ...bob.Mod[*dialect.SelectQuery]) JournalsQuery {
 	return Journals.Query(append(mods,
-		sm.Where(Journals.Columns.ID.EQ(psql.Arg(o.JournalID))),
+		sm.Where(Journals.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(Journals.Columns.ID.EQ(psql.Arg(o.JournalID))),
 	)...)
 }
 
 func (os LedgerEntrySlice) Journal(mods ...bob.Mod[*dialect.SelectQuery]) JournalsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
 	pkJournalID := make(pgtypes.Array[uuid.UUID], 0, len(os))
 
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
 		pkJournalID = append(pkJournalID, o.JournalID)
 	}
-	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkJournalID), "uuid[]"))
 
 	return Journals.Query(append(mods,
-		sm.Where(Journals.Columns.ID.EQ(PKArgExpr)),
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkJournalID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
+		)).As("bob_rel_keys").On(Journals.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), Journals.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
 	)...)
 }
 
@@ -1258,7 +1264,8 @@ func (ledgerEntry0 *LedgerEntry) AttachPurchase(ctx context.Context, exec bob.Ex
 
 func attachLedgerEntryJournal0(ctx context.Context, exec bob.Executor, count int, ledgerEntry0 *LedgerEntry, journal1 *Journal) (*LedgerEntry, error) {
 	setter := &LedgerEntrySetter{
-		JournalID: func() *uuid.UUID { return &journal1.ID }(),
+		HouseholdID: func() *uuid.UUID { return &journal1.HouseholdID }(),
+		JournalID:   func() *uuid.UUID { return &journal1.ID }(),
 	}
 
 	err := ledgerEntry0.Update(ctx, exec, setter)
@@ -1285,8 +1292,7 @@ func (ledgerEntry0 *LedgerEntry) InsertJournal(ctx context.Context, exec bob.Exe
 	ledgerEntry0.R.Journal = journal1
 	ledgerEntry0.R.Loaded.Journal = true
 
-	journal1.R.LedgerEntry = ledgerEntry0
-	journal1.R.Loaded.LedgerEntry = true
+	journal1.R.LedgerEntries = append(journal1.R.LedgerEntries, ledgerEntry0)
 
 	return nil
 }
@@ -1302,8 +1308,7 @@ func (ledgerEntry0 *LedgerEntry) AttachJournal(ctx context.Context, exec bob.Exe
 	ledgerEntry0.R.Journal = journal1
 	ledgerEntry0.R.Loaded.Journal = true
 
-	journal1.R.LedgerEntry = ledgerEntry0
-	journal1.R.Loaded.LedgerEntry = true
+	journal1.R.LedgerEntries = append(journal1.R.LedgerEntries, ledgerEntry0)
 
 	return nil
 }
@@ -1529,6 +1534,7 @@ func (w ledgerEntryWhereR[Q]) HasJournal(filters ...bob.Mod[*dialect.SelectQuery
 	q := psql.Select(
 		sm.Columns(psql.Raw("1")),
 		sm.From(Journals.NameExpr()),
+		sm.Where(Journals.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(Journals.Columns.ID.EQ(w.cols.JournalID)),
 	)
 	q.Apply(filters...)
@@ -1763,8 +1769,7 @@ func (o *LedgerEntry) Preload(name string, retrieved any) error {
 		o.R.Loaded.Journal = true
 
 		if rel != nil {
-			rel.R.LedgerEntry = o
-			rel.R.Loaded.LedgerEntry = true
+			rel.R.LedgerEntries = LedgerEntrySlice{o}
 		}
 		return nil
 	case "ToMemberMember":
@@ -1870,8 +1875,8 @@ func buildLedgerEntryPreloader() ledgerEntryPreloader {
 					{
 						From:        LedgerEntries,
 						To:          Journals,
-						FromColumns: []string{"journal_id"},
-						ToColumns:   []string{"id"},
+						FromColumns: []string{"household_id", "journal_id"},
+						ToColumns:   []string{"household_id", "id"},
 					},
 				},
 			}, Journals.Columns.Names(), journalScanMapperNullable, opts...)
@@ -2292,8 +2297,7 @@ func (o *LedgerEntry) LoadJournal(ctx context.Context, exec bob.Executor, mods .
 		return err
 	}
 
-	related.R.LedgerEntry = o
-	related.R.Loaded.LedgerEntry = true
+	related.R.LedgerEntries = LedgerEntrySlice{o}
 
 	o.R.Journal = related
 	o.R.Loaded.Journal = true
@@ -2319,35 +2323,25 @@ func (os LedgerEntrySlice) LoadJournal(ctx context.Context, exec bob.Executor, m
 		o.R.Journal = nil
 		o.R.Loaded.Journal = true
 	}
-	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
-	ledgerEntryByKey := make(map[uuid.UUID][]*LedgerEntry, len(os))
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
 
-		ledgerEntryByKey[o.JournalID] = append(ledgerEntryByKey[o.JournalID], o)
-	}
+		for _, rel := range journals {
 
-	for _, rel := range journals {
-
-		owners, ok := ledgerEntryByKey[rel.ID]
-		if !ok {
-			continue
-		}
-
-		for _, o := range owners {
-
-			// to-one: keep only the first matching child (matches the previous break)
-			if o.R.Journal != nil {
+			if !(o.HouseholdID == rel.HouseholdID) {
 				continue
 			}
 
-			rel.R.LedgerEntry = o
-			rel.R.Loaded.LedgerEntry = true
+			if !(o.JournalID == rel.ID) {
+				continue
+			}
+
+			rel.R.LedgerEntries = append(rel.R.LedgerEntries, o)
 
 			o.R.Journal = rel
-
+			break
 		}
 	}
 
@@ -2592,7 +2586,7 @@ func buildLedgerEntryJoins[Q dialect.Joinable](cols ledgerEntryColumns, typ stri
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, Journals.NameExpr().As(to.Alias())).On(
-						to.ID.EQ(cols.JournalID),
+						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.JournalID),
 					))
 				}
 

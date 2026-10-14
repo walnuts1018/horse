@@ -11,6 +11,13 @@ var JournalErrors = &journalErrors{
 		s:       "journals_pkey",
 	},
 
+	ErrUniqueJournalsHouseholdIdIdKey: &UniqueConstraintError{
+		schema:  "",
+		table:   "journals",
+		columns: []string{"household_id", "id"},
+		s:       "journals_household_id_id_key",
+	},
+
 	ErrUniqueJournalsHouseholdIdIdempotencyKeyKey: &UniqueConstraintError{
 		schema:  "",
 		table:   "journals",
@@ -28,6 +35,8 @@ var JournalErrors = &journalErrors{
 
 type journalErrors struct {
 	ErrUniqueJournalsPkey *UniqueConstraintError
+
+	ErrUniqueJournalsHouseholdIdIdKey *UniqueConstraintError
 
 	ErrUniqueJournalsHouseholdIdIdempotencyKeyKey *UniqueConstraintError
 

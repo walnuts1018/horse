@@ -87,6 +87,15 @@ var JournalEntries = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		HouseholdID: column{
+			Name:      "household_id",
+			DBType:    "uuid",
+			Default:   "",
+			Comment:   "",
+			Nullable:  false,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: journalEntryIndexes{
 		JournalEntriesPkey: index{
@@ -140,14 +149,41 @@ var JournalEntries = Table[
 		Comment: "",
 	},
 	ForeignKeys: journalEntryForeignKeys{
-		JournalEntriesJournalEntriesJournalIDFkey: foreignKey{
+		JournalEntriesJournalEntriesHouseholdAccountFkey: foreignKey{
 			constraint: constraint{
-				Name:    "journal_entries.journal_entries_journal_id_fkey",
-				Columns: []string{"journal_id"},
+				Name:    "journal_entries.journal_entries_household_account_fkey",
+				Columns: []string{"household_id", "account_id"},
+				Comment: "",
+			},
+			ForeignTable:   "accounts",
+			ForeignColumns: []string{"household_id", "id"},
+		},
+		JournalEntriesJournalEntriesHouseholdJournalFkey: foreignKey{
+			constraint: constraint{
+				Name:    "journal_entries.journal_entries_household_journal_fkey",
+				Columns: []string{"household_id", "journal_id"},
 				Comment: "",
 			},
 			ForeignTable:   "journals",
-			ForeignColumns: []string{"id"},
+			ForeignColumns: []string{"household_id", "id"},
+		},
+		JournalEntriesJournalEntriesHouseholdMemberFkey: foreignKey{
+			constraint: constraint{
+				Name:    "journal_entries.journal_entries_household_member_fkey",
+				Columns: []string{"household_id", "member_id"},
+				Comment: "",
+			},
+			ForeignTable:   "household_members",
+			ForeignColumns: []string{"household_id", "member_id"},
+		},
+		JournalEntriesJournalEntriesHouseholdPoolFkey: foreignKey{
+			constraint: constraint{
+				Name:    "journal_entries.journal_entries_household_pool_fkey",
+				Columns: []string{"household_id", "pool_id"},
+				Comment: "",
+			},
+			ForeignTable:   "pools",
+			ForeignColumns: []string{"household_id", "id"},
 		},
 	},
 
@@ -181,19 +217,20 @@ var JournalEntries = Table[
 }
 
 type journalEntryColumns struct {
-	JournalID column
-	LineNo    column
-	AccountID column
-	PoolID    column
-	MemberID  column
-	DebitYen  column
-	CreditYen column
-	Memo      column
+	JournalID   column
+	LineNo      column
+	AccountID   column
+	PoolID      column
+	MemberID    column
+	DebitYen    column
+	CreditYen   column
+	Memo        column
+	HouseholdID column
 }
 
 func (c journalEntryColumns) AsSlice() []column {
 	return []column{
-		c.JournalID, c.LineNo, c.AccountID, c.PoolID, c.MemberID, c.DebitYen, c.CreditYen, c.Memo,
+		c.JournalID, c.LineNo, c.AccountID, c.PoolID, c.MemberID, c.DebitYen, c.CreditYen, c.Memo, c.HouseholdID,
 	}
 }
 
@@ -209,12 +246,15 @@ func (i journalEntryIndexes) AsSlice() []index {
 }
 
 type journalEntryForeignKeys struct {
-	JournalEntriesJournalEntriesJournalIDFkey foreignKey
+	JournalEntriesJournalEntriesHouseholdAccountFkey foreignKey
+	JournalEntriesJournalEntriesHouseholdJournalFkey foreignKey
+	JournalEntriesJournalEntriesHouseholdMemberFkey  foreignKey
+	JournalEntriesJournalEntriesHouseholdPoolFkey    foreignKey
 }
 
 func (f journalEntryForeignKeys) AsSlice() []foreignKey {
 	return []foreignKey{
-		f.JournalEntriesJournalEntriesJournalIDFkey,
+		f.JournalEntriesJournalEntriesHouseholdAccountFkey, f.JournalEntriesJournalEntriesHouseholdJournalFkey, f.JournalEntriesJournalEntriesHouseholdMemberFkey, f.JournalEntriesJournalEntriesHouseholdPoolFkey,
 	}
 }
 

@@ -56,10 +56,10 @@ type journalR struct {
 	AccountIncome   *AccountIncome    // account_incomes.account_incomes_journal_id_fkey
 	AccountMovement *AccountMovement  // account_movements.account_movements_journal_id_fkey
 	Corrections     CorrectionSlice   // corrections.corrections_journal_id_fkey
-	JournalEntries  JournalEntrySlice // journal_entries.journal_entries_journal_id_fkey
+	JournalEntries  JournalEntrySlice // journal_entries.journal_entries_household_journal_fkey
 	CreatedByMember *Member           // journals.journals_created_by_fkey
 	Household       *Household        // journals.journals_household_id_fkey
-	LedgerEntry     *LedgerEntry      // ledger_entries.ledger_entries_journal_id_fkey
+	LedgerEntries   LedgerEntrySlice  // ledger_entries.ledger_entries_household_journal_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -71,10 +71,10 @@ type journalRLoaded struct {
 	AccountIncome   bool // account_incomes.account_incomes_journal_id_fkey
 	AccountMovement bool // account_movements.account_movements_journal_id_fkey
 	Corrections     bool // corrections.corrections_journal_id_fkey
-	JournalEntries  bool // journal_entries.journal_entries_journal_id_fkey
+	JournalEntries  bool // journal_entries.journal_entries_household_journal_fkey
 	CreatedByMember bool // journals.journals_created_by_fkey
 	Household       bool // journals.journals_household_id_fkey
-	LedgerEntry     bool // ledger_entries.ledger_entries_journal_id_fkey
+	LedgerEntries   bool // ledger_entries.ledger_entries_household_journal_fkey
 }
 
 func buildJournalColumns(tableName string) journalColumns {
@@ -790,23 +790,29 @@ func (os JournalSlice) Corrections(mods ...bob.Mod[*dialect.SelectQuery]) Correc
 // JournalEntries starts a query for related objects on journal_entries
 func (o *Journal) JournalEntries(mods ...bob.Mod[*dialect.SelectQuery]) JournalEntriesQuery {
 	return JournalEntries.Query(append(mods,
-		sm.Where(JournalEntries.Columns.JournalID.EQ(psql.Arg(o.ID))),
+		sm.Where(JournalEntries.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(JournalEntries.Columns.JournalID.EQ(psql.Arg(o.ID))),
 	)...)
 }
 
 func (os JournalSlice) JournalEntries(mods ...bob.Mod[*dialect.SelectQuery]) JournalEntriesQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
 	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
 
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
 		pkID = append(pkID, o.ID)
 	}
-	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
 
 	return JournalEntries.Query(append(mods,
-		sm.Where(JournalEntries.Columns.JournalID.EQ(PKArgExpr)),
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "JournalID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "JournalID"),
+		)).As("bob_rel_keys").On(JournalEntries.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), JournalEntries.Columns.JournalID.EQ(psql.Quote("bob_rel_keys", "JournalID"))),
 	)...)
 }
 
@@ -870,26 +876,32 @@ func (os JournalSlice) Household(mods ...bob.Mod[*dialect.SelectQuery]) Househol
 	)...)
 }
 
-// LedgerEntry starts a query for related objects on ledger_entries
-func (o *Journal) LedgerEntry(mods ...bob.Mod[*dialect.SelectQuery]) LedgerEntriesQuery {
+// LedgerEntries starts a query for related objects on ledger_entries
+func (o *Journal) LedgerEntries(mods ...bob.Mod[*dialect.SelectQuery]) LedgerEntriesQuery {
 	return LedgerEntries.Query(append(mods,
-		sm.Where(LedgerEntries.Columns.JournalID.EQ(psql.Arg(o.ID))),
+		sm.Where(LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(LedgerEntries.Columns.JournalID.EQ(psql.Arg(o.ID))),
 	)...)
 }
 
-func (os JournalSlice) LedgerEntry(mods ...bob.Mod[*dialect.SelectQuery]) LedgerEntriesQuery {
+func (os JournalSlice) LedgerEntries(mods ...bob.Mod[*dialect.SelectQuery]) LedgerEntriesQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
 	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
 
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
 		pkID = append(pkID, o.ID)
 	}
-	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
 
 	return LedgerEntries.Query(append(mods,
-		sm.Where(LedgerEntries.Columns.JournalID.EQ(PKArgExpr)),
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "JournalID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "JournalID"),
+		)).As("bob_rel_keys").On(LedgerEntries.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), LedgerEntries.Columns.JournalID.EQ(psql.Quote("bob_rel_keys", "JournalID"))),
 	)...)
 }
 
@@ -1081,6 +1093,7 @@ func (journal0 *Journal) AttachCorrections(ctx context.Context, exec bob.Executo
 
 func insertJournalJournalEntries0(ctx context.Context, exec bob.Executor, journalEntries1 []*JournalEntrySetter, journal0 *Journal) (JournalEntrySlice, error) {
 	for i := range journalEntries1 {
+		journalEntries1[i].HouseholdID = func() *uuid.UUID { return &journal0.HouseholdID }()
 		journalEntries1[i].JournalID = func() *uuid.UUID { return &journal0.ID }()
 	}
 
@@ -1094,7 +1107,8 @@ func insertJournalJournalEntries0(ctx context.Context, exec bob.Executor, journa
 
 func attachJournalJournalEntries0(ctx context.Context, exec bob.Executor, count int, journalEntries1 JournalEntrySlice, journal0 *Journal) (JournalEntrySlice, error) {
 	setter := &JournalEntrySetter{
-		JournalID: func() *uuid.UUID { return &journal0.ID }(),
+		HouseholdID: func() *uuid.UUID { return &journal0.HouseholdID }(),
+		JournalID:   func() *uuid.UUID { return &journal0.ID }(),
 	}
 
 	err := journalEntries1.UpdateAll(ctx, exec, *setter)
@@ -1249,60 +1263,74 @@ func (journal0 *Journal) AttachHousehold(ctx context.Context, exec bob.Executor,
 	return nil
 }
 
-func insertJournalLedgerEntry0(ctx context.Context, exec bob.Executor, ledgerEntry1 *LedgerEntrySetter, journal0 *Journal) (*LedgerEntry, error) {
-	ledgerEntry1.JournalID = func() *uuid.UUID { return &journal0.ID }()
+func insertJournalLedgerEntries0(ctx context.Context, exec bob.Executor, ledgerEntries1 []*LedgerEntrySetter, journal0 *Journal) (LedgerEntrySlice, error) {
+	for i := range ledgerEntries1 {
+		ledgerEntries1[i].HouseholdID = func() *uuid.UUID { return &journal0.HouseholdID }()
+		ledgerEntries1[i].JournalID = func() *uuid.UUID { return &journal0.ID }()
+	}
 
-	ret, err := LedgerEntries.Insert(ledgerEntry1).One(ctx, exec)
+	ret, err := LedgerEntries.Insert(bob.ToMods(ledgerEntries1...)).All(ctx, exec)
 	if err != nil {
-		return ret, fmt.Errorf("insertJournalLedgerEntry0: %w", err)
+		return ret, fmt.Errorf("insertJournalLedgerEntries0: %w", err)
 	}
 
 	return ret, nil
 }
 
-func attachJournalLedgerEntry0(ctx context.Context, exec bob.Executor, count int, ledgerEntry1 *LedgerEntry, journal0 *Journal) (*LedgerEntry, error) {
+func attachJournalLedgerEntries0(ctx context.Context, exec bob.Executor, count int, ledgerEntries1 LedgerEntrySlice, journal0 *Journal) (LedgerEntrySlice, error) {
 	setter := &LedgerEntrySetter{
-		JournalID: func() *uuid.UUID { return &journal0.ID }(),
+		HouseholdID: func() *uuid.UUID { return &journal0.HouseholdID }(),
+		JournalID:   func() *uuid.UUID { return &journal0.ID }(),
 	}
 
-	err := ledgerEntry1.Update(ctx, exec, setter)
+	err := ledgerEntries1.UpdateAll(ctx, exec, *setter)
 	if err != nil {
-		return nil, fmt.Errorf("attachJournalLedgerEntry0: %w", err)
+		return nil, fmt.Errorf("attachJournalLedgerEntries0: %w", err)
 	}
 
-	return ledgerEntry1, nil
+	return ledgerEntries1, nil
 }
 
-func (journal0 *Journal) InsertLedgerEntry(ctx context.Context, exec bob.Executor, related *LedgerEntrySetter) error {
+func (journal0 *Journal) InsertLedgerEntries(ctx context.Context, exec bob.Executor, related ...*LedgerEntrySetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
 	var err error
 
-	ledgerEntry1, err := insertJournalLedgerEntry0(ctx, exec, related, journal0)
+	ledgerEntries1, err := insertJournalLedgerEntries0(ctx, exec, related, journal0)
 	if err != nil {
 		return err
 	}
 
-	journal0.R.LedgerEntry = ledgerEntry1
-	journal0.R.Loaded.LedgerEntry = true
+	journal0.R.LedgerEntries = append(journal0.R.LedgerEntries, ledgerEntries1...)
 
-	ledgerEntry1.R.Journal = journal0
-	ledgerEntry1.R.Loaded.Journal = true
-
+	for _, rel := range ledgerEntries1 {
+		rel.R.Journal = journal0
+		rel.R.Loaded.Journal = true
+	}
 	return nil
 }
 
-func (journal0 *Journal) AttachLedgerEntry(ctx context.Context, exec bob.Executor, ledgerEntry1 *LedgerEntry) error {
-	var err error
+func (journal0 *Journal) AttachLedgerEntries(ctx context.Context, exec bob.Executor, related ...*LedgerEntry) error {
+	if len(related) == 0 {
+		return nil
+	}
 
-	_, err = attachJournalLedgerEntry0(ctx, exec, 1, ledgerEntry1, journal0)
+	var err error
+	ledgerEntries1 := LedgerEntrySlice(related)
+
+	_, err = attachJournalLedgerEntries0(ctx, exec, len(related), ledgerEntries1, journal0)
 	if err != nil {
 		return err
 	}
 
-	journal0.R.LedgerEntry = ledgerEntry1
-	journal0.R.Loaded.LedgerEntry = true
+	journal0.R.LedgerEntries = append(journal0.R.LedgerEntries, ledgerEntries1...)
 
-	ledgerEntry1.R.Journal = journal0
-	ledgerEntry1.R.Loaded.Journal = true
+	for _, rel := range related {
+		rel.R.Journal = journal0
+		rel.R.Loaded.Journal = true
+	}
 
 	return nil
 }
@@ -1396,6 +1424,7 @@ func (w journalWhereR[Q]) HasJournalEntries(filters ...bob.Mod[*dialect.SelectQu
 	q := psql.Select(
 		sm.Columns(psql.Raw("1")),
 		sm.From(JournalEntries.NameExpr()),
+		sm.Where(JournalEntries.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(JournalEntries.Columns.JournalID.EQ(w.cols.ID)),
 	)
 	q.Apply(filters...)
@@ -1430,14 +1459,15 @@ func (w journalWhereR[Q]) HasHousehold(filters ...bob.Mod[*dialect.SelectQuery])
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
-// HasLedgerEntry filters parents that have a matching LedgerEntry using a
+// HasLedgerEntries filters parents that have a matching LedgerEntries using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
 // applied to the subquery (i.e. to LedgerEntries).
-func (w journalWhereR[Q]) HasLedgerEntry(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+func (w journalWhereR[Q]) HasLedgerEntries(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
 	q := psql.Select(
 		sm.Columns(psql.Raw("1")),
 		sm.From(LedgerEntries.NameExpr()),
+		sm.Where(LedgerEntries.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(LedgerEntries.Columns.JournalID.EQ(w.cols.ID)),
 	)
 	q.Apply(filters...)
@@ -1648,18 +1678,20 @@ func (o *Journal) Preload(name string, retrieved any) error {
 			rel.R.Journals = JournalSlice{o}
 		}
 		return nil
-	case "LedgerEntry":
-		rel, ok := retrieved.(*LedgerEntry)
+	case "LedgerEntries":
+		rels, ok := retrieved.(LedgerEntrySlice)
 		if !ok {
 			return fmt.Errorf("journal cannot load %T as %q", retrieved, name)
 		}
 
-		o.R.LedgerEntry = rel
-		o.R.Loaded.LedgerEntry = true
+		o.R.LedgerEntries = rels
+		o.R.Loaded.LedgerEntries = true
 
-		if rel != nil {
-			rel.R.Journal = o
-			rel.R.Loaded.Journal = true
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Journal = o
+				rel.R.Loaded.Journal = true
+			}
 		}
 		return nil
 	default:
@@ -1672,7 +1704,6 @@ type journalPreloader struct {
 	AccountMovement func(...psql.PreloadOption) psql.Preloader
 	CreatedByMember func(...psql.PreloadOption) psql.Preloader
 	Household       func(...psql.PreloadOption) psql.Preloader
-	LedgerEntry     func(...psql.PreloadOption) psql.Preloader
 }
 
 func buildJournalPreloader() journalPreloader {
@@ -1729,19 +1760,6 @@ func buildJournalPreloader() journalPreloader {
 				},
 			}, Households.Columns.Names(), householdScanMapperNullable, opts...)
 		},
-		LedgerEntry: func(opts ...psql.PreloadOption) psql.Preloader {
-			return psql.Preload[*LedgerEntry, LedgerEntrySlice](psql.PreloadRel{
-				Name: "LedgerEntry",
-				Sides: []psql.PreloadSide{
-					{
-						From:        Journals,
-						To:          LedgerEntries,
-						FromColumns: []string{"id"},
-						ToColumns:   []string{"journal_id"},
-					},
-				},
-			}, LedgerEntries.Columns.Names(), ledgerEntryScanMapperNullable, opts...)
-		},
 	}
 }
 
@@ -1752,7 +1770,7 @@ type journalThenLoader[Q orm.Loadable] struct {
 	JournalEntries  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	CreatedByMember func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Household       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	LedgerEntry     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	LedgerEntries   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildJournalThenLoader[Q orm.Loadable]() journalThenLoader[Q] {
@@ -1774,8 +1792,8 @@ func buildJournalThenLoader[Q orm.Loadable]() journalThenLoader[Q] {
 	type HouseholdLoadInterface interface {
 		LoadHousehold(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
-	type LedgerEntryLoadInterface interface {
-		LoadLedgerEntry(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	type LedgerEntriesLoadInterface interface {
+		LoadLedgerEntries(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return journalThenLoader[Q]{
@@ -1815,10 +1833,10 @@ func buildJournalThenLoader[Q orm.Loadable]() journalThenLoader[Q] {
 				return retrieved.LoadHousehold(ctx, exec, mods...)
 			},
 		),
-		LedgerEntry: thenLoadBuilder[Q](
-			"LedgerEntry",
-			func(ctx context.Context, exec bob.Executor, retrieved LedgerEntryLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
-				return retrieved.LoadLedgerEntry(ctx, exec, mods...)
+		LedgerEntries: thenLoadBuilder[Q](
+			"LedgerEntries",
+			func(ctx context.Context, exec bob.Executor, retrieved LedgerEntriesLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadLedgerEntries(ctx, exec, mods...)
 			},
 		),
 	}
@@ -2096,30 +2114,25 @@ func (os JournalSlice) LoadJournalEntries(ctx context.Context, exec bob.Executor
 		o.R.JournalEntries = nil
 		o.R.Loaded.JournalEntries = true
 	}
-	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
-	journalByKey := make(map[uuid.UUID][]*Journal, len(os))
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
 
-		journalByKey[o.ID] = append(journalByKey[o.ID], o)
-	}
+		for _, rel := range journalEntries {
 
-	for _, rel := range journalEntries {
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
 
-		owners, ok := journalByKey[rel.JournalID]
-		if !ok {
-			continue
-		}
-
-		for _, o := range owners {
+			if !(o.ID == rel.JournalID) {
+				continue
+			}
 
 			rel.R.Journal = o
 			rel.R.Loaded.Journal = true
 
 			o.R.JournalEntries = append(o.R.JournalEntries, rel)
-
 		}
 	}
 
@@ -2276,36 +2289,38 @@ func (os JournalSlice) LoadHousehold(ctx context.Context, exec bob.Executor, mod
 	return nil
 }
 
-// LoadLedgerEntry loads the journal's LedgerEntry into the .R struct
-func (o *Journal) LoadLedgerEntry(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+// LoadLedgerEntries loads the journal's LedgerEntries into the .R struct
+func (o *Journal) LoadLedgerEntries(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if o == nil {
 		return nil
 	}
 
 	// Reset the relationship
-	o.R.LedgerEntry = nil
-	o.R.Loaded.LedgerEntry = false
+	o.R.LedgerEntries = nil
+	o.R.Loaded.LedgerEntries = false
 
-	related, err := o.LedgerEntry(mods...).One(ctx, exec)
+	related, err := o.LedgerEntries(mods...).All(ctx, exec)
 	if err != nil {
 		return err
 	}
 
-	related.R.Journal = o
-	related.R.Loaded.Journal = true
+	for _, rel := range related {
+		rel.R.Journal = o
+		rel.R.Loaded.Journal = true
+	}
 
-	o.R.LedgerEntry = related
-	o.R.Loaded.LedgerEntry = true
+	o.R.LedgerEntries = related
+	o.R.Loaded.LedgerEntries = true
 	return nil
 }
 
-// LoadLedgerEntry loads the journal's LedgerEntry into the .R struct
-func (os JournalSlice) LoadLedgerEntry(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+// LoadLedgerEntries loads the journal's LedgerEntries into the .R struct
+func (os JournalSlice) LoadLedgerEntries(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
 	if len(os) == 0 {
 		return nil
 	}
 
-	ledgerEntries, err := os.LedgerEntry(mods...).All(ctx, exec)
+	ledgerEntries, err := os.LedgerEntries(mods...).All(ctx, exec)
 	if err != nil {
 		return err
 	}
@@ -2315,38 +2330,28 @@ func (os JournalSlice) LoadLedgerEntry(ctx context.Context, exec bob.Executor, m
 			continue
 		}
 
-		o.R.LedgerEntry = nil
-		o.R.Loaded.LedgerEntry = true
+		o.R.LedgerEntries = nil
+		o.R.Loaded.LedgerEntries = true
 	}
-	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
-	journalByKey := make(map[uuid.UUID][]*Journal, len(os))
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
 
-		journalByKey[o.ID] = append(journalByKey[o.ID], o)
-	}
+		for _, rel := range ledgerEntries {
 
-	for _, rel := range ledgerEntries {
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
 
-		owners, ok := journalByKey[rel.JournalID]
-		if !ok {
-			continue
-		}
-
-		for _, o := range owners {
-
-			// to-one: keep only the first matching child (matches the previous break)
-			if o.R.LedgerEntry != nil {
+			if !(o.ID == rel.JournalID) {
 				continue
 			}
 
 			rel.R.Journal = o
 			rel.R.Loaded.Journal = true
 
-			o.R.LedgerEntry = rel
-
+			o.R.LedgerEntries = append(o.R.LedgerEntries, rel)
 		}
 	}
 
@@ -2357,6 +2362,7 @@ func (os JournalSlice) LoadLedgerEntry(ctx context.Context, exec bob.Executor, m
 type journalC struct {
 	Corrections    *int64
 	JournalEntries *int64
+	LedgerEntries  *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -2370,6 +2376,8 @@ func (o *Journal) PreloadCount(name string, count int64) error {
 		o.C.Corrections = &count
 	case "JournalEntries":
 		o.C.JournalEntries = &count
+	case "LedgerEntries":
+		o.C.LedgerEntries = &count
 	}
 	return nil
 }
@@ -2377,6 +2385,7 @@ func (o *Journal) PreloadCount(name string, count int64) error {
 type journalCountPreloader struct {
 	Corrections    func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 	JournalEntries func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	LedgerEntries  func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildJournalCountPreloader() journalCountPreloader {
@@ -2409,7 +2418,26 @@ func buildJournalCountPreloader() journalCountPreloader {
 					sm.Columns(psql.Raw("count(*)")),
 
 					sm.From(JournalEntries.NameAsExpr()),
+					sm.Where(psql.Quote(JournalEntries.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
 					sm.Where(psql.Quote(JournalEntries.Alias(), "journal_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
+		LedgerEntries: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Journal]("LedgerEntries", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Journals.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(LedgerEntries.NameAsExpr()),
+					sm.Where(psql.Quote(LedgerEntries.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(LedgerEntries.Alias(), "journal_id").EQ(psql.Quote(parent, "id"))),
 				}
 				subqueryMods = append(subqueryMods, mods...)
 				return psql.Group(psql.Select(subqueryMods...).Expression)
@@ -2421,6 +2449,7 @@ func buildJournalCountPreloader() journalCountPreloader {
 type journalCountThenLoader[Q orm.Loadable] struct {
 	Corrections    func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	JournalEntries func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	LedgerEntries  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildJournalCountThenLoader[Q orm.Loadable]() journalCountThenLoader[Q] {
@@ -2429,6 +2458,9 @@ func buildJournalCountThenLoader[Q orm.Loadable]() journalCountThenLoader[Q] {
 	}
 	type JournalEntriesCountInterface interface {
 		LoadCountJournalEntries(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type LedgerEntriesCountInterface interface {
+		LoadCountLedgerEntries(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return journalCountThenLoader[Q]{
@@ -2442,6 +2474,12 @@ func buildJournalCountThenLoader[Q orm.Loadable]() journalCountThenLoader[Q] {
 			"JournalEntries",
 			func(ctx context.Context, exec bob.Executor, retrieved JournalEntriesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadCountJournalEntries(ctx, exec, mods...)
+			},
+		),
+		LedgerEntries: countThenLoadBuilder[Q](
+			"LedgerEntries",
+			func(ctx context.Context, exec bob.Executor, retrieved LedgerEntriesCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountLedgerEntries(ctx, exec, mods...)
 			},
 		),
 	}
@@ -2549,18 +2587,21 @@ func (os JournalSlice) LoadCountJournalEntries(ctx context.Context, exec bob.Exe
 
 	// Build the IN arg expression from parent PKs
 
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
 	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
 		pkID = append(pkID, o.ID)
 	}
-	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkID), "uuid[]"))
 
 	// countResult holds one scanned row from the batch count query.
 	// FK columns are aliased to the parent PK column names for direct map lookup.
 	type countResult struct {
+		HouseholdID uuid.UUID
+
 		ID    uuid.UUID
 		Count int64
 	}
@@ -2568,6 +2609,7 @@ func (os JournalSlice) LoadCountJournalEntries(ctx context.Context, exec bob.Exe
 	batchMods := []bob.Mod[*dialect.SelectQuery]{
 		// SELECT fk AS parent_pk, count(*)
 		sm.Columns(
+			JournalEntries.Columns.HouseholdID.As("household_id"),
 			JournalEntries.Columns.JournalID.As("id"),
 			psql.Raw("count(*) as count"),
 		),
@@ -2575,8 +2617,22 @@ func (os JournalSlice) LoadCountJournalEntries(ctx context.Context, exec bob.Exe
 		sm.From(JournalEntries.NameAsExpr()),
 
 		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
-		sm.Where(JournalEntries.Columns.JournalID.EQ(PKArgExpr)),
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "JournalID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "JournalID"),
+		)).As("bob_rel_keys").On(
+			JournalEntries.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			JournalEntries.Columns.JournalID.EQ(psql.Quote("bob_rel_keys", "JournalID")),
+		),
 		// GROUP BY fk columns
+		sm.GroupBy(JournalEntries.Columns.HouseholdID),
 		sm.GroupBy(JournalEntries.Columns.JournalID),
 	}
 	batchMods = append(batchMods, mods...)
@@ -2589,17 +2645,140 @@ func (os JournalSlice) LoadCountJournalEntries(ctx context.Context, exec bob.Exe
 		return err
 	}
 
-	// Single-column FK: direct map lookup
-	countMap := make(map[uuid.UUID]int64, len(results))
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
 	for _, r := range results {
-		countMap[r.ID] = r.Count
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
 	}
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
-		count := countMap[o.ID]
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
 		o.C.JournalEntries = &count
+	}
+
+	return nil
+}
+
+// LoadCountLedgerEntries loads the count of LedgerEntries into the C struct
+func (o *Journal) LoadCountLedgerEntries(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.LedgerEntries(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.LedgerEntries = &count
+	return nil
+}
+
+// LoadCountLedgerEntries loads the count of LedgerEntries for a slice in a single batch query
+func (os JournalSlice) LoadCountLedgerEntries(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			LedgerEntries.Columns.HouseholdID.As("household_id"),
+			LedgerEntries.Columns.JournalID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(LedgerEntries.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "JournalID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "JournalID"),
+		)).As("bob_rel_keys").On(
+			LedgerEntries.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			LedgerEntries.Columns.JournalID.EQ(psql.Quote("bob_rel_keys", "JournalID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(LedgerEntries.Columns.HouseholdID),
+		sm.GroupBy(LedgerEntries.Columns.JournalID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.LedgerEntries = &count
 	}
 
 	return nil
@@ -2613,7 +2792,7 @@ type journalJoins[Q dialect.Joinable] struct {
 	JournalEntries  modAs[Q, journalEntryColumns]
 	CreatedByMember modAs[Q, memberColumns]
 	Household       modAs[Q, householdColumns]
-	LedgerEntry     modAs[Q, ledgerEntryColumns]
+	LedgerEntries   modAs[Q, ledgerEntryColumns]
 }
 
 func (j journalJoins[Q]) aliasedAs(alias string) journalJoins[Q] {
@@ -2672,7 +2851,7 @@ func buildJournalJoins[Q dialect.Joinable](cols journalColumns, typ string) jour
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, JournalEntries.NameExpr().As(to.Alias())).On(
-						to.JournalID.EQ(cols.ID),
+						to.HouseholdID.EQ(cols.HouseholdID), to.JournalID.EQ(cols.ID),
 					))
 				}
 
@@ -2707,14 +2886,14 @@ func buildJournalJoins[Q dialect.Joinable](cols journalColumns, typ string) jour
 				return mods
 			},
 		},
-		LedgerEntry: modAs[Q, ledgerEntryColumns]{
+		LedgerEntries: modAs[Q, ledgerEntryColumns]{
 			c: LedgerEntries.Columns,
 			f: func(to ledgerEntryColumns) bob.Mod[Q] {
 				mods := make(mods.QueryMods[Q], 0, 1)
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, LedgerEntries.NameExpr().As(to.Alias())).On(
-						to.JournalID.EQ(cols.ID),
+						to.HouseholdID.EQ(cols.HouseholdID), to.JournalID.EQ(cols.ID),
 					))
 				}
 

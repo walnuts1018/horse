@@ -106,6 +106,28 @@ var Journals = Table[
 			Where:         "",
 			Include:       []string{},
 		},
+		JournalsHouseholdIDIDKey: index{
+			Type: "btree",
+			Name: "journals_household_id_id_key",
+			Columns: []indexColumn{
+				{
+					Name:         "household_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+			},
+			Unique:        true,
+			Comment:       "",
+			NullsFirst:    []bool{false, false},
+			NullsDistinct: false,
+			Where:         "",
+			Include:       []string{},
+		},
 		JournalsHouseholdIDIdempotencyKeyKey: index{
 			Type: "btree",
 			Name: "journals_household_id_idempotency_key_key",
@@ -182,6 +204,11 @@ var Journals = Table[
 		},
 	},
 	Uniques: journalUniques{
+		JournalsHouseholdIDIDKey: constraint{
+			Name:    "journals_household_id_id_key",
+			Columns: []string{"household_id", "id"},
+			Comment: "",
+		},
 		JournalsHouseholdIDIdempotencyKeyKey: constraint{
 			Name:    "journals_household_id_idempotency_key_key",
 			Columns: []string{"household_id", "idempotency_key"},
@@ -216,13 +243,14 @@ func (c journalColumns) AsSlice() []column {
 
 type journalIndexes struct {
 	JournalsPkey                             index
+	JournalsHouseholdIDIDKey                 index
 	JournalsHouseholdIDIdempotencyKeyKey     index
 	JournalsHouseholdIDSourceKindSourceIDKey index
 }
 
 func (i journalIndexes) AsSlice() []index {
 	return []index{
-		i.JournalsPkey, i.JournalsHouseholdIDIdempotencyKeyKey, i.JournalsHouseholdIDSourceKindSourceIDKey,
+		i.JournalsPkey, i.JournalsHouseholdIDIDKey, i.JournalsHouseholdIDIdempotencyKeyKey, i.JournalsHouseholdIDSourceKindSourceIDKey,
 	}
 }
 
@@ -238,13 +266,14 @@ func (f journalForeignKeys) AsSlice() []foreignKey {
 }
 
 type journalUniques struct {
+	JournalsHouseholdIDIDKey                 constraint
 	JournalsHouseholdIDIdempotencyKeyKey     constraint
 	JournalsHouseholdIDSourceKindSourceIDKey constraint
 }
 
 func (u journalUniques) AsSlice() []constraint {
 	return []constraint{
-		u.JournalsHouseholdIDIdempotencyKeyKey, u.JournalsHouseholdIDSourceKindSourceIDKey,
+		u.JournalsHouseholdIDIDKey, u.JournalsHouseholdIDIdempotencyKeyKey, u.JournalsHouseholdIDSourceKindSourceIDKey,
 	}
 }
 

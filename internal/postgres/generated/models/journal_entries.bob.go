@@ -25,14 +25,15 @@ import (
 
 // JournalEntry is an object representing the database table.
 type JournalEntry struct {
-	JournalID uuid.UUID           `db:"journal_id,pk" `
-	LineNo    int32               `db:"line_no,pk" `
-	AccountID sql.Null[uuid.UUID] `db:"account_id" `
-	PoolID    sql.Null[uuid.UUID] `db:"pool_id" `
-	MemberID  sql.Null[uuid.UUID] `db:"member_id" `
-	DebitYen  int64               `db:"debit_yen" `
-	CreditYen int64               `db:"credit_yen" `
-	Memo      string              `db:"memo" `
+	JournalID   uuid.UUID           `db:"journal_id,pk" `
+	LineNo      int32               `db:"line_no,pk" `
+	AccountID   sql.Null[uuid.UUID] `db:"account_id" `
+	PoolID      sql.Null[uuid.UUID] `db:"pool_id" `
+	MemberID    sql.Null[uuid.UUID] `db:"member_id" `
+	DebitYen    int64               `db:"debit_yen" `
+	CreditYen   int64               `db:"credit_yen" `
+	Memo        string              `db:"memo" `
+	HouseholdID uuid.UUID           `db:"household_id" `
 
 	R journalEntryR `db:"-" `
 }
@@ -49,7 +50,10 @@ type JournalEntriesQuery = *psql.ViewQuery[*JournalEntry, JournalEntrySlice]
 
 // journalEntryR is where relationships are stored.
 type journalEntryR struct {
-	Journal *Journal // journal_entries.journal_entries_journal_id_fkey
+	Account         *Account         // journal_entries.journal_entries_household_account_fkey
+	Journal         *Journal         // journal_entries.journal_entries_household_journal_fkey
+	HouseholdMember *HouseholdMember // journal_entries.journal_entries_household_member_fkey
+	Pool            *Pool            // journal_entries.journal_entries_household_pool_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -58,12 +62,15 @@ type journalEntryR struct {
 
 // journalEntryRLoaded tracks which relationships on JournalEntry have been loaded.
 type journalEntryRLoaded struct {
-	Journal bool // journal_entries.journal_entries_journal_id_fkey
+	Account         bool // journal_entries.journal_entries_household_account_fkey
+	Journal         bool // journal_entries.journal_entries_household_journal_fkey
+	HouseholdMember bool // journal_entries.journal_entries_household_member_fkey
+	Pool            bool // journal_entries.journal_entries_household_pool_fkey
 }
 
 func buildJournalEntryColumns(tableName string) journalEntryColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"journal_id", "line_no", "account_id", "pool_id", "member_id", "debit_yen", "credit_yen", "memo",
+		"journal_id", "line_no", "account_id", "pool_id", "member_id", "debit_yen", "credit_yen", "memo", "household_id",
 	)
 
 	if tableName != "" {
@@ -81,20 +88,22 @@ func buildJournalEntryColumns(tableName string) journalEntryColumns {
 		DebitYen:    buildJournalEntryColumn(tableName, "debit_yen"),
 		CreditYen:   buildJournalEntryColumn(tableName, "credit_yen"),
 		Memo:        buildJournalEntryColumn(tableName, "memo"),
+		HouseholdID: buildJournalEntryColumn(tableName, "household_id"),
 	}
 }
 
 type journalEntryColumns struct {
 	expr.ColumnsExpr
-	tableAlias string
-	JournalID  journalEntryColumn
-	LineNo     journalEntryColumn
-	AccountID  journalEntryColumn
-	PoolID     journalEntryColumn
-	MemberID   journalEntryColumn
-	DebitYen   journalEntryColumn
-	CreditYen  journalEntryColumn
-	Memo       journalEntryColumn
+	tableAlias  string
+	JournalID   journalEntryColumn
+	LineNo      journalEntryColumn
+	AccountID   journalEntryColumn
+	PoolID      journalEntryColumn
+	MemberID    journalEntryColumn
+	DebitYen    journalEntryColumn
+	CreditYen   journalEntryColumn
+	Memo        journalEntryColumn
+	HouseholdID journalEntryColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -140,18 +149,19 @@ func (c journalEntryColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type JournalEntrySetter struct {
-	JournalID *uuid.UUID           `db:"journal_id,pk" `
-	LineNo    *int32               `db:"line_no,pk" `
-	AccountID *sql.Null[uuid.UUID] `db:"account_id" `
-	PoolID    *sql.Null[uuid.UUID] `db:"pool_id" `
-	MemberID  *sql.Null[uuid.UUID] `db:"member_id" `
-	DebitYen  *int64               `db:"debit_yen" `
-	CreditYen *int64               `db:"credit_yen" `
-	Memo      *string              `db:"memo" `
+	JournalID   *uuid.UUID           `db:"journal_id,pk" `
+	LineNo      *int32               `db:"line_no,pk" `
+	AccountID   *sql.Null[uuid.UUID] `db:"account_id" `
+	PoolID      *sql.Null[uuid.UUID] `db:"pool_id" `
+	MemberID    *sql.Null[uuid.UUID] `db:"member_id" `
+	DebitYen    *int64               `db:"debit_yen" `
+	CreditYen   *int64               `db:"credit_yen" `
+	Memo        *string              `db:"memo" `
+	HouseholdID *uuid.UUID           `db:"household_id" `
 }
 
 func (s JournalEntrySetter) SetColumns() []string {
-	vals := make([]string, 0, 8)
+	vals := make([]string, 0, 9)
 	if s.JournalID != nil {
 		vals = append(vals, "journal_id")
 	}
@@ -175,6 +185,9 @@ func (s JournalEntrySetter) SetColumns() []string {
 	}
 	if s.Memo != nil {
 		vals = append(vals, "memo")
+	}
+	if s.HouseholdID != nil {
+		vals = append(vals, "household_id")
 	}
 	return vals
 }
@@ -245,6 +258,14 @@ func (s JournalEntrySetter) Overwrite(t *JournalEntry) {
 				return *new(string)
 			}
 			return *s.Memo
+		}()
+	}
+	if s.HouseholdID != nil {
+		t.HouseholdID = func() uuid.UUID {
+			if s.HouseholdID == nil {
+				return *new(uuid.UUID)
+			}
+			return *s.HouseholdID
 		}()
 	}
 }
@@ -338,6 +359,16 @@ func (s *JournalEntrySetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.Memo
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.HouseholdID == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() uuid.UUID {
+				if s.HouseholdID == nil {
+					return *new(uuid.UUID)
+				}
+				return *s.HouseholdID
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -346,7 +377,7 @@ func (s JournalEntrySetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s JournalEntrySetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 8)
+	exprs := make([]bob.Expression, 0, 9)
 
 	if s.JournalID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -404,6 +435,13 @@ func (s JournalEntrySetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.HouseholdID != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "household_id")...),
+			psql.Arg(s.HouseholdID),
+		}})
+	}
+
 	return exprs
 }
 
@@ -414,7 +452,7 @@ func journalEntryScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc
 		idx int
 		dst func(o *JournalEntry) any
 	}
-	targets := make([]target, 0, 8)
+	targets := make([]target, 0, 9)
 	for i, col := range cols {
 		switch col {
 		case "journal_id":
@@ -433,6 +471,8 @@ func journalEntryScanMapper(ctx context.Context, cols []string) (scan.BeforeFunc
 			targets = append(targets, target{i, func(o *JournalEntry) any { return &o.CreditYen }})
 		case "memo":
 			targets = append(targets, target{i, func(o *JournalEntry) any { return &o.Memo }})
+		case "household_id":
+			targets = append(targets, target{i, func(o *JournalEntry) any { return &o.HouseholdID }})
 		}
 	}
 
@@ -712,39 +752,177 @@ func (o JournalEntrySlice) ReloadAll(ctx context.Context, exec bob.Executor) err
 	return nil
 }
 
-// Journal starts a query for related objects on journals
-func (o *JournalEntry) Journal(mods ...bob.Mod[*dialect.SelectQuery]) JournalsQuery {
-	return Journals.Query(append(mods,
-		sm.Where(Journals.Columns.ID.EQ(psql.Arg(o.JournalID))),
+// Account starts a query for related objects on accounts
+func (o *JournalEntry) Account(mods ...bob.Mod[*dialect.SelectQuery]) AccountsQuery {
+	return Accounts.Query(append(mods,
+		sm.Where(Accounts.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(Accounts.Columns.ID.EQ(psql.Arg(o.AccountID))),
 	)...)
 }
 
-func (os JournalEntrySlice) Journal(mods ...bob.Mod[*dialect.SelectQuery]) JournalsQuery {
-	pkJournalID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+func (os JournalEntrySlice) Account(mods ...bob.Mod[*dialect.SelectQuery]) AccountsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
 
-	// the array is only a filter (semi-join), so duplicate keys can be
-	// dropped before they are sent over the wire
-	seenJournalID := make(map[uuid.UUID]struct{}, len(os))
+	pkAccountID := make(pgtypes.Array[sql.Null[uuid.UUID]], 0, len(os))
+
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
-		if _, ok := seenJournalID[o.JournalID]; ok {
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkAccountID = append(pkAccountID, o.AccountID)
+	}
+
+	return Accounts.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkAccountID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
+		)).As("bob_rel_keys").On(Accounts.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), Accounts.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
+	)...)
+}
+
+// Journal starts a query for related objects on journals
+func (o *JournalEntry) Journal(mods ...bob.Mod[*dialect.SelectQuery]) JournalsQuery {
+	return Journals.Query(append(mods,
+		sm.Where(Journals.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(Journals.Columns.ID.EQ(psql.Arg(o.JournalID))),
+	)...)
+}
+
+func (os JournalEntrySlice) Journal(mods ...bob.Mod[*dialect.SelectQuery]) JournalsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkJournalID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
 			continue
 		}
-		seenJournalID[o.JournalID] = struct{}{}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
 		pkJournalID = append(pkJournalID, o.JournalID)
 	}
-	PKArgExpr := psql.Any(psql.Cast(psql.Arg(pkJournalID), "uuid[]"))
 
 	return Journals.Query(append(mods,
-		sm.Where(Journals.Columns.ID.EQ(PKArgExpr)),
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkJournalID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
+		)).As("bob_rel_keys").On(Journals.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), Journals.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
 	)...)
+}
+
+// HouseholdMember starts a query for related objects on household_members
+func (o *JournalEntry) HouseholdMember(mods ...bob.Mod[*dialect.SelectQuery]) HouseholdMembersQuery {
+	return HouseholdMembers.Query(append(mods,
+		sm.Where(HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(HouseholdMembers.Columns.MemberID.EQ(psql.Arg(o.MemberID))),
+	)...)
+}
+
+func (os JournalEntrySlice) HouseholdMember(mods ...bob.Mod[*dialect.SelectQuery]) HouseholdMembersQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkMemberID := make(pgtypes.Array[sql.Null[uuid.UUID]], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkMemberID = append(pkMemberID, o.MemberID)
+	}
+
+	return HouseholdMembers.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "MemberID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkMemberID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "MemberID"),
+		)).As("bob_rel_keys").On(HouseholdMembers.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), HouseholdMembers.Columns.MemberID.EQ(psql.Quote("bob_rel_keys", "MemberID"))),
+	)...)
+}
+
+// Pool starts a query for related objects on pools
+func (o *JournalEntry) Pool(mods ...bob.Mod[*dialect.SelectQuery]) PoolsQuery {
+	return Pools.Query(append(mods,
+		sm.Where(Pools.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(Pools.Columns.ID.EQ(psql.Arg(o.PoolID))),
+	)...)
+}
+
+func (os JournalEntrySlice) Pool(mods ...bob.Mod[*dialect.SelectQuery]) PoolsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkPoolID := make(pgtypes.Array[sql.Null[uuid.UUID]], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkPoolID = append(pkPoolID, o.PoolID)
+	}
+
+	return Pools.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkPoolID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
+		)).As("bob_rel_keys").On(Pools.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), Pools.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
+	)...)
+}
+
+func attachJournalEntryAccount0(ctx context.Context, exec bob.Executor, count int, journalEntry0 *JournalEntry, account1 *Account) (*JournalEntry, error) {
+	setter := &JournalEntrySetter{
+		HouseholdID: func() *uuid.UUID { return &account1.HouseholdID }(),
+		AccountID:   func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: account1.ID, Valid: true}; return &v }(),
+	}
+
+	err := journalEntry0.Update(ctx, exec, setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachJournalEntryAccount0: %w", err)
+	}
+
+	return journalEntry0, nil
+}
+
+func (journalEntry0 *JournalEntry) InsertAccount(ctx context.Context, exec bob.Executor, related *AccountSetter) error {
+	var err error
+
+	account1, err := Accounts.Insert(related).One(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("inserting related objects: %w", err)
+	}
+
+	_, err = attachJournalEntryAccount0(ctx, exec, 1, journalEntry0, account1)
+	if err != nil {
+		return err
+	}
+
+	journalEntry0.R.Account = account1
+	journalEntry0.R.Loaded.Account = true
+
+	account1.R.JournalEntries = append(account1.R.JournalEntries, journalEntry0)
+
+	return nil
+}
+
+func (journalEntry0 *JournalEntry) AttachAccount(ctx context.Context, exec bob.Executor, account1 *Account) error {
+	var err error
+
+	_, err = attachJournalEntryAccount0(ctx, exec, 1, journalEntry0, account1)
+	if err != nil {
+		return err
+	}
+
+	journalEntry0.R.Account = account1
+	journalEntry0.R.Loaded.Account = true
+
+	account1.R.JournalEntries = append(account1.R.JournalEntries, journalEntry0)
+
+	return nil
 }
 
 func attachJournalEntryJournal0(ctx context.Context, exec bob.Executor, count int, journalEntry0 *JournalEntry, journal1 *Journal) (*JournalEntry, error) {
 	setter := &JournalEntrySetter{
-		JournalID: func() *uuid.UUID { return &journal1.ID }(),
+		HouseholdID: func() *uuid.UUID { return &journal1.HouseholdID }(),
+		JournalID:   func() *uuid.UUID { return &journal1.ID }(),
 	}
 
 	err := journalEntry0.Update(ctx, exec, setter)
@@ -792,17 +970,123 @@ func (journalEntry0 *JournalEntry) AttachJournal(ctx context.Context, exec bob.E
 	return nil
 }
 
+func attachJournalEntryHouseholdMember0(ctx context.Context, exec bob.Executor, count int, journalEntry0 *JournalEntry, householdMember1 *HouseholdMember) (*JournalEntry, error) {
+	setter := &JournalEntrySetter{
+		HouseholdID: func() *uuid.UUID { return &householdMember1.HouseholdID }(),
+		MemberID: func() *sql.Null[uuid.UUID] {
+			v := sql.Null[uuid.UUID]{V: householdMember1.MemberID, Valid: true}
+			return &v
+		}(),
+	}
+
+	err := journalEntry0.Update(ctx, exec, setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachJournalEntryHouseholdMember0: %w", err)
+	}
+
+	return journalEntry0, nil
+}
+
+func (journalEntry0 *JournalEntry) InsertHouseholdMember(ctx context.Context, exec bob.Executor, related *HouseholdMemberSetter) error {
+	var err error
+
+	householdMember1, err := HouseholdMembers.Insert(related).One(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("inserting related objects: %w", err)
+	}
+
+	_, err = attachJournalEntryHouseholdMember0(ctx, exec, 1, journalEntry0, householdMember1)
+	if err != nil {
+		return err
+	}
+
+	journalEntry0.R.HouseholdMember = householdMember1
+	journalEntry0.R.Loaded.HouseholdMember = true
+
+	householdMember1.R.JournalEntries = append(householdMember1.R.JournalEntries, journalEntry0)
+
+	return nil
+}
+
+func (journalEntry0 *JournalEntry) AttachHouseholdMember(ctx context.Context, exec bob.Executor, householdMember1 *HouseholdMember) error {
+	var err error
+
+	_, err = attachJournalEntryHouseholdMember0(ctx, exec, 1, journalEntry0, householdMember1)
+	if err != nil {
+		return err
+	}
+
+	journalEntry0.R.HouseholdMember = householdMember1
+	journalEntry0.R.Loaded.HouseholdMember = true
+
+	householdMember1.R.JournalEntries = append(householdMember1.R.JournalEntries, journalEntry0)
+
+	return nil
+}
+
+func attachJournalEntryPool0(ctx context.Context, exec bob.Executor, count int, journalEntry0 *JournalEntry, pool1 *Pool) (*JournalEntry, error) {
+	setter := &JournalEntrySetter{
+		HouseholdID: func() *uuid.UUID { return &pool1.HouseholdID }(),
+		PoolID:      func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: pool1.ID, Valid: true}; return &v }(),
+	}
+
+	err := journalEntry0.Update(ctx, exec, setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachJournalEntryPool0: %w", err)
+	}
+
+	return journalEntry0, nil
+}
+
+func (journalEntry0 *JournalEntry) InsertPool(ctx context.Context, exec bob.Executor, related *PoolSetter) error {
+	var err error
+
+	pool1, err := Pools.Insert(related).One(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("inserting related objects: %w", err)
+	}
+
+	_, err = attachJournalEntryPool0(ctx, exec, 1, journalEntry0, pool1)
+	if err != nil {
+		return err
+	}
+
+	journalEntry0.R.Pool = pool1
+	journalEntry0.R.Loaded.Pool = true
+
+	pool1.R.JournalEntries = append(pool1.R.JournalEntries, journalEntry0)
+
+	return nil
+}
+
+func (journalEntry0 *JournalEntry) AttachPool(ctx context.Context, exec bob.Executor, pool1 *Pool) error {
+	var err error
+
+	_, err = attachJournalEntryPool0(ctx, exec, 1, journalEntry0, pool1)
+	if err != nil {
+		return err
+	}
+
+	journalEntry0.R.Pool = pool1
+	journalEntry0.R.Loaded.Pool = true
+
+	pool1.R.JournalEntries = append(pool1.R.JournalEntries, journalEntry0)
+
+	return nil
+}
+
 type journalEntryWhere[Q psql.Filterable] struct {
-	cols      journalEntryColumns
-	JournalID psql.WhereMod[Q, uuid.UUID]
-	LineNo    psql.WhereMod[Q, int32]
-	AccountID psql.WhereNullMod[Q, uuid.UUID]
-	PoolID    psql.WhereNullMod[Q, uuid.UUID]
-	MemberID  psql.WhereNullMod[Q, uuid.UUID]
-	DebitYen  psql.WhereMod[Q, int64]
-	CreditYen psql.WhereMod[Q, int64]
-	Memo      psql.WhereMod[Q, string]
-	R         journalEntryWhereR[Q]
+	cols        journalEntryColumns
+	JournalID   psql.WhereMod[Q, uuid.UUID]
+	LineNo      psql.WhereMod[Q, int32]
+	AccountID   psql.WhereNullMod[Q, uuid.UUID]
+	PoolID      psql.WhereNullMod[Q, uuid.UUID]
+	MemberID    psql.WhereNullMod[Q, uuid.UUID]
+	DebitYen    psql.WhereMod[Q, int64]
+	CreditYen   psql.WhereMod[Q, int64]
+	Memo        psql.WhereMod[Q, string]
+	HouseholdID psql.WhereMod[Q, uuid.UUID]
+	R           journalEntryWhereR[Q]
 }
 
 func (journalEntryWhere[Q]) AliasedAs(alias string) journalEntryWhere[Q] {
@@ -811,16 +1095,17 @@ func (journalEntryWhere[Q]) AliasedAs(alias string) journalEntryWhere[Q] {
 
 func buildJournalEntryWhere[Q psql.Filterable](cols journalEntryColumns) journalEntryWhere[Q] {
 	return journalEntryWhere[Q]{
-		cols:      cols,
-		JournalID: psql.Where[Q, uuid.UUID](cols.JournalID.Expression),
-		LineNo:    psql.Where[Q, int32](cols.LineNo.Expression),
-		AccountID: psql.WhereNull[Q, uuid.UUID](cols.AccountID.Expression),
-		PoolID:    psql.WhereNull[Q, uuid.UUID](cols.PoolID.Expression),
-		MemberID:  psql.WhereNull[Q, uuid.UUID](cols.MemberID.Expression),
-		DebitYen:  psql.Where[Q, int64](cols.DebitYen.Expression),
-		CreditYen: psql.Where[Q, int64](cols.CreditYen.Expression),
-		Memo:      psql.Where[Q, string](cols.Memo.Expression),
-		R:         journalEntryWhereR[Q]{cols: cols},
+		cols:        cols,
+		JournalID:   psql.Where[Q, uuid.UUID](cols.JournalID.Expression),
+		LineNo:      psql.Where[Q, int32](cols.LineNo.Expression),
+		AccountID:   psql.WhereNull[Q, uuid.UUID](cols.AccountID.Expression),
+		PoolID:      psql.WhereNull[Q, uuid.UUID](cols.PoolID.Expression),
+		MemberID:    psql.WhereNull[Q, uuid.UUID](cols.MemberID.Expression),
+		DebitYen:    psql.Where[Q, int64](cols.DebitYen.Expression),
+		CreditYen:   psql.Where[Q, int64](cols.CreditYen.Expression),
+		Memo:        psql.Where[Q, string](cols.Memo.Expression),
+		HouseholdID: psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
+		R:           journalEntryWhereR[Q]{cols: cols},
 	}
 }
 
@@ -831,6 +1116,21 @@ type journalEntryWhereR[Q psql.Filterable] struct {
 	cols journalEntryColumns
 }
 
+// HasAccount filters parents that have a matching Account using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to Accounts).
+func (w journalEntryWhereR[Q]) HasAccount(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(Accounts.NameExpr()),
+		sm.Where(Accounts.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(Accounts.Columns.ID.EQ(w.cols.AccountID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasJournal filters parents that have a matching Journal using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -839,7 +1139,38 @@ func (w journalEntryWhereR[Q]) HasJournal(filters ...bob.Mod[*dialect.SelectQuer
 	q := psql.Select(
 		sm.Columns(psql.Raw("1")),
 		sm.From(Journals.NameExpr()),
+		sm.Where(Journals.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(Journals.Columns.ID.EQ(w.cols.JournalID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasHouseholdMember filters parents that have a matching HouseholdMember using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to HouseholdMembers).
+func (w journalEntryWhereR[Q]) HasHouseholdMember(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(HouseholdMembers.NameExpr()),
+		sm.Where(HouseholdMembers.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(HouseholdMembers.Columns.MemberID.EQ(w.cols.MemberID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasPool filters parents that have a matching Pool using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to Pools).
+func (w journalEntryWhereR[Q]) HasPool(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(Pools.NameExpr()),
+		sm.Where(Pools.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(Pools.Columns.ID.EQ(w.cols.PoolID)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -851,6 +1182,19 @@ func (o *JournalEntry) Preload(name string, retrieved any) error {
 	}
 
 	switch name {
+	case "Account":
+		rel, ok := retrieved.(*Account)
+		if !ok {
+			return fmt.Errorf("journalEntry cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.Account = rel
+		o.R.Loaded.Account = true
+
+		if rel != nil {
+			rel.R.JournalEntries = JournalEntrySlice{o}
+		}
+		return nil
 	case "Journal":
 		rel, ok := retrieved.(*Journal)
 		if !ok {
@@ -864,17 +1208,59 @@ func (o *JournalEntry) Preload(name string, retrieved any) error {
 			rel.R.JournalEntries = JournalEntrySlice{o}
 		}
 		return nil
+	case "HouseholdMember":
+		rel, ok := retrieved.(*HouseholdMember)
+		if !ok {
+			return fmt.Errorf("journalEntry cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.HouseholdMember = rel
+		o.R.Loaded.HouseholdMember = true
+
+		if rel != nil {
+			rel.R.JournalEntries = JournalEntrySlice{o}
+		}
+		return nil
+	case "Pool":
+		rel, ok := retrieved.(*Pool)
+		if !ok {
+			return fmt.Errorf("journalEntry cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.Pool = rel
+		o.R.Loaded.Pool = true
+
+		if rel != nil {
+			rel.R.JournalEntries = JournalEntrySlice{o}
+		}
+		return nil
 	default:
 		return fmt.Errorf("journalEntry has no relationship %q", name)
 	}
 }
 
 type journalEntryPreloader struct {
-	Journal func(...psql.PreloadOption) psql.Preloader
+	Account         func(...psql.PreloadOption) psql.Preloader
+	Journal         func(...psql.PreloadOption) psql.Preloader
+	HouseholdMember func(...psql.PreloadOption) psql.Preloader
+	Pool            func(...psql.PreloadOption) psql.Preloader
 }
 
 func buildJournalEntryPreloader() journalEntryPreloader {
 	return journalEntryPreloader{
+		Account: func(opts ...psql.PreloadOption) psql.Preloader {
+			return psql.Preload[*Account, AccountSlice](psql.PreloadRel{
+				Name: "Account",
+				Sides: []psql.PreloadSide{
+					{
+						From:        JournalEntries,
+						To:          Accounts,
+						FromColumns: []string{"household_id", "account_id"},
+						ToColumns:   []string{"household_id", "id"},
+					},
+				},
+			}, Accounts.Columns.Names(), accountScanMapperNullable, opts...)
+		},
 		Journal: func(opts ...psql.PreloadOption) psql.Preloader {
 			return psql.Preload[*Journal, JournalSlice](psql.PreloadRel{
 				Name: "Journal",
@@ -882,32 +1268,157 @@ func buildJournalEntryPreloader() journalEntryPreloader {
 					{
 						From:        JournalEntries,
 						To:          Journals,
-						FromColumns: []string{"journal_id"},
-						ToColumns:   []string{"id"},
+						FromColumns: []string{"household_id", "journal_id"},
+						ToColumns:   []string{"household_id", "id"},
 					},
 				},
 			}, Journals.Columns.Names(), journalScanMapperNullable, opts...)
+		},
+		HouseholdMember: func(opts ...psql.PreloadOption) psql.Preloader {
+			return psql.Preload[*HouseholdMember, HouseholdMemberSlice](psql.PreloadRel{
+				Name: "HouseholdMember",
+				Sides: []psql.PreloadSide{
+					{
+						From:        JournalEntries,
+						To:          HouseholdMembers,
+						FromColumns: []string{"household_id", "member_id"},
+						ToColumns:   []string{"household_id", "member_id"},
+					},
+				},
+			}, HouseholdMembers.Columns.Names(), householdMemberScanMapperNullable, opts...)
+		},
+		Pool: func(opts ...psql.PreloadOption) psql.Preloader {
+			return psql.Preload[*Pool, PoolSlice](psql.PreloadRel{
+				Name: "Pool",
+				Sides: []psql.PreloadSide{
+					{
+						From:        JournalEntries,
+						To:          Pools,
+						FromColumns: []string{"household_id", "pool_id"},
+						ToColumns:   []string{"household_id", "id"},
+					},
+				},
+			}, Pools.Columns.Names(), poolScanMapperNullable, opts...)
 		},
 	}
 }
 
 type journalEntryThenLoader[Q orm.Loadable] struct {
-	Journal func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Account         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Journal         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	HouseholdMember func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Pool            func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildJournalEntryThenLoader[Q orm.Loadable]() journalEntryThenLoader[Q] {
+	type AccountLoadInterface interface {
+		LoadAccount(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type JournalLoadInterface interface {
 		LoadJournal(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
+	type HouseholdMemberLoadInterface interface {
+		LoadHouseholdMember(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type PoolLoadInterface interface {
+		LoadPool(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 
 	return journalEntryThenLoader[Q]{
+		Account: thenLoadBuilder[Q](
+			"Account",
+			func(ctx context.Context, exec bob.Executor, retrieved AccountLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadAccount(ctx, exec, mods...)
+			},
+		),
 		Journal: thenLoadBuilder[Q](
 			"Journal",
 			func(ctx context.Context, exec bob.Executor, retrieved JournalLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadJournal(ctx, exec, mods...)
 			},
 		),
+		HouseholdMember: thenLoadBuilder[Q](
+			"HouseholdMember",
+			func(ctx context.Context, exec bob.Executor, retrieved HouseholdMemberLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadHouseholdMember(ctx, exec, mods...)
+			},
+		),
+		Pool: thenLoadBuilder[Q](
+			"Pool",
+			func(ctx context.Context, exec bob.Executor, retrieved PoolLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadPool(ctx, exec, mods...)
+			},
+		),
 	}
+}
+
+// LoadAccount loads the journalEntry's Account into the .R struct
+func (o *JournalEntry) LoadAccount(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.Account = nil
+	o.R.Loaded.Account = false
+
+	related, err := o.Account(mods...).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	related.R.JournalEntries = JournalEntrySlice{o}
+
+	o.R.Account = related
+	o.R.Loaded.Account = true
+	return nil
+}
+
+// LoadAccount loads the journalEntry's Account into the .R struct
+func (os JournalEntrySlice) LoadAccount(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	accounts, err := os.Account(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.Account = nil
+		o.R.Loaded.Account = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range accounts {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+			if !o.AccountID.Valid {
+				continue
+			}
+
+			if !(o.AccountID.Valid && o.AccountID.V == rel.ID) {
+				continue
+			}
+
+			rel.R.JournalEntries = append(rel.R.JournalEntries, o)
+
+			o.R.Account = rel
+			break
+		}
+	}
+
+	return nil
 }
 
 // LoadJournal loads the journalEntry's Journal into the .R struct
@@ -951,34 +1462,163 @@ func (os JournalEntrySlice) LoadJournal(ctx context.Context, exec bob.Executor, 
 		o.R.Journal = nil
 		o.R.Loaded.Journal = true
 	}
-	// O(N+M) stitch via a map keyed by the join column (key -> []parent; was O(N*M)).
-	journalEntryByKey := make(map[uuid.UUID][]*JournalEntry, len(os))
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
 
-		journalEntryByKey[o.JournalID] = append(journalEntryByKey[o.JournalID], o)
-	}
+		for _, rel := range journals {
 
-	for _, rel := range journals {
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
 
-		owners, ok := journalEntryByKey[rel.ID]
-		if !ok {
-			continue
-		}
-
-		for _, o := range owners {
-
-			// to-one: keep only the first matching child (matches the previous break)
-			if o.R.Journal != nil {
+			if !(o.JournalID == rel.ID) {
 				continue
 			}
 
 			rel.R.JournalEntries = append(rel.R.JournalEntries, o)
 
 			o.R.Journal = rel
+			break
+		}
+	}
 
+	return nil
+}
+
+// LoadHouseholdMember loads the journalEntry's HouseholdMember into the .R struct
+func (o *JournalEntry) LoadHouseholdMember(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.HouseholdMember = nil
+	o.R.Loaded.HouseholdMember = false
+
+	related, err := o.HouseholdMember(mods...).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	related.R.JournalEntries = JournalEntrySlice{o}
+
+	o.R.HouseholdMember = related
+	o.R.Loaded.HouseholdMember = true
+	return nil
+}
+
+// LoadHouseholdMember loads the journalEntry's HouseholdMember into the .R struct
+func (os JournalEntrySlice) LoadHouseholdMember(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	householdMembers, err := os.HouseholdMember(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.HouseholdMember = nil
+		o.R.Loaded.HouseholdMember = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range householdMembers {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+			if !o.MemberID.Valid {
+				continue
+			}
+
+			if !(o.MemberID.Valid && o.MemberID.V == rel.MemberID) {
+				continue
+			}
+
+			rel.R.JournalEntries = append(rel.R.JournalEntries, o)
+
+			o.R.HouseholdMember = rel
+			break
+		}
+	}
+
+	return nil
+}
+
+// LoadPool loads the journalEntry's Pool into the .R struct
+func (o *JournalEntry) LoadPool(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.Pool = nil
+	o.R.Loaded.Pool = false
+
+	related, err := o.Pool(mods...).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	related.R.JournalEntries = JournalEntrySlice{o}
+
+	o.R.Pool = related
+	o.R.Loaded.Pool = true
+	return nil
+}
+
+// LoadPool loads the journalEntry's Pool into the .R struct
+func (os JournalEntrySlice) LoadPool(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	pools, err := os.Pool(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.Pool = nil
+		o.R.Loaded.Pool = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range pools {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+			if !o.PoolID.Valid {
+				continue
+			}
+
+			if !(o.PoolID.Valid && o.PoolID.V == rel.ID) {
+				continue
+			}
+
+			rel.R.JournalEntries = append(rel.R.JournalEntries, o)
+
+			o.R.Pool = rel
+			break
 		}
 	}
 
@@ -986,8 +1626,11 @@ func (os JournalEntrySlice) LoadJournal(ctx context.Context, exec bob.Executor, 
 }
 
 type journalEntryJoins[Q dialect.Joinable] struct {
-	typ     string
-	Journal modAs[Q, journalColumns]
+	typ             string
+	Account         modAs[Q, accountColumns]
+	Journal         modAs[Q, journalColumns]
+	HouseholdMember modAs[Q, householdMemberColumns]
+	Pool            modAs[Q, poolColumns]
 }
 
 func (j journalEntryJoins[Q]) aliasedAs(alias string) journalEntryJoins[Q] {
@@ -997,6 +1640,20 @@ func (j journalEntryJoins[Q]) aliasedAs(alias string) journalEntryJoins[Q] {
 func buildJournalEntryJoins[Q dialect.Joinable](cols journalEntryColumns, typ string) journalEntryJoins[Q] {
 	return journalEntryJoins[Q]{
 		typ: typ,
+		Account: modAs[Q, accountColumns]{
+			c: Accounts.Columns,
+			f: func(to accountColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, Accounts.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.AccountID),
+					))
+				}
+
+				return mods
+			},
+		},
 		Journal: modAs[Q, journalColumns]{
 			c: Journals.Columns,
 			f: func(to journalColumns) bob.Mod[Q] {
@@ -1004,7 +1661,35 @@ func buildJournalEntryJoins[Q dialect.Joinable](cols journalEntryColumns, typ st
 
 				{
 					mods = append(mods, dialect.Join[Q](typ, Journals.NameExpr().As(to.Alias())).On(
-						to.ID.EQ(cols.JournalID),
+						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.JournalID),
+					))
+				}
+
+				return mods
+			},
+		},
+		HouseholdMember: modAs[Q, householdMemberColumns]{
+			c: HouseholdMembers.Columns,
+			f: func(to householdMemberColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, HouseholdMembers.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.MemberID.EQ(cols.MemberID),
+					))
+				}
+
+				return mods
+			},
+		},
+		Pool: modAs[Q, poolColumns]{
+			c: Pools.Columns,
+			f: func(to poolColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, Pools.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.PoolID),
 					))
 				}
 

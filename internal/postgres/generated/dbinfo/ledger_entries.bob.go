@@ -229,14 +229,14 @@ var LedgerEntries = Table[
 			ForeignTable:   "purchases",
 			ForeignColumns: []string{"household_id", "id"},
 		},
-		LedgerEntriesLedgerEntriesJournalIDFkey: foreignKey{
+		LedgerEntriesLedgerEntriesHouseholdJournalFkey: foreignKey{
 			constraint: constraint{
-				Name:    "ledger_entries.ledger_entries_journal_id_fkey",
-				Columns: []string{"journal_id"},
+				Name:    "ledger_entries.ledger_entries_household_journal_fkey",
+				Columns: []string{"household_id", "journal_id"},
 				Comment: "",
 			},
 			ForeignTable:   "journals",
-			ForeignColumns: []string{"id"},
+			ForeignColumns: []string{"household_id", "id"},
 		},
 		LedgerEntriesLedgerEntriesToMemberIDFkey: foreignKey{
 			constraint: constraint{
@@ -314,13 +314,13 @@ type ledgerEntryForeignKeys struct {
 	LedgerEntriesLedgerEntriesHouseholdIDFkey                 foreignKey
 	LedgerEntriesLedgerEntriesHouseholdIDPoolIDFkey           foreignKey
 	LedgerEntriesLedgerEntriesHouseholdIDSourcePurchaseIDFkey foreignKey
-	LedgerEntriesLedgerEntriesJournalIDFkey                   foreignKey
+	LedgerEntriesLedgerEntriesHouseholdJournalFkey            foreignKey
 	LedgerEntriesLedgerEntriesToMemberIDFkey                  foreignKey
 }
 
 func (f ledgerEntryForeignKeys) AsSlice() []foreignKey {
 	return []foreignKey{
-		f.LedgerEntriesLedgerEntriesFromMemberIDFkey, f.LedgerEntriesLedgerEntriesHouseholdIDFkey, f.LedgerEntriesLedgerEntriesHouseholdIDPoolIDFkey, f.LedgerEntriesLedgerEntriesHouseholdIDSourcePurchaseIDFkey, f.LedgerEntriesLedgerEntriesJournalIDFkey, f.LedgerEntriesLedgerEntriesToMemberIDFkey,
+		f.LedgerEntriesLedgerEntriesFromMemberIDFkey, f.LedgerEntriesLedgerEntriesHouseholdIDFkey, f.LedgerEntriesLedgerEntriesHouseholdIDPoolIDFkey, f.LedgerEntriesLedgerEntriesHouseholdIDSourcePurchaseIDFkey, f.LedgerEntriesLedgerEntriesHouseholdJournalFkey, f.LedgerEntriesLedgerEntriesToMemberIDFkey,
 	}
 }
 
