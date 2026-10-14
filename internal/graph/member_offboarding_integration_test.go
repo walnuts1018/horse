@@ -85,6 +85,13 @@ func TestHouseholdMemberOffboarding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	legacyFunding, err := resolver.recordFunding(ownerContext, model.RecordFundingInput{
+		HouseholdID: household.ID, MemberID: memberID, PoolID: pool.ID,
+		AmountYen: 750, OccurredAt: timeString(time.Now().UTC()), IdempotencyKey: "offboarding:legacy-funding",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := resolver.setPoolFundingRule(ownerContext, model.SetPoolFundingRuleInput{
 		HouseholdID: household.ID, PoolID: pool.ID, Configuration: personalPoolFundingConfiguration(initialMemberID.String()), ExpectedVersion: 1,
 	}); err != nil {
@@ -306,6 +313,26 @@ func TestHouseholdMemberOffboarding(t *testing.T) {
 	}
 	if _, ok := removed.(*model.RemoveHouseholdMemberSuccess); !ok {
 		t.Fatalf("owner removal = %T, want success", removed)
+	}
+	if _, err := models.HouseholdMembers.Delete(dm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
+	))).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	legacyLedger, err := query.ledger(ledgerContext, household.ID, nil, nil, &pageSize, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacyEntry *model.FundingLedgerEntry
+	for _, edge := range legacyLedger.Edges {
+		if entry, ok := edge.Node.(*model.FundingLedgerEntry); ok && entry.ID == legacyFunding.ID {
+			legacyEntry = entry
+			break
+		}
+	}
+	if legacyEntry == nil || legacyEntry.Member.ID != memberID || legacyEntry.Member.DisplayName != memberName {
+		t.Fatalf("legacy funding entry = %#v, want removed member %s", legacyEntry, memberName)
 	}
 
 	if _, err := models.Members.Query(sm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberID)))).One(ctx, bobpgx.NewPool(db)); err != nil {

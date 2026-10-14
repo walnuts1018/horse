@@ -347,6 +347,7 @@ func (b *nodeBatch) loadFinancialNodes(ctx context.Context) error {
 		membersByHousehold := make(map[string]map[string]*model.Member, len(households))
 		poolsByHousehold := make(map[string]map[string]*model.Pool, len(households))
 		householdIDs := make([]uuid.UUID, 0, len(households))
+		historicalMemberIDs := make(map[uuid.UUID][]uuid.UUID, len(households))
 		for _, household := range households {
 			householdID, err := uuid.FromString(household.ID)
 			if err != nil {
@@ -360,7 +361,15 @@ func (b *nodeBatch) loadFinancialNodes(ctx context.Context) error {
 				}
 			}
 		}
-		membersByUUID, err := loadHouseholdMemberIndex(ctx, r.DB, householdIDs)
+		for _, entry := range entries {
+			if entry.FromMemberID.Valid {
+				historicalMemberIDs[entry.HouseholdID] = append(historicalMemberIDs[entry.HouseholdID], entry.FromMemberID.V)
+			}
+			if entry.ToMemberID.Valid {
+				historicalMemberIDs[entry.HouseholdID] = append(historicalMemberIDs[entry.HouseholdID], entry.ToMemberID.V)
+			}
+		}
+		membersByUUID, err := loadHouseholdMemberIndex(ctx, r.DB, householdIDs, historicalMemberIDs)
 		if err != nil {
 			return err
 		}

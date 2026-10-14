@@ -43,7 +43,11 @@ func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.Ledg
 		if err != nil {
 			return nil, err
 		}
-		membersByHousehold, err := loadHouseholdMemberIndex(ctx, db, []uuid.UUID{householdID})
+		memberID, err := uuid.FromString(*value.FromMemberID)
+		if err != nil {
+			return nil, err
+		}
+		membersByHousehold, err := loadHouseholdMemberIndex(ctx, db, []uuid.UUID{householdID}, map[uuid.UUID][]uuid.UUID{householdID: {memberID}})
 		if err != nil {
 			return nil, err
 		}
@@ -61,7 +65,17 @@ func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.Ledg
 		if err != nil {
 			return nil, err
 		}
-		membersByHousehold, err := loadHouseholdMemberIndex(ctx, db, []uuid.UUID{householdID})
+		fromMemberID, err := uuid.FromString(*value.FromMemberID)
+		if err != nil {
+			return nil, err
+		}
+		toMemberID, err := uuid.FromString(*value.ToMemberID)
+		if err != nil {
+			return nil, err
+		}
+		membersByHousehold, err := loadHouseholdMemberIndex(ctx, db, []uuid.UUID{householdID}, map[uuid.UUID][]uuid.UUID{
+			householdID: {fromMemberID, toMemberID},
+		})
 		if err != nil {
 			return nil, err
 		}

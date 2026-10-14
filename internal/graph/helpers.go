@@ -161,7 +161,7 @@ func householdIDs(ids map[gofrsuuid.UUID]*model.Household) []bob.Expression {
 	return args
 }
 
-func loadHouseholdMemberIndex(ctx context.Context, db *pgxpool.Pool, householdIDs []gofrsuuid.UUID) (map[gofrsuuid.UUID]map[string]*model.Member, error) {
+func loadHouseholdMemberIndex(ctx context.Context, db *pgxpool.Pool, householdIDs []gofrsuuid.UUID, historicalMemberIDs map[gofrsuuid.UUID][]gofrsuuid.UUID) (map[gofrsuuid.UUID]map[string]*model.Member, error) {
 	result := make(map[gofrsuuid.UUID]map[string]*model.Member, len(householdIDs))
 	if len(householdIDs) == 0 {
 		return result, nil
@@ -185,6 +185,40 @@ func loadHouseholdMemberIndex(ctx context.Context, db *pgxpool.Pool, householdID
 		}
 		members[membership.MemberID.String()] = &model.Member{
 			ID: membership.MemberID.String(), DisplayName: membership.R.Member.DisplayName, Role: model.MemberRole(membership.Role),
+		}
+	}
+	historicalIDs := make([]bob.Expression, 0)
+	historicalIDsByHousehold := make(map[gofrsuuid.UUID][]gofrsuuid.UUID, len(historicalMemberIDs))
+	for householdID, ids := range historicalMemberIDs {
+		for _, id := range ids {
+			if result[householdID][id.String()] != nil {
+				continue
+			}
+			historicalIDs = append(historicalIDs, psql.Arg(id))
+			historicalIDsByHousehold[householdID] = append(historicalIDsByHousehold[householdID], id)
+		}
+	}
+	if len(historicalIDs) == 0 {
+		return result, nil
+	}
+	historicalMembers, err := models.Members.Query(sm.Where(models.Members.Columns.ID.In(historicalIDs...))).All(ctx, queryExecutor(db))
+	if err != nil {
+		return nil, err
+	}
+	membersByID := make(map[gofrsuuid.UUID]*model.Member, len(historicalMembers))
+	for _, member := range historicalMembers {
+		membersByID[member.ID] = &model.Member{ID: member.ID.String(), DisplayName: member.DisplayName, Role: model.MemberRoleMember}
+	}
+	for householdID, ids := range historicalIDsByHousehold {
+		members := result[householdID]
+		if members == nil {
+			members = make(map[string]*model.Member)
+			result[householdID] = members
+		}
+		for _, id := range ids {
+			if member := membersByID[id]; member != nil {
+				members[id.String()] = member
+			}
 		}
 	}
 	return result, nil
