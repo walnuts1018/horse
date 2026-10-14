@@ -1,9 +1,89 @@
 import { Plus, X } from "lucide-react";
+import { useState } from "react";
 
 import type { Household, Purchase } from "../../../shared/api";
 import type { PaymentDraft } from "../model/purchase-payments";
 
 import { orderPaymentAccountsByUsage } from "../model/purchase-defaults";
+
+import styles from "./edit-purchase-payments.module.css";
+
+function PaymentAccountPicker({
+  accounts,
+  payment,
+  index,
+  invalid,
+  describedBy,
+  onSelect,
+}: {
+  accounts: Household["accounts"];
+  payment: PaymentDraft;
+  index: number;
+  invalid: boolean;
+  describedBy?: string;
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selected = accounts.find((account) => account.id === payment.paymentAccountId);
+  const filtered = accounts.filter((account) =>
+    account.name.toLocaleLowerCase("ja-JP").includes(query.trim().toLocaleLowerCase("ja-JP")),
+  );
+
+  const choose = (accountId: string) => {
+    onSelect(accountId);
+    setQuery("");
+    setOpen(false);
+  };
+
+  return (
+    <div
+      className={styles.picker}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
+      <input
+        aria-label={`決済元を検索 ${index + 1}`}
+        aria-invalid={invalid}
+        aria-describedby={describedBy}
+        autoComplete="off"
+        type="search"
+        value={open ? query : (selected?.name ?? "")}
+        placeholder="決済元を選択"
+        onFocus={() => {
+          setQuery("");
+          setOpen(true);
+        }}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setOpen(true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setOpen(false);
+            setQuery("");
+          }
+        }}
+      />
+      {open && (
+        <ul className={styles.options}>
+          {filtered.map((account) => (
+            <li key={account.id}>
+              <button
+                aria-pressed={account.id === payment.paymentAccountId}
+                type="button"
+                onClick={() => choose(account.id)}
+              >
+                {account.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 const yen = (amount: number) =>
   new Intl.NumberFormat("ja-JP", {
@@ -49,26 +129,20 @@ export function EditPurchasePayments({
             rows.slice(0, index).reduce((sum, row) => sum + (Number(row.amountYen) || 0), 0);
           return (
             <div className="payment-allocation-row" key={payment.key}>
-              <select
-                aria-label={`決済元 ${index + 1}`}
-                aria-invalid={
+              <PaymentAccountPicker
+                accounts={accounts}
+                payment={payment}
+                index={index}
+                invalid={
                   fieldError?.field === "paymentAccount" && fieldError.paymentKey === payment.key
                 }
-                aria-describedby={
+                describedBy={
                   fieldError?.field === "paymentAccount" && fieldError.paymentKey === payment.key
                     ? `purchase-payment-account-error-${payment.key}`
                     : undefined
                 }
-                value={payment.paymentAccountId}
-                onChange={(event) => onPatch(payment.key, { paymentAccountId: event.target.value })}
-              >
-                <option value="">決済元を選択</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
+                onSelect={(paymentAccountId) => onPatch(payment.key, { paymentAccountId })}
+              />
               <div className="payment-amount-control">
                 <div className="yen-input">
                   <span>¥</span>
