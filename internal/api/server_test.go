@@ -100,6 +100,23 @@ func TestLogGraphQLResolverFailureIncludesSafePostgresMetadata(t *testing.T) {
 	}
 }
 
+func TestLogGraphQLInputRejectionOmitsErrorMessage(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	server := New(nil, nil, slog.New(slog.NewTextHandler(&output, nil)), Config{})
+	field := &graphql.FieldContext{Field: graphql.CollectedField{Field: &ast.Field{Name: "purchaseChanges"}}}
+	ctx := graphql.WithFieldContext(t.Context(), field)
+	server.logGraphQLInputRejection(ctx, errors.New("private cursor value"))
+
+	log := output.String()
+	if !strings.Contains(log, "graphql_path=purchaseChanges") {
+		t.Errorf("log does not include the resolver path: %s", log)
+	}
+	if strings.Contains(log, "private cursor value") {
+		t.Errorf("log includes rejected input: %s", log)
+	}
+}
+
 func TestLogGraphQLResolverFailureSkipsErrorsWithoutFieldPath(t *testing.T) {
 	t.Parallel()
 	var output bytes.Buffer

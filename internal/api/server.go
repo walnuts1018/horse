@@ -141,6 +141,7 @@ func (s *Server) newGraphQLHandler() *handler.Server {
 			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "UNAUTHENTICATED"}
 			presented.Message = "authentication required"
 		} else if isApplicationError && kind == apperror.KindBadInput {
+			s.logGraphQLInputRejection(ctx, err)
 			presented.Extensions = map[string]any{graphErrorCodeJSONKey: "BAD_USER_INPUT"}
 			presented.Message = "invalid input"
 		} else {
@@ -155,6 +156,19 @@ func (s *Server) newGraphQLHandler() *handler.Server {
 		return errors.New("internal server error")
 	})
 	return executor
+}
+
+func (s *Server) logGraphQLInputRejection(ctx context.Context, err error) {
+	attrs := []any{"error_type", fmt.Sprintf("%T", err)}
+	if path := graphQLFieldPath(ctx); path != "" {
+		attrs = append(attrs, "graphql_path", path)
+	}
+	if graphql.HasOperationContext(ctx) {
+		if operation := graphql.GetOperationContext(ctx); operation.Operation != nil && operation.Operation.Name != "" {
+			attrs = append(attrs, "operation", operation.Operation.Name)
+		}
+	}
+	s.logger.InfoContext(ctx, "GraphQL input rejected", attrs...)
 }
 
 func (s *Server) logGraphQLResolverFailure(ctx context.Context, err error) {
