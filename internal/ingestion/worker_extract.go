@@ -68,7 +68,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	}
 	pipeline := extractionPipeline{router: router, job: j, document: document, hints: hints, lines: lines, ocrErr: ocrErr, transform: transform, page: transformPage}
 	initialOptions := GeminiRouteOptions{Purpose: request.Purpose, Reason: geminiReasonInitialExtraction, Attempt: j.Attempt}
-	verified, _, runs, err := pipeline.run(ctx, initialOptions, "map evidence regions to original image")
+	verified, runs, err := pipeline.run(ctx, initialOptions, "map evidence regions to original image")
 	if err != nil {
 		verified.Runs = runs
 		return verified, err
@@ -79,7 +79,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		if lastRun != nil {
 			qualityOptions := router.QualityOptions(j.SourceKind, *lastRun, guidance)
 			qualityOptions.Attempt = j.Attempt
-			second, _, qualityRuns, qualityErr := pipeline.run(ctx, qualityOptions, "map reviewed evidence regions to original image")
+			second, qualityRuns, qualityErr := pipeline.run(ctx, qualityOptions, "map reviewed evidence regions to original image")
 			var transformErr *extractionPipelineTransformError
 			if errors.As(qualityErr, &transformErr) {
 				return Verification{}, qualityErr
@@ -92,7 +92,7 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		if !verified.Balanced && supportsProReview(document.MIMEType) && needsProReview(verified.Issues) && w.Router.Paid.APIKey != "" {
 			proOptions := router.ProOptions(request.Purpose, evidenceGuidance(verified.Issues, verified.OCRLines))
 			proOptions.Attempt = j.Attempt
-			proVerification, _, proRuns, proErr := pipeline.run(ctx, proOptions, "map reviewed evidence regions to original image")
+			proVerification, proRuns, proErr := pipeline.run(ctx, proOptions, "map reviewed evidence regions to original image")
 			var transformErr *extractionPipelineTransformError
 			if errors.As(proErr, &transformErr) {
 				return Verification{}, proErr
@@ -125,14 +125,14 @@ func (e *extractionPipelineTransformError) Error() string { return e.err.Error()
 
 func (e *extractionPipelineTransformError) Unwrap() error { return e.err }
 
-func (p extractionPipeline) run(ctx context.Context, options GeminiRouteOptions, transformError string) (Verification, Receipt, []ExtractionRun, error) {
+func (p extractionPipeline) run(ctx context.Context, options GeminiRouteOptions, transformError string) (Verification, []ExtractionRun, error) {
 	receipt, runs, err := p.router.Generate(ctx, p.job.SourceKind, p.document, p.hints, options)
 	if err != nil {
-		return Verification{}, receipt, runs, err
+		return Verification{}, runs, err
 	}
 	verified, err := verifyExtraction(p.job.SourceKind, receipt)
 	if err != nil {
-		return Verification{Receipt: receipt}, receipt, runs, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "extraction_validation_failed"}
+		return Verification{Receipt: receipt}, runs, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "extraction_validation_failed"}
 	}
 	if isImageDocument(p.document.MIMEType) {
 		if p.ocrErr == nil {
@@ -141,7 +141,7 @@ func (p extractionPipeline) run(ctx context.Context, options GeminiRouteOptions,
 			err = transformReceiptRegions(&verified, p.transform, p.page)
 		}
 		if err != nil {
-			return Verification{}, receipt, nil, &extractionPipelineTransformError{err: fmt.Errorf("%s: %w", transformError, err)}
+			return Verification{}, nil, &extractionPipelineTransformError{err: fmt.Errorf("%s: %w", transformError, err)}
 		}
 	} else {
 		verified.Transform = p.transform
@@ -152,7 +152,7 @@ func (p extractionPipeline) run(ctx context.Context, options GeminiRouteOptions,
 		applySourceOCRCorroboration(&verified, p.job.SourceKind, p.lines, p.ocrErr)
 	}
 	verified.Runs = annotateRuns(runs, receipt, verified.Issues)
-	return verified, receipt, runs, nil
+	return verified, runs, nil
 }
 
 func verifyExtraction(sourceKind string, receipt Receipt) (Verification, error) {
