@@ -133,19 +133,20 @@ export function ManageAccountSettings({
                           <span>{member.displayName}</span>
                           <div className="number-field">
                             <input
+                              aria-describedby={
+                                model.fundingRuleErrors[pool.id]
+                                  ? `pool-funding-error-${pool.id}`
+                                  : undefined
+                              }
+                              aria-invalid={Boolean(model.fundingRuleErrors[pool.id])}
                               inputMode="numeric"
                               value={model.fundingDrafts[pool.id]?.weights[member.id] ?? ""}
                               onChange={(event) =>
-                                model.setFundingDrafts((current) => ({
-                                  ...current,
-                                  [pool.id]: {
-                                    ...current[pool.id],
-                                    weights: {
-                                      ...current[pool.id].weights,
-                                      [member.id]: event.target.value.replace(/\D/g, ""),
-                                    },
-                                  },
-                                }))
+                                model.setFundingShareWeight(
+                                  pool.id,
+                                  member.id,
+                                  event.target.value.replace(/\D/g, ""),
+                                )
                               }
                             />
                             <small>比</small>
@@ -153,6 +154,16 @@ export function ManageAccountSettings({
                         </label>
                       ))}
                     </div>
+                    {model.fundingRuleErrors[pool.id] && (
+                      <div
+                        id={`pool-funding-error-${pool.id}`}
+                        className="inline-error"
+                        role="alert"
+                      >
+                        <span aria-hidden="true">!</span>
+                        {model.fundingRuleErrors[pool.id]}
+                      </div>
+                    )}
                   </>
                 )}
                 <button type="submit" className="button button-soft" disabled={model.pending}>

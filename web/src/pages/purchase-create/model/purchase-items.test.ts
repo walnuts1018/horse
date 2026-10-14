@@ -1,7 +1,33 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { convertPurchaseItems, restorePurchaseItemsValue } from "./purchase-items";
+import {
+  convertPurchaseItems,
+  restorePurchaseItemsValue,
+  suggestedPurchaseItemCategory,
+} from "./purchase-items";
+
+describe("suggested purchase item category", () => {
+  const history = [
+    { items: [{ name: "牛乳", categoryId: "dairy" }] },
+    { items: [{ name: "コーヒー", categoryId: "drink" }] },
+  ];
+
+  it("uses the previous category for an exact item name", () => {
+    expect(suggestedPurchaseItemCategory(" 牛乳 ", "", false, history, () => true)).toBe("dairy");
+  });
+
+  it("preserves an existing or explicitly selected category, including uncategorized", () => {
+    expect(suggestedPurchaseItemCategory("牛乳", "drink", false, history, () => true)).toBe("");
+    expect(suggestedPurchaseItemCategory("牛乳", "", true, history, () => true)).toBe("");
+  });
+
+  it("does not suggest archived categories", () => {
+    expect(suggestedPurchaseItemCategory("牛乳", "", false, history, (id) => id === "drink")).toBe(
+      "",
+    );
+  });
+});
 
 describe("purchase item draft restoration", () => {
   it("restores the selected product variant with the unfinished item", () => {

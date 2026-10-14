@@ -95,6 +95,7 @@ export function useAccountSettings({
     return date.toISOString().slice(0, 10);
   });
   const [fundingDrafts, setFundingDrafts] = useState<FundingDrafts>({});
+  const [fundingRuleErrors, setFundingRuleErrors] = useState<Record<string, string>>({});
   const fundingDraftHouseholdId = useRef(household.id);
   const cardLast4DraftHouseholdId = useRef(household.id);
   const [pending, setPending] = useState(false);
@@ -211,9 +212,17 @@ export function useAccountSettings({
       return;
     }
     if (isSharedPool(pool) && fundingShares.length === 0) {
-      onNoticeRef.current("拠出比率を入力してください", "warning");
+      setFundingRuleErrors((current) => ({
+        ...current,
+        [poolId]: "拠出比率を1人以上入力してください。",
+      }));
       return;
     }
+    setFundingRuleErrors((current) => {
+      const next = { ...current };
+      delete next[poolId];
+      return next;
+    });
     setPending(true);
     try {
       await setPoolFundingRule({
@@ -255,6 +264,21 @@ export function useAccountSettings({
     setOpeningBalanceAt,
     fundingDrafts,
     setFundingDrafts,
+    fundingRuleErrors,
+    setFundingShareWeight: (poolId: string, memberId: string, weight: string) => {
+      setFundingRuleErrors((current) => {
+        const next = { ...current };
+        delete next[poolId];
+        return next;
+      });
+      setFundingDrafts((current) => ({
+        ...current,
+        [poolId]: {
+          ...current[poolId],
+          weights: { ...current[poolId].weights, [memberId]: weight },
+        },
+      }));
+    },
     pending,
     addPool,
     addAccount,

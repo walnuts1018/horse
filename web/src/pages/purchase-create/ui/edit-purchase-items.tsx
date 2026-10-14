@@ -29,7 +29,11 @@ import {
   type PurchaseEditHistory,
   type PurchaseEditSnapshot,
 } from "../model/purchase-edit-history";
-import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
+import {
+  emptyPurchaseItemsValue,
+  suggestedPurchaseItemCategory,
+  type PurchaseItemsValue,
+} from "../model/purchase-items";
 import { PurchaseItemEntry } from "./purchase-item-entry";
 import { PurchaseItemsGrid } from "./purchase-items-grid";
 
@@ -107,6 +111,7 @@ export function EditPurchaseItems({
   const selectionAnchorKey = useRef<string | null>(null);
   const [focused, setFocused] = useState<"name" | "amount" | null>(null);
   const [invalidEntryField, setInvalidEntryField] = useState<"name" | "amount" | null>(null);
+  const [categoryManuallySelected, setCategoryManuallySelected] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
   const itemGridRef = useRef<HTMLDivElement>(null);
@@ -142,17 +147,19 @@ export function EditPurchaseItems({
   }, []);
 
   // 実効カテゴリ：ユーザー明示選択 > 自動推測 > 空
-  const suggestedCategoryFromHistory = useMemo(() => {
-    const query = draft.itemName.trim();
-    if (!query || draft.categoryId !== "") return null;
-    const match = history
-      .flatMap((purchase) => purchase.items)
-      .find((item) => item.name.toLocaleLowerCase() === query.toLocaleLowerCase());
-    if (match && isEnabledCategory(match.categoryId)) return match.categoryId;
-    return null;
-  }, [draft.categoryId, draft.itemName, history, isEnabledCategory]);
+  const suggestedCategoryFromHistory = useMemo(
+    () =>
+      suggestedPurchaseItemCategory(
+        draft.itemName,
+        draft.categoryId,
+        categoryManuallySelected,
+        history,
+        isEnabledCategory,
+      ),
+    [categoryManuallySelected, draft.categoryId, draft.itemName, history, isEnabledCategory],
+  );
 
-  const effectiveCategoryId = draft.categoryId || suggestedCategoryFromHistory || "";
+  const effectiveCategoryId = draft.categoryId || suggestedCategoryFromHistory;
 
   // コールバックはref経由で参照し、副作用の依存が毎回変わって延々と再実行されるのを避ける
   useEffect(() => {
@@ -178,7 +185,13 @@ export function EditPurchaseItems({
     (patch: Partial<PurchaseItemsValue>) => update({ ...draftRef.current, ...patch }),
     [update],
   );
-  const updateCategory = useCallback((id: string) => patchDraft({ categoryId: id }), [patchDraft]);
+  const updateCategory = useCallback(
+    (id: string) => {
+      setCategoryManuallySelected(true);
+      patchDraft({ categoryId: id });
+    },
+    [patchDraft],
+  );
   const changeItemName = useCallback(
     (name: string) => {
       if (name.trim() !== draftRef.current.itemName.trim()) {
@@ -232,6 +245,7 @@ export function EditPurchaseItems({
   );
   const reset = useCallback(() => {
     const empty = emptyPurchaseItemsValue();
+    setCategoryManuallySelected(false);
     clearAllocationUndoGroup();
     updateHistory(emptyPurchaseEditHistory());
     setProductSuggestionResponse(null);
@@ -305,6 +319,7 @@ export function EditPurchaseItems({
           items.map((item) => [item.key, { amount: item.amount, occurredAt: purchase.occurredAt }]),
         ),
       );
+      setCategoryManuallySelected(false);
       recordUndo({
         items: draftRef.current.items,
         categoryId: draftRef.current.categoryId,
@@ -427,6 +442,7 @@ export function EditPurchaseItems({
       selectedProductVariantId: "",
       categoryId: "",
     });
+    setCategoryManuallySelected(false);
     setProductSuggestionResponse(null);
     setInvalidEntryField(null);
     setFocused("name");
@@ -443,7 +459,9 @@ export function EditPurchaseItems({
     patchDraft({
       itemName: candidate.matchedName || draft.itemName.trim(),
       selectedProductVariantId: candidate.variant.id,
-      ...(isEnabledCategory(candidate.concept.categoryId) && !draft.categoryId
+      ...(isEnabledCategory(candidate.concept.categoryId) &&
+      !draft.categoryId &&
+      !categoryManuallySelected
         ? { categoryId: candidate.concept.categoryId }
         : {}),
     });
@@ -465,9 +483,6 @@ export function EditPurchaseItems({
     patchDraft({
       itemName: suggestion.name,
       selectedProductVariantId: suggestion.candidate.variant.id,
-      ...(isEnabledCategory(suggestion.categoryId) && !draft.categoryId
-        ? { categoryId: suggestion.categoryId }
-        : {}),
     });
     setProductSuggestionResponse(null);
     amountRef.current?.focus();

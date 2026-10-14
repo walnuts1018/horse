@@ -11,6 +11,25 @@ export type PurchaseItemsValue = {
   items: PurchaseDraftItem[];
 };
 
+type PurchaseCategoryHistory = Array<{
+  items: Array<{ name: string; categoryId?: string | null }>;
+}>;
+
+export function suggestedPurchaseItemCategory(
+  name: string,
+  categoryId: string,
+  categoryManuallySelected: boolean,
+  history: PurchaseCategoryHistory,
+  isEnabledCategory: (id: string | null | undefined) => boolean,
+): string {
+  const query = name.trim();
+  if (!query || categoryId || categoryManuallySelected) return "";
+  const match = history
+    .flatMap((purchase) => purchase.items)
+    .find((item) => item.name.toLocaleLowerCase() === query.toLocaleLowerCase());
+  return match && isEnabledCategory(match.categoryId) ? (match.categoryId ?? "") : "";
+}
+
 export const emptyPurchaseItemsValue = (): PurchaseItemsValue => ({
   itemName: "",
   itemAmount: "",
