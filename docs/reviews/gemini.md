@@ -6,11 +6,9 @@ Worker間で共有するRPM・TPM・RPD予約をPostgreSQLへ保存し、`CountT
 
 RPD予約は`America/Los_Angeles`の暦日で集計し、日次上限到達後は次の太平洋時間午前0時まで再試行を待ちます。DST切替日も現地の暦日境界を使います。Google AI StudioはProject・modelごとの実際のRPM・TPM・RPD上限を表示しますが、このアプリからその上限値を取得する公開APIは確認できていません。上限値の動的取得とGoogle側の実際のquota回復時刻の取得は未対応です。[Gemini APIのrate limits](https://ai.google.dev/gemini-api/docs/rate-limits)を参照してください。
 
-## 2. Flex tierとBatch APIの到達経路
+## 2. Batch API
 
-通常のアップロードと手動再解析はAPIがjob purposeとして`interactive`を保存します。Routerは空または`interactive`をStandard tierとして扱います。`background`が与えられれば、無料Projectでは引き続きStandardを使い、有料Projectに進んだ場合にFlex tierを指定します。Pro昇格も元jobのpurposeを引き継ぎます。
-
-通常アップロードでは`purpose=background`を指定でき、メール添付にも同じpurposeを保存します。手動再解析jobは引き続き`interactive`を使います。Batch APIのクライアント、job状態管理、結果取得経路は未実装です。
+Gemini Batch APIのクライアント、job状態管理、結果取得経路は未実装です。大量のbackground jobで通常APIのquota予約がボトルネックになる場合に、Batch API対応を検討してください。
 
 ## 3. source kindごとの品質評価とモデル別料金表
 
