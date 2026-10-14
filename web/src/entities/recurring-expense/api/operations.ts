@@ -114,3 +114,33 @@ export const archiveRecurringExpenseMutation = graphql`
     }
   }
 `;
+
+export const matchRecurringExpenseMutation = graphql`
+  mutation MatchRecurringExpenseMutation($input: MatchRecurringExpenseInput!) {
+    matchRecurringExpense(input: $input) {
+      __typename
+      ... on MatchRecurringExpenseSuccess {
+        result {
+          id
+          householdId
+          name
+          merchant
+          amountYen
+          currency
+          categoryId
+          paymentAccountId
+          cadence
+          startsOn
+          nextDueOn
+          endsOn
+          archived
+          revision
+        }
+      }
+      ... on MutationError {
+        code
+        message
+      }
+    }
+  }
+`;

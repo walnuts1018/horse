@@ -345,7 +345,11 @@ export function LedgerPage({
                   <input
                     className="item-select"
                     type="checkbox"
-                    aria-label={`${item.name}を選択`}
+                    aria-label={
+                      purchase.status === "CLOSED"
+                        ? `${item.name}は締め済みのため選択できません`
+                        : `${item.name}を選択`
+                    }
                     checked={selectedItems.has(item.id)}
                     onChange={(event) =>
                       toggleSelection(
@@ -355,7 +359,7 @@ export function LedgerPage({
                         event.nativeEvent instanceof MouseEvent && event.nativeEvent.shiftKey,
                       )
                     }
-                    disabled={bulkPending}
+                    disabled={bulkPending || purchase.status === "CLOSED"}
                   />
                   <div className="purchase-description">
                     <b>{item.name}</b>
@@ -366,6 +370,7 @@ export function LedgerPage({
                       {item.allocations.length > 0 &&
                         ` · ${item.allocations.map((allocation) => allocation.poolName).join("・")}`}
                       {item.tags.length > 0 && ` · ${item.tags.map((tag) => tag.name).join("・")}`}
+                      {purchase.status === "CLOSED" && " · 締め済み"}
                     </span>
                   </div>
                   <div className="purchase-meta">
@@ -604,7 +609,11 @@ export function LedgerPage({
                         <input
                           className="item-select"
                           type="checkbox"
-                          aria-label={`${item.name}を選択`}
+                          aria-label={
+                            purchase.status === "CLOSED"
+                              ? `${item.name}は締め済みのため選択できません`
+                              : `${item.name}を選択`
+                          }
                           checked={selectedItems.has(item.id)}
                           onChange={(event) =>
                             toggleSelection(
@@ -614,7 +623,9 @@ export function LedgerPage({
                               event.nativeEvent instanceof MouseEvent && event.nativeEvent.shiftKey,
                             )
                           }
-                          disabled={editing === purchase.id || bulkPending}
+                          disabled={
+                            editing === purchase.id || bulkPending || purchase.status === "CLOSED"
+                          }
                         />
                         {editing === purchase.id ? (
                           <PurchaseItemEditor

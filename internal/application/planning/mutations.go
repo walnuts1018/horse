@@ -94,6 +94,14 @@ type RecurringExpenseResult struct {
 	Revision         int64
 }
 
+type MatchRecurringExpenseCommand struct {
+	ActorID     string
+	HouseholdID string
+	ExpenseID   string
+	PurchaseID  string
+	Revision    int
+}
+
 func (s *Service) SetBudget(ctx context.Context, command BudgetCommand) (BudgetResult, error) {
 	command.Name = strings.TrimSpace(command.Name)
 	if err := inputvalidation.Check(command); err != nil {
@@ -327,6 +335,113 @@ func (s *Service) ArchiveRecurringExpense(ctx context.Context, actorID, househol
 	}
 	row.Archived, row.Revision = archived, revisionValue
 	return recurringExpenseResult(row), nil
+}
+
+func (s *Service) MatchRecurringExpense(ctx context.Context, command MatchRecurringExpenseCommand) (RecurringExpenseResult, error) {
+	householdID, err := parseUUID(command.HouseholdID)
+	if err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	expenseID, err := parseUUID(command.ExpenseID)
+	if err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	purchaseID, err := parseUUID(command.PurchaseID)
+	if err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	actorID, err := parseUUID(command.ActorID)
+	if err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	defer txcleanup.Rollback(ctx, tx)
+	executor := bobpgx.NewTx(tx, nil)
+	expense, err := models.RecurringExpenses.Query(sm.Where(psql.And(
+		models.RecurringExpenses.Columns.ID.EQ(psql.Arg(expenseID)),
+		models.RecurringExpenses.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return RecurringExpenseResult{}, ErrNotFound
+	}
+	if err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	if expense.Archived {
+		return RecurringExpenseResult{}, ErrConflict
+	}
+	if int(expense.Revision) != command.Revision {
+		return RecurringExpenseResult{}, ErrConflict
+	}
+	purchase, err := models.Purchases.Query(sm.Where(psql.And(
+		models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)),
+		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return RecurringExpenseResult{}, ErrNotFound
+	}
+	if err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	if purchase.Status != "POSTED" && purchase.Status != "CLOSED" {
+		return RecurringExpenseResult{}, fmt.Errorf("%w: only posted purchases can be matched", ErrBadInput)
+	}
+	_, err = models.RecurringExpenseMatches.Query(sm.Where(psql.And(
+		models.RecurringExpenseMatches.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.RecurringExpenseMatches.Columns.PurchaseID.EQ(psql.Arg(purchaseID)),
+	))).One(ctx, executor)
+	if err == nil {
+		return RecurringExpenseResult{}, ErrConflict
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return RecurringExpenseResult{}, err
+	}
+	match := &models.RecurringExpenseMatchSetter{
+		HouseholdID: &householdID, RecurringExpenseID: &expenseID, DueOn: &expense.NextDueOn,
+		PurchaseID: &purchaseID, MatchedBy: &actorID,
+	}
+	if _, err := models.RecurringExpenseMatches.Insert(match).One(ctx, executor); err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	nextDueOn, err := nextRecurringDue(expense.StartsOn, expense.NextDueOn, expense.Cadence)
+	if err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	revision := expense.Revision + 1
+	if _, err := models.RecurringExpenses.Update((&models.RecurringExpenseSetter{
+		NextDueOn: &nextDueOn, Revision: &revision,
+	}).UpdateMod(), um.Where(models.RecurringExpenses.Columns.ID.EQ(psql.Arg(expenseID))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	if err := accounting.RecordEvent(ctx, executor, householdID, expenseID, "recurring_expense.matched", revision, []string{"nextDueOn"}, actorID); err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return RecurringExpenseResult{}, err
+	}
+	expense.NextDueOn, expense.Revision = nextDueOn, revision
+	return recurringExpenseResult(expense), nil
+}
+
+func nextRecurringDue(start, due time.Time, cadence string) (time.Time, error) {
+	switch cadence {
+	case "WEEKLY":
+		return due.AddDate(0, 0, 7), nil
+	case "MONTHLY":
+		monthStart := time.Date(due.Year(), due.Month()+1, 1, 0, 0, 0, 0, due.Location())
+		day := min(start.Day(), monthStart.AddDate(0, 1, -1).Day())
+		return time.Date(monthStart.Year(), monthStart.Month(), day, 0, 0, 0, 0, due.Location()), nil
+	case "YEARLY":
+		nextYear := due.Year() + 1
+		monthStart := time.Date(nextYear, start.Month(), 1, 0, 0, 0, 0, due.Location())
+		day := min(start.Day(), monthStart.AddDate(0, 1, -1).Day())
+		return time.Date(nextYear, start.Month(), day, 0, 0, 0, 0, due.Location()), nil
+	default:
+		return time.Time{}, fmt.Errorf("%w: invalid recurring expense cadence", ErrBadInput)
+	}
 }
 
 func budgetResult(row *models.Budget) BudgetResult {

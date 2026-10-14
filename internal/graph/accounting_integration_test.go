@@ -873,6 +873,9 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := mutation.closePeriod(ctx, model.ClosePeriodInput{HouseholdID: household.ID, Period: testApril2026, ExpectedRevision: 0}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("closing the same settlement revision twice must not apply it again: %v", err)
+	}
 	closedLines := settlementByMember(t, settlementData(t, closed).Lines)
 	if closedLines[memberA].MonthlyAdjustmentYen != 400 || closedLines[memberA].AmountDueYen != 400 || closedLines[memberB].MonthlyAdjustmentYen != -400 || closedLines[memberB].AmountDueYen != -400 {
 		t.Fatalf("shared-pool actual spending was not balanced against 60/40 funding shares: %#v", closedLines)

@@ -40,6 +40,7 @@ type preloadCounts struct {
 	PurchaseItem     purchaseItemCountPreloader
 	PurchasePayment  purchasePaymentCountPreloader
 	Purchase         purchaseCountPreloader
+	RecurringExpense recurringExpenseCountPreloader
 	SettlementRun    settlementRunCountPreloader
 	SourceDocument   sourceDocumentCountPreloader
 	Tag              tagCountPreloader
@@ -67,6 +68,7 @@ func getPreloadCount() preloadCounts {
 		PurchaseItem:     buildPurchaseItemCountPreloader(),
 		PurchasePayment:  buildPurchasePaymentCountPreloader(),
 		Purchase:         buildPurchaseCountPreloader(),
+		RecurringExpense: buildRecurringExpenseCountPreloader(),
 		SettlementRun:    buildSettlementRunCountPreloader(),
 		SourceDocument:   buildSourceDocumentCountPreloader(),
 		Tag:              buildTagCountPreloader(),
@@ -94,6 +96,7 @@ type thenLoadCounts[Q orm.Loadable] struct {
 	PurchaseItem     purchaseItemCountThenLoader[Q]
 	PurchasePayment  purchasePaymentCountThenLoader[Q]
 	Purchase         purchaseCountThenLoader[Q]
+	RecurringExpense recurringExpenseCountThenLoader[Q]
 	SettlementRun    settlementRunCountThenLoader[Q]
 	SourceDocument   sourceDocumentCountThenLoader[Q]
 	Tag              tagCountThenLoader[Q]
@@ -121,6 +124,7 @@ func getThenLoadCount[Q orm.Loadable]() thenLoadCounts[Q] {
 		PurchaseItem:     buildPurchaseItemCountThenLoader[Q](),
 		PurchasePayment:  buildPurchasePaymentCountThenLoader[Q](),
 		Purchase:         buildPurchaseCountThenLoader[Q](),
+		RecurringExpense: buildRecurringExpenseCountThenLoader[Q](),
 		SettlementRun:    buildSettlementRunCountThenLoader[Q](),
 		SourceDocument:   buildSourceDocumentCountThenLoader[Q](),
 		Tag:              buildTagCountThenLoader[Q](),

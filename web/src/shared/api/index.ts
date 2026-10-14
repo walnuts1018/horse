@@ -51,6 +51,7 @@ export type { CreateTagMutation } from "./__generated__/CreateTagMutation.graphq
 export type { UpdateTagMutation } from "./__generated__/UpdateTagMutation.graphql";
 export type { ArchiveRecurringExpenseMutation } from "./__generated__/ArchiveRecurringExpenseMutation.graphql";
 export type { CreateRecurringExpenseMutation } from "./__generated__/CreateRecurringExpenseMutation.graphql";
+export type { MatchRecurringExpenseMutation } from "./__generated__/MatchRecurringExpenseMutation.graphql";
 export type { UpdateRecurringExpenseMutation } from "./__generated__/UpdateRecurringExpenseMutation.graphql";
 export type { RecordAccountMovementMutation } from "./__generated__/RecordAccountMovementMutation.graphql";
 export type { RecordExternalIncomeMutation } from "./__generated__/RecordExternalIncomeMutation.graphql";
@@ -106,6 +107,10 @@ export type {
   RecurringExpensesQuery,
   RecurringExpensesQuery$data,
 } from "./__generated__/RecurringExpensesQuery.graphql";
+export type {
+  RecurringExpenseMatchCandidatesQuery,
+  RecurringExpenseMatchCandidatesQuery$data,
+} from "./__generated__/RecurringExpenseMatchCandidatesQuery.graphql";
 export type {
   ProductCatalogQuery,
   ProductCatalogQuery$data,

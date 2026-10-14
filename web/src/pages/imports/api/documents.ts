@@ -55,6 +55,14 @@ export async function readDocument(
   return toDocumentReview(await response.json());
 }
 
+export async function deleteDocument(documentId: string) {
+  const response = await fetch(`/documents/${encodeURIComponent(documentId)}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!response.ok) throw new Error(`原本を削除できませんでした (${response.status})`);
+}
+
 export const importIdempotencyKey = async (documentId: string, sourceReference: string) => {
   const input = new TextEncoder().encode(`${documentId}\u0000${sourceReference}`);
   const digest = await crypto.subtle.digest("SHA-256", input);

@@ -63,6 +63,7 @@ func Where[Q psql.Filterable]() struct {
 	PurchasePaymentFundingSnapshots purchasePaymentFundingSnapshotWhere[Q]
 	PurchasePayments                purchasePaymentWhere[Q]
 	Purchases                       purchaseWhere[Q]
+	RecurringExpenseMatches         recurringExpenseMatchWhere[Q]
 	RecurringExpenses               recurringExpenseWhere[Q]
 	SettlementAdjustments           settlementAdjustmentWhere[Q]
 	SettlementLines                 settlementLineWhere[Q]
@@ -119,6 +120,7 @@ func Where[Q psql.Filterable]() struct {
 		PurchasePaymentFundingSnapshots purchasePaymentFundingSnapshotWhere[Q]
 		PurchasePayments                purchasePaymentWhere[Q]
 		Purchases                       purchaseWhere[Q]
+		RecurringExpenseMatches         recurringExpenseMatchWhere[Q]
 		RecurringExpenses               recurringExpenseWhere[Q]
 		SettlementAdjustments           settlementAdjustmentWhere[Q]
 		SettlementLines                 settlementLineWhere[Q]
@@ -174,6 +176,7 @@ func Where[Q psql.Filterable]() struct {
 		PurchasePaymentFundingSnapshots: buildPurchasePaymentFundingSnapshotWhere[Q](PurchasePaymentFundingSnapshots.Columns),
 		PurchasePayments:                buildPurchasePaymentWhere[Q](PurchasePayments.Columns),
 		Purchases:                       buildPurchaseWhere[Q](Purchases.Columns),
+		RecurringExpenseMatches:         buildRecurringExpenseMatchWhere[Q](RecurringExpenseMatches.Columns),
 		RecurringExpenses:               buildRecurringExpenseWhere[Q](RecurringExpenses.Columns),
 		SettlementAdjustments:           buildSettlementAdjustmentWhere[Q](SettlementAdjustments.Columns),
 		SettlementLines:                 buildSettlementLineWhere[Q](SettlementLines.Columns),

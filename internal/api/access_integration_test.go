@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	stdjson "encoding/json"
 	"encoding/json/v2"
+	"errors"
 	"image"
 	"image/png"
 	"log/slog"
@@ -48,6 +49,8 @@ type previewTestStore struct {
 	document        ingestion.Document
 	gets            int
 	putHouseholdIDs []string
+	deletes         []string
+	deleteFailures  int
 }
 
 func (s *previewTestStore) Put(_ context.Context, householdID, _ string, data []byte) (string, string, error) {
@@ -60,6 +63,17 @@ func (s *previewTestStore) Get(_ context.Context, _ string, mimeType string) (in
 	s.gets++
 	s.document.MIMEType = mimeType
 	return s.document, nil
+}
+
+func (s *previewTestStore) Delete(_ context.Context, key string) error {
+	s.deletes = append(s.deletes, key)
+	if s.deleteFailures > 0 {
+		s.deleteFailures--
+
+		return errors.New("storage unavailable")
+	}
+
+	return nil
 }
 
 func mustIntegrationUUID(t *testing.T, value string) gofrsuuid.UUID {
@@ -467,6 +481,52 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	}
 	if response := confirm(0); response.Code != http.StatusOK {
 		t.Fatalf("evidence link failed: %d %s", response.Code, response.Body.String())
+	}
+	deleteRequest := httptest.NewRequest(http.MethodDelete, "/documents/"+documentID, nil)
+	deleteRequest.Header.Set("Origin", "http://horse.test")
+	deleteRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	deleteResponse := httptest.NewRecorder()
+	server.ServeHTTP(deleteResponse, deleteRequest)
+	if deleteResponse.Code != http.StatusConflict || len(store.deletes) != 0 {
+		t.Fatalf("confirmed source document was deleted: status=%d object deletions=%d", deleteResponse.Code, len(store.deletes))
+	}
+	if _, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(documentUUID)))).One(ctx, executor); err != nil {
+		t.Fatalf("confirmed source document metadata was deleted: %v", err)
+	}
+	unconfirmedDocumentID, unconfirmedJobID := uuid.NewV7().String(), uuid.NewV7().String()
+	unconfirmedDocumentUUID := mustIntegrationUUID(t, unconfirmedDocumentID)
+	unconfirmedJobUUID := mustIntegrationUUID(t, unconfirmedJobID)
+	unconfirmedHash, unconfirmedObjectKey := "access-test:"+unconfirmedDocumentID, householdID+"/originals/"+unconfirmedDocumentID
+	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &unconfirmedDocumentUUID, HouseholdID: &householdUUID, Sha256: &unconfirmedHash, ObjectKey: &unconfirmedObjectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &ownerUUID}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	unconfirmedStatus := "failed"
+	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{ID: &unconfirmedJobUUID, HouseholdID: &householdUUID, SourceDocumentID: &unconfirmedDocumentUUID, Status: &unconfirmedStatus}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	store.deleteFailures = 1
+	deleteRequest = httptest.NewRequest(http.MethodDelete, "/documents/"+unconfirmedDocumentID, nil)
+	deleteRequest.Header.Set("Origin", "http://horse.test")
+	deleteRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	deleteResponse = httptest.NewRecorder()
+	server.ServeHTTP(deleteResponse, deleteRequest)
+	if deleteResponse.Code != http.StatusBadGateway || len(store.deletes) != 1 || store.deletes[0] != unconfirmedObjectKey {
+		t.Fatalf("failed object deletion did not preserve retry state: status=%d object deletions=%v body=%s", deleteResponse.Code, store.deletes, deleteResponse.Body.String())
+	}
+	pendingDocument, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(unconfirmedDocumentUUID)))).One(ctx, executor)
+	if err != nil || !documentDeletionPending(pendingDocument) {
+		t.Fatalf("failed object deletion did not persist its tombstone: document=%v error=%v", pendingDocument, err)
+	}
+	deleteRequest = httptest.NewRequest(http.MethodDelete, "/documents/"+unconfirmedDocumentID, nil)
+	deleteRequest.Header.Set("Origin", "http://horse.test")
+	deleteRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	deleteResponse = httptest.NewRecorder()
+	server.ServeHTTP(deleteResponse, deleteRequest)
+	if deleteResponse.Code != http.StatusNoContent || len(store.deletes) != 2 || store.deletes[1] != unconfirmedObjectKey {
+		t.Fatalf("unconfirmed source document deletion failed: status=%d object deletions=%v body=%s", deleteResponse.Code, store.deletes, deleteResponse.Body.String())
+	}
+	if _, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(unconfirmedDocumentUUID)))).One(ctx, executor); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("unconfirmed source document metadata remains: %v", err)
 	}
 	documentsRequest = httptest.NewRequest(http.MethodGet, "/documents?householdId="+householdID, nil)
 	documentsRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})

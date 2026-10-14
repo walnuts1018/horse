@@ -1,9 +1,10 @@
-import { AlertCircle, ChevronRight, FileImage, Upload, X } from "lucide-react";
+import { AlertCircle, ChevronRight, FileImage, Trash2, Upload, X } from "lucide-react";
 import { useState } from "react";
 
 import { isOneOf } from "../../../shared/lib/guard";
 import {
   canReclassifyAttachment,
+  canDeleteDocument,
   isCsvFile,
   isEmailFile,
   sourceKindLabel,
@@ -27,6 +28,7 @@ export function ImportDocumentList({
   onRemoveFile,
   onSelectDocument,
   onRetryDocument,
+  onDeleteDocument,
   onReclassifyAttachment,
   nextCursor,
   loadingOlder,
@@ -44,6 +46,7 @@ export function ImportDocumentList({
   onRemoveFile: (id: string) => void;
   onSelectDocument: (id: string) => void;
   onRetryDocument: (document: DocumentReview) => void;
+  onDeleteDocument: (document: DocumentReview) => void;
   onReclassifyAttachment: (document: DocumentReview, sourceKind: StatementSourceKind) => void;
   nextCursor: string | null;
   loadingOlder: boolean;
@@ -175,6 +178,7 @@ export function ImportDocumentList({
           <button
             type="button"
             className={`file-review-row review-select ${selected === document.id ? "review-selected" : ""}`}
+            disabled={document.deletionPending}
             onClick={() => onSelectDocument(document.id)}
           >
             <span className="file-thumb">
@@ -203,6 +207,17 @@ export function ImportDocumentList({
               onClick={() => onRetryDocument(document)}
             >
               再抽出
+            </button>
+          )}
+          {canDeleteDocument(document) && (
+            <button
+              type="button"
+              className="text-button"
+              disabled={pending}
+              onClick={() => onDeleteDocument(document)}
+            >
+              <Trash2 size={15} />
+              {document.deletionPending ? "削除を再試行" : "原本を削除"}
             </button>
           )}
           {canReclassifyAttachment(document) && (

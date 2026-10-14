@@ -164,6 +164,7 @@ export type DocumentReview = {
   sha256?: string;
   duplicateOf?: string;
   hasEvidence?: boolean;
+  deletionPending?: boolean;
   confirmations?: Array<{
     sourceReference: string;
     purchaseId: string;
@@ -226,6 +227,18 @@ export function canReclassifyAttachment(
     !document.confirmations?.length &&
     document.status.toUpperCase() !== "RUNNING" &&
     (!targetKind || targetKind !== document.sourceKind)
+  );
+}
+
+export function canDeleteDocument(document: DocumentReview) {
+  if (document.deletionPending) return true;
+
+  return (
+    (document.status.toUpperCase() === "SUCCEEDED" || document.status.toUpperCase() === "FAILED") &&
+    !document.hasEvidence &&
+    !document.confirmations?.length &&
+    !document.attachmentParent &&
+    !document.attachments?.length
   );
 }
 
@@ -330,6 +343,7 @@ export const statusLabel = (status: string) =>
   (
     ({
       QUEUED: "待機中",
+      "DELETION-PENDING": "削除待ち",
       RUNNING: "抽出中",
       READY: "確認待ち",
       REVIEW: "確認待ち",

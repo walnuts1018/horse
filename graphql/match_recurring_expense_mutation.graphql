@@ -1,0 +1,21 @@
+extend type Mutation {
+  matchRecurringExpense(input: MatchRecurringExpenseInput!): MatchRecurringExpenseResult!
+}
+
+union MatchRecurringExpenseResult = MatchRecurringExpenseSuccess | MatchRecurringExpenseUserError
+
+type MatchRecurringExpenseSuccess {
+  result: RecurringExpense!
+}
+
+input MatchRecurringExpenseInput {
+  householdId: ID! @nodeID(of: "Household")
+  expenseId: ID! @nodeID(of: "RecurringExpense")
+  purchaseId: ID! @nodeID(of: "Purchase")
+  baseRevision: Int!
+}
+
+type MatchRecurringExpenseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

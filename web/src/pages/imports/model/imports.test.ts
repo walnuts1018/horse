@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canDeleteDocument,
   canReclassifyAttachment,
   defaultUploadSourceKind,
   parseDocumentFilters,
@@ -51,6 +52,38 @@ describe("添付文書の明細種別変更", () => {
       }),
     ).toBe(false);
     expect(canReclassifyAttachment({ ...attachment, status: "RUNNING" })).toBe(false);
+  });
+});
+
+describe("保存済み原本の削除", () => {
+  it("未確定で処理が終わった単独原本だけを対象にする", () => {
+    const document: DocumentReview = { id: "document-1", status: "SUCCEEDED" };
+
+    expect(canDeleteDocument(document)).toBe(true);
+    expect(canDeleteDocument({ ...document, status: "FAILED" })).toBe(true);
+    expect(canDeleteDocument({ ...document, status: "RUNNING" })).toBe(false);
+    expect(canDeleteDocument({ ...document, status: "QUEUED" })).toBe(false);
+    expect(canDeleteDocument({ ...document, hasEvidence: true })).toBe(false);
+    expect(
+      canDeleteDocument({
+        ...document,
+        confirmations: [{ sourceReference: "row:1", purchaseId: "purchase-1" }],
+      }),
+    ).toBe(false);
+    expect(
+      canDeleteDocument({
+        ...document,
+        attachments: [
+          { id: "child", name: "mail", filename: "file.pdf", mimeType: "application/pdf" },
+        ],
+      }),
+    ).toBe(false);
+    expect(
+      canDeleteDocument({
+        ...document,
+        attachmentParent: { id: "parent", name: "mail", filename: "mail.eml", index: 0 },
+      }),
+    ).toBe(false);
   });
 });
 

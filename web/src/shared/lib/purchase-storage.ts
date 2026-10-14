@@ -23,6 +23,7 @@ export type PurchaseDraft = {
   paymentAccountId?: string;
   paymentAllocations?: Array<{ paymentAccountId: string; amountYen: string }>;
   paymentAutoTotal?: boolean;
+  paymentAmountManuallyEdited?: boolean;
   itemName: string;
   itemAmount: string;
   categoryId: string;

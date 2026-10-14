@@ -87,6 +87,20 @@
   border-bottom: 1px solid #f0f3f0;
 }
 
+.matchControls {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 10px;
+}
+
+.matchControls select {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+}
+
 .settingRow:last-child {
   border: 0;
 }

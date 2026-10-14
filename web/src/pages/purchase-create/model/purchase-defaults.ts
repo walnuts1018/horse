@@ -14,7 +14,7 @@ export function loadPurchaseDefaults(
   householdId: string,
   accountIds: string[],
 ): PurchaseDefaults {
-  const fallback = { merchant: "", paymentAccountId: accountIds[0] ?? "" };
+  const fallback = { merchant: "", paymentAccountId: uniqueAccountId(accountIds) };
   const storage = getStorage();
   if (!storage) return fallback;
 
@@ -38,7 +38,7 @@ export function loadPaymentAccountForMerchant(
   merchant: string,
   accountIds: string[],
 ): string {
-  const fallback = accountIds[0] ?? "";
+  const fallback = uniqueAccountId(accountIds);
   const storage = getStorage();
   if (!storage) return fallback;
 
@@ -104,10 +104,18 @@ function paymentAccountForMerchant(
   accountIds: string[],
 ): string {
   const storedByMerchant = validMerchantAccounts(defaults.paymentAccountIdsByMerchant);
-  const merchantAccountId = storedByMerchant[merchant.trim()];
-  if (merchantAccountId && accountIds.includes(merchantAccountId)) return merchantAccountId;
+  const merchantName = merchant.trim();
+  const merchantAccountId = storedByMerchant[merchantName];
+  if (merchantAccountId) {
+    return accountIds.includes(merchantAccountId) ? merchantAccountId : "";
+  }
   if (accountIds.includes(defaults.paymentAccountId)) return defaults.paymentAccountId;
-  return accountIds[0] ?? "";
+  if (defaults.paymentAccountId) return "";
+  return uniqueAccountId(accountIds);
+}
+
+function uniqueAccountId(accountIds: string[]): string {
+  return accountIds.length === 1 ? accountIds[0] : "";
 }
 
 function validMerchantAccounts(value: unknown): Record<string, string> {

@@ -181,6 +181,16 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 			}
 		}
 	}
+	sourceDocument, err := models.SourceDocuments.Query(sm.Where(psql.And(
+		models.SourceDocuments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.SourceDocuments.Columns.ObjectKey.EQ(psql.Arg("temporary-error-document")),
+	))).One(ctx, executor)
+	if err != nil {
+		t.Fatalf("failed extraction must retain its source document record: %v", err)
+	}
+	if _, err := store.Get(ctx, sourceDocument.ObjectKey, sourceDocument.MimeType); err != nil {
+		t.Fatalf("failed extraction must retain the original object: %v", err)
+	}
 
 	pausedJob := insertJob("receipt", mimeTypePDF, "paused-document", 0, 0)
 	store["paused-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("test source")}

@@ -680,6 +680,15 @@ type ComplexityRoot struct {
 		ToMember    func(childComplexity int) int
 	}
 
+	MatchRecurringExpenseSuccess struct {
+		Result func(childComplexity int) int
+	}
+
+	MatchRecurringExpenseUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	Member struct {
 		DisplayName func(childComplexity int) int
 		ID          func(childComplexity int) int
@@ -737,6 +746,7 @@ type ComplexityRoot struct {
 		LinkStatementAccountMovement  func(childComplexity int, input model.LinkStatementAccountMovementInput) int
 		LinkStatementRefundCorrection func(childComplexity int, input model.LinkStatementRefundCorrectionInput) int
 		LinkStatementTransfer         func(childComplexity int, input model.LinkStatementTransferInput) int
+		MatchRecurringExpense         func(childComplexity int, input model.MatchRecurringExpenseInput) int
 		PostPurchase                  func(childComplexity int, input model.PostPurchaseInput) int
 		RecordAccountMovement         func(childComplexity int, input model.RecordAccountMovementInput) int
 		RecordExternalIncome          func(childComplexity int, input model.RecordExternalIncomeInput) int
@@ -1498,6 +1508,7 @@ type MutationResolver interface {
 	RotateHouseholdMailForwarding(ctx context.Context, input model.HouseholdMailForwardingInput) (model.RotateHouseholdMailForwardingResult, error)
 	RevokeHouseholdMailForwarding(ctx context.Context, input model.HouseholdMailForwardingInput) (model.RevokeHouseholdMailForwardingResult, error)
 	LeaveHousehold(ctx context.Context, input model.LeaveHouseholdInput) (model.LeaveHouseholdResult, error)
+	MatchRecurringExpense(ctx context.Context, input model.MatchRecurringExpenseInput) (model.MatchRecurringExpenseResult, error)
 	PostPurchase(ctx context.Context, input model.PostPurchaseInput) (model.PostPurchaseResult, error)
 	RecordAccountMovement(ctx context.Context, input model.RecordAccountMovementInput) (model.RecordAccountMovementResult, error)
 	LinkStatementAccountMovement(ctx context.Context, input model.LinkStatementAccountMovementInput) (model.LinkStatementAccountMovementResult, error)
@@ -3531,6 +3542,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.LoanTransferLedgerEntry.ToMember(childComplexity), true
 
+	case "MatchRecurringExpenseSuccess.result":
+		if e.ComplexityRoot.MatchRecurringExpenseSuccess.Result == nil {
+			break
+		}
+
+		return e.ComplexityRoot.MatchRecurringExpenseSuccess.Result(childComplexity), true
+
+	case "MatchRecurringExpenseUserError.code":
+		if e.ComplexityRoot.MatchRecurringExpenseUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.MatchRecurringExpenseUserError.Code(childComplexity), true
+	case "MatchRecurringExpenseUserError.message":
+		if e.ComplexityRoot.MatchRecurringExpenseUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.MatchRecurringExpenseUserError.Message(childComplexity), true
+
 	case "Member.displayName":
 		if e.ComplexityRoot.Member.DisplayName == nil {
 			break
@@ -3917,6 +3948,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.LinkStatementTransfer(childComplexity, args["input"].(model.LinkStatementTransferInput)), true
+	case "Mutation.matchRecurringExpense":
+		if e.ComplexityRoot.Mutation.MatchRecurringExpense == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_matchRecurringExpense_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.MatchRecurringExpense(childComplexity, args["input"].(model.MatchRecurringExpenseInput)), true
 	case "Mutation.postPurchase":
 		if e.ComplexityRoot.Mutation.PostPurchase == nil {
 			break
@@ -6411,6 +6453,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputLinkStatementAccountMovementInput,
 		ec.unmarshalInputLinkStatementRefundCorrectionInput,
 		ec.unmarshalInputLinkStatementTransferInput,
+		ec.unmarshalInputMatchRecurringExpenseInput,
 		ec.unmarshalInputPersonalPoolFundingRuleInput,
 		ec.unmarshalInputPoolFundingRuleConfigurationInput,
 		ec.unmarshalInputPoolFundingShareInput,
@@ -7628,6 +7671,28 @@ extend type Query {
     first: Int
     last: Int
   ): LoanBalanceConnection!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/match_recurring_expense_mutation.graphql", Input: `extend type Mutation {
+  matchRecurringExpense(input: MatchRecurringExpenseInput!): MatchRecurringExpenseResult!
+}
+
+union MatchRecurringExpenseResult = MatchRecurringExpenseSuccess | MatchRecurringExpenseUserError
+
+type MatchRecurringExpenseSuccess {
+  result: RecurringExpense!
+}
+
+input MatchRecurringExpenseInput {
+  householdId: ID! @nodeID(of: "Household")
+  expenseId: ID! @nodeID(of: "RecurringExpense")
+  purchaseId: ID! @nodeID(of: "Purchase")
+  baseRevision: Int!
+}
+
+type MatchRecurringExpenseUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/member.graphql", Input: `enum MemberRole {
@@ -10609,6 +10674,20 @@ func (ec *executionContext) field_Mutation_linkStatementTransfer_args(ctx contex
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.LinkStatementTransferInput, error) {
 			return ec.unmarshalNLinkStatementTransferInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLinkStatementTransferInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_matchRecurringExpense_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.MatchRecurringExpenseInput, error) {
+			return ec.unmarshalNMatchRecurringExpenseInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMatchRecurringExpenseInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -20523,6 +20602,84 @@ func (ec *executionContext) fieldContext_LoanTransferLedgerEntry_loan(_ context.
 	return fc, nil
 }
 
+func (ec *executionContext) _MatchRecurringExpenseSuccess_result(ctx context.Context, field graphql.CollectedField, obj *model.MatchRecurringExpenseSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_MatchRecurringExpenseSuccess_result(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Result, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.RecurringExpense) graphql.Marshaler {
+			return ec.marshalNRecurringExpense2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐRecurringExpense(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_MatchRecurringExpenseSuccess_result(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "MatchRecurringExpenseSuccess",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_RecurringExpense(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _MatchRecurringExpenseUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.MatchRecurringExpenseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_MatchRecurringExpenseUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_MatchRecurringExpenseUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("MatchRecurringExpenseUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _MatchRecurringExpenseUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.MatchRecurringExpenseUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_MatchRecurringExpenseUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_MatchRecurringExpenseUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("MatchRecurringExpenseUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _Member_id(ctx context.Context, field graphql.CollectedField, obj *model.Member) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -21948,6 +22105,50 @@ func (ec *executionContext) fieldContext_Mutation_leaveHousehold(ctx context.Con
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_leaveHousehold_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_matchRecurringExpense(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_matchRecurringExpense(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().MatchRecurringExpense(ctx, fc.Args["input"].(model.MatchRecurringExpenseInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MatchRecurringExpenseResult) graphql.Marshaler {
+			return ec.marshalNMatchRecurringExpenseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMatchRecurringExpenseResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_matchRecurringExpense(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type MatchRecurringExpenseResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_matchRecurringExpense_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -35745,6 +35946,117 @@ func (ec *executionContext) unmarshalInputLinkStatementTransferInput(ctx context
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputMatchRecurringExpenseInput(ctx context.Context, obj any) (model.MatchRecurringExpenseInput, error) {
+	var it model.MatchRecurringExpenseInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"householdId", "expenseId", "purchaseId", "baseRevision"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "householdId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Household")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.HouseholdID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "expenseId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("expenseId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "RecurringExpense")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.ExpenseID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "purchaseId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("purchaseId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Purchase")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.PurchaseID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "baseRevision":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("baseRevision"))
+			data, err := ec.unmarshalNInt2int(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.BaseRevision = data
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputPersonalPoolFundingRuleInput(ctx context.Context, obj any) (model.PersonalPoolFundingRuleInput, error) {
 	var it model.PersonalPoolFundingRuleInput
 	if obj == nil {
@@ -40334,6 +40646,33 @@ func (ec *executionContext) _LinkStatementTransferResult(ctx context.Context, se
 	}
 }
 
+func (ec *executionContext) _MatchRecurringExpenseResult(ctx context.Context, sel ast.SelectionSet, obj model.MatchRecurringExpenseResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.MatchRecurringExpenseUserError:
+		return ec._MatchRecurringExpenseUserError(ctx, sel, &obj)
+	case *model.MatchRecurringExpenseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._MatchRecurringExpenseUserError(ctx, sel, obj)
+	case model.MatchRecurringExpenseSuccess:
+		return ec._MatchRecurringExpenseSuccess(ctx, sel, &obj)
+	case *model.MatchRecurringExpenseSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._MatchRecurringExpenseSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of MatchRecurringExpenseResult must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
 func (ec *executionContext) _MutationError(ctx context.Context, sel ast.SelectionSet, obj model.MutationError) graphql.Marshaler {
 	switch obj := (obj).(type) {
 	case nil:
@@ -40485,6 +40824,13 @@ func (ec *executionContext) _MutationError(ctx context.Context, sel ast.Selectio
 			return graphql.Null
 		}
 		return ec._PostPurchaseUserError(ctx, sel, obj)
+	case model.MatchRecurringExpenseUserError:
+		return ec._MatchRecurringExpenseUserError(ctx, sel, &obj)
+	case *model.MatchRecurringExpenseUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._MatchRecurringExpenseUserError(ctx, sel, obj)
 	case model.LinkStatementTransferUserError:
 		return ec._LinkStatementTransferUserError(ctx, sel, &obj)
 	case *model.LinkStatementTransferUserError:
@@ -48021,6 +48367,87 @@ func (ec *executionContext) _LoanTransferLedgerEntry(ctx context.Context, sel as
 	return out
 }
 
+var matchRecurringExpenseSuccessImplementors = []string{"MatchRecurringExpenseSuccess", "MatchRecurringExpenseResult"}
+
+func (ec *executionContext) _MatchRecurringExpenseSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.MatchRecurringExpenseSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, matchRecurringExpenseSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("MatchRecurringExpenseSuccess")
+		case "result":
+			out.Values[i] = ec._MatchRecurringExpenseSuccess_result(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var matchRecurringExpenseUserErrorImplementors = []string{"MatchRecurringExpenseUserError", "MatchRecurringExpenseResult", "MutationError"}
+
+func (ec *executionContext) _MatchRecurringExpenseUserError(ctx context.Context, sel ast.SelectionSet, obj *model.MatchRecurringExpenseUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, matchRecurringExpenseUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("MatchRecurringExpenseUserError")
+		case "code":
+			out.Values[i] = ec._MatchRecurringExpenseUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._MatchRecurringExpenseUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var memberImplementors = []string{"Member", "Node"}
 
 func (ec *executionContext) _Member(ctx context.Context, sel ast.SelectionSet, obj *model.Member) graphql.Marshaler {
@@ -48546,6 +48973,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "leaveHousehold":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_leaveHousehold(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "matchRecurringExpense":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_matchRecurringExpense(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -57027,6 +57461,21 @@ func (ec *executionContext) unmarshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋ
 
 func (ec *executionContext) marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx context.Context, sel ast.SelectionSet, v model.Long) graphql.Marshaler {
 	return v
+}
+
+func (ec *executionContext) unmarshalNMatchRecurringExpenseInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMatchRecurringExpenseInput(ctx context.Context, v any) (model.MatchRecurringExpenseInput, error) {
+	res, err := ec.unmarshalInputMatchRecurringExpenseInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNMatchRecurringExpenseResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMatchRecurringExpenseResult(ctx context.Context, sel ast.SelectionSet, v model.MatchRecurringExpenseResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._MatchRecurringExpenseResult(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNMember2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMemberᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Member) graphql.Marshaler {

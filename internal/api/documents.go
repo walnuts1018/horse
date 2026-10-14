@@ -55,6 +55,7 @@ type documentResponse struct {
 	CreatedAt        time.Time                 `json:"createdAt"`
 	Confirmations    []documentConfirmation    `json:"confirmations"`
 	HasEvidence      bool                      `json:"hasEvidence"`
+	DeletionPending  bool                      `json:"deletionPending,omitempty"`
 	Attachments      []documentAttachment      `json:"attachments,omitempty"`
 	AttachmentParent *documentAttachmentParent `json:"attachmentParent,omitempty"`
 }
@@ -365,6 +366,12 @@ func (s *Server) documentResponse(ctx context.Context, exec bob.Executor, docume
 		Name:   document.SourceFilename.V,
 		SHA256: document.Sha256, MIMEType: document.MimeType, SourceKind: document.SourceKind,
 		Status: documentStatusQueued, CreatedAt: document.CreatedAt,
+		DeletionPending: documentDeletionPending(document),
+	}
+	if result.DeletionPending {
+		result.Status = "deletion-pending"
+
+		return result, nil
 	}
 	job, err := models.ExtractionJobs.Query(
 		sm.Where(models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID))),
@@ -483,6 +490,9 @@ func documentForMember(ctx context.Context, exec bob.Executor, documentID, membe
 		return nil, err
 	}
 	if !member {
+		return nil, pgx.ErrNoRows
+	}
+	if documentDeletionPending(document) {
 		return nil, pgx.ErrNoRows
 	}
 	return document, nil

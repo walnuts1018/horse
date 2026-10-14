@@ -73,6 +73,7 @@ type joins[Q dialect.Joinable] struct {
 	PurchasePaymentFundingSnapshots joinSet[purchasePaymentFundingSnapshotJoins[Q]]
 	PurchasePayments                joinSet[purchasePaymentJoins[Q]]
 	Purchases                       joinSet[purchaseJoins[Q]]
+	RecurringExpenseMatches         joinSet[recurringExpenseMatchJoins[Q]]
 	RecurringExpenses               joinSet[recurringExpenseJoins[Q]]
 	SettlementAdjustments           joinSet[settlementAdjustmentJoins[Q]]
 	SettlementLines                 joinSet[settlementLineJoins[Q]]
@@ -136,6 +137,7 @@ func getJoins[Q dialect.Joinable]() joins[Q] {
 		PurchasePaymentFundingSnapshots: buildJoinSet[purchasePaymentFundingSnapshotJoins[Q]](PurchasePaymentFundingSnapshots.Columns, buildPurchasePaymentFundingSnapshotJoins),
 		PurchasePayments:                buildJoinSet[purchasePaymentJoins[Q]](PurchasePayments.Columns, buildPurchasePaymentJoins),
 		Purchases:                       buildJoinSet[purchaseJoins[Q]](Purchases.Columns, buildPurchaseJoins),
+		RecurringExpenseMatches:         buildJoinSet[recurringExpenseMatchJoins[Q]](RecurringExpenseMatches.Columns, buildRecurringExpenseMatchJoins),
 		RecurringExpenses:               buildJoinSet[recurringExpenseJoins[Q]](RecurringExpenses.Columns, buildRecurringExpenseJoins),
 		SettlementAdjustments:           buildJoinSet[settlementAdjustmentJoins[Q]](SettlementAdjustments.Columns, buildSettlementAdjustmentJoins),
 		SettlementLines:                 buildJoinSet[settlementLineJoins[Q]](SettlementLines.Columns, buildSettlementLineJoins),

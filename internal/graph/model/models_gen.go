@@ -135,6 +135,10 @@ type LinkStatementTransferResult interface {
 	IsLinkStatementTransferResult()
 }
 
+type MatchRecurringExpenseResult interface {
+	IsMatchRecurringExpenseResult()
+}
+
 type MutationError interface {
 	IsMutationError()
 	GetCode() MutationErrorCode
@@ -1335,6 +1339,30 @@ func (LoanTransferLedgerEntry) IsTransferLedgerEntry() {}
 
 func (this LoanTransferLedgerEntry) GetFromMember() *Member { return this.FromMember }
 func (this LoanTransferLedgerEntry) GetToMember() *Member   { return this.ToMember }
+
+type MatchRecurringExpenseInput struct {
+	HouseholdID  string `json:"householdId"`
+	ExpenseID    string `json:"expenseId"`
+	PurchaseID   string `json:"purchaseId"`
+	BaseRevision int    `json:"baseRevision"`
+}
+
+type MatchRecurringExpenseSuccess struct {
+	Result *RecurringExpense `json:"result"`
+}
+
+func (MatchRecurringExpenseSuccess) IsMatchRecurringExpenseResult() {}
+
+type MatchRecurringExpenseUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (MatchRecurringExpenseUserError) IsMatchRecurringExpenseResult() {}
+
+func (MatchRecurringExpenseUserError) IsMutationError()                {}
+func (this MatchRecurringExpenseUserError) GetCode() MutationErrorCode { return this.Code }
+func (this MatchRecurringExpenseUserError) GetMessage() string         { return this.Message }
 
 type Member struct {
 	ID          string     `json:"id"`

@@ -1,5 +1,21 @@
 import { graphql } from "react-relay";
 
+export const recurringExpenseMatchCandidatesQuery = graphql`
+  query RecurringExpenseMatchCandidatesQuery($filter: PurchaseFilter!, $first: Int) {
+    purchases(filter: $filter, first: $first) {
+      edges {
+        node {
+          id
+          occurredAt
+          merchant
+          totalYen
+          status
+        }
+      }
+    }
+  }
+`;
+
 export const allocationRulesQuery = graphql`
   query AllocationRulesQuery($householdId: ID!, $after: String, $first: Int) {
     allocationRules(householdId: $householdId, after: $after, first: $first) {

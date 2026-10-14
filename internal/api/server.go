@@ -88,6 +88,7 @@ func (s *Server) Handler() http.Handler {
 	add(http.MethodGet, "/documents/:id/content", s.documentContent)
 	add(http.MethodGet, "/documents/:id/preview", s.documentPreview)
 	add(http.MethodGet, "/documents/:id/matches", s.documentMatches)
+	add(http.MethodDelete, "/documents/:id", s.deleteDocument)
 	add(http.MethodPost, "/documents/:id/retry", s.retryDocument)
 	add(http.MethodPost, "/documents/:id/confirm", s.confirmEvidence)
 	add(http.MethodPost, "/purchases/:id/evidence", s.confirmPurchaseEvidence)

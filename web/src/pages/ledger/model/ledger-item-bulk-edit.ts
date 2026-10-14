@@ -7,6 +7,7 @@ import {
   type BulkUpdatePurchaseItemsMutation$variables,
 } from "../../../entities/purchase";
 import { errorMessage } from "../../../shared/lib";
+import { selectableLedgerItemIds } from "./ledger-item-selection";
 
 type LedgerItemBulkPatch = BulkUpdatePurchaseItemsMutation$variables["input"]["patch"];
 
@@ -58,7 +59,10 @@ export function useLedgerItemBulkEdit({
     selection.scope === selectionScope
       ? selection
       : { scope: selectionScope, ids: EMPTY_SELECTION_IDS, anchor: null };
-  const selectedItems = currentSelection.ids;
+  const selectableItemIds = selectableLedgerItemIds(purchases);
+  const selectedItems = new Set(
+    [...currentSelection.ids].filter((id) => selectableItemIds.has(id)),
+  );
   const [session, setSession] = useState<LedgerItemBulkSessionState>(() =>
     createBulkSession(householdId),
   );
@@ -98,6 +102,7 @@ export function useLedgerItemBulkEdit({
     id: string,
     shiftKey: boolean,
   ) => {
+    if (!selectableItemIds.has(id)) return;
     const anchorIndex =
       shiftKey && currentSelection.anchor?.context === context
         ? visibleIds.indexOf(currentSelection.anchor.id)
@@ -110,13 +115,14 @@ export function useLedgerItemBulkEdit({
             Math.max(anchorIndex, targetIndex) + 1,
           )
         : null;
-    const additions = range?.filter((targetId) => !selectedItems.has(targetId)) ?? [];
+    const selectableRange = range?.filter((targetId) => selectableItemIds.has(targetId)) ?? null;
+    const additions = selectableRange?.filter((targetId) => !selectedItems.has(targetId)) ?? [];
     if (selectedItems.size + additions.length > 100) {
       patchSession({ error: "一括変更は100品目までです" });
       return;
     }
     const next = new Set(selectedItems);
-    if (range) range.forEach((targetId) => next.add(targetId));
+    if (selectableRange) selectableRange.forEach((targetId) => next.add(targetId));
     else if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelection({

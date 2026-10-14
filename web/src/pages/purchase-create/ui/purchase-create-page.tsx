@@ -13,7 +13,7 @@ import {
   savePurchaseDefaults,
 } from "../model/purchase-defaults";
 import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
-import { usePurchasePayments } from "../model/purchase-payments";
+import { resolveInitialPaymentAccountId, usePurchasePayments } from "../model/purchase-payments";
 import { usePurchaseDraft } from "../model/use-purchase-draft";
 import { usePurchaseSubmission } from "../model/use-purchase-submission";
 import { EditPurchaseDetails } from "./edit-purchase-details";
@@ -120,9 +120,18 @@ function PurchaseCreatePageContent({
           paymentAutoTotal && paymentRows.length === 1 ? String(itemTotal) : payment.amountYen,
       })),
       paymentAutoTotal,
+      paymentAmountManuallyEdited: payments.manualAmountEdited,
       ...itemsValue,
     }),
-    [merchant, occurredAt, paymentRows, paymentAutoTotal, itemTotal, itemsValue],
+    [
+      merchant,
+      occurredAt,
+      paymentRows,
+      paymentAutoTotal,
+      payments.manualAmountEdited,
+      itemTotal,
+      itemsValue,
+    ],
   );
   const draftPersistence = usePurchaseDraft({
     memberId,
@@ -140,15 +149,23 @@ function PurchaseCreatePageContent({
           })),
         );
         payments.setAutoTotal(loaded.paymentAutoTotal ?? false);
+        payments.setManualAmountEdited(
+          loaded.paymentAmountManuallyEdited ??
+            (loaded.paymentAllocations.length === 1 && loaded.paymentAutoTotal === false),
+        );
       } else {
         payments.setRows([
           {
             key: crypto.randomUUID(),
-            paymentAccountId: loaded.paymentAccountId || household.accounts[0]?.id || "",
+            paymentAccountId: resolveInitialPaymentAccountId(
+              accountIds,
+              loaded.paymentAccountId || undefined,
+            ),
             amountYen: "",
           },
         ]);
         payments.setAutoTotal(true);
+        payments.setManualAmountEdited(false);
       }
       const restoredCategoryId = isEnabledCategory(loaded.categoryId) ? loaded.categoryId : "";
       setItemsValue({

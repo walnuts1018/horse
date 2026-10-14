@@ -6,7 +6,7 @@ import "./imports-page.css";
 import { type Household } from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib/errors";
 import { InlineError } from "../../../shared/ui";
-import { readDocument } from "../api/documents";
+import { deleteDocument, readDocument } from "../api/documents";
 import { useEvidencePreview } from "../model/evidence-preview";
 import {
   asRecord,
@@ -238,6 +238,27 @@ export function ImportsPage({
       setPending(false);
     }
   };
+  const removeDocument = async (document: DocumentReview) => {
+    if (
+      !window.confirm(`${document.name ?? "この原本"}を削除しますか？この操作は取り消せません。`)
+    ) {
+      return;
+    }
+    setPending(true);
+    setMessage("");
+    try {
+      await deleteDocument(document.id);
+      setDocuments((current) => current.filter((entry) => entry.id !== document.id));
+      if (selected === document.id) setSelected(null);
+      await refreshDocuments(true);
+    } catch (reason) {
+      setMessage(errorMessage(reason));
+      if (selected === document.id) setSelected(null);
+      await refreshDocuments(true);
+    } finally {
+      setPending(false);
+    }
+  };
   const reclassifyAttachment = async (document: DocumentReview, kind: StatementSourceKind) => {
     setPending(true);
     setMessage("");
@@ -449,6 +470,7 @@ export function ImportsPage({
             }}
             onSelectDocument={setSelected}
             onRetryDocument={(document) => void retryDocument(document)}
+            onDeleteDocument={(document) => void removeDocument(document)}
             onReclassifyAttachment={(document, kind) => void reclassifyAttachment(document, kind)}
             nextCursor={nextDocumentCursor}
             loadingOlder={loadingOlderDocuments}

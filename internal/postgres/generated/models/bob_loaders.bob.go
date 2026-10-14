@@ -60,6 +60,7 @@ type preloaders struct {
 	PurchasePaymentFundingSnapshot purchasePaymentFundingSnapshotPreloader
 	PurchasePayment                purchasePaymentPreloader
 	Purchase                       purchasePreloader
+	RecurringExpenseMatch          recurringExpenseMatchPreloader
 	RecurringExpense               recurringExpensePreloader
 	SettlementAdjustment           settlementAdjustmentPreloader
 	SettlementLine                 settlementLinePreloader
@@ -115,6 +116,7 @@ func getPreloaders() preloaders {
 		PurchasePaymentFundingSnapshot: buildPurchasePaymentFundingSnapshotPreloader(),
 		PurchasePayment:                buildPurchasePaymentPreloader(),
 		Purchase:                       buildPurchasePreloader(),
+		RecurringExpenseMatch:          buildRecurringExpenseMatchPreloader(),
 		RecurringExpense:               buildRecurringExpensePreloader(),
 		SettlementAdjustment:           buildSettlementAdjustmentPreloader(),
 		SettlementLine:                 buildSettlementLinePreloader(),
@@ -176,6 +178,7 @@ type thenLoaders[Q orm.Loadable] struct {
 	PurchasePaymentFundingSnapshot purchasePaymentFundingSnapshotThenLoader[Q]
 	PurchasePayment                purchasePaymentThenLoader[Q]
 	Purchase                       purchaseThenLoader[Q]
+	RecurringExpenseMatch          recurringExpenseMatchThenLoader[Q]
 	RecurringExpense               recurringExpenseThenLoader[Q]
 	SettlementAdjustment           settlementAdjustmentThenLoader[Q]
 	SettlementLine                 settlementLineThenLoader[Q]
@@ -231,6 +234,7 @@ func getThenLoaders[Q orm.Loadable]() thenLoaders[Q] {
 		PurchasePaymentFundingSnapshot: buildPurchasePaymentFundingSnapshotThenLoader[Q](),
 		PurchasePayment:                buildPurchasePaymentThenLoader[Q](),
 		Purchase:                       buildPurchaseThenLoader[Q](),
+		RecurringExpenseMatch:          buildRecurringExpenseMatchThenLoader[Q](),
 		RecurringExpense:               buildRecurringExpenseThenLoader[Q](),
 		SettlementAdjustment:           buildSettlementAdjustmentThenLoader[Q](),
 		SettlementLine:                 buildSettlementLineThenLoader[Q](),

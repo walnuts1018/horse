@@ -70,6 +70,7 @@ type purchaseR struct {
 	CreatedByMember                 *Member                             // purchases.purchases_created_by_fkey
 	Household                       *Household                          // purchases.purchases_household_id_fkey
 	Account                         *Account                            // purchases.purchases_household_id_payment_account_id_fkey
+	RecurringExpenseMatch           *RecurringExpenseMatch              // recurring_expense_matches.recurring_expense_matches_household_id_purchase_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -88,6 +89,7 @@ type purchaseRLoaded struct {
 	CreatedByMember                 bool // purchases.purchases_created_by_fkey
 	Household                       bool // purchases.purchases_household_id_fkey
 	Account                         bool // purchases.purchases_household_id_payment_account_id_fkey
+	RecurringExpenseMatch           bool // recurring_expense_matches.recurring_expense_matches_household_id_purchase_id_fkey
 }
 
 func buildPurchaseColumns(tableName string) purchaseColumns {
@@ -1190,6 +1192,35 @@ func (os PurchaseSlice) Account(mods ...bob.Mod[*dialect.SelectQuery]) AccountsQ
 	)...)
 }
 
+// RecurringExpenseMatch starts a query for related objects on recurring_expense_matches
+func (o *Purchase) RecurringExpenseMatch(mods ...bob.Mod[*dialect.SelectQuery]) RecurringExpenseMatchesQuery {
+	return RecurringExpenseMatches.Query(append(mods,
+		sm.Where(RecurringExpenseMatches.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(RecurringExpenseMatches.Columns.PurchaseID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os PurchaseSlice) RecurringExpenseMatch(mods ...bob.Mod[*dialect.SelectQuery]) RecurringExpenseMatchesQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return RecurringExpenseMatches.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "PurchaseID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "PurchaseID"),
+		)).As("bob_rel_keys").On(RecurringExpenseMatches.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), RecurringExpenseMatches.Columns.PurchaseID.EQ(psql.Quote("bob_rel_keys", "PurchaseID"))),
+	)...)
+}
+
 func insertPurchaseCorrections0(ctx context.Context, exec bob.Executor, corrections1 []*CorrectionSetter, purchase0 *Purchase) (CorrectionSlice, error) {
 	for i := range corrections1 {
 		corrections1[i].HouseholdID = func() *uuid.UUID { return &purchase0.HouseholdID }()
@@ -1773,6 +1804,66 @@ func (purchase0 *Purchase) AttachAccount(ctx context.Context, exec bob.Executor,
 	return nil
 }
 
+func insertPurchaseRecurringExpenseMatch0(ctx context.Context, exec bob.Executor, recurringExpenseMatch1 *RecurringExpenseMatchSetter, purchase0 *Purchase) (*RecurringExpenseMatch, error) {
+	recurringExpenseMatch1.HouseholdID = func() *uuid.UUID { return &purchase0.HouseholdID }()
+	recurringExpenseMatch1.PurchaseID = func() *uuid.UUID { return &purchase0.ID }()
+
+	ret, err := RecurringExpenseMatches.Insert(recurringExpenseMatch1).One(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertPurchaseRecurringExpenseMatch0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachPurchaseRecurringExpenseMatch0(ctx context.Context, exec bob.Executor, count int, recurringExpenseMatch1 *RecurringExpenseMatch, purchase0 *Purchase) (*RecurringExpenseMatch, error) {
+	setter := &RecurringExpenseMatchSetter{
+		HouseholdID: func() *uuid.UUID { return &purchase0.HouseholdID }(),
+		PurchaseID:  func() *uuid.UUID { return &purchase0.ID }(),
+	}
+
+	err := recurringExpenseMatch1.Update(ctx, exec, setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachPurchaseRecurringExpenseMatch0: %w", err)
+	}
+
+	return recurringExpenseMatch1, nil
+}
+
+func (purchase0 *Purchase) InsertRecurringExpenseMatch(ctx context.Context, exec bob.Executor, related *RecurringExpenseMatchSetter) error {
+	var err error
+
+	recurringExpenseMatch1, err := insertPurchaseRecurringExpenseMatch0(ctx, exec, related, purchase0)
+	if err != nil {
+		return err
+	}
+
+	purchase0.R.RecurringExpenseMatch = recurringExpenseMatch1
+	purchase0.R.Loaded.RecurringExpenseMatch = true
+
+	recurringExpenseMatch1.R.Purchase = purchase0
+	recurringExpenseMatch1.R.Loaded.Purchase = true
+
+	return nil
+}
+
+func (purchase0 *Purchase) AttachRecurringExpenseMatch(ctx context.Context, exec bob.Executor, recurringExpenseMatch1 *RecurringExpenseMatch) error {
+	var err error
+
+	_, err = attachPurchaseRecurringExpenseMatch0(ctx, exec, 1, recurringExpenseMatch1, purchase0)
+	if err != nil {
+		return err
+	}
+
+	purchase0.R.RecurringExpenseMatch = recurringExpenseMatch1
+	purchase0.R.Loaded.RecurringExpenseMatch = true
+
+	recurringExpenseMatch1.R.Purchase = purchase0
+	recurringExpenseMatch1.R.Loaded.Purchase = true
+
+	return nil
+}
+
 type purchaseWhere[Q psql.Filterable] struct {
 	cols                  purchaseColumns
 	ID                    psql.WhereMod[Q, uuid.UUID]
@@ -1965,6 +2056,21 @@ func (w purchaseWhereR[Q]) HasAccount(filters ...bob.Mod[*dialect.SelectQuery]) 
 		sm.From(Accounts.NameExpr()),
 		sm.Where(Accounts.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
 		sm.Where(Accounts.Columns.ID.EQ(w.cols.PaymentAccountID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
+// HasRecurringExpenseMatch filters parents that have a matching RecurringExpenseMatch using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to RecurringExpenseMatches).
+func (w purchaseWhereR[Q]) HasRecurringExpenseMatch(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(RecurringExpenseMatches.NameExpr()),
+		sm.Where(RecurringExpenseMatches.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(RecurringExpenseMatches.Columns.PurchaseID.EQ(w.cols.ID)),
 	)
 	q.Apply(filters...)
 	return mods.Where[Q]{E: psql.Exists(q)}
@@ -2272,15 +2378,30 @@ func (o *Purchase) Preload(name string, retrieved any) error {
 			rel.R.Purchases = PurchaseSlice{o}
 		}
 		return nil
+	case "RecurringExpenseMatch":
+		rel, ok := retrieved.(*RecurringExpenseMatch)
+		if !ok {
+			return fmt.Errorf("purchase cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.RecurringExpenseMatch = rel
+		o.R.Loaded.RecurringExpenseMatch = true
+
+		if rel != nil {
+			rel.R.Purchase = o
+			rel.R.Loaded.Purchase = true
+		}
+		return nil
 	default:
 		return fmt.Errorf("purchase has no relationship %q", name)
 	}
 }
 
 type purchasePreloader struct {
-	CreatedByMember func(...psql.PreloadOption) psql.Preloader
-	Household       func(...psql.PreloadOption) psql.Preloader
-	Account         func(...psql.PreloadOption) psql.Preloader
+	CreatedByMember       func(...psql.PreloadOption) psql.Preloader
+	Household             func(...psql.PreloadOption) psql.Preloader
+	Account               func(...psql.PreloadOption) psql.Preloader
+	RecurringExpenseMatch func(...psql.PreloadOption) psql.Preloader
 }
 
 func buildPurchasePreloader() purchasePreloader {
@@ -2324,6 +2445,19 @@ func buildPurchasePreloader() purchasePreloader {
 				},
 			}, Accounts.Columns.Names(), accountScanMapperNullable, opts...)
 		},
+		RecurringExpenseMatch: func(opts ...psql.PreloadOption) psql.Preloader {
+			return psql.Preload[*RecurringExpenseMatch, RecurringExpenseMatchSlice](psql.PreloadRel{
+				Name: "RecurringExpenseMatch",
+				Sides: []psql.PreloadSide{
+					{
+						From:        Purchases,
+						To:          RecurringExpenseMatches,
+						FromColumns: []string{"household_id", "id"},
+						ToColumns:   []string{"household_id", "purchase_id"},
+					},
+				},
+			}, RecurringExpenseMatches.Columns.Names(), recurringExpenseMatchScanMapperNullable, opts...)
+		},
 	}
 }
 
@@ -2338,6 +2472,7 @@ type purchaseThenLoader[Q orm.Loadable] struct {
 	CreatedByMember                 func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Household                       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Account                         func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	RecurringExpenseMatch           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildPurchaseThenLoader[Q orm.Loadable]() purchaseThenLoader[Q] {
@@ -2370,6 +2505,9 @@ func buildPurchaseThenLoader[Q orm.Loadable]() purchaseThenLoader[Q] {
 	}
 	type AccountLoadInterface interface {
 		LoadAccount(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type RecurringExpenseMatchLoadInterface interface {
+		LoadRecurringExpenseMatch(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return purchaseThenLoader[Q]{
@@ -2431,6 +2569,12 @@ func buildPurchaseThenLoader[Q orm.Loadable]() purchaseThenLoader[Q] {
 			"Account",
 			func(ctx context.Context, exec bob.Executor, retrieved AccountLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadAccount(ctx, exec, mods...)
+			},
+		),
+		RecurringExpenseMatch: thenLoadBuilder[Q](
+			"RecurringExpenseMatch",
+			func(ctx context.Context, exec bob.Executor, retrieved RecurringExpenseMatchLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadRecurringExpenseMatch(ctx, exec, mods...)
 			},
 		),
 	}
@@ -3137,6 +3281,74 @@ func (os PurchaseSlice) LoadAccount(ctx context.Context, exec bob.Executor, mods
 			rel.R.Purchases = append(rel.R.Purchases, o)
 
 			o.R.Account = rel
+			break
+		}
+	}
+
+	return nil
+}
+
+// LoadRecurringExpenseMatch loads the purchase's RecurringExpenseMatch into the .R struct
+func (o *Purchase) LoadRecurringExpenseMatch(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.RecurringExpenseMatch = nil
+	o.R.Loaded.RecurringExpenseMatch = false
+
+	related, err := o.RecurringExpenseMatch(mods...).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	related.R.Purchase = o
+	related.R.Loaded.Purchase = true
+
+	o.R.RecurringExpenseMatch = related
+	o.R.Loaded.RecurringExpenseMatch = true
+	return nil
+}
+
+// LoadRecurringExpenseMatch loads the purchase's RecurringExpenseMatch into the .R struct
+func (os PurchaseSlice) LoadRecurringExpenseMatch(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	recurringExpenseMatches, err := os.RecurringExpenseMatch(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.RecurringExpenseMatch = nil
+		o.R.Loaded.RecurringExpenseMatch = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range recurringExpenseMatches {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !(o.ID == rel.PurchaseID) {
+				continue
+			}
+
+			rel.R.Purchase = o
+			rel.R.Loaded.Purchase = true
+
+			o.R.RecurringExpenseMatch = rel
 			break
 		}
 	}
@@ -4182,6 +4394,7 @@ type purchaseJoins[Q dialect.Joinable] struct {
 	CreatedByMember                 modAs[Q, memberColumns]
 	Household                       modAs[Q, householdColumns]
 	Account                         modAs[Q, accountColumns]
+	RecurringExpenseMatch           modAs[Q, recurringExpenseMatchColumns]
 }
 
 func (j purchaseJoins[Q]) aliasedAs(alias string) purchaseJoins[Q] {
@@ -4325,6 +4538,20 @@ func buildPurchaseJoins[Q dialect.Joinable](cols purchaseColumns, typ string) pu
 				{
 					mods = append(mods, dialect.Join[Q](typ, Accounts.NameExpr().As(to.Alias())).On(
 						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.PaymentAccountID),
+					))
+				}
+
+				return mods
+			},
+		},
+		RecurringExpenseMatch: modAs[Q, recurringExpenseMatchColumns]{
+			c: RecurringExpenseMatches.Columns,
+			f: func(to recurringExpenseMatchColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, RecurringExpenseMatches.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.PurchaseID.EQ(cols.ID),
 					))
 				}
 

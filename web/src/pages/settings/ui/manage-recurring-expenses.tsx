@@ -10,6 +10,11 @@ import {
   createRecurringExpense,
   updateRecurringExpense,
 } from "../api/recurring-expense-management";
+import {
+  matchRecurringExpense,
+  readRecurringExpenseMatchCandidates,
+  type RecurringExpenseMatchCandidate,
+} from "../api/recurring-expense-matching";
 
 import styles from "./settings-page.module.css";
 
@@ -53,6 +58,17 @@ export function ManageRecurringExpenses({
   const [recurringEndsOn, setRecurringEndsOn] = useState("");
   const [editingRecurring, setEditingRecurring] = useState<RecurringExpense | null>(null);
   const [pending, setPending] = useState(false);
+  const [matchingExpenseId, setMatchingExpenseId] = useState<string | null>(null);
+  const [matchCandidates, setMatchCandidates] = useState<RecurringExpenseMatchCandidate[]>([]);
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState("");
+  const [today] = useState(() =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date()),
+  );
 
   useEffect(() => {
     onNoticeRef.current = onNotice;
@@ -145,6 +161,44 @@ export function ManageRecurringExpenses({
     }
   };
 
+  const beginMatching = async (expense: RecurringExpense) => {
+    try {
+      const candidates = await readRecurringExpenseMatchCandidates(householdId, expense.merchant);
+      setMatchingExpenseId(expense.id);
+      setMatchCandidates(
+        candidates.filter(
+          (candidate) => candidate.status === "POSTED" || candidate.status === "CLOSED",
+        ),
+      );
+      setSelectedPurchaseId("");
+    } catch (reason) {
+      onNotice(errorMessage(reason), "error");
+    }
+  };
+
+  const confirmMatch = async (expense: RecurringExpense) => {
+    if (!selectedPurchaseId) return;
+    setPending(true);
+    onPendingChange(true);
+    try {
+      await matchRecurringExpense({
+        householdId,
+        expenseId: expense.id,
+        purchaseId: selectedPurchaseId,
+        baseRevision: expense.revision,
+      });
+      setMatchingExpenseId(null);
+      setSelectedPurchaseId("");
+      await refresh();
+      onNotice("購入実績を照合しました", "success");
+    } catch (reason) {
+      onNotice(errorMessage(reason), "error");
+    } finally {
+      setPending(false);
+      onPendingChange(false);
+    }
+  };
+
   const cancelEdit = () => {
     setEditingRecurring(null);
     setRecurringName("");
@@ -182,9 +236,26 @@ export function ManageRecurringExpenses({
                   : expense.cadence === "YEARLY"
                     ? "毎年"
                     : "毎月"}{" "}
-                · 次回 {expense.nextDueOn}
+                · 次回 {expense.nextDueOn} ·{" "}
+                {expense.archived || (expense.endsOn && expense.endsOn < expense.nextDueOn)
+                  ? "終了"
+                  : expense.nextDueOn < today
+                    ? "未払い"
+                    : expense.nextDueOn === today
+                      ? "本日期日"
+                      : "予定"}
               </small>
             </div>
+            {!expense.archived && (
+              <button
+                type="button"
+                className="text-button"
+                disabled={pending}
+                onClick={() => void beginMatching(expense)}
+              >
+                実績を照合
+              </button>
+            )}
             <button
               type="button"
               className="text-button"
@@ -201,6 +272,42 @@ export function ManageRecurringExpenses({
             >
               {expense.archived ? "再表示" : "終了"}
             </button>
+            {matchingExpenseId === expense.id && (
+              <div className={styles.matchControls}>
+                {matchCandidates.length > 0 ? (
+                  <select
+                    aria-label={`${expense.name}に照合する購入`}
+                    value={selectedPurchaseId}
+                    onChange={(event) => setSelectedPurchaseId(event.target.value)}
+                  >
+                    <option value="">購入を選択</option>
+                    {matchCandidates.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.occurredAt.slice(0, 10)} · {candidate.merchant || "店舗なし"} ·{" "}
+                        {yen(Number(candidate.totalYen))}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <small>照合できる購入がありません</small>
+                )}
+                <button
+                  type="button"
+                  className="button button-primary"
+                  disabled={pending || !selectedPurchaseId}
+                  onClick={() => void confirmMatch(expense)}
+                >
+                  照合
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setMatchingExpenseId(null)}
+                >
+                  閉じる
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

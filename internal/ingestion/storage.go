@@ -243,6 +243,18 @@ func (s *ObjectStore) Get(ctx context.Context, key, mimeType string) (Document, 
 	return Document{MIMEType: mimeType, Data: data}, nil
 }
 
+func (s *ObjectStore) Delete(ctx context.Context, key string) error {
+	if key == "" {
+		return errors.New("invalid original document key")
+	}
+	_, err := s.Client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: new(s.Bucket), Key: new(key)})
+	if err != nil {
+		return errors.New("delete original document failed")
+	}
+
+	return nil
+}
+
 func encryptEmailBody(key []byte, objectKey string, plaintext []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
