@@ -5,7 +5,16 @@ import type { DocumentReview } from "./imports";
 import {
   createReceiptPurchaseInput,
   uniqueConsistentReceiptCandidate,
+  receiptOverrideReasonRequired,
 } from "./receipt-confirmation";
+
+describe("receipt override reason requirement", () => {
+  it("requires a reason only when the confirmed total differs from the printed total", () => {
+    expect(receiptOverrideReasonRequired(300, 300)).toBe(false);
+    expect(receiptOverrideReasonRequired(300, 299)).toBe(true);
+    expect(receiptOverrideReasonRequired(undefined, 300)).toBe(true);
+  });
+});
 
 describe("createReceiptPurchaseInput", () => {
   const document: DocumentReview = {

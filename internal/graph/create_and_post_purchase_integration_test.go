@@ -123,6 +123,39 @@ func TestCreateAndPostPurchaseIsAtomicAndIdempotent(t *testing.T) {
 	if retried.ID != createdPurchase.ID || retried.Status != model.PurchaseStatusPosted || retried.Revision != 2 {
 		t.Fatalf("idempotent retry returned a different purchase: %#v", retried)
 	}
+
+	splitDocument := createAndPostSourceDocument(t, ctx, db, householdUUID, memberUUID, "atomic-split")
+	splitDocumentID := splitDocument.ID.String()
+	splitExtractionID, splitVersion, splitStatus := generatedUUID(uuid.NewV7().String()), int32(1), extractionJobSucceededStatus
+	splitVerification := ingestion.Verification{
+		Receipt: ingestion.Receipt{Total: 120, Items: []ingestion.Item{{
+			PrintedName: "Printed bundle", Name: "Printed bundle", PrintedAmount: 120, GrossAmount: 120,
+		}}},
+		Transform: [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1}, TransformPage: 1,
+	}
+	splitVerificationJSON, err := json.Marshal(splitVerification)
+	if err != nil {
+		t.Fatal(err)
+	}
+	splitResult := sql.Null[types.JSON[json.RawMessage]]{V: types.JSON[json.RawMessage]{Val: splitVerificationJSON}, Valid: true}
+	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
+		ID: &splitExtractionID, HouseholdID: &householdUUID, SourceDocumentID: &splitDocument.ID,
+		Version: &splitVersion, Status: &splitStatus, Result: &splitResult,
+	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	splitInput := model.CreatePurchaseInput{
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: testPurchaseTime, Merchant: "Split purchase",
+		SourceDocumentID:   &splitDocumentID,
+		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 120}},
+		Items:              []*model.PurchaseItemInput{{Name: "Milk", AmountYen: 45}, {Name: "Bread", AmountYen: 75}},
+	}
+	splitPurchase, err := resolver.createAndPostPurchase(ctx, splitInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertReceiptSplitEvidence(t, ctx, db, householdUUID, splitDocument.ID, generatedUUID(splitPurchase.ID), splitExtractionID)
+
 	keyRows, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
 		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
 		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(input.IdempotencyKey)),
@@ -293,8 +326,66 @@ func assertReceiptItemEvidenceLinked(t *testing.T, ctx context.Context, db *pgxp
 	if err := json.Unmarshal(observation["item"], &observedItem); err != nil {
 		t.Fatal(err)
 	}
+	var receiptTotal, confirmedTotal int64
+	if err := json.Unmarshal(observation["receiptTotal"], &receiptTotal); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(observation["confirmedTotal"], &confirmedTotal); err != nil {
+		t.Fatal(err)
+	}
 	if jobID != extractionID.String() || index != 0 || observedItem.PrintedName != "Atomic printed item" || observedItem.Name != itemName {
 		t.Fatalf("unexpected receipt evidence observation: %#v", observation)
+	}
+	if receiptTotal != 120 || confirmedTotal != 120 {
+		t.Fatalf("receipt total=%d confirmed total=%d, want both 120", receiptTotal, confirmedTotal)
+	}
+	var confirmedItem struct {
+		PurchaseItemID string `json:"purchaseItemId"`
+		Name           string `json:"name"`
+		AmountYen      int64  `json:"amountYen"`
+	}
+	if err := json.Unmarshal(observation["confirmedItem"], &confirmedItem); err != nil {
+		t.Fatal(err)
+	}
+	if confirmedItem.Name != itemName || confirmedItem.AmountYen != 120 {
+		t.Fatalf("unexpected confirmed receipt item: %#v", confirmedItem)
+	}
+}
+
+func assertReceiptSplitEvidence(t *testing.T, ctx context.Context, db *pgxpool.Pool, householdID, documentID, purchaseID, extractionID gofrsuuid.UUID) {
+	t.Helper()
+	evidenceLinks, err := models.EvidenceLinks.Query(sm.Where(psql.And(
+		models.EvidenceLinks.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.EvidenceLinks.Columns.SourceDocumentID.EQ(psql.Arg(documentID)),
+		models.EvidenceLinks.Columns.PurchaseID.EQ(psql.Arg(purchaseID)),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evidenceLinks) != 1 || evidenceLinks[0].ItemID.Valid {
+		t.Fatalf("split receipt evidence links = %#v, want one document-level link", evidenceLinks)
+	}
+	var observation struct {
+		JobID          string `json:"jobId"`
+		ConfirmedTotal int64  `json:"confirmedTotal"`
+		Receipt        struct {
+			Total int64 `json:"total"`
+			Items []any `json:"items"`
+		} `json:"receipt"`
+		ConfirmedItems []struct {
+			PurchaseItemID string `json:"purchaseItemId"`
+			Name           string `json:"name"`
+			AmountYen      int64  `json:"amountYen"`
+		} `json:"confirmedItems"`
+	}
+	if err := json.Unmarshal(evidenceLinks[0].Observation.Val, &observation); err != nil {
+		t.Fatal(err)
+	}
+	if observation.JobID != extractionID.String() || observation.Receipt.Total != 120 || observation.ConfirmedTotal != 120 || len(observation.Receipt.Items) != 1 {
+		t.Fatalf("original receipt evidence = %#v", observation)
+	}
+	if len(observation.ConfirmedItems) != 2 || observation.ConfirmedItems[0].Name != "Milk" || observation.ConfirmedItems[0].AmountYen != 45 || observation.ConfirmedItems[1].Name != "Bread" || observation.ConfirmedItems[1].AmountYen != 75 {
+		t.Fatalf("confirmed split evidence = %#v", observation.ConfirmedItems)
 	}
 }
 

@@ -10,12 +10,10 @@ func ValidateReceiptConfirmation(verification Verification, amounts []int64, can
 	if len(reason) > 500 {
 		return false, errors.New("receipt override reason is too long")
 	}
-	if len(amounts) != len(verification.Receipt.Items) || len(amounts) == 0 {
-		return false, errors.New("purchase items do not match receipt items")
+	if len(amounts) == 0 {
+		return false, errors.New("purchase items are required")
 	}
 
-	var expected []int64
-	verified := candidateID == "" && verification.Balanced
 	if candidateID != "" {
 		found := false
 		for _, candidate := range verification.Candidates {
@@ -23,29 +21,10 @@ func ValidateReceiptConfirmation(verification Verification, amounts []int64, can
 				continue
 			}
 			found = true
-			if candidate.Consistent && len(candidate.Amounts) == len(amounts) {
-				expected = candidate.Amounts
-				verified = true
-			}
 			break
 		}
 		if !found {
 			return false, errors.New("receipt calculation candidate was not found")
-		}
-	} else if verification.Balanced {
-		expected = make([]int64, len(verification.Receipt.Items))
-		for index, item := range verification.Receipt.Items {
-			expected[index] = item.GrossAmount
-		}
-	}
-
-	matched := verified && len(expected) == len(amounts)
-	if matched {
-		for index, amount := range amounts {
-			if amount != expected[index] {
-				matched = false
-				break
-			}
 		}
 	}
 
@@ -58,9 +37,6 @@ func ValidateReceiptConfirmation(verification Verification, amounts []int64, can
 	}
 	if total != verification.Receipt.Total && reason == "" {
 		return false, errors.New("purchase total does not match receipt total")
-	}
-	if !matched && reason == "" {
-		return false, errors.New("receipt amounts require a verified calculation or override reason")
 	}
 	return reason != "", nil
 }

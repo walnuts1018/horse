@@ -238,6 +238,7 @@ export type DocumentReview = {
     receipt?: {
       merchant?: string;
       purchasedAt?: string;
+      total?: number;
       items?: ExtractedItem[];
       taxGroups?: Array<{
         id: string;

@@ -18,6 +18,7 @@ import {
   type ReviewTarget,
   yen,
 } from "../model/imports";
+import { receiptOverrideReasonRequired } from "../model/receipt-confirmation";
 import {
   getReceiptEvidenceSelection,
   selectReceiptEvidenceItem,
@@ -175,6 +176,10 @@ export function ReceiptReview({
   const selectedCandidateAmounts = result.candidates?.find(
     (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
   )?.amounts;
+  const requiresOverrideReason = receiptOverrideReasonRequired(
+    receipt.total,
+    receiptTotal(selectedDocument),
+  );
   const summaryPayments = paymentDraftFor(selectedDocument);
   const paymentSummary = summaryPayments
     .map((payment) => {
@@ -398,6 +403,8 @@ export function ReceiptReview({
       </section>
       <div className="review-fields">
         <details
+          id="receipt-review-items"
+          tabIndex={-1}
           className={`${styles.receiptEditor} ${compactReview ? styles.receiptEditorCompact : ""}`}
           open={!compactReview}
         >
@@ -973,12 +980,7 @@ export function ReceiptReview({
               })}
             </div>
           )}
-          {(Object.keys(manualAmountOverrides[selectedDocument.id] ?? {}).length > 0 ||
-            (selectedCandidates[selectedDocument.id]
-              ? !result.candidates?.find(
-                  (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
-                )?.consistent
-              : !result.balanced)) && (
+          {requiresOverrideReason && (
             <div className="field-group" id="receipt-review-amount-reason" tabIndex={-1}>
               <fieldset className={styles.amountReasonOptions}>
                 <legend>金額の訂正理由</legend>

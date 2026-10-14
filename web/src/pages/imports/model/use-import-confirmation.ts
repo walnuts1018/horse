@@ -14,6 +14,7 @@ import type {
 import {
   createReceiptPurchaseInput,
   effectiveReceiptItemAmount,
+  receiptOverrideReasonRequired,
   uniqueConsistentReceiptCandidate,
 } from "./receipt-confirmation";
 import { receiptItemsNeedingReview } from "./receipt-item-review";
@@ -317,8 +318,6 @@ export function useImportConfirmation({
       manualAmountOverrides[document.id],
     );
   };
-  const hasManualAmountOverrides = (documentId: string) =>
-    Object.keys(manualAmountOverrides[documentId] ?? {}).length > 0;
   const receiptTotal = (document: DocumentReview) =>
     (document.result?.receipt?.items ?? []).reduce(
       (total, item, index) => total + receiptItemAmount(document, item, index),
@@ -375,11 +374,10 @@ export function useImportConfirmation({
             0,
           );
           const needsAmountReview =
-            hasManualAmountOverrides(selectedDocument.id) ||
-            needsCandidateSelection ||
-            (selectedCandidate
-              ? !selectedCandidate.consistent
-              : selectedDocument.result.balanced === false);
+            receiptOverrideReasonRequired(
+              selectedDocument.result.receipt.total,
+              receiptTotal(selectedDocument),
+            ) || needsCandidateSelection;
           const needsPaymentReview =
             household.accounts.length > 0 &&
             (paymentDraftFor(selectedDocument).some((payment) => !payment.paymentAccountId) ||
@@ -393,10 +391,11 @@ export function useImportConfirmation({
                   {
                     key: "amount",
                     label: "金額差異",
-                    elementId:
-                      receiptItemsChanged(selectedDocument) || !needsCandidateSelection
-                        ? "receipt-review-amount-reason"
-                        : "receipt-review-candidates",
+                    elementId: receiptItemsChanged(selectedDocument)
+                      ? "receipt-review-items"
+                      : needsCandidateSelection
+                        ? "receipt-review-candidates"
+                        : "receipt-review-amount-reason",
                   },
                 ]
               : []),
@@ -655,10 +654,18 @@ export function useImportConfirmation({
     const candidateID = selectedCandidates[document.id] ?? "";
     const candidate = document.result?.candidates?.find((item) => item.id === candidateID);
     const overrideReason = manualAmountOverrideReasons[document.id]?.trim() ?? "";
-    const requiresOverrideReason =
-      hasManualAmountOverrides(document.id) ||
-      receiptItemsChanged(document) ||
-      (candidate ? !candidate.consistent : !document.result?.balanced);
+    const confirmationTotal = items.reduce(
+      (total, item, index) =>
+        total +
+        effectiveReceiptItemAmount(
+          item,
+          index,
+          candidate?.amounts,
+          manualAmountOverrides[document.id],
+        ),
+      0,
+    );
+    const requiresOverrideReason = receiptOverrideReasonRequired(receipt?.total, confirmationTotal);
     if (
       items.some(
         (item) =>

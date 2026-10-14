@@ -21,12 +21,13 @@ func TestValidateReceiptConfirmation(t *testing.T) {
 		wantError    bool
 	}{
 		{name: "consistent candidate", amounts: []int64{12, 18}, candidateID: testConsistentReceipt},
-		{name: "unresolved receipt needs reason", amounts: []int64{10, 20}, wantError: true},
-		{name: "changed amounts need reason", amounts: []int64{11, 19}, candidateID: testConsistentReceipt, wantError: true},
-		{name: "manual correction is recorded", amounts: []int64{11, 19}, candidateID: testConsistentReceipt, reason: "印字額を原本で訂正", wantOverride: true},
+		{name: "unresolved items with matching total", amounts: []int64{10, 20}},
+		{name: "manual split with matching total", amounts: []int64{5, 10, 15}},
+		{name: "changed amounts with matching total", amounts: []int64{11, 19}, candidateID: testConsistentReceipt},
+		{name: "manual reason is retained when supplied", amounts: []int64{11, 19}, candidateID: testConsistentReceipt, reason: "印字額を原本で訂正", wantOverride: true},
 		{name: "total mismatch needs reason", amounts: []int64{12, 17}, candidateID: testConsistentReceipt, wantError: true},
 		{name: "total mismatch can be confirmed with reason", amounts: []int64{12, 17}, candidateID: testConsistentReceipt, reason: "値引きの内訳を確認", wantOverride: true},
-		{name: "item count mismatch", amounts: []int64{30}, reason: "原本に合わせて訂正", wantError: true},
+		{name: "item count can change when total matches", amounts: []int64{30}},
 		{name: "invalid candidate", amounts: []int64{12, 18}, candidateID: "missing", reason: "原本で確認", wantError: true},
 	}
 	for _, tt := range tests {

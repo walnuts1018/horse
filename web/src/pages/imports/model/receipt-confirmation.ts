@@ -1,6 +1,10 @@
 import type { CreatePurchaseInput } from "../../../shared/api";
 import type { DocumentReview, ExtractedItem, ReceiptPaymentDraft } from "./imports";
 
+export function receiptOverrideReasonRequired(receiptTotal: number | undefined, bookTotal: number) {
+  return receiptTotal !== bookTotal;
+}
+
 export function uniqueConsistentReceiptCandidate(document: DocumentReview) {
   const receipt = document.result?.receipt;
   const candidates = document.result?.candidates ?? [];

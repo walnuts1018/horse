@@ -708,7 +708,7 @@ func linkSourceDocument(ctx context.Context, executor bob.Executor, householdID,
 	if input.ManualAmountOverrideReason != nil {
 		overrideReason = *input.ManualAmountOverrideReason
 	}
-	linkedItems, err := linkImportedReceiptItems(ctx, executor, householdID, documentID, purchaseID, itemIDs, amounts, candidateID, overrideReason)
+	linkedItems, err := linkImportedReceiptItems(ctx, executor, householdID, documentID, purchaseID, itemIDs, input.Items, amounts, candidateID, overrideReason)
 	if err != nil {
 		return err
 	}
@@ -723,7 +723,18 @@ func insertGenericEvidenceLink(ctx context.Context, executor bob.Executor, house
 	return err
 }
 
-func linkImportedReceiptItems(ctx context.Context, executor bob.Executor, householdID, documentID, purchaseID gofrsuuid.UUID, itemIDs []gofrsuuid.UUID, amounts []int64, candidateID, overrideReason string) (bool, error) {
+type receiptConfirmationItemEvidence struct {
+	PurchaseItemID   string            `json:"purchaseItemId"`
+	Name             string            `json:"name"`
+	AmountYen        int64             `json:"amountYen"`
+	CategoryID       *string           `json:"categoryId,omitempty"`
+	ProductVariantID *string           `json:"productVariantId,omitempty"`
+	Allocations      []Allocation      `json:"allocations,omitempty"`
+	Quantity         *Measure          `json:"quantity,omitempty"`
+	PrintedUnitPrice *PrintedUnitPrice `json:"printedUnitPrice,omitempty"`
+}
+
+func linkImportedReceiptItems(ctx context.Context, executor bob.Executor, householdID, documentID, purchaseID gofrsuuid.UUID, itemIDs []gofrsuuid.UUID, confirmedItems []Item, amounts []int64, candidateID, overrideReason string) (bool, error) {
 	job, err := models.ExtractionJobs.Query(sm.Where(psql.And(models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(householdID)), models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(documentID)), models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")))), sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(), sm.Limit(1)).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
@@ -748,8 +759,47 @@ func linkImportedReceiptItems(ctx context.Context, executor bob.Executor, househ
 	if err != nil {
 		return false, fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
+	if len(itemIDs) != len(confirmedItems) {
+		return false, fmt.Errorf("%w: purchase item evidence does not match confirmation", ErrBadInput)
+	}
+	var confirmedTotal int64
+	for _, amount := range amounts {
+		confirmedTotal += amount
+	}
+	confirmationEvidence := make([]receiptConfirmationItemEvidence, len(confirmedItems))
+	for index, item := range confirmedItems {
+		confirmationEvidence[index] = receiptConfirmationItemEvidence{
+			PurchaseItemID: itemIDs[index].String(), Name: item.Name, AmountYen: item.AmountYen,
+			CategoryID: item.CategoryID, ProductVariantID: item.ProductVariantID,
+			Allocations: item.Allocations, Quantity: item.Quantity, PrintedUnitPrice: item.PrintedUnitPrice,
+		}
+	}
+	if !receiptItemsCorrespondToExtraction(verified.Receipt.Items, confirmedItems) {
+		values := map[string]any{
+			"jobId": job.ID.String(), "receipt": verified.Receipt,
+			"transform": verified.Transform, "transformPage": verified.TransformPage,
+			"confirmedTotal": confirmedTotal, "confirmedItems": confirmationEvidence,
+		}
+		if candidateID != "" {
+			values["receiptCandidateId"] = candidateID
+		}
+		if overridden {
+			values["manualAmountOverrideReason"] = strings.TrimSpace(overrideReason)
+		}
+		observation, err := stdjson.Marshal(values)
+		if err != nil {
+			return false, err
+		}
+		observationJSON := types.JSON[stdjson.RawMessage]{Val: observation}
+		var region sql.Null[types.JSON[stdjson.RawMessage]]
+		var itemID sql.Null[gofrsuuid.UUID]
+		if _, err := psql.Insert(im.Into(models.EvidenceLinks.NameExpr(), "household_id", "source_document_id", "purchase_id", "item_id", "evidence_region", "observation"), im.Values(psql.Arg(householdID, documentID, purchaseID, itemID, region, observationJSON)), im.OnConflict().DoNothing()).Exec(ctx, executor); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
 	for index, item := range verified.Receipt.Items {
-		values := map[string]any{"jobId": job.ID.String(), "itemIndex": index, "item": item, "transform": verified.Transform, "transformPage": verified.TransformPage}
+		values := map[string]any{"jobId": job.ID.String(), "itemIndex": index, "item": item, "confirmedItem": confirmationEvidence[index], "receiptTotal": verified.Receipt.Total, "confirmedTotal": confirmedTotal, "transform": verified.Transform, "transformPage": verified.TransformPage}
 		if candidateID != "" {
 			values["receiptCandidateId"] = candidateID
 		}
@@ -775,4 +825,17 @@ func linkImportedReceiptItems(ctx context.Context, executor bob.Executor, househ
 		}
 	}
 	return true, nil
+}
+
+func receiptItemsCorrespondToExtraction(extractedItems []ingestion.Item, confirmedItems []Item) bool {
+	if len(extractedItems) != len(confirmedItems) {
+		return false
+	}
+	for index, extractedItem := range extractedItems {
+		confirmedName := strings.TrimSpace(confirmedItems[index].Name)
+		if confirmedName != strings.TrimSpace(extractedItem.Name) && confirmedName != strings.TrimSpace(extractedItem.PrintedName) {
+			return false
+		}
+	}
+	return true
 }
