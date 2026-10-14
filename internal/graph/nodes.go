@@ -38,7 +38,7 @@ func (r *queryResolver) node(ctx context.Context, id string) (model.Node, error)
 		}
 		return r.settlement(ctx, householdID, period)
 	}
-	if isBatchLoadedNodeKind(kind) {
+	if isBatchLoadedNodeKind(kind) && !requiresLoadedHouseholdNodeData(kind) {
 		nodes, err := r.nodes(ctx, []string{id})
 		if err != nil {
 			return nil, err
@@ -77,12 +77,16 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 
 	hasBatchLoadedNode := false
 	hasUnbatchedNode := false
+	hasLoadedHouseholdNode := false
 	for _, nodeID := range decoded {
 		if nodeID.kind == nodeTypeUnmatchedObservation || nodeID.kind == nodeTypeSettlement {
 			continue
 		}
 		if isBatchLoadedNodeKind(nodeID.kind) {
 			hasBatchLoadedNode = true
+			if requiresLoadedHouseholdNodeData(nodeID.kind) {
+				hasLoadedHouseholdNode = true
+			}
 		} else {
 			hasUnbatchedNode = true
 		}
@@ -90,7 +94,7 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 
 	if hasBatchLoadedNode {
 		var err error
-		if hasUnbatchedNode {
+		if hasUnbatchedNode || hasLoadedHouseholdNode {
 			households, err = r.households(ctx)
 		} else {
 			households, err = r.householdReferences(ctx)
@@ -137,6 +141,10 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 		result[index] = node
 	}
 	return result, nil
+}
+
+func requiresLoadedHouseholdNodeData(kind string) bool {
+	return kind == nodeTypeLedgerEntry
 }
 
 func (r *queryResolver) householdReferences(ctx context.Context) ([]*model.Household, error) {
