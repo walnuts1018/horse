@@ -20,5 +20,5 @@ func (r *mutationResolver) createHousehold(ctx context.Context, input model.Crea
 	if err != nil {
 		return nil, err
 	}
-	return loadHousehold(ctx, r.DB, created.ID)
+	return loadHousehold(ctx, r.DB, created.ID, requestedHouseholdFields(ctx, ""))
 }

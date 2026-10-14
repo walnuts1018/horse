@@ -123,7 +123,7 @@ func loadHouseholdSummaryData(ctx context.Context, db *pgxpool.Pool, householdID
 	return result, allocationVersions, nil
 }
 
-func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string) (*model.Household, error) {
+func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string, fields householdFields) (*model.Household, error) {
 	id, err := gofrsuuid.FromString(householdID)
 	if err != nil {
 		return nil, fmt.Errorf("parse household id: %w", err)
@@ -136,7 +136,7 @@ func loadHousehold(ctx context.Context, db *pgxpool.Pool, householdID string) (*
 	if result == nil {
 		return nil, ErrNotFound
 	}
-	if err := loadHouseholdDetails(ctx, db, households, allocationVersions, allHouseholdFields); err != nil {
+	if err := loadHouseholdDetails(ctx, db, households, allocationVersions, fields); err != nil {
 		return nil, err
 	}
 	return result, nil

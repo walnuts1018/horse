@@ -18,7 +18,7 @@ func (r *mutationResolver) createPool(ctx context.Context, input model.CreatePoo
 	if err != nil {
 		return nil, err
 	}
-	household, err := loadHousehold(ctx, r.DB, input.HouseholdID)
+	household, err := loadHousehold(ctx, r.DB, input.HouseholdID, householdFields{pools: true})
 	if err != nil {
 		return nil, err
 	}

@@ -57,7 +57,7 @@ func (r *mutationResolver) setPoolFundingRule(ctx context.Context, input model.S
 	if err := poolapp.NewService(r.DB).SetFundingRule(ctx, command); err != nil {
 		return nil, err
 	}
-	householdResult, err := loadHousehold(ctx, r.DB, input.HouseholdID)
+	householdResult, err := loadHousehold(ctx, r.DB, input.HouseholdID, householdFields{pools: true})
 	if err != nil {
 		return nil, err
 	}

@@ -98,6 +98,9 @@ func (r *queryResolver) household(ctx context.Context, id string) (*model.Househ
 }
 
 func requestedHouseholdFields(ctx context.Context, prefix string) householdFields {
+	if !graphql.HasOperationContext(ctx) {
+		return allHouseholdFields
+	}
 	return householdFields{
 		members:           graphql.FieldRequested(ctx, prefix+"members"),
 		pools:             graphql.FieldRequested(ctx, prefix+"pools"),

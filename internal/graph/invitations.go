@@ -185,7 +185,7 @@ func (r *mutationResolver) acceptHouseholdInvitation(ctx context.Context, token 
 	if err != nil {
 		return nil, err
 	}
-	return loadHousehold(ctx, r.DB, householdID)
+	return loadHousehold(ctx, r.DB, householdID, requestedHouseholdFields(ctx, ""))
 }
 
 func invitationStateModel(state invitationapp.InvitationState) model.HouseholdInvitationVariant {

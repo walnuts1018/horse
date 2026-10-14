@@ -311,7 +311,7 @@ func (r *queryResolver) findNode(ctx context.Context, kind, id string) (model.No
 		if err != nil {
 			return nil, err
 		}
-		household, err := loadHousehold(ctx, r.DB, row.HouseholdID.String())
+		household, err := loadHousehold(ctx, r.DB, row.HouseholdID.String(), householdFields{pools: true})
 		if errors.Is(err, ErrNotFound) {
 			return nil, nil
 		}

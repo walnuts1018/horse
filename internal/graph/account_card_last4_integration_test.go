@@ -78,7 +78,7 @@ func TestAccountCardLast4LifecycleAndValidation(t *testing.T) {
 		t.Fatalf("updated result = %#v, want card last4 %q", result, updatedLast4)
 	}
 
-	loadedHousehold, err := loadHousehold(ctx, db, household.ID)
+	loadedHousehold, err := loadHousehold(ctx, db, household.ID, householdFields{accounts: true})
 	if err != nil {
 		t.Fatal(err)
 	}

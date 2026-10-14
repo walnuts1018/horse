@@ -35,7 +35,7 @@ func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.Ledg
 		if value.FromMemberID == nil || value.PoolID == nil {
 			return nil, errors.New("funding ledger entry is missing a member or pool")
 		}
-		household, err := loadHousehold(ctx, db, value.HouseholdID)
+		household, err := loadHousehold(ctx, db, value.HouseholdID, householdFields{members: true, pools: true})
 		if err != nil {
 			return nil, err
 		}
@@ -49,7 +49,7 @@ func ledgerEntryVariant(ctx context.Context, db *pgxpool.Pool, value *model.Ledg
 		if value.FromMemberID == nil || value.ToMemberID == nil || value.TransferID == nil {
 			return nil, errors.New("transfer ledger entry is incomplete")
 		}
-		household, err := loadHousehold(ctx, db, value.HouseholdID)
+		household, err := loadHousehold(ctx, db, value.HouseholdID, householdFields{members: true, pools: true})
 		if err != nil {
 			return nil, err
 		}

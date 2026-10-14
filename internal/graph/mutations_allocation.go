@@ -28,7 +28,7 @@ func (r *mutationResolver) setDefaultAllocation(ctx context.Context, input model
 	}); err != nil {
 		return nil, err
 	}
-	return loadHousehold(ctx, r.DB, input.HouseholdID)
+	return loadHousehold(ctx, r.DB, input.HouseholdID, requestedHouseholdFields(ctx, ""))
 }
 
 func (r *mutationResolver) setAllocationRule(ctx context.Context, input model.SetAllocationRuleInput) (*model.AllocationRule, error) {
