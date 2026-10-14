@@ -119,7 +119,7 @@ Worker / MailboxPoller
 
 世帯所属の確認は`internal/application/document.Service.RequireHouseholdMember()`に切り出され、アップロード処理から利用されています。個別文書の取得・更新でも`documentForMember()`が文書の世帯に対する所属を確認します。この認可経路は整備されています。
 
-一方、アップロード、添付登録、ストレージ保存、ジョブ作成は引き続きHTTPハンドラにあり、メール添付ファイルの登録も`documents.go`と`mailbox_poller.go`に分かれています。登録処理を共通Applicationサービスへ移し、手動アップロードとメール取り込みの差分を整理する課題は残っています。
+メール添付ファイルの重複排除、文書メタデータと添付リンクの登録、抽出ジョブ作成は`DocumentService.RegisterEmailAttachments()`へ集約され、アップロードとメール取り込みの両方から利用されています。この重複は解消されています。一方、添付ファイルのオブジェクト保存は各呼び出し元に残り、親となる文書の登録やトランザクション、応答組み立ても`uploadDocument()`とメール取り込み側が個別に担っています。親文書の登録ユースケースをApplication層へ移す余地があります。
 
 ## 4. 通常更新・一括更新・まとめて保存が別々の実装になっている
 
@@ -175,9 +175,8 @@ GraphQLなどの公開API
 | [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離され、`Do()`にはDB操作、権限確認、ロック、冪等性処理などが残る | ユースケース処理の責務と順序を整理する |
 | [GraphQLエラー変換](https://github.com/walnuts1018/horse/blob/main/internal/graph/errors.go) | Transferは`apperror`を利用する一方、Fundingなど一部のApplicationには独自エラーが残り、GraphQL側で機能別に列挙して分類している | 残るApplicationのエラーを`apperror`へ統一し、GraphQL側の互換判定を整理する |
 | [Gemini Router](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/router.go#L81-L199) | ルート候補の生成はデータ化され、共通ループで試行する形に改善された。一方、候補の実行条件、次候補の探索、フォールバック理由の記録が`Generate()`に残る | 候補選択とフォールバック状態の扱いを分離し、ルーティングの条件を追いやすくする |
-| [抽出Worker](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/worker_extract.go#L10-L141) | OCR、AI抽出、品質検証、再実行、Pro再検証が一つの流れに密集 | 初回抽出と再検証を共通のパイプライン部品に整理 |
+| [抽出Worker](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/worker_extract.go#L10-L141) | 初回抽出、品質再実行、Pro再検証は共通pipelineで実行され、抽出結果の検証、座標変換、OCR照合も共通化された。一方、`extract()`には再実行条件、候補結果の比較・採用、実行履歴の集約が残る | 再実行ポリシーと候補結果の選択を独立した調整処理へ分ける |
 | [Geminiクライアント](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/gemini.go#L74-L313) | HTTPクライアント設定、プロンプト、API呼び出し、Quota、応答解釈が同じメソッドにある | Provider Adapter、Prompt、Response Decoder、Usage計測に分離 |
-| [数量・単価](https://github.com/walnuts1018/horse/blob/main/internal/graph/purchase_item_measure.go) | GraphQL側と購入Application側で、数量や単価の検証ロジックが分散 | 共通の`Measure`値オブジェクトに検証を集約 |
 
 Application共通エラーの利用はTransferなどで進みましたが、Fundingなどには独自エラーが残り、GraphQLの`ApplicationErrorKind()`にも互換判定が残っています。残存する独自エラーを`apperror`に統一し、互換判定を段階的に削除する余地があります。
 
