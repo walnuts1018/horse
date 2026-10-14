@@ -38,6 +38,13 @@ func (r *queryResolver) node(ctx context.Context, id string) (model.Node, error)
 		}
 		return r.settlement(ctx, householdID, period)
 	}
+	if isBatchLoadedNodeKind(kind) {
+		nodes, err := r.nodes(ctx, []string{id})
+		if err != nil {
+			return nil, err
+		}
+		return nodes[0], nil
+	}
 	return r.findNode(ctx, kind, rawID)
 }
 
@@ -68,9 +75,26 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 		}
 	}
 
-	if len(idsByKind) > 0 {
+	hasBatchLoadedNode := false
+	hasUnbatchedNode := false
+	for _, nodeID := range decoded {
+		if nodeID.kind == nodeTypeUnmatchedObservation || nodeID.kind == nodeTypeSettlement {
+			continue
+		}
+		if isBatchLoadedNodeKind(nodeID.kind) {
+			hasBatchLoadedNode = true
+		} else {
+			hasUnbatchedNode = true
+		}
+	}
+
+	if hasBatchLoadedNode {
 		var err error
-		households, err = r.households(ctx)
+		if hasUnbatchedNode {
+			households, err = r.households(ctx)
+		} else {
+			households, err = r.householdReferences(ctx)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -80,6 +104,15 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 		}
 		for index, node := range resolved {
 			result[index] = node
+		}
+	}
+	if hasUnbatchedNode {
+		if !hasBatchLoadedNode {
+			var err error
+			households, err = r.households(ctx)
+			if err != nil {
+				return nil, err
+			}
 		}
 		for index, nodeID := range decoded {
 			if isBatchLoadedNodeKind(nodeID.kind) || nodeID.kind == nodeTypeUnmatchedObservation || nodeID.kind == nodeTypeSettlement {
@@ -104,6 +137,29 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 		result[index] = node
 	}
 	return result, nil
+}
+
+func (r *queryResolver) householdReferences(ctx context.Context) ([]*model.Household, error) {
+	user, err := principal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	memberID, err := uuid.FromString(user.MemberID)
+	if err != nil {
+		return nil, fmt.Errorf("parse member id: %w", err)
+	}
+	memberships, err := models.HouseholdMembers.Query(
+		sm.Where(models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID))),
+		sm.OrderBy(models.HouseholdMembers.Columns.JoinedAt),
+	).All(ctx, queryExecutor(r.DB))
+	if err != nil {
+		return nil, err
+	}
+	households := make([]*model.Household, 0, len(memberships))
+	for _, membership := range memberships {
+		households = append(households, &model.Household{ID: membership.HouseholdID.String()})
+	}
+	return households, nil
 }
 
 func isBatchLoadedNodeKind(kind string) bool {

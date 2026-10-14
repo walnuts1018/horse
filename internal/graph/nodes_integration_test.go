@@ -73,6 +73,21 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	pool, err := mutation.createPool(ownerContext, model.CreatePoolInput{HouseholdID: ownedHousehold.ID, Name: "nodes integration", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mutation.setDefaultAllocation(ownerContext, model.SetDefaultAllocationInput{HouseholdID: ownedHousehold.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
+		t.Fatal(err)
+	}
+	ownedPurchase, err := mutation.createPurchase(ownerContext, model.CreatePurchaseInput{
+		IdempotencyKey: uuid.Must(uuid.NewV7()).String(), HouseholdID: ownedHousehold.ID,
+		OccurredAt: "2026-10-14T12:00:00Z", Merchant: "nodes integration",
+		Items: []*model.PurchaseItemInput{{Name: "batch node", AmountYen: 100}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	foreignAccount, err := mutation.createAccount(outsiderContext, model.CreateAccountInput{HouseholdID: foreignHousehold.ID, Name: "foreign", Kind: model.AccountKindBank})
 	if err != nil {
 		t.Fatal(err)
@@ -114,5 +129,31 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	}
 	if got[4] != nil || got[5] != nil {
 		t.Fatalf("nodes[4:6] = %#v, want nil for foreign and missing household accounts", got[4:6])
+	}
+
+	purchaseID := globalID(nodeTypePurchase, ownedPurchase.ID)
+	query := &queryResolver{Resolver: &Resolver{DB: db}}
+	gotNode, err := query.node(ownerContext, purchaseID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, ok := gotNode.(*model.Purchase); !ok || value.ID != ownedPurchase.ID {
+		t.Fatalf("node = %#v, want owned purchase", gotNode)
+	}
+	foreignNode, err := query.node(outsiderContext, purchaseID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if foreignNode != nil {
+		t.Fatalf("node = %#v, want nil for another household's purchase", foreignNode)
+	}
+	gotBatch, err := query.nodes(ownerContext, []string{purchaseID, purchaseID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, node := range gotBatch {
+		if value, ok := node.(*model.Purchase); !ok || value.ID != ownedPurchase.ID {
+			t.Fatalf("nodes[%d] = %#v, want owned purchase", i, node)
+		}
 	}
 }
