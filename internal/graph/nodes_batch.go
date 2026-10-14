@@ -30,7 +30,7 @@ func (r *queryResolver) loadBatchNodesByDomain(ctx context.Context, households [
 	if len(batch.householdArgs) == 0 {
 		return batch.result, nil
 	}
-	for _, load := range []func(context.Context) error{batch.loadMemberNodes, batch.loadPurchaseNodes, batch.loadFinancialNodes, batch.loadCatalogPlanningNodes} {
+	for _, load := range []func(context.Context) error{batch.loadMemberNodes, batch.loadAccountCategoryNodes, batch.loadPurchaseNodes, batch.loadFinancialNodes, batch.loadCatalogPlanningNodes} {
 		if err := load(ctx); err != nil {
 			return nil, err
 		}

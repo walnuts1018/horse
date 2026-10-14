@@ -73,6 +73,22 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	secondOwnedAccount, err := mutation.createAccount(ownerContext, model.CreateAccountInput{HouseholdID: ownedHousehold.ID, Name: "owned second", Kind: model.AccountKindBank})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentCategory, err := mutation.createCategory(ownerContext, model.CreateCategoryInput{HouseholdID: ownedHousehold.ID, Name: "parent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedCategory, err := mutation.createCategory(ownerContext, model.CreateCategoryInput{HouseholdID: ownedHousehold.ID, Name: "owned category", ParentID: &parentCategory.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondOwnedCategory, err := mutation.createCategory(ownerContext, model.CreateCategoryInput{HouseholdID: ownedHousehold.ID, Name: "second category"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	pool, err := mutation.createPool(ownerContext, model.CreatePoolInput{HouseholdID: ownedHousehold.ID, Name: "nodes integration", Kind: model.PoolKindPersonal})
 	if err != nil {
 		t.Fatal(err)
@@ -89,6 +105,10 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 		t.Fatal(err)
 	}
 	foreignAccount, err := mutation.createAccount(outsiderContext, model.CreateAccountInput{HouseholdID: foreignHousehold.ID, Name: "foreign", Kind: model.AccountKindBank})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignCategory, err := mutation.createCategory(outsiderContext, model.CreateCategoryInput{HouseholdID: foreignHousehold.ID, Name: "foreign category"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,6 +156,33 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	}
 	if value, ok := got[7].(model.PoolVariant); !ok || value.GetID() != pool.ID {
 		t.Fatalf("nodes[7] = %#v, want authorized pool", got[7])
+	}
+	relatedNodes, err := (&queryResolver{Resolver: &Resolver{DB: db}}).nodes(ownerContext, []string{
+		globalID(nodeTypeCategory, secondOwnedCategory.ID), globalID(nodeTypeAccount, ownedAccount.ID),
+		globalID(nodeTypeCategory, ownedCategory.ID), globalID(nodeTypeAccount, secondOwnedAccount.ID),
+		globalID(nodeTypeCategory, secondOwnedCategory.ID), globalID(nodeTypeCategory, foreignCategory.ID),
+		globalID(nodeTypeAccount, foreignAccount.ID), globalID(nodeTypeAccount, newID()), globalID(nodeTypeCategory, newID()),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, ok := relatedNodes[0].(*model.Category); !ok || value.ID != secondOwnedCategory.ID {
+		t.Fatalf("relatedNodes[0] = %#v, want second category", relatedNodes[0])
+	}
+	if value, ok := relatedNodes[1].(*model.Account); !ok || value.ID != ownedAccount.ID {
+		t.Fatalf("relatedNodes[1] = %#v, want first account", relatedNodes[1])
+	}
+	if value, ok := relatedNodes[2].(*model.Category); !ok || value.ID != ownedCategory.ID || value.ParentID == nil || *value.ParentID != parentCategory.ID {
+		t.Fatalf("relatedNodes[2] = %#v, want category with parent", relatedNodes[2])
+	}
+	if value, ok := relatedNodes[3].(*model.Account); !ok || value.ID != secondOwnedAccount.ID {
+		t.Fatalf("relatedNodes[3] = %#v, want second account", relatedNodes[3])
+	}
+	if value, ok := relatedNodes[4].(*model.Category); !ok || value.ID != secondOwnedCategory.ID {
+		t.Fatalf("relatedNodes[4] = %#v, want duplicate category", relatedNodes[4])
+	}
+	if relatedNodes[5] != nil || relatedNodes[6] != nil || relatedNodes[7] != nil || relatedNodes[8] != nil {
+		t.Fatalf("relatedNodes[5:9] = %#v, want nil for foreign and missing records", relatedNodes[5:9])
 	}
 	memberNodes, err := (&queryResolver{Resolver: &Resolver{DB: db}}).nodes(ownerContext, []string{
 		globalID(nodeTypeMember, memberID), globalID(nodeTypeMember, memberID),
