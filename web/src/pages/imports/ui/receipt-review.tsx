@@ -1,5 +1,12 @@
 import { Check, Plus, Undo2, X } from "lucide-react";
-import { useEffect, useRef, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
 import type { Household } from "../../../shared/api";
 
@@ -17,6 +24,8 @@ import {
   subscribeReceiptEvidenceSelection,
 } from "../model/receipt-evidence-selection";
 import {
+  receiptItemHasInvalidInput,
+  receiptItemNeedsAttention,
   receiptItemReviewStateLabels,
   type ReceiptItemReviewState,
 } from "../model/receipt-item-review";
@@ -124,6 +133,7 @@ export function ReceiptReview({
   onConfirm,
 }: ReceiptReviewProps) {
   const focusNewItem = useRef(false);
+  const [expandedReceiptItems, setExpandedReceiptItems] = useState<Record<string, boolean>>({});
   const itemNameInputs = useRef(new Map<string, HTMLInputElement>());
   const result = selectedDocument.result;
   const receipt = result?.receipt;
@@ -157,19 +167,14 @@ export function ReceiptReview({
   const uncategorizedItemCount = receiptItems.filter((item) =>
     item.categoryId != null ? !item.categoryId : !suggestedCategoryId(item),
   ).length;
-  const allReceiptItemsReviewed =
-    receiptItems.length > 0 &&
-    receiptItems.every((item, index) => {
-      const itemKey = item.key ?? `item-${index}`;
-      const state = receiptItemReviewStates[selectedDocument.id]?.[itemKey] ?? "UNREVIEWED";
-      return state === "CONFIRMED" || state === "CORRECTED";
-    });
   const compactReview =
     result.balanced === true &&
     !selectedDocument.duplicateOf &&
     (result.issues?.length ?? 0) === 0 &&
-    allReceiptItemsReviewed &&
     reviewTargets.length === 0;
+  const selectedCandidateAmounts = result.candidates?.find(
+    (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
+  )?.amounts;
   const summaryPayments = paymentDraftFor(selectedDocument);
   const paymentSummary = summaryPayments
     .map((payment) => {
@@ -305,15 +310,15 @@ export function ReceiptReview({
           </ul>
         </section>
       )}
-      {(receiptItems.length > 0 || reviewTargets.length > 0) && (
+      {reviewTargets.length > 0 && (
         <section className="panel-heading" aria-label="確認順">
           <div aria-live="polite">
             <span className="eyebrow">
               {activeReviewTarget
                 ? `確認 ${activeReviewIndex + 1}/${reviewTargets.length}`
-                : `${receiptItems.length}品目を確認しました`}
+                : "確認が必要な項目はありません"}
             </span>
-            <h3>{activeReviewTarget?.label ?? "未確認項目はありません"}</h3>
+            {activeReviewTarget && <h3>{activeReviewTarget.label}</h3>}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -343,30 +348,54 @@ export function ReceiptReview({
           </button>
         </output>
       )}
-      {compactReview && (
-        <section className={styles.receiptSummary} aria-label="購入内容の概要">
-          <div className={styles.receiptSummaryMerchant}>
-            <span>店名</span>
-            <strong>{receipt.merchant?.trim() || "店名未入力"}</strong>
-          </div>
-          <div className={styles.receiptSummaryDate}>
-            <span>購入日時</span>
-            <strong>{purchaseTime ? `${purchaseDate} ${purchaseTime}` : purchaseDate}</strong>
-          </div>
-          <div>
-            <span>合計</span>
-            <strong>{yen(receiptTotal(selectedDocument))}</strong>
-          </div>
-          <div>
-            <span>品目</span>
-            <strong>{receiptItems.length}件</strong>
-          </div>
-          <div className={styles.receiptSummaryPayment}>
-            <span>決済元</span>
-            <strong>{paymentSummary || "決済情報なし"}</strong>
-          </div>
-        </section>
-      )}
+      <section className={styles.receiptSummary} aria-label="購入内容の概要">
+        <div className={styles.receiptSummaryMerchant}>
+          <span>店名</span>
+          <strong>{receipt.merchant?.trim() || "店名未入力"}</strong>
+        </div>
+        <div className={styles.receiptSummaryDate}>
+          <span>購入日時</span>
+          <strong>{purchaseTime ? `${purchaseDate} ${purchaseTime}` : purchaseDate}</strong>
+        </div>
+        <div>
+          <span>合計</span>
+          <strong>{yen(receiptTotal(selectedDocument))}</strong>
+        </div>
+        <div>
+          <span>品目</span>
+          <strong>{receiptItems.length}件</strong>
+        </div>
+        <div className={styles.receiptSummaryPayment}>
+          <span>決済元</span>
+          <strong>{paymentSummary || "決済情報なし"}</strong>
+        </div>
+        <ul className={styles.receiptSummaryItems}>
+          {receiptItems.map((item, index) => {
+            const key = item.key ?? `item-${index}`;
+            const state = receiptItemReviewStates[selectedDocument.id]?.[key] ?? "UNREVIEWED";
+            const attention =
+              state === "UNRESOLVED" ||
+              receiptItemHasInvalidInput(item) ||
+              (state !== "CONFIRMED" && state !== "CORRECTED" && receiptItemNeedsAttention(item));
+            return (
+              <li key={key}>
+                <span>{item.name.trim() || `品目${index + 1}`}</span>
+                <strong>
+                  {yen(
+                    effectiveReceiptItemAmount(
+                      item,
+                      index,
+                      selectedCandidateAmounts,
+                      manualAmountOverrides[selectedDocument.id],
+                    ),
+                  )}
+                </strong>
+                {attention && <small>確認が必要</small>}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
       <div className="review-fields">
         <details
           className={`${styles.receiptEditor} ${compactReview ? styles.receiptEditorCompact : ""}`}
@@ -522,6 +551,12 @@ export function ReceiptReview({
             const itemKey = item.key ?? `item-${index}`;
             const reviewState =
               receiptItemReviewStates[selectedDocument.id]?.[itemKey] ?? "UNREVIEWED";
+            const needsAttention =
+              reviewState === "UNRESOLVED" ||
+              receiptItemHasInvalidInput(item) ||
+              (reviewState !== "CONFIRMED" &&
+                reviewState !== "CORRECTED" &&
+                receiptItemNeedsAttention(item));
             const provenance =
               item.verification === "MANUAL"
                 ? "手入力"
@@ -529,24 +564,47 @@ export function ReceiptReview({
                   ? "原本領域あり"
                   : "原本領域なし";
             return (
-              <div
+              <details
                 className={`receipt-item-review ${amountDifferences.some((difference) => difference.index === index) ? "receipt-item-candidate-difference" : ""} ${evidenceSelection?.itemKey === item.key ? styles.receiptItemEvidenceSelected : ""}`}
+                open={expandedReceiptItems[itemKey] ?? needsAttention}
                 key={item.key}
-                onFocusCapture={() =>
-                  selectReceiptEvidenceItem(selectedDocument.id, {
-                    itemKey: item.key ?? `item-${index}`,
-                    index,
-                    focusEditor: false,
-                  })
-                }
-                onMouseEnter={() =>
-                  selectReceiptEvidenceItem(selectedDocument.id, {
-                    itemKey,
-                    index,
-                    focusEditor: false,
-                  })
+                onToggle={(event) =>
+                  setExpandedReceiptItems((current) => ({
+                    ...current,
+                    [itemKey]: event.currentTarget.open,
+                  }))
                 }
               >
+                <summary
+                  className={styles.receiptItemSummary}
+                  onFocus={() =>
+                    selectReceiptEvidenceItem(selectedDocument.id, {
+                      itemKey,
+                      index,
+                      focusEditor: false,
+                    })
+                  }
+                  onMouseEnter={() =>
+                    selectReceiptEvidenceItem(selectedDocument.id, {
+                      itemKey,
+                      index,
+                      focusEditor: false,
+                    })
+                  }
+                >
+                  <span>{item.name.trim() || `品目${index + 1}`}</span>
+                  <strong>
+                    {yen(
+                      effectiveReceiptItemAmount(
+                        item,
+                        index,
+                        selectedCandidateAmounts,
+                        manualAmountOverrides[selectedDocument.id],
+                      ),
+                    )}
+                  </strong>
+                  {needsAttention ? <small>確認が必要</small> : <small>編集</small>}
+                </summary>
                 <div>
                   <input
                     id={`receipt-review-item-${encodeURIComponent(itemKey)}`}
@@ -577,30 +635,33 @@ export function ReceiptReview({
                   {item.verification === "UNRESOLVED" && (
                     <small className={styles.receiptItemProvenance}>税解釈未確定</small>
                   )}
-                  <fieldset className={styles.receiptItemReviewState}>
-                    <legend>
-                      {item.name || `品目${index + 1}`}の確認状況:{" "}
-                      {receiptItemReviewStateLabels[reviewState]}
-                    </legend>
-                    {(reviewState === "UNREVIEWED" || reviewState === "UNRESOLVED") && (
-                      <button
-                        type="button"
-                        className="button button-primary"
-                        onClick={() => setReceiptItemReviewState(itemKey, "CONFIRMED")}
-                      >
-                        {reviewState === "UNRESOLVED" ? "確認済みにする" : "一致を確認"}
-                      </button>
-                    )}
-                    {reviewState !== "UNRESOLVED" && (
-                      <button
-                        type="button"
-                        className="button button-soft"
-                        onClick={() => setReceiptItemReviewState(itemKey, "UNRESOLVED")}
-                      >
-                        未解決にする
-                      </button>
-                    )}
-                  </fieldset>
+                  {needsAttention && (
+                    <fieldset className={styles.receiptItemReviewState}>
+                      <legend>
+                        {item.name || `品目${index + 1}`}の確認状況:{" "}
+                        {receiptItemReviewStateLabels[reviewState]}
+                      </legend>
+                      {!receiptItemHasInvalidInput(item) &&
+                        (reviewState === "UNREVIEWED" || reviewState === "UNRESOLVED") && (
+                          <button
+                            type="button"
+                            className="button button-primary"
+                            onClick={() => setReceiptItemReviewState(itemKey, "CONFIRMED")}
+                          >
+                            {reviewState === "UNRESOLVED" ? "確認済みにする" : "一致を確認"}
+                          </button>
+                        )}
+                      {reviewState !== "UNRESOLVED" && (
+                        <button
+                          type="button"
+                          className="button button-soft"
+                          onClick={() => setReceiptItemReviewState(itemKey, "UNRESOLVED")}
+                        >
+                          未解決にする
+                        </button>
+                      )}
+                    </fieldset>
+                  )}
                   {amountDifferences.some((difference) => difference.index === index) && (
                     <small className="candidate-difference-label">候補差あり</small>
                   )}
@@ -812,7 +873,7 @@ export function ReceiptReview({
                   <X size={16} />
                   品目を削除
                 </button>
-              </div>
+              </details>
             );
           })}
           <button

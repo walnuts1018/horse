@@ -19,12 +19,32 @@ export const receiptItemReviewStateLabels: Record<ReceiptItemReviewState, string
   UNRESOLVED: "未解決",
 };
 
+export function receiptItemHasInvalidInput(item: ExtractedItem) {
+  return (
+    !item.name.trim() ||
+    !Number.isSafeInteger(item.grossAmount) ||
+    item.grossAmount < (item.verification === "MANUAL" ? 1 : 0)
+  );
+}
+
+export function receiptItemNeedsAttention(item: ExtractedItem) {
+  return (
+    item.verification === "UNRESOLVED" ||
+    (item.verification !== "MANUAL" && (item.confidence < 0.75 || !item.region)) ||
+    receiptItemHasInvalidInput(item)
+  );
+}
+
 export function receiptItemsNeedingReview(
   items: ExtractedItem[],
   states: Record<string, ReceiptItemReviewState> | undefined,
 ) {
   return ensureReceiptItemKeys(items).flatMap((item, index) => {
     const state = states?.[item.key ?? ""] ?? "UNREVIEWED";
-    return state === "UNREVIEWED" || state === "UNRESOLVED" ? [{ item, index, state }] : [];
+    const needsAttention =
+      state === "UNRESOLVED" ||
+      receiptItemHasInvalidInput(item) ||
+      (state !== "CONFIRMED" && state !== "CORRECTED" && receiptItemNeedsAttention(item));
+    return needsAttention ? [{ item, index, state }] : [];
   });
 }
