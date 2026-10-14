@@ -35,7 +35,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@feature-sliced/steiger-plugin": "^0.7.0",
+    "@feature-sliced/steiger-plugin": "^0.8.0",
     "@markuplint/jsx-parser": "^5.1.1",
     "@markuplint/react-spec": "^5.1.1",
     "@types/node": "^24.7.2",
