@@ -6,14 +6,12 @@ type extractionRetryPolicy struct {
 }
 
 func extractionRetryPolicyFor(verification Verification, mimeType string, paidProjectConfigured bool) extractionRetryPolicy {
-	if verification.Balanced {
+	if verification.Balanced || len(verification.Runs) == 0 {
 		return extractionRetryPolicy{}
 	}
 
 	policy := extractionRetryPolicy{}
-	if len(verification.Runs) > 0 {
-		policy.qualityRun = latestSuccessfulRun(verification.Runs)
-	}
+	policy.qualityRun = latestSuccessfulRun(verification.Runs)
 	policy.proReview = paidProjectConfigured && supportsProReview(mimeType) && needsProReview(verification.Issues)
 	return policy
 }

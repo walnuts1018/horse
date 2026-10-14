@@ -15,7 +15,7 @@ func TestExtractionRetryPolicyFor(t *testing.T) {
 		wantPro      bool
 	}{
 		{name: "balanced skips retries", verification: Verification{Balanced: true, Runs: []ExtractionRun{first}}, mimeType: mimeTypeJPEG, paid: true},
-		{name: "unbalanced without run skips quality", verification: Verification{Issues: []string{"合計が一致しません"}}, mimeType: mimeTypeJPEG, paid: true, wantPro: true},
+		{name: "unbalanced without run skips retries", verification: Verification{Issues: []string{"合計が一致しません"}}, mimeType: mimeTypeJPEG, paid: true},
 		{name: "latest successful run enables quality and paid image review", verification: Verification{Issues: []string{"合計が一致しません"}, Runs: []ExtractionRun{first, failed}}, mimeType: mimeTypeJPEG, paid: true, wantQuality: "flash", wantPro: true},
 		{name: "failed run does not enable quality but may use pro review", verification: Verification{Issues: []string{"合計が一致しません"}, Runs: []ExtractionRun{failed}}, mimeType: mimeTypeJPEG, paid: true, wantPro: true},
 		{name: "unsupported source skips pro review", verification: Verification{Issues: []string{"合計が一致しません"}, Runs: []ExtractionRun{first}}, mimeType: mimeTypeEmail, paid: true, wantQuality: "flash"},
