@@ -61,6 +61,23 @@ func TestReconcile(t *testing.T) {
 	}
 }
 
+func TestReconcileReportsMerchantConflict(t *testing.T) {
+	t.Parallel()
+	incoming := Observation{TransactionID: "tx", Merchant: "別の店", Amount: 100}
+	existing := Observation{TransactionID: "tx", Merchant: "店", Amount: 100}
+
+	got := Reconcile(incoming, []Observation{existing})
+	if len(got) != 1 || got[0].State != "CONFLICT" {
+		t.Fatalf("got %v, want one conflict", got)
+	}
+	for _, reason := range got[0].Reasons {
+		if reason == "店舗名相違" {
+			return
+		}
+	}
+	t.Fatalf("got reasons %v, want 店舗名相違", got[0].Reasons)
+}
+
 func TestReconcileBankTransactionsOnlyAgainstReceipts(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)

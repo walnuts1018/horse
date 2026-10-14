@@ -71,6 +71,9 @@ func Reconcile(incoming Observation, existing []Observation) []Match {
 		if merchant {
 			match.Reasons = append(match.Reasons, "店舗一致")
 		}
+		if merchantConflict {
+			match.Reasons = append(match.Reasons, "店舗名相違")
+		}
 		if near {
 			match.Reasons = append(match.Reasons, "購入日時が近い")
 		}
