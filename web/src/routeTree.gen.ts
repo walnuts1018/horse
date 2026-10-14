@@ -18,6 +18,7 @@ import { Route as HouseholdsHouseholdIdLedgerRouteImport } from './app/routes/ho
 import { Route as HouseholdsHouseholdIdNewRouteImport } from './app/routes/households.$householdId.new'
 import { Route as HouseholdsHouseholdIdSettingsRouteImport } from './app/routes/households.$householdId.settings'
 import { Route as HouseholdsHouseholdIdSettlementRouteImport } from './app/routes/households.$householdId.settlement'
+import { Route as HouseholdsHouseholdIdDraftsDraftIdRouteImport } from './app/routes/households.$householdId.drafts.$draftId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -71,6 +72,12 @@ const HouseholdsHouseholdIdSettlementRoute =
     path: '/settlement',
     getParentRoute: () => HouseholdsHouseholdIdRoute,
   } as any)
+const HouseholdsHouseholdIdDraftsDraftIdRoute =
+  HouseholdsHouseholdIdDraftsDraftIdRouteImport.update({
+    id: '/drafts/$draftId',
+    path: '/drafts/$draftId',
+    getParentRoute: () => HouseholdsHouseholdIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/households/$householdId/settings': typeof HouseholdsHouseholdIdSettingsRoute
   '/households/$householdId/settlement': typeof HouseholdsHouseholdIdSettlementRoute
   '/households/$householdId/': typeof HouseholdsHouseholdIdIndexRoute
+  '/households/$householdId/drafts/$draftId': typeof HouseholdsHouseholdIdDraftsDraftIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -92,6 +100,7 @@ export interface FileRoutesByTo {
   '/households/$householdId/settings': typeof HouseholdsHouseholdIdSettingsRoute
   '/households/$householdId/settlement': typeof HouseholdsHouseholdIdSettlementRoute
   '/households/$householdId': typeof HouseholdsHouseholdIdIndexRoute
+  '/households/$householdId/drafts/$draftId': typeof HouseholdsHouseholdIdDraftsDraftIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -104,6 +113,7 @@ export interface FileRoutesById {
   '/households/$householdId/settings': typeof HouseholdsHouseholdIdSettingsRoute
   '/households/$householdId/settlement': typeof HouseholdsHouseholdIdSettlementRoute
   '/households/$householdId/': typeof HouseholdsHouseholdIdIndexRoute
+  '/households/$householdId/drafts/$draftId': typeof HouseholdsHouseholdIdDraftsDraftIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/households/$householdId/settings'
     | '/households/$householdId/settlement'
     | '/households/$householdId/'
+    | '/households/$householdId/drafts/$draftId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -127,6 +138,7 @@ export interface FileRouteTypes {
     | '/households/$householdId/settings'
     | '/households/$householdId/settlement'
     | '/households/$householdId'
+    | '/households/$householdId/drafts/$draftId'
   id:
     | '__root__'
     | '/'
@@ -138,6 +150,7 @@ export interface FileRouteTypes {
     | '/households/$householdId/settings'
     | '/households/$householdId/settlement'
     | '/households/$householdId/'
+    | '/households/$householdId/drafts/$draftId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -210,6 +223,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HouseholdsHouseholdIdSettlementRouteImport
       parentRoute: typeof HouseholdsHouseholdIdRoute
     }
+    '/households/$householdId/drafts/$draftId': {
+      id: '/households/$householdId/drafts/$draftId'
+      path: '/drafts/$draftId'
+      fullPath: '/households/$householdId/drafts/$draftId'
+      preLoaderRoute: typeof HouseholdsHouseholdIdDraftsDraftIdRouteImport
+      parentRoute: typeof HouseholdsHouseholdIdRoute
+    }
   }
 }
 
@@ -221,6 +241,7 @@ interface HouseholdsHouseholdIdRouteChildren {
   HouseholdsHouseholdIdSettingsRoute: typeof HouseholdsHouseholdIdSettingsRoute
   HouseholdsHouseholdIdSettlementRoute: typeof HouseholdsHouseholdIdSettlementRoute
   HouseholdsHouseholdIdIndexRoute: typeof HouseholdsHouseholdIdIndexRoute
+  HouseholdsHouseholdIdDraftsDraftIdRoute: typeof HouseholdsHouseholdIdDraftsDraftIdRoute
 }
 
 const HouseholdsHouseholdIdRouteChildren: HouseholdsHouseholdIdRouteChildren = {
@@ -231,6 +252,8 @@ const HouseholdsHouseholdIdRouteChildren: HouseholdsHouseholdIdRouteChildren = {
   HouseholdsHouseholdIdSettingsRoute: HouseholdsHouseholdIdSettingsRoute,
   HouseholdsHouseholdIdSettlementRoute: HouseholdsHouseholdIdSettlementRoute,
   HouseholdsHouseholdIdIndexRoute: HouseholdsHouseholdIdIndexRoute,
+  HouseholdsHouseholdIdDraftsDraftIdRoute:
+    HouseholdsHouseholdIdDraftsDraftIdRoute,
 }
 
 const HouseholdsHouseholdIdRouteWithChildren =

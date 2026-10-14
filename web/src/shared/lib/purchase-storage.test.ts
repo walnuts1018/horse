@@ -206,6 +206,39 @@ describe("purchase outbox storage", () => {
     expect(await listPurchaseOutbox("member-b", householdId)).toEqual([]);
   });
 
+  it("共有draftの再送では既存Outboxと個人下書きを保護する", async () => {
+    const householdId = "household-shared";
+    const idempotencyKey = "shared-draft-1";
+    const draft = {
+      merchant: "個人下書き",
+      occurredAt: "2026-10-14T00:00:00Z",
+      itemName: "",
+      itemAmount: "",
+      categoryId: "",
+      items: [],
+    };
+    const input = {
+      idempotencyKey,
+      householdId,
+      occurredAt: "2026-10-14T00:00:00Z",
+      merchant: "共有店舗",
+      items: [{ name: "商品", amountYen: 100 }],
+    };
+    await savePurchaseDraft("member-a", householdId, draft);
+    await enqueuePurchase(input, "member-a", { preserveLocalDraft: true });
+    const [firstEntry] = await listPurchaseOutbox("member-a", householdId);
+
+    await enqueuePurchase(input, "member-a", { preserveLocalDraft: true });
+    expect(await listPurchaseOutbox("member-a", householdId)).toEqual([firstEntry]);
+    await expect(
+      enqueuePurchase({ ...input, merchant: "変更した店舗" }, "member-a", {
+        preserveLocalDraft: true,
+      }),
+    ).rejects.toThrow("同じ共有下書きから異なる内容を送信待ちにできません");
+    expect(await listPurchaseOutbox("member-a", householdId)).toEqual([firstEntry]);
+    expect(await loadPurchaseDraft("member-a", householdId)).toMatchObject(draft);
+  });
+
   it("所有者不明の旧データを送信対象から外し、IndexedDBから削除しない", async () => {
     await seedUnscopedVersionTwoRecords();
 

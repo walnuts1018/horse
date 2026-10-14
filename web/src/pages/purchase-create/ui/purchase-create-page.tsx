@@ -5,7 +5,7 @@ import type { EditPurchaseItemsCommands } from "./edit-purchase-items";
 
 import { readHouseholdPurchases } from "../../../entities/purchase";
 import { type Household, type Purchase } from "../../../shared/api";
-import { errorMessage, usePurchaseOutbox } from "../../../shared/lib";
+import { errorMessage, usePurchaseOutbox, type PurchaseDraft } from "../../../shared/lib";
 import { InlineError } from "../../../shared/ui";
 import {
   loadPaymentAccountForMerchant,
@@ -47,11 +47,30 @@ type PurchaseCreatePageProps = {
   onBack: () => void;
   onQueued: (idempotencyKey: string) => void;
   onUnsavedChanges: (unsaved: boolean) => void;
+  sharedDraft?: PurchaseDraft;
+  sharedDraftKey?: number;
+  onDraftChange?: (draft: PurchaseDraft) => void;
+  submissionQueued?: boolean;
+  sharedDraftId?: string;
+  onShareDraft?: (draft: PurchaseDraft) => Promise<void>;
+  sharedSync?: {
+    status: "saved" | "saving" | "conflict" | "error";
+    serverDraft?: PurchaseDraft;
+    error?: string;
+    onUseServer: () => void;
+    onKeepMine: () => void;
+    onRetry: () => void;
+  };
 };
 
 export function PurchaseCreatePage(props: PurchaseCreatePageProps) {
   const scope = JSON.stringify([props.memberId, props.household.id]);
-  return <PurchaseCreatePageContent key={scope} {...props} />;
+  return (
+    <PurchaseCreatePageContent
+      key={`${scope}:${props.sharedDraft ? `shared:${props.sharedDraftKey ?? 0}` : "local"}`}
+      {...props}
+    />
+  );
 }
 
 function PurchaseCreatePageContent({
@@ -60,6 +79,12 @@ function PurchaseCreatePageContent({
   onBack,
   onQueued,
   onUnsavedChanges,
+  sharedDraft,
+  onDraftChange,
+  submissionQueued = false,
+  sharedDraftId,
+  onShareDraft,
+  sharedSync,
 }: PurchaseCreatePageProps) {
   const accountIdsKey = household.accounts.map((account) => account.id).join("\u0000");
   const accountIds = useMemo(() => accountIdsKey.split("\u0000").filter(Boolean), [accountIdsKey]);
@@ -240,6 +265,8 @@ function PurchaseCreatePageContent({
     },
     onLoadError: (error) => setMessage(error.message),
     onUnsavedChanges,
+    mode: sharedDraft ? "shared" : "local",
+    initialDraft: sharedDraft,
   });
   // refはレンダー中に書き換えると再レンダーで巻き戻るため、コミット後に最新値を反映する
   useEffect(() => {
@@ -254,6 +281,9 @@ function PurchaseCreatePageContent({
     queued,
     cancelScheduledSave,
   } = draftPersistence;
+  useEffect(() => {
+    if (storageReady) onDraftChange?.(draft);
+  }, [draft, onDraftChange, storageReady]);
   useEffect(() => {
     onUnsavedChanges(hasUnsavedChanges);
     return () => onUnsavedChanges(false);
@@ -288,12 +318,14 @@ function PurchaseCreatePageContent({
     paymentDifference,
     cancelScheduledSave,
     onQueued,
+    idempotencyKey: sharedDraftId,
     onSaved: () => {
       const paymentAccountId = paymentRows[0].paymentAccountId;
       savePurchaseDefaults(memberId, household.id, {
         merchant: merchant.trim(),
         paymentAccountId,
       });
+      if (sharedDraft) return;
       queued();
       setMerchant(merchant.trim());
       setOccurredAt(localDateTime());
@@ -303,6 +335,19 @@ function PurchaseCreatePageContent({
     },
   });
   const { pending, message, setMessage, fieldError, clearFieldError, submit } = submission;
+  const [sharing, setSharing] = useState(false);
+  const shareDraft = async () => {
+    if (!onShareDraft || sharing) return;
+    setSharing(true);
+    try {
+      await persistDraft();
+      await onShareDraft(draft);
+    } catch (reason) {
+      setMessage(errorMessage(reason));
+    } finally {
+      setSharing(false);
+    }
+  };
   const paymentSummary = paymentRows
     .map(
       (payment) =>
@@ -346,12 +391,26 @@ function PurchaseCreatePageContent({
       paymentDifference: submittedPaymentDifference,
     });
   };
-  const hasDraftContent = Boolean(merchant.trim() || itemName.trim() || itemAmount || items.length);
-  const draftStatus = hasUnsavedChanges
-    ? "未保存"
-    : hasDraftContent && savedAt
-      ? "下書き保存済み"
-      : "入力待ち";
+  const hasDraftContent = Boolean(
+    merchant.trim() ||
+    itemName.trim() ||
+    itemAmount ||
+    items.length ||
+    paymentRows.some((payment) => payment.paymentAccountId || payment.amountYen.trim()),
+  );
+  const draftStatus = sharedSync
+    ? sharedSync.status === "saving"
+      ? "同期中"
+      : sharedSync.status === "conflict"
+        ? "競合"
+        : sharedSync.status === "error"
+          ? "同期失敗"
+          : "共有済み"
+    : hasUnsavedChanges
+      ? "未保存"
+      : hasDraftContent && savedAt
+        ? "下書き保存済み"
+        : "入力待ち";
 
   const copyPurchaseItems = (purchase: Purchase) => {
     itemsCommands.current?.copy(purchase);
@@ -374,13 +433,56 @@ function PurchaseCreatePageContent({
             <ChevronLeft size={16} />
             戻る
           </button>
-          <h1>買い物を追加</h1>
+          <h1>{sharedDraft ? "共有下書き" : "買い物を追加"}</h1>
         </div>
-        <span className={`save-status ${styles.saveStatus}`}>
-          <span className={`status-dot ${styles.statusDot}`} />
-          {draftStatus}
-        </span>
+        <div className={styles.headingActions}>
+          {!sharedDraft && onShareDraft && (
+            <button
+              type="button"
+              className="button button-soft"
+              disabled={sharing || !hasDraftContent}
+              onClick={() => void shareDraft()}
+            >
+              {sharing ? "共有中" : "共有する"}
+            </button>
+          )}
+          <span className={`save-status ${styles.saveStatus}`}>
+            <span className={`status-dot ${styles.statusDot}`} />
+            {draftStatus}
+          </span>
+        </div>
       </div>
+      {sharedSync?.status === "conflict" && sharedSync.serverDraft && (
+        <section className={`panel ${styles.sharedConflict}`} aria-live="polite">
+          <h2>別の編集があります</h2>
+          <p>
+            {sharedSync.serverDraft.merchant || "店名未入力"} ·{" "}
+            {sharedSync.serverDraft.items.length}件 ·{" "}
+            {yen(
+              sharedSync.serverDraft.items.reduce(
+                (total, item) => total + (Number(item.amount) || 0),
+                0,
+              ),
+            )}
+          </p>
+          <div>
+            <button type="button" className="button button-soft" onClick={sharedSync.onUseServer}>
+              サーバー版を使う
+            </button>
+            <button type="button" className="button button-primary" onClick={sharedSync.onKeepMine}>
+              手元の内容を保存
+            </button>
+          </div>
+        </section>
+      )}
+      {sharedSync?.status === "error" && sharedSync.error && (
+        <section className={styles.sharedConflict} role="alert">
+          <InlineError message={sharedSync.error} />
+          <button type="button" className="text-button" onClick={sharedSync.onRetry}>
+            再試行
+          </button>
+        </section>
+      )}
       <EditPurchaseDetails
         merchant={merchant}
         occurredAt={occurredAt}
@@ -510,12 +612,13 @@ function PurchaseCreatePageContent({
           className="button button-primary"
           disabled={
             pending ||
+            submissionQueued ||
             !outbox.ready ||
             Boolean(outbox.storageError) ||
             (!items.length && !itemName.trim() && !itemAmount.trim())
           }
         >
-          {pending ? "保存中" : "保存して送信"}
+          {pending ? "保存中" : submissionQueued ? "送信待ち" : "保存して送信"}
           <Check size={16} />
         </button>
       </PurchaseItemsComposer>
@@ -593,6 +696,7 @@ function PurchaseCreatePageContent({
               </button>
             </div>
           )}
+          {sharedSync?.error && <InlineError message={sharedSync.error} />}
         </div>
       )}
     </form>

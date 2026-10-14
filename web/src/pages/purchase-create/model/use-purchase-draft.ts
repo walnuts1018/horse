@@ -26,6 +26,8 @@ export function usePurchaseDraft({
   restore,
   onLoadError,
   onUnsavedChanges,
+  mode = "local",
+  initialDraft,
 }: {
   memberId: string;
   householdId: string;
@@ -33,6 +35,8 @@ export function usePurchaseDraft({
   restore: (draft: PurchaseDraft) => void;
   onLoadError: (error: Error) => void;
   onUnsavedChanges: (unsaved: boolean) => void;
+  mode?: "local" | "shared";
+  initialDraft?: PurchaseDraft;
 }) {
   const [storageReady, setStorageReady] = useState(false);
   const [draftScope, setDraftScope] = useState<string | null>(null);
@@ -48,6 +52,7 @@ export function usePurchaseDraft({
   const writeDraft = useRef(createPurchaseDraftWriteQueue());
   const skipNextSave = useRef(false);
   const hasLocalDraft = useRef(false);
+  const initializedSharedScope = useRef<string | null>(null);
   const editVersion = useRef(0);
   const mounted = useRef(false);
   const scopeRef = useRef(scope);
@@ -77,6 +82,7 @@ export function usePurchaseDraft({
 
   const persistDraft = useCallback(
     async (current = draftRef.current) => {
+      if (mode === "shared") return;
       const version = editVersion.current;
       const hasContent =
         hasLocalDraft.current ||
@@ -106,10 +112,20 @@ export function usePurchaseDraft({
         }
       }
     },
-    [memberId, householdId, scope],
+    [memberId, householdId, mode, scope],
   );
 
   useEffect(() => {
+    if (mode !== "shared" || !initialDraft || initializedSharedScope.current === scope) return;
+    initializedSharedScope.current = scope;
+    restoreRef.current(initialDraft);
+    setSavedAt(new Date());
+    setDraftScope(scope);
+    setStorageReady(true);
+  }, [mode, initialDraft, scope]);
+
+  useEffect(() => {
+    if (mode === "shared") return;
     let active = true;
     queueMicrotask(() => {
       if (!active) return;
@@ -133,9 +149,10 @@ export function usePurchaseDraft({
     return () => {
       active = false;
     };
-  }, [memberId, householdId, scope]);
+  }, [memberId, householdId, mode, scope]);
 
   useEffect(() => {
+    if (mode === "shared") return;
     if (!storageReady || draftScope !== scope) return;
     if (skipNextSave.current) {
       skipNextSave.current = false;
@@ -149,10 +166,11 @@ export function usePurchaseDraft({
     return () => {
       if (timer.current !== null) window.clearTimeout(timer.current);
     };
-  }, [scope, storageReady, draftScope, draft, persistDraft]);
+  }, [mode, scope, storageReady, draftScope, draft, persistDraft]);
 
   useEffect(
     () => () => {
+      if (mode === "shared") return;
       if (timer.current !== null) window.clearTimeout(timer.current);
       if (storageReady && draftScope === scope) {
         const current = draftRef.current;
@@ -170,10 +188,11 @@ export function usePurchaseDraft({
           void writeDraft.current(() => deletePurchaseDraft(memberId, householdId)).catch(() => {});
       }
     },
-    [memberId, householdId, storageReady, draftScope, scope],
+    [memberId, householdId, mode, storageReady, draftScope, scope],
   );
 
   const queued = useCallback(() => {
+    if (mode === "shared") return;
     editVersion.current += 1;
     skipNextSave.current = true;
     hasLocalDraft.current = false;
@@ -188,7 +207,7 @@ export function usePurchaseDraft({
     setSavedAt(null);
     onUnsavedChangesRef.current(false);
     setHasUnsavedChanges(false);
-  }, [memberId, householdId]);
+  }, [memberId, householdId, mode]);
 
   const cancelScheduledSave = useCallback(() => {
     if (timer.current !== null) window.clearTimeout(timer.current);

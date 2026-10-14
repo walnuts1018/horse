@@ -29,6 +29,7 @@ export function usePurchaseSubmission({
   cancelScheduledSave,
   onQueued,
   onSaved,
+  idempotencyKey: sharedDraftId,
 }: {
   memberId: string;
   household: Household;
@@ -42,6 +43,7 @@ export function usePurchaseSubmission({
   cancelScheduledSave: () => void;
   onQueued: (idempotencyKey: string) => void;
   onSaved: () => void;
+  idempotencyKey?: string;
 }) {
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
@@ -111,7 +113,7 @@ export function usePurchaseSubmission({
     setMessage("");
     try {
       cancelScheduledSave();
-      const idempotencyKey = makeIdempotencyKey();
+      const idempotencyKey = sharedDraftId ?? makeIdempotencyKey();
       await enqueuePurchase(
         {
           idempotencyKey,
@@ -126,6 +128,7 @@ export function usePurchaseSubmission({
           items: convertPurchaseItems(submittedItems),
         },
         memberId,
+        { preserveLocalDraft: Boolean(sharedDraftId) },
       );
       onSaved();
       onQueued(idempotencyKey);

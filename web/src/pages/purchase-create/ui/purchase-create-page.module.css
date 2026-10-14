@@ -22,6 +22,34 @@
   margin: 5px 0 0;
 }
 
+.headingActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sharedConflict {
+  margin-bottom: 14px;
+  padding: 16px 19px;
+}
+
+.sharedConflict h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.sharedConflict p {
+  margin: 8px 0 12px;
+  color: #5f6d65;
+  font-size: 13px;
+}
+
+.sharedConflict > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .details {
   grid-area: details;
   padding: 17px 19px;
@@ -159,6 +187,12 @@
 }
 
 @media (width <= 760px) {
+  .headingActions {
+    align-items: flex-end;
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
   .heading {
     align-items: flex-end;
     margin-bottom: 15px;

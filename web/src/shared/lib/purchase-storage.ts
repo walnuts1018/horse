@@ -459,27 +459,42 @@ export async function listPurchaseOutbox(memberId: string, householdId?: string)
   return values.filter(isPurchaseOutboxEntry);
 }
 
-export async function enqueuePurchase(input: CreatePurchaseInput, memberId: string) {
+export async function enqueuePurchase(
+  input: CreatePurchaseInput,
+  memberId: string,
+  options: { preserveLocalDraft?: boolean } = {},
+) {
   input = normalizePurchaseInput(input);
   const now = Date.now();
   const storageKey = outboxStorageKey(memberId, input.householdId, input.idempotencyKey);
-  await withTransaction([draftsStore, outboxStore], "readwrite", async (transaction) => {
-    await Promise.all([
-      transaction.objectStore(outboxStore).put({
-        storageKey,
-        memberId,
-        householdId: input.householdId,
-        idempotencyKey: input.idempotencyKey,
-        input,
-        status: "PENDING",
-        createdAt: now,
-        updatedAt: now,
-      } satisfies PurchaseOutboxEntry),
-      transaction.objectStore(draftsStore).put({
+  const stores = options.preserveLocalDraft ? [outboxStore] : [draftsStore, outboxStore];
+  await withTransaction(stores, "readwrite", async (transaction) => {
+    const store = transaction.objectStore(outboxStore);
+    const existing: unknown = await store.get(storageKey);
+    if (isPurchaseOutboxEntry(existing)) {
+      if (JSON.stringify(existing.input) !== JSON.stringify(input)) {
+        throw new Error(
+          "同じ共有下書きから異なる内容を送信待ちにできません。送信待ちの購入を確認してください",
+        );
+      }
+      return;
+    }
+    await store.put({
+      storageKey,
+      memberId,
+      householdId: input.householdId,
+      idempotencyKey: input.idempotencyKey,
+      input,
+      status: "PENDING",
+      createdAt: now,
+      updatedAt: now,
+    } satisfies PurchaseOutboxEntry);
+    if (!options.preserveLocalDraft) {
+      await transaction.objectStore(draftsStore).put({
         storageKey: draftStorageKey(memberId, input.householdId),
         cleared: true,
-      }),
-    ]);
+      });
+    }
   });
   notifyOutboxChanged();
 }
