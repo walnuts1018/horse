@@ -2289,6 +2289,10 @@ type SharedPurchaseDraft struct {
 	UpdatedAt   DateTime `json:"updatedAt"`
 }
 
+type SharedPurchaseDraftChange struct {
+	Cursor string `json:"cursor"`
+}
+
 type StatementRefundCorrection struct {
 	ID             string   `json:"id"`
 	AmountYen      Long     `json:"amountYen"`

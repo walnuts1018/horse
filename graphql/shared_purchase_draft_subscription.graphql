@@ -1,0 +1,7 @@
+type SharedPurchaseDraftChange {
+  cursor: String!
+}
+
+extend type Subscription {
+  sharedPurchaseDraftChanges(id: ID!, after: String): SharedPurchaseDraftChange!
+}
