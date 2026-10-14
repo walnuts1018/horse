@@ -96,6 +96,15 @@ var DocumentConfirmations = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		TransferID: column{
+			Name:      "transfer_id",
+			DBType:    "uuid",
+			Default:   "NULL",
+			Comment:   "",
+			Nullable:  true,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: documentConfirmationIndexes{
 		DocumentConfirmationsPkey: index{
@@ -190,6 +199,15 @@ var DocumentConfirmations = Table[
 			ForeignTable:   "source_documents",
 			ForeignColumns: []string{"id"},
 		},
+		DocumentConfirmationsDocumentConfirmationsTransferFK: foreignKey{
+			constraint: constraint{
+				Name:    "document_confirmations.document_confirmations_transfer_fk",
+				Columns: []string{"household_id", "transfer_id"},
+				Comment: "",
+			},
+			ForeignTable:   "transfers",
+			ForeignColumns: []string{"household_id", "id"},
+		},
 	},
 
 	Checks: documentConfirmationChecks{
@@ -204,10 +222,10 @@ var DocumentConfirmations = Table[
 		DocumentConfirmationsTargetCheck: check{
 			constraint: constraint{
 				Name:    "document_confirmations_target_check",
-				Columns: []string{"purchase_id", "correction_id", "account_movement_id", "account_income_id"},
+				Columns: []string{"purchase_id", "correction_id", "account_movement_id", "account_income_id", "transfer_id"},
 				Comment: "",
 			},
-			Expression: "(num_nonnulls(purchase_id, correction_id, account_movement_id, account_income_id) = 1)",
+			Expression: "(num_nonnulls(purchase_id, correction_id, account_movement_id, account_income_id, transfer_id) = 1)",
 		},
 	},
 	Comment: "",
@@ -223,11 +241,12 @@ type documentConfirmationColumns struct {
 	CorrectionID      column
 	AccountMovementID column
 	AccountIncomeID   column
+	TransferID        column
 }
 
 func (c documentConfirmationColumns) AsSlice() []column {
 	return []column{
-		c.SourceDocumentID, c.HouseholdID, c.PurchaseID, c.CreatedBy, c.CreatedAt, c.SourceReference, c.CorrectionID, c.AccountMovementID, c.AccountIncomeID,
+		c.SourceDocumentID, c.HouseholdID, c.PurchaseID, c.CreatedBy, c.CreatedAt, c.SourceReference, c.CorrectionID, c.AccountMovementID, c.AccountIncomeID, c.TransferID,
 	}
 }
 
@@ -249,11 +268,12 @@ type documentConfirmationForeignKeys struct {
 	DocumentConfirmationsDocumentConfirmationsHouseholdIDFkey           foreignKey
 	DocumentConfirmationsDocumentConfirmationsHouseholdIDPurchaseIDFkey foreignKey
 	DocumentConfirmationsDocumentConfirmationsSourceDocumentIDFkey      foreignKey
+	DocumentConfirmationsDocumentConfirmationsTransferFK                foreignKey
 }
 
 func (f documentConfirmationForeignKeys) AsSlice() []foreignKey {
 	return []foreignKey{
-		f.DocumentConfirmationsDocumentConfirmationsAccountIncomeFK, f.DocumentConfirmationsDocumentConfirmationsAccountMovementFK, f.DocumentConfirmationsDocumentConfirmationsCorrectionHouseholdFK, f.DocumentConfirmationsDocumentConfirmationsCreatedByFkey, f.DocumentConfirmationsDocumentConfirmationsHouseholdIDFkey, f.DocumentConfirmationsDocumentConfirmationsHouseholdIDPurchaseIDFkey, f.DocumentConfirmationsDocumentConfirmationsSourceDocumentIDFkey,
+		f.DocumentConfirmationsDocumentConfirmationsAccountIncomeFK, f.DocumentConfirmationsDocumentConfirmationsAccountMovementFK, f.DocumentConfirmationsDocumentConfirmationsCorrectionHouseholdFK, f.DocumentConfirmationsDocumentConfirmationsCreatedByFkey, f.DocumentConfirmationsDocumentConfirmationsHouseholdIDFkey, f.DocumentConfirmationsDocumentConfirmationsHouseholdIDPurchaseIDFkey, f.DocumentConfirmationsDocumentConfirmationsSourceDocumentIDFkey, f.DocumentConfirmationsDocumentConfirmationsTransferFK,
 	}
 }
 

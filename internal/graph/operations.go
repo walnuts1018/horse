@@ -69,6 +69,10 @@ func (r *mutationResolver) recordTransferCommand(ctx context.Context, input tran
 	if input.Kind != transferKindRepayment && input.LoanID != nil {
 		return nil, fmt.Errorf("%w: loanId is only valid for a repayment", ErrBadInput)
 	}
+	statementProvided := input.SourceDocumentID != nil || input.SourceReference != nil || input.SourceAccountID != nil
+	if statementProvided && (input.SourceDocumentID == nil || *input.SourceDocumentID == "" || input.SourceReference == nil || *input.SourceReference == "" || input.SourceAccountID == nil || *input.SourceAccountID == "" || input.Kind != "LOAN" && input.Kind != transferKindRepayment || len(*input.SourceReference) > 256) {
+		return nil, fmt.Errorf("%w: invalid statement transfer source", ErrBadInput)
+	}
 	fingerprint, err := mutationRequestFingerprint(input)
 	if err != nil {
 		return nil, err
@@ -79,6 +83,7 @@ func (r *mutationResolver) recordTransferCommand(ctx context.Context, input tran
 		PaymentAccountID: input.PaymentAccountID, DestinationAccountID: input.DestinationAccountID,
 		AmountYen: int64(input.AmountYen), OccurredAt: occurredAt, Description: input.Description,
 		IdempotencyKey: input.IdempotencyKey, RequestFingerprint: fingerprint,
+		SourceDocumentID: optionalString(input.SourceDocumentID), SourceReference: optionalString(input.SourceReference), SourceAccountID: optionalString(input.SourceAccountID),
 	})
 	if err != nil {
 		return nil, err

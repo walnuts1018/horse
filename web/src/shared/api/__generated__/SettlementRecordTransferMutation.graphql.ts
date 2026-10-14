@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<561676d8107f2c670f83aed579d1856c>>
+ * @generated SignedSource<<1bb99e71eb02068176f2ae874a5449fe>>
  * @lightSyntaxTransform
  */
 
@@ -20,6 +20,9 @@ export type RecordTransferInput = {
   kind: TransferInputKind;
   occurredAt: string;
   paymentAccountId?: string | null | undefined;
+  sourceAccountId?: string | null | undefined;
+  sourceDocumentId?: string | null | undefined;
+  sourceReference?: string | null | undefined;
   toMemberId: string;
 };
 export type SettlementRecordTransferMutation$variables = {

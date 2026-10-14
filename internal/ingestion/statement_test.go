@@ -59,6 +59,21 @@ func TestBankExternalIncomeRequiresPositiveAmount(t *testing.T) {
 	}
 }
 
+func TestBankLoanAndRepaymentKindsPreserveSignedAmounts(t *testing.T) {
+	t.Parallel()
+	entries, err := ParseStatementCSV([]byte("date,merchant,amount,type\n2026-10-12,貸付,-5000,貸付\n2026-10-13,返済,2000,返済\n"), statementSourceBank)
+	if err != nil || len(entries) != 2 || entries[0].Kind != statementKindLoan || entries[0].Amount != -5000 || entries[1].Kind != statementKindRepayment || entries[1].Amount != 2000 {
+		t.Fatalf("loan statement rows were not preserved: entries=%+v err=%v", entries, err)
+	}
+	region := Region{Page: 0, Top: 0.1, Left: 0.1, Bottom: 0.2, Right: 0.9}
+	for _, entry := range entries {
+		entry.Region = &region
+		if _, err := VerifyStatements(statementSourceBank, []StatementEntry{entry}, nil); err != nil {
+			t.Fatalf("valid loan statement row rejected: %+v: %v", entry, err)
+		}
+	}
+}
+
 func TestStatementSourceReferencesAreStableAndUnique(t *testing.T) {
 	t.Parallel()
 	data := []byte("date,merchant,amount,transactionId\n2026-10-12,店,100,duplicate\n2026-10-12,店,100,duplicate\n")

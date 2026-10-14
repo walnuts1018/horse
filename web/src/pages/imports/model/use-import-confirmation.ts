@@ -29,6 +29,8 @@ import {
   importIdempotencyKey,
   recordStatementAccountMovement,
   recordStatementExternalIncome,
+  recordStatementLoan,
+  recordStatementRepayment,
 } from "../api/documents";
 import {
   receiptDateInputValue,
@@ -493,6 +495,45 @@ export function useImportConfirmation({
     onAdded(true);
   };
 
+  const confirmStatementLoan = async (
+    document: DocumentReview,
+    entry: StatementEntry,
+    statementAccountId: string,
+    fromMemberId: string,
+    toMemberId: string,
+    loanId?: string,
+  ) => {
+    if (entry.kind !== "LOAN" && entry.kind !== "REPAYMENT") throw new Error("貸付または返済の明細を選択してください");
+    const issue = statementConfirmationIssue(entry);
+    if (issue) throw new Error(issue);
+    if (!household.accounts.some((account) => account.id === statementAccountId && account.kind === "BANK")) throw new Error("銀行口座を選択してください");
+    const reference = statementSourceReference(entry);
+    const key = `${document.id}:${reference}`;
+    if (confirmedStatements.has(key)) return;
+    const input = {
+      householdId: household.id,
+      fromMemberId,
+      toMemberId,
+      amountYen: Math.abs(entry.amount),
+      occurredAt: new Date(entry.occurredAt).toISOString(),
+      description: entry.merchant,
+      idempotencyKey: await importIdempotencyKey(document.id, reference),
+      sourceDocumentId: document.id,
+      sourceReference: reference,
+      sourceAccountId: statementAccountId,
+      ...(entry.amount < 0 ? { paymentAccountId: statementAccountId } : { destinationAccountId: statementAccountId }),
+    };
+    if (entry.kind === "LOAN") {
+      await recordStatementLoan({ ...input, kind: "LOAN" });
+    } else {
+      if (!loanId) throw new Error("返済対象の貸付を選択してください");
+      await recordStatementRepayment({ ...input, loanId });
+    }
+    setConfirmedStatements((current) => new Set(current).add(key));
+    setHasUnsavedChanges(false);
+    onAdded(true);
+  };
+
   return {
     recentPurchases,
     confirmedStatements,
@@ -523,5 +564,6 @@ export function useImportConfirmation({
     confirmStatement,
     confirmStatementRefund,
     confirmStatementTransfer,
+    confirmStatementLoan: (document: DocumentReview, entry: StatementEntry, accountId: string, fromMemberId: string, toMemberId: string, loanId?: string) => confirmStatementLoan(document, entry, accountId, fromMemberId, toMemberId, loanId),
   };
 }

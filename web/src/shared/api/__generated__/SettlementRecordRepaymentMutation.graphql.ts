@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<86454ec03884b530a3efd2f63ca4764b>>
+ * @generated SignedSource<<7b7682e5a809f8c48914b9e9da0e1e83>>
  * @lightSyntaxTransform
  */
 
@@ -19,6 +19,9 @@ export type RecordRepaymentInput = {
   loanId: string;
   occurredAt: string;
   paymentAccountId?: string | null | undefined;
+  sourceAccountId?: string | null | undefined;
+  sourceDocumentId?: string | null | undefined;
+  sourceReference?: string | null | undefined;
   toMemberId: string;
 };
 export type SettlementRecordRepaymentMutation$variables = {

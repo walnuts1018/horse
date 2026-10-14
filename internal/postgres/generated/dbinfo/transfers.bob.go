@@ -124,6 +124,28 @@ var Transfers = Table[
 			Where:         "",
 			Include:       []string{},
 		},
+		TransfersHouseholdIDUnique: index{
+			Type: "btree",
+			Name: "transfers_household_id_unique",
+			Columns: []indexColumn{
+				{
+					Name:         "household_id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+				{
+					Name:         "id",
+					Desc:         null.FromCond(false, true),
+					IsExpression: false,
+				},
+			},
+			Unique:        true,
+			Comment:       "",
+			NullsFirst:    []bool{false, false},
+			NullsDistinct: false,
+			Where:         "",
+			Include:       []string{},
+		},
 		TransfersLedgerEntryIDKey: index{
 			Type: "btree",
 			Name: "transfers_ledger_entry_id_key",
@@ -204,6 +226,11 @@ var Transfers = Table[
 		},
 	},
 	Uniques: transferUniques{
+		TransfersHouseholdIDUnique: constraint{
+			Name:    "transfers_household_id_unique",
+			Columns: []string{"household_id", "id"},
+			Comment: "",
+		},
 		TransfersLedgerEntryIDKey: constraint{
 			Name:    "transfers_ledger_entry_id_key",
 			Columns: []string{"ledger_entry_id"},
@@ -267,13 +294,14 @@ func (c transferColumns) AsSlice() []column {
 }
 
 type transferIndexes struct {
-	TransfersPkey             index
-	TransfersLedgerEntryIDKey index
+	TransfersPkey              index
+	TransfersHouseholdIDUnique index
+	TransfersLedgerEntryIDKey  index
 }
 
 func (i transferIndexes) AsSlice() []index {
 	return []index{
-		i.TransfersPkey, i.TransfersLedgerEntryIDKey,
+		i.TransfersPkey, i.TransfersHouseholdIDUnique, i.TransfersLedgerEntryIDKey,
 	}
 }
 
@@ -293,12 +321,13 @@ func (f transferForeignKeys) AsSlice() []foreignKey {
 }
 
 type transferUniques struct {
-	TransfersLedgerEntryIDKey constraint
+	TransfersHouseholdIDUnique constraint
+	TransfersLedgerEntryIDKey  constraint
 }
 
 func (u transferUniques) AsSlice() []constraint {
 	return []constraint{
-		u.TransfersLedgerEntryIDKey,
+		u.TransfersHouseholdIDUnique, u.TransfersLedgerEntryIDKey,
 	}
 }
 

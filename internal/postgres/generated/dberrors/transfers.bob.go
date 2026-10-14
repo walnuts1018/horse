@@ -11,6 +11,13 @@ var TransferErrors = &transferErrors{
 		s:       "transfers_pkey",
 	},
 
+	ErrUniqueTransfersHouseholdIdUnique: &UniqueConstraintError{
+		schema:  "",
+		table:   "transfers",
+		columns: []string{"household_id", "id"},
+		s:       "transfers_household_id_unique",
+	},
+
 	ErrUniqueTransfersLedgerEntryIdKey: &UniqueConstraintError{
 		schema:  "",
 		table:   "transfers",
@@ -49,6 +56,8 @@ var TransferErrors = &transferErrors{
 
 type transferErrors struct {
 	ErrUniqueTransfersPkey *UniqueConstraintError
+
+	ErrUniqueTransfersHouseholdIdUnique *UniqueConstraintError
 
 	ErrUniqueTransfersLedgerEntryIdKey *UniqueConstraintError
 

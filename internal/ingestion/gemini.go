@@ -403,7 +403,7 @@ type statementExtraction struct {
 }
 
 func statementPrompt(sourceKind string) string {
-	kindInstruction := "Classify each row as PURCHASE_PAYMENT, CARD_BILL_PAYMENT, ACCOUNT_TRANSFER, EXTERNAL_INCOME, REFUND, or UNCLASSIFIED. Use EXTERNAL_INCOME only for a positive credit from outside the household, such as salary, interest, dividend, or refund from a public authority; use ACCOUNT_TRANSFER for movement between the household's own accounts."
+	kindInstruction := "Classify each row as PURCHASE_PAYMENT, CARD_BILL_PAYMENT, ACCOUNT_TRANSFER, LOAN, REPAYMENT, EXTERNAL_INCOME, REFUND, or UNCLASSIFIED. Use EXTERNAL_INCOME only for a positive credit from outside the household, such as salary, interest, dividend, or refund from a public authority; use ACCOUNT_TRANSFER for movement between the household's own accounts; use LOAN for a loan principal transaction between household members; use REPAYMENT for a repayment transaction against an existing loan between household members. Preserve the printed amount sign so the receiving member's and paying member's statements can be distinguished."
 	if sourceKind == statementSourceCard {
 		kindInstruction = "Classify each row as CARD_PURCHASE or REFUND."
 	}

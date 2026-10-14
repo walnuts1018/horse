@@ -5,11 +5,15 @@ import type { DocumentFilters, DocumentReview } from "../model/imports";
 import {
   recordAccountMovementMutation,
   recordExternalIncomeMutation,
+  recordRepaymentMutation,
+  recordTransferMutation,
 } from "../../../entities/ledger";
 import {
   getRelayEnvironment,
   type RecordAccountMovementMutation,
   type RecordExternalIncomeMutation,
+  type RecordRepaymentMutation,
+  type RecordTransferMutation,
 } from "../../../shared/api";
 import { asRecord } from "../model/imports";
 
@@ -96,6 +100,38 @@ export function recordStatementExternalIncome(
           return;
         }
         reject(new Error(result.message || "外部入金を記録できませんでした"));
+      },
+      onError: reject,
+    }),
+  );
+}
+
+export function recordStatementLoan(input: RecordTransferMutation["variables"]["input"]) {
+  return new Promise<void>((resolve, reject) =>
+    commitMutation<RecordTransferMutation>(getRelayEnvironment(), {
+      mutation: recordTransferMutation,
+      variables: { input },
+      onCompleted: (response, errors) => {
+        if (errors?.length) return reject(new Error(errors[0].message));
+        const result = response.recordTransfer;
+        if (result.__typename === "RecordTransferSuccess") return resolve();
+        reject(new Error(result.message || "貸付を記録できませんでした"));
+      },
+      onError: reject,
+    }),
+  );
+}
+
+export function recordStatementRepayment(input: RecordRepaymentMutation["variables"]["input"]) {
+  return new Promise<void>((resolve, reject) =>
+    commitMutation<RecordRepaymentMutation>(getRelayEnvironment(), {
+      mutation: recordRepaymentMutation,
+      variables: { input },
+      onCompleted: (response, errors) => {
+        if (errors?.length) return reject(new Error(errors[0].message));
+        const result = response.recordRepayment;
+        if (result.__typename === "RecordRepaymentSuccess") return resolve();
+        reject(new Error(result.message || "返済を記録できませんでした"));
       },
       onError: reject,
     }),

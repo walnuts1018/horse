@@ -35,6 +35,7 @@ type DocumentConfirmation struct {
 	CorrectionID      sql.Null[uuid.UUID] `db:"correction_id" `
 	AccountMovementID sql.Null[uuid.UUID] `db:"account_movement_id" `
 	AccountIncomeID   sql.Null[uuid.UUID] `db:"account_income_id" `
+	TransferID        sql.Null[uuid.UUID] `db:"transfer_id" `
 
 	R documentConfirmationR `db:"-" `
 }
@@ -58,6 +59,7 @@ type documentConfirmationR struct {
 	Household       *Household       // document_confirmations.document_confirmations_household_id_fkey
 	Purchase        *Purchase        // document_confirmations.document_confirmations_household_id_purchase_id_fkey
 	SourceDocument  *SourceDocument  // document_confirmations.document_confirmations_source_document_id_fkey
+	Transfer        *Transfer        // document_confirmations.document_confirmations_transfer_fk
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -73,11 +75,12 @@ type documentConfirmationRLoaded struct {
 	Household       bool // document_confirmations.document_confirmations_household_id_fkey
 	Purchase        bool // document_confirmations.document_confirmations_household_id_purchase_id_fkey
 	SourceDocument  bool // document_confirmations.document_confirmations_source_document_id_fkey
+	Transfer        bool // document_confirmations.document_confirmations_transfer_fk
 }
 
 func buildDocumentConfirmationColumns(tableName string) documentConfirmationColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"source_document_id", "household_id", "purchase_id", "created_by", "created_at", "source_reference", "correction_id", "account_movement_id", "account_income_id",
+		"source_document_id", "household_id", "purchase_id", "created_by", "created_at", "source_reference", "correction_id", "account_movement_id", "account_income_id", "transfer_id",
 	)
 
 	if tableName != "" {
@@ -96,6 +99,7 @@ func buildDocumentConfirmationColumns(tableName string) documentConfirmationColu
 		CorrectionID:      buildDocumentConfirmationColumn(tableName, "correction_id"),
 		AccountMovementID: buildDocumentConfirmationColumn(tableName, "account_movement_id"),
 		AccountIncomeID:   buildDocumentConfirmationColumn(tableName, "account_income_id"),
+		TransferID:        buildDocumentConfirmationColumn(tableName, "transfer_id"),
 	}
 }
 
@@ -111,6 +115,7 @@ type documentConfirmationColumns struct {
 	CorrectionID      documentConfirmationColumn
 	AccountMovementID documentConfirmationColumn
 	AccountIncomeID   documentConfirmationColumn
+	TransferID        documentConfirmationColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -165,10 +170,11 @@ type DocumentConfirmationSetter struct {
 	CorrectionID      *sql.Null[uuid.UUID] `db:"correction_id" `
 	AccountMovementID *sql.Null[uuid.UUID] `db:"account_movement_id" `
 	AccountIncomeID   *sql.Null[uuid.UUID] `db:"account_income_id" `
+	TransferID        *sql.Null[uuid.UUID] `db:"transfer_id" `
 }
 
 func (s DocumentConfirmationSetter) SetColumns() []string {
-	vals := make([]string, 0, 9)
+	vals := make([]string, 0, 10)
 	if s.SourceDocumentID != nil {
 		vals = append(vals, "source_document_id")
 	}
@@ -195,6 +201,9 @@ func (s DocumentConfirmationSetter) SetColumns() []string {
 	}
 	if s.AccountIncomeID != nil {
 		vals = append(vals, "account_income_id")
+	}
+	if s.TransferID != nil {
+		vals = append(vals, "transfer_id")
 	}
 	return vals
 }
@@ -273,6 +282,15 @@ func (s DocumentConfirmationSetter) Overwrite(t *DocumentConfirmation) {
 				return *new(sql.Null[uuid.UUID])
 			}
 			v := s.AccountIncomeID
+			return *v
+		}()
+	}
+	if s.TransferID != nil {
+		t.TransferID = func() sql.Null[uuid.UUID] {
+			if s.TransferID == nil {
+				return *new(sql.Null[uuid.UUID])
+			}
+			v := s.TransferID
 			return *v
 		}()
 	}
@@ -378,6 +396,17 @@ func (s *DocumentConfirmationSetter) Apply(q *dialect.InsertQuery) {
 				v := s.AccountIncomeID
 				return *v
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.TransferID == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() sql.Null[uuid.UUID] {
+				if s.TransferID == nil {
+					return *new(sql.Null[uuid.UUID])
+				}
+				v := s.TransferID
+				return *v
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -386,7 +415,7 @@ func (s DocumentConfirmationSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s DocumentConfirmationSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 9)
+	exprs := make([]bob.Expression, 0, 10)
 
 	if s.SourceDocumentID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -451,6 +480,13 @@ func (s DocumentConfirmationSetter) Expressions(prefix ...string) []bob.Expressi
 		}})
 	}
 
+	if s.TransferID != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "transfer_id")...),
+			psql.Arg(s.TransferID),
+		}})
+	}
+
 	return exprs
 }
 
@@ -461,7 +497,7 @@ func documentConfirmationScanMapper(ctx context.Context, cols []string) (scan.Be
 		idx int
 		dst func(o *DocumentConfirmation) any
 	}
-	targets := make([]target, 0, 9)
+	targets := make([]target, 0, 10)
 	for i, col := range cols {
 		switch col {
 		case "source_document_id":
@@ -482,6 +518,8 @@ func documentConfirmationScanMapper(ctx context.Context, cols []string) (scan.Be
 			targets = append(targets, target{i, func(o *DocumentConfirmation) any { return &o.AccountMovementID }})
 		case "account_income_id":
 			targets = append(targets, target{i, func(o *DocumentConfirmation) any { return &o.AccountIncomeID }})
+		case "transfer_id":
+			targets = append(targets, target{i, func(o *DocumentConfirmation) any { return &o.TransferID }})
 		}
 	}
 
@@ -967,6 +1005,35 @@ func (os DocumentConfirmationSlice) SourceDocument(mods ...bob.Mod[*dialect.Sele
 	)...)
 }
 
+// Transfer starts a query for related objects on transfers
+func (o *DocumentConfirmation) Transfer(mods ...bob.Mod[*dialect.SelectQuery]) TransfersQuery {
+	return Transfers.Query(append(mods,
+		sm.Where(Transfers.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(Transfers.Columns.ID.EQ(psql.Arg(o.TransferID))),
+	)...)
+}
+
+func (os DocumentConfirmationSlice) Transfer(mods ...bob.Mod[*dialect.SelectQuery]) TransfersQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkTransferID := make(pgtypes.Array[sql.Null[uuid.UUID]], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkTransferID = append(pkTransferID, o.TransferID)
+	}
+
+	return Transfers.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "ID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkTransferID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "ID"),
+		)).As("bob_rel_keys").On(Transfers.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), Transfers.Columns.ID.EQ(psql.Quote("bob_rel_keys", "ID"))),
+	)...)
+}
+
 func attachDocumentConfirmationAccountIncome0(ctx context.Context, exec bob.Executor, count int, documentConfirmation0 *DocumentConfirmation, accountIncome1 *AccountIncome) (*DocumentConfirmation, error) {
 	setter := &DocumentConfirmationSetter{
 		HouseholdID:     func() *uuid.UUID { return &accountIncome1.HouseholdID }(),
@@ -1321,6 +1388,57 @@ func (documentConfirmation0 *DocumentConfirmation) AttachSourceDocument(ctx cont
 	return nil
 }
 
+func attachDocumentConfirmationTransfer0(ctx context.Context, exec bob.Executor, count int, documentConfirmation0 *DocumentConfirmation, transfer1 *Transfer) (*DocumentConfirmation, error) {
+	setter := &DocumentConfirmationSetter{
+		HouseholdID: func() *uuid.UUID { return &transfer1.HouseholdID }(),
+		TransferID:  func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: transfer1.ID, Valid: true}; return &v }(),
+	}
+
+	err := documentConfirmation0.Update(ctx, exec, setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachDocumentConfirmationTransfer0: %w", err)
+	}
+
+	return documentConfirmation0, nil
+}
+
+func (documentConfirmation0 *DocumentConfirmation) InsertTransfer(ctx context.Context, exec bob.Executor, related *TransferSetter) error {
+	var err error
+
+	transfer1, err := Transfers.Insert(related).One(ctx, exec)
+	if err != nil {
+		return fmt.Errorf("inserting related objects: %w", err)
+	}
+
+	_, err = attachDocumentConfirmationTransfer0(ctx, exec, 1, documentConfirmation0, transfer1)
+	if err != nil {
+		return err
+	}
+
+	documentConfirmation0.R.Transfer = transfer1
+	documentConfirmation0.R.Loaded.Transfer = true
+
+	transfer1.R.DocumentConfirmations = append(transfer1.R.DocumentConfirmations, documentConfirmation0)
+
+	return nil
+}
+
+func (documentConfirmation0 *DocumentConfirmation) AttachTransfer(ctx context.Context, exec bob.Executor, transfer1 *Transfer) error {
+	var err error
+
+	_, err = attachDocumentConfirmationTransfer0(ctx, exec, 1, documentConfirmation0, transfer1)
+	if err != nil {
+		return err
+	}
+
+	documentConfirmation0.R.Transfer = transfer1
+	documentConfirmation0.R.Loaded.Transfer = true
+
+	transfer1.R.DocumentConfirmations = append(transfer1.R.DocumentConfirmations, documentConfirmation0)
+
+	return nil
+}
+
 type documentConfirmationWhere[Q psql.Filterable] struct {
 	cols              documentConfirmationColumns
 	SourceDocumentID  psql.WhereMod[Q, uuid.UUID]
@@ -1332,6 +1450,7 @@ type documentConfirmationWhere[Q psql.Filterable] struct {
 	CorrectionID      psql.WhereNullMod[Q, uuid.UUID]
 	AccountMovementID psql.WhereNullMod[Q, uuid.UUID]
 	AccountIncomeID   psql.WhereNullMod[Q, uuid.UUID]
+	TransferID        psql.WhereNullMod[Q, uuid.UUID]
 	R                 documentConfirmationWhereR[Q]
 }
 
@@ -1351,6 +1470,7 @@ func buildDocumentConfirmationWhere[Q psql.Filterable](cols documentConfirmation
 		CorrectionID:      psql.WhereNull[Q, uuid.UUID](cols.CorrectionID.Expression),
 		AccountMovementID: psql.WhereNull[Q, uuid.UUID](cols.AccountMovementID.Expression),
 		AccountIncomeID:   psql.WhereNull[Q, uuid.UUID](cols.AccountIncomeID.Expression),
+		TransferID:        psql.WhereNull[Q, uuid.UUID](cols.TransferID.Expression),
 		R:                 documentConfirmationWhereR[Q]{cols: cols},
 	}
 }
@@ -1464,6 +1584,21 @@ func (w documentConfirmationWhereR[Q]) HasSourceDocument(filters ...bob.Mod[*dia
 	return mods.Where[Q]{E: psql.Exists(q)}
 }
 
+// HasTransfer filters parents that have a matching Transfer using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to Transfers).
+func (w documentConfirmationWhereR[Q]) HasTransfer(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(Transfers.NameExpr()),
+		sm.Where(Transfers.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(Transfers.Columns.ID.EQ(w.cols.TransferID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 func (o *DocumentConfirmation) Preload(name string, retrieved any) error {
 	if o == nil {
 		return nil
@@ -1561,6 +1696,19 @@ func (o *DocumentConfirmation) Preload(name string, retrieved any) error {
 			rel.R.DocumentConfirmations = DocumentConfirmationSlice{o}
 		}
 		return nil
+	case "Transfer":
+		rel, ok := retrieved.(*Transfer)
+		if !ok {
+			return fmt.Errorf("documentConfirmation cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.Transfer = rel
+		o.R.Loaded.Transfer = true
+
+		if rel != nil {
+			rel.R.DocumentConfirmations = DocumentConfirmationSlice{o}
+		}
+		return nil
 	default:
 		return fmt.Errorf("documentConfirmation has no relationship %q", name)
 	}
@@ -1574,6 +1722,7 @@ type documentConfirmationPreloader struct {
 	Household       func(...psql.PreloadOption) psql.Preloader
 	Purchase        func(...psql.PreloadOption) psql.Preloader
 	SourceDocument  func(...psql.PreloadOption) psql.Preloader
+	Transfer        func(...psql.PreloadOption) psql.Preloader
 }
 
 func buildDocumentConfirmationPreloader() documentConfirmationPreloader {
@@ -1669,6 +1818,19 @@ func buildDocumentConfirmationPreloader() documentConfirmationPreloader {
 				},
 			}, SourceDocuments.Columns.Names(), sourceDocumentScanMapperNullable, opts...)
 		},
+		Transfer: func(opts ...psql.PreloadOption) psql.Preloader {
+			return psql.Preload[*Transfer, TransferSlice](psql.PreloadRel{
+				Name: "Transfer",
+				Sides: []psql.PreloadSide{
+					{
+						From:        DocumentConfirmations,
+						To:          Transfers,
+						FromColumns: []string{"household_id", "transfer_id"},
+						ToColumns:   []string{"household_id", "id"},
+					},
+				},
+			}, Transfers.Columns.Names(), transferScanMapperNullable, opts...)
+		},
 	}
 }
 
@@ -1680,6 +1842,7 @@ type documentConfirmationThenLoader[Q orm.Loadable] struct {
 	Household       func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	Purchase        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 	SourceDocument  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Transfer        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildDocumentConfirmationThenLoader[Q orm.Loadable]() documentConfirmationThenLoader[Q] {
@@ -1703,6 +1866,9 @@ func buildDocumentConfirmationThenLoader[Q orm.Loadable]() documentConfirmationT
 	}
 	type SourceDocumentLoadInterface interface {
 		LoadSourceDocument(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
+	type TransferLoadInterface interface {
+		LoadTransfer(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return documentConfirmationThenLoader[Q]{
@@ -1746,6 +1912,12 @@ func buildDocumentConfirmationThenLoader[Q orm.Loadable]() documentConfirmationT
 			"SourceDocument",
 			func(ctx context.Context, exec bob.Executor, retrieved SourceDocumentLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
 				return retrieved.LoadSourceDocument(ctx, exec, mods...)
+			},
+		),
+		Transfer: thenLoadBuilder[Q](
+			"Transfer",
+			func(ctx context.Context, exec bob.Executor, retrieved TransferLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadTransfer(ctx, exec, mods...)
 			},
 		),
 	}
@@ -2252,6 +2424,75 @@ func (os DocumentConfirmationSlice) LoadSourceDocument(ctx context.Context, exec
 	return nil
 }
 
+// LoadTransfer loads the documentConfirmation's Transfer into the .R struct
+func (o *DocumentConfirmation) LoadTransfer(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.Transfer = nil
+	o.R.Loaded.Transfer = false
+
+	related, err := o.Transfer(mods...).One(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	related.R.DocumentConfirmations = DocumentConfirmationSlice{o}
+
+	o.R.Transfer = related
+	o.R.Loaded.Transfer = true
+	return nil
+}
+
+// LoadTransfer loads the documentConfirmation's Transfer into the .R struct
+func (os DocumentConfirmationSlice) LoadTransfer(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	transfers, err := os.Transfer(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.Transfer = nil
+		o.R.Loaded.Transfer = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range transfers {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+			if !o.TransferID.Valid {
+				continue
+			}
+
+			if !(o.TransferID.Valid && o.TransferID.V == rel.ID) {
+				continue
+			}
+
+			rel.R.DocumentConfirmations = append(rel.R.DocumentConfirmations, o)
+
+			o.R.Transfer = rel
+			break
+		}
+	}
+
+	return nil
+}
+
 type documentConfirmationJoins[Q dialect.Joinable] struct {
 	typ             string
 	AccountIncome   modAs[Q, accountIncomeColumns]
@@ -2261,6 +2502,7 @@ type documentConfirmationJoins[Q dialect.Joinable] struct {
 	Household       modAs[Q, householdColumns]
 	Purchase        modAs[Q, purchaseColumns]
 	SourceDocument  modAs[Q, sourceDocumentColumns]
+	Transfer        modAs[Q, transferColumns]
 }
 
 func (j documentConfirmationJoins[Q]) aliasedAs(alias string) documentConfirmationJoins[Q] {
@@ -2362,6 +2604,20 @@ func buildDocumentConfirmationJoins[Q dialect.Joinable](cols documentConfirmatio
 				{
 					mods = append(mods, dialect.Join[Q](typ, SourceDocuments.NameExpr().As(to.Alias())).On(
 						to.ID.EQ(cols.SourceDocumentID),
+					))
+				}
+
+				return mods
+			},
+		},
+		Transfer: modAs[Q, transferColumns]{
+			c: Transfers.Columns,
+			f: func(to transferColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, Transfers.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.ID.EQ(cols.TransferID),
 					))
 				}
 

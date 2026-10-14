@@ -1708,6 +1708,9 @@ type RecordRepaymentInput struct {
 	OccurredAt           DateTime `json:"occurredAt"`
 	Description          string   `json:"description"`
 	IdempotencyKey       string   `json:"idempotencyKey"`
+	SourceDocumentID     *string  `json:"sourceDocumentId,omitempty"`
+	SourceReference      *string  `json:"sourceReference,omitempty"`
+	SourceAccountID      *string  `json:"sourceAccountId,omitempty"`
 }
 
 type RecordRepaymentSuccess struct {
@@ -1738,6 +1741,9 @@ type RecordTransferInput struct {
 	OccurredAt           DateTime          `json:"occurredAt"`
 	Description          string            `json:"description"`
 	IdempotencyKey       string            `json:"idempotencyKey"`
+	SourceDocumentID     *string           `json:"sourceDocumentId,omitempty"`
+	SourceReference      *string           `json:"sourceReference,omitempty"`
+	SourceAccountID      *string           `json:"sourceAccountId,omitempty"`
 }
 
 type RecordTransferSuccess struct {

@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchQuery } from "react-relay";
 
-import type { Account, Purchase } from "../../../shared/api";
+import { loanBalancesQuery } from "../../../entities/ledger";
+import { getRelayEnvironment, type Account, type Household, type LoanBalancesQuery, type Purchase } from "../../../shared/api";
 
 import {
   statementConfirmationIssue,
@@ -13,16 +15,19 @@ import {
 export function StatementReview({
   document,
   purchases,
+  household,
   accounts,
   confirmedStatements,
   pending,
   onConfirm,
   onConfirmRefund,
   onConfirmTransfer,
+  onConfirmLoan,
   onSelectRegion,
 }: {
   document: DocumentReview;
   purchases: Purchase[];
+  household: Household;
   accounts: Account[];
   confirmedStatements: Set<string>;
   pending: boolean;
@@ -33,6 +38,7 @@ export function StatementReview({
     statementAccountId: string,
     otherAccountId: string,
   ) => void;
+  onConfirmLoan: (entry: StatementEntry, accountId: string, fromMemberId: string, toMemberId: string, loanId?: string) => void;
   onSelectRegion: (entry: StatementEntry) => void;
 }) {
   const [refundTargets, setRefundTargets] = useState<
@@ -40,8 +46,15 @@ export function StatementReview({
   >({});
   const [paymentAccounts, setPaymentAccounts] = useState<Record<string, string>>({});
   const [statementAccounts, setStatementAccounts] = useState<
-    Record<string, { statementAccountId: string; otherAccountId: string }>
+    Record<string, { statementAccountId: string; otherAccountId: string; fromMemberId?: string; toMemberId?: string; loanId?: string }>
   >({});
+  const [loans, setLoans] = useState<Array<{ id: string; lenderMemberId: string; borrowerMemberId: string; balanceYen: number }>>([]);
+  useEffect(() => {
+    const subscription = fetchQuery<LoanBalancesQuery>(getRelayEnvironment(), loanBalancesQuery, { householdId: household.id, first: 100 }).subscribe({
+      next: (data) => setLoans(data.loanBalances.edges.map(({ node }) => ({ id: node.id, lenderMemberId: node.lenderMemberId, borrowerMemberId: node.borrowerMemberId, balanceYen: Number(node.balanceYen) }))),
+    });
+    return () => subscription.unsubscribe();
+  }, [household.id]);
   const statements = document.result?.statements;
   if (!statements) return null;
 
@@ -68,6 +81,9 @@ export function StatementReview({
         const isTransfer = entry.kind === "ACCOUNT_TRANSFER";
         const isCardBillPayment = entry.kind === "CARD_BILL_PAYMENT";
         const isExternalIncome = entry.kind === "EXTERNAL_INCOME";
+        const isLoan = entry.kind === "LOAN";
+        const isRepayment = entry.kind === "REPAYMENT";
+        const loanDraft = transferAccounts;
         return (
           <div
             className="statement-row"
@@ -91,6 +107,10 @@ export function StatementReview({
                       ? "カード引落し"
                       : isExternalIncome
                         ? "外部入金"
+                        : isLoan
+                          ? "貸付"
+                          : isRepayment
+                            ? "貸付返済"
                         : entry.kind === "CARD_PURCHASE"
                           ? "カード利用"
                           : entry.kind}
@@ -171,17 +191,19 @@ export function StatementReview({
                     </button>
                   </>
                 )
-              ) : isTransfer || isCardBillPayment ? (
+              ) : isTransfer || isCardBillPayment || isLoan || isRepayment ? (
                 issue ? (
                   <small>{issue}</small>
                 ) : confirmed ? (
-                  <small>{isCardBillPayment ? "カード引落し登録済み" : "振替登録済み"}</small>
+                  <small>{isCardBillPayment ? "カード引落し登録済み" : isLoan ? "貸付登録済み" : isRepayment ? "返済登録済み" : "振替登録済み"}</small>
                 ) : (
                   <>
                     <label>
                       <span>
-                        {isCardBillPayment
-                          ? "引落口座"
+                        {isLoan || isRepayment
+                          ? "明細の銀行口座"
+                          : isCardBillPayment
+                            ? "引落口座"
                           : entry.amount < 0
                             ? "振替元の明細口座"
                             : "振替先の明細口座"}
@@ -198,9 +220,7 @@ export function StatementReview({
                       >
                         <option value="">口座を選択</option>
                         {accounts
-                          .filter((account) =>
-                            isCardBillPayment ? account.kind === "BANK" : account.kind !== "CARD",
-                          )
+                          .filter((account) => isCardBillPayment || isLoan || isRepayment ? account.kind === "BANK" : account.kind !== "CARD")
                           .map((account) => (
                             <option key={account.id} value={account.id}>
                               {account.name}
@@ -208,7 +228,7 @@ export function StatementReview({
                           ))}
                       </select>
                     </label>
-                    <label>
+                    {(isTransfer || isCardBillPayment) && <label>
                       <span>
                         {isCardBillPayment
                           ? "引落対象のカード"
@@ -241,24 +261,31 @@ export function StatementReview({
                             </option>
                           ))}
                       </select>
-                    </label>
+                    </label>}
+                    {isLoan && <>
+                      <label><span>貸主</span><select value={loanDraft.fromMemberId ?? ""} disabled={pending} onChange={(event) => setStatementAccounts((current) => ({ ...current, [key]: { ...transferAccounts, fromMemberId: event.target.value } }))}><option value="">メンバーを選択</option>{household.members.map((member) => <option key={member.id} value={member.id}>{member.displayName}</option>)}</select></label>
+                      <label><span>借主</span><select value={loanDraft.toMemberId ?? ""} disabled={pending} onChange={(event) => setStatementAccounts((current) => ({ ...current, [key]: { ...transferAccounts, toMemberId: event.target.value } }))}><option value="">メンバーを選択</option>{household.members.filter((member) => member.id !== loanDraft.fromMemberId).map((member) => <option key={member.id} value={member.id}>{member.displayName}</option>)}</select></label>
+                    </>}
+                    {isRepayment && <label><span>返済対象の貸付</span><select value={loanDraft.loanId ?? ""} disabled={pending} onChange={(event) => setStatementAccounts((current) => ({ ...current, [key]: { ...transferAccounts, loanId: event.target.value } }))}><option value="">貸付を選択</option>{loans.filter((loan) => loan.balanceYen > 0).map((loan) => <option key={loan.id} value={loan.id}>{household.members.find((member) => member.id === loan.lenderMemberId)?.displayName} → {household.members.find((member) => member.id === loan.borrowerMemberId)?.displayName} · {yen(loan.balanceYen)}</option>)}</select></label>}
                     <button
                       type="button"
                       className="text-button"
-                      disabled={
-                        pending ||
-                        !transferAccounts.statementAccountId ||
-                        !transferAccounts.otherAccountId
-                      }
+                      disabled={pending || !transferAccounts.statementAccountId || (isTransfer || isCardBillPayment ? !transferAccounts.otherAccountId : isLoan ? !loanDraft.fromMemberId || !loanDraft.toMemberId || loanDraft.fromMemberId === loanDraft.toMemberId : !loans.find((loan) => loan.id === loanDraft.loanId && loan.balanceYen > 0))}
                       onClick={() =>
-                        onConfirmTransfer(
+                        isLoan || isRepayment ? onConfirmLoan(
+                          entry,
+                          transferAccounts.statementAccountId,
+                          isLoan ? loanDraft.fromMemberId! : loans.find((loan) => loan.id === loanDraft.loanId)!.borrowerMemberId,
+                          isLoan ? loanDraft.toMemberId! : loans.find((loan) => loan.id === loanDraft.loanId)!.lenderMemberId,
+                          isRepayment ? loanDraft.loanId : undefined,
+                        ) : onConfirmTransfer(
                           entry,
                           transferAccounts.statementAccountId,
                           transferAccounts.otherAccountId,
                         )
                       }
                     >
-                      {isCardBillPayment ? "カード引落しを記録" : "振替を記録"}
+                      {isCardBillPayment ? "カード引落しを記録" : isLoan ? "貸付を記録" : isRepayment ? "返済を記録" : "振替を記録"}
                     </button>
                   </>
                 )

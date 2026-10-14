@@ -2,10 +2,6 @@
 
 対象はHorseの`main`です。以前の指摘を現行コードと照合し、実装済みの内容を除いて残る課題を記録します。
 
-## 画面固有CSSと重要な処理の境界
-
-[global.css](../../web/src/app/styles/global.css)には共通規則と複数画面で使う購入行・見出し・パネル、および未分離の他画面固有規則が残ります。ホーム画面だけで使う規則は[home-page.css](../../web/src/pages/home/ui/home-page.css)へ、明細取込画面だけで使う明細レビュー規則は[imports-page.css](../../web/src/pages/imports/ui/imports-page.css)へ、精算画面の資金調達・借入規則は[settlement-page.css](../../web/src/pages/settlement/ui/settlement-page.css)へ、分析画面のコントロール規則は[analysis-page.css](../../web/src/pages/analysis/ui/analysis-page.css)へ、帳簿画面の検索入力と件数表示規則は[ledger-page.css](../../web/src/pages/ledger/ui/ledger-page.css)へ、購入作成画面だけで使う候補リスト規則は[purchase-create-page.css](../../web/src/pages/purchase-create/ui/purchase-create-page.css)へ移しました。残るレビュー範囲は、共通規則の所有先と他画面固有規則のpage sliceへの分離可否です。
-
 ## GraphQLの購入読み込み範囲
 
 [loadPurchases](../../internal/graph/helpers.go)は購入に対し、口座、証拠、確認、品目、支払、訂正、品目配賦、タグなどをまとめて読み込み、GraphQLモデルを構築します。Bobのバッチローダーを利用してN+1は避けていますが、一覧で一部のフィールドしか使わない場合にも広い関連データを読み込みます。
@@ -16,7 +12,6 @@
 
 | 優先 | 対象 |
 | --- | --- |
-| P2 | 画面固有CSSと重要な処理の境界 |
 | P3 | 必要性を測定した後の購入読み取りモデル分割 |
 
 Bob DSLによる型付きDBアクセス、gqlgenとRelayのコード生成、会計不変条件を守るトランザクション、リビジョンによる競合検知、Outboxの冪等性保証は維持します。コード行数ではなく、一つの機能を変更するときに読む必要がある範囲を減らすことを改善基準にします。

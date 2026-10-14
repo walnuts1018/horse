@@ -471,6 +471,9 @@ export function ImportsPage({
                   otherAccountId,
                 )
               }
+              onConfirmLoan={(entry, accountId, fromMemberId, toMemberId, loanId) =>
+                void review.confirmStatementLoan(selectedDocument, entry, accountId, fromMemberId, toMemberId, loanId)
+              }
               onError={setMessage}
               onLinked={async () => {
                 setHasUnsavedChanges(false);

@@ -47,6 +47,9 @@ type Command struct {
 	Description          string
 	IdempotencyKey       string
 	RequestFingerprint   [sha256.Size]byte
+	SourceDocumentID     string
+	SourceReference      string
+	SourceAccountID      string
 }
 
 type Result struct {
@@ -76,6 +79,10 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 	}
 	if command.Kind != repaymentKind && command.LoanID != nil {
 		return Result{}, fmt.Errorf("%w: loan id is only valid for a repayment", ErrBadInput)
+	}
+	statementProvided := command.SourceDocumentID != "" || command.SourceReference != "" || command.SourceAccountID != ""
+	if statementProvided && (command.SourceDocumentID == "" || command.SourceReference == "" || command.SourceAccountID == "" || command.Kind != "LOAN" && command.Kind != repaymentKind || len(command.SourceReference) > 256) {
+		return Result{}, fmt.Errorf("%w: invalid statement transfer source", ErrBadInput)
 	}
 
 	householdID, err := parseID(command.HouseholdID, "household")
@@ -120,6 +127,11 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		if !existing.ResourceID.Valid {
 			return Result{}, fmt.Errorf("%w: idempotency record has no resource", ErrConflict)
 		}
+		if statementProvided {
+			if err := requireStatementTransferConfirmation(ctx, executor, householdID, existing.ResourceID.V, command.SourceDocumentID, command.SourceReference); err != nil {
+				return Result{}, err
+			}
+		}
 		if err := tx.Rollback(ctx); err != nil {
 			return Result{}, err
 		}
@@ -145,6 +157,11 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		}
 		if !existing.ResourceID.Valid {
 			return Result{}, fmt.Errorf("%w: idempotency record has no resource", ErrConflict)
+		}
+		if statementProvided {
+			if err := requireStatementTransferConfirmation(ctx, executor, householdID, existing.ResourceID.V, command.SourceDocumentID, command.SourceReference); err != nil {
+				return Result{}, err
+			}
 		}
 		if err := tx.Rollback(ctx); err != nil {
 			return Result{}, err
@@ -262,6 +279,20 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 	}
 	if paymentAccountID != nil && destinationAccountID != nil && *paymentAccountID == *destinationAccountID {
 		return Result{}, fmt.Errorf("%w: transfer source and destination accounts must differ", ErrBadInput)
+	}
+	var statementEvidence *statementTransferEvidence
+	if statementProvided {
+		statementEvidence, err = loadStatementTransferEvidence(ctx, executor, householdID, command.SourceDocumentID, command.SourceReference, command.Kind)
+		if err != nil {
+			return Result{}, err
+		}
+		statementAccountID, parseErr := parseID(command.SourceAccountID, "statement account")
+		if parseErr != nil {
+			return Result{}, parseErr
+		}
+		if err := validateStatementTransfer(statementEvidence.Entry, statementAccountID, paymentAccountID, destinationAccountID, command.AmountYen, command.OccurredAt); err != nil {
+			return Result{}, err
+		}
 	}
 
 	var loanID *gofrsuuid.UUID
@@ -410,6 +441,11 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		AmountYen: &amount, Description: &description, LoanID: &loanValue, PaymentAccountID: &paymentAccountValue,
 	}).Exec(ctx, executor); err != nil {
 		return Result{}, err
+	}
+	if statementEvidence != nil {
+		if err := recordStatementTransferConfirmation(ctx, executor, householdID, actorID, transferID, statementEvidence.DocumentID, command.SourceReference); err != nil {
+			return Result{}, err
+		}
 	}
 	if command.Kind == "ADVANCE" || command.Kind == "LOAN" || command.Kind == repaymentKind {
 		adjustments := []struct {

@@ -47,6 +47,8 @@ export type { CreateRecurringExpenseMutation } from "./__generated__/CreateRecur
 export type { UpdateRecurringExpenseMutation } from "./__generated__/UpdateRecurringExpenseMutation.graphql";
 export type { RecordAccountMovementMutation } from "./__generated__/RecordAccountMovementMutation.graphql";
 export type { RecordExternalIncomeMutation } from "./__generated__/RecordExternalIncomeMutation.graphql";
+export type { RecordTransferMutation } from "./__generated__/RecordTransferMutation.graphql";
+export type { RecordRepaymentMutation } from "./__generated__/RecordRepaymentMutation.graphql";
 export type { CreateAccountMutation } from "./__generated__/CreateAccountMutation.graphql";
 export type { CreatePoolMutation } from "./__generated__/CreatePoolMutation.graphql";
 export type { SetPoolFundingRuleMutation } from "./__generated__/SetPoolFundingRuleMutation.graphql";

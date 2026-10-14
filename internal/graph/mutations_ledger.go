@@ -81,6 +81,9 @@ type transferCommand struct {
 	OccurredAt           string     `json:"occurredAt"`
 	Description          string     `json:"description"`
 	IdempotencyKey       string     `json:"idempotencyKey"`
+	SourceDocumentID     *string    `json:"sourceDocumentId,omitempty"`
+	SourceReference      *string    `json:"sourceReference,omitempty"`
+	SourceAccountID      *string    `json:"sourceAccountId,omitempty"`
 }
 
 func (r *mutationResolver) recordTransfer(ctx context.Context, input model.RecordTransferInput) (*model.LedgerEntryData, error) {
@@ -89,6 +92,7 @@ func (r *mutationResolver) recordTransfer(ctx context.Context, input model.Recor
 		Kind: string(input.Kind), PaymentAccountID: input.PaymentAccountID,
 		DestinationAccountID: input.DestinationAccountID, AmountYen: input.AmountYen,
 		OccurredAt: string(input.OccurredAt), Description: input.Description, IdempotencyKey: input.IdempotencyKey,
+		SourceDocumentID: input.SourceDocumentID, SourceReference: input.SourceReference, SourceAccountID: input.SourceAccountID,
 	})
 }
 
@@ -98,5 +102,6 @@ func (r *mutationResolver) recordRepayment(ctx context.Context, input model.Reco
 		Kind: transferKindRepayment, LoanID: &input.LoanID, PaymentAccountID: input.PaymentAccountID,
 		DestinationAccountID: input.DestinationAccountID, AmountYen: input.AmountYen,
 		OccurredAt: string(input.OccurredAt), Description: input.Description, IdempotencyKey: input.IdempotencyKey,
+		SourceDocumentID: input.SourceDocumentID, SourceReference: input.SourceReference, SourceAccountID: input.SourceAccountID,
 	})
 }

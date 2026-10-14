@@ -7888,6 +7888,9 @@ input RecordRepaymentInput {
   occurredAt: DateTime!
   description: String!
   idempotencyKey: String!
+  sourceDocumentId: ID
+  sourceReference: String
+  sourceAccountId: ID @nodeID(of: "Account")
 }
 
 type RecordRepaymentUserError implements MutationError {
@@ -7916,6 +7919,9 @@ input RecordTransferInput {
   occurredAt: DateTime!
   description: String!
   idempotencyKey: String!
+  sourceDocumentId: ID
+  sourceReference: String
+  sourceAccountId: ID @nodeID(of: "Account")
 }
 
 enum TransferInputKind {
@@ -35020,7 +35026,7 @@ func (ec *executionContext) unmarshalInputRecordRepaymentInput(ctx context.Conte
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"householdId", "fromMemberId", "toMemberId", "loanId", "paymentAccountId", "destinationAccountId", "amountYen", "occurredAt", "description", "idempotencyKey"}
+	fieldsInOrder := [...]string{"householdId", "fromMemberId", "toMemberId", "loanId", "paymentAccountId", "destinationAccountId", "amountYen", "occurredAt", "description", "idempotencyKey", "sourceDocumentId", "sourceReference", "sourceAccountId"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -35221,6 +35227,49 @@ func (ec *executionContext) unmarshalInputRecordRepaymentInput(ctx context.Conte
 				return it, err
 			}
 			it.IdempotencyKey = data
+		case "sourceDocumentId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceDocumentId"))
+			data, err := ec.unmarshalOID2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceDocumentID = data
+		case "sourceReference":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceReference"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceReference = data
+		case "sourceAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceAccountId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Account")
+				if err != nil {
+					var zeroVal *string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal *string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(*string); ok {
+				it.SourceAccountID = data
+			} else if tmp == nil {
+				it.SourceAccountID = nil
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
 		}
 	}
 	return it, nil
@@ -35237,7 +35286,7 @@ func (ec *executionContext) unmarshalInputRecordTransferInput(ctx context.Contex
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"householdId", "fromMemberId", "toMemberId", "kind", "paymentAccountId", "destinationAccountId", "amountYen", "occurredAt", "description", "idempotencyKey"}
+	fieldsInOrder := [...]string{"householdId", "fromMemberId", "toMemberId", "kind", "paymentAccountId", "destinationAccountId", "amountYen", "occurredAt", "description", "idempotencyKey", "sourceDocumentId", "sourceReference", "sourceAccountId"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -35418,6 +35467,49 @@ func (ec *executionContext) unmarshalInputRecordTransferInput(ctx context.Contex
 				return it, err
 			}
 			it.IdempotencyKey = data
+		case "sourceDocumentId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceDocumentId"))
+			data, err := ec.unmarshalOID2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceDocumentID = data
+		case "sourceReference":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceReference"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SourceReference = data
+		case "sourceAccountId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sourceAccountId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalOID2ᚖstring(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Account")
+				if err != nil {
+					var zeroVal *string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal *string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(*string); ok {
+				it.SourceAccountID = data
+			} else if tmp == nil {
+				it.SourceAccountID = nil
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be *string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
 		}
 	}
 	return it, nil

@@ -54,13 +54,14 @@ type TransfersQuery = *psql.ViewQuery[*Transfer, TransferSlice]
 
 // transferR is where relationships are stored.
 type transferR struct {
-	FromMemberMember *Member       // transfers.transfers_from_member_id_fkey
-	Household        *Household    // transfers.transfers_household_id_fkey
-	LedgerEntry      *LedgerEntry  // transfers.transfers_ledger_entry_id_fkey
-	Loan             *Transfer     // transfers.transfers_loan_id_fkey
-	ReverseLoans     TransferSlice // transfers.transfers_loan_id_fkey__self_join_reverse
-	Account          *Account      // transfers.transfers_payment_account_fk
-	ToMemberMember   *Member       // transfers.transfers_to_member_id_fkey
+	DocumentConfirmations DocumentConfirmationSlice // document_confirmations.document_confirmations_transfer_fk
+	FromMemberMember      *Member                   // transfers.transfers_from_member_id_fkey
+	Household             *Household                // transfers.transfers_household_id_fkey
+	LedgerEntry           *LedgerEntry              // transfers.transfers_ledger_entry_id_fkey
+	Loan                  *Transfer                 // transfers.transfers_loan_id_fkey
+	ReverseLoans          TransferSlice             // transfers.transfers_loan_id_fkey__self_join_reverse
+	Account               *Account                  // transfers.transfers_payment_account_fk
+	ToMemberMember        *Member                   // transfers.transfers_to_member_id_fkey
 	// Loaded reports whether each relationship has been loaded.
 	// A relationship's bool is set by Load*, Preload, ThenLoad, factory builds,
 	// and to-one Attach/Insert operations. To-many Attach/Insert operations leave it unchanged.
@@ -69,13 +70,14 @@ type transferR struct {
 
 // transferRLoaded tracks which relationships on Transfer have been loaded.
 type transferRLoaded struct {
-	FromMemberMember bool // transfers.transfers_from_member_id_fkey
-	Household        bool // transfers.transfers_household_id_fkey
-	LedgerEntry      bool // transfers.transfers_ledger_entry_id_fkey
-	Loan             bool // transfers.transfers_loan_id_fkey
-	ReverseLoans     bool // transfers.transfers_loan_id_fkey__self_join_reverse
-	Account          bool // transfers.transfers_payment_account_fk
-	ToMemberMember   bool // transfers.transfers_to_member_id_fkey
+	DocumentConfirmations bool // document_confirmations.document_confirmations_transfer_fk
+	FromMemberMember      bool // transfers.transfers_from_member_id_fkey
+	Household             bool // transfers.transfers_household_id_fkey
+	LedgerEntry           bool // transfers.transfers_ledger_entry_id_fkey
+	Loan                  bool // transfers.transfers_loan_id_fkey
+	ReverseLoans          bool // transfers.transfers_loan_id_fkey__self_join_reverse
+	Account               bool // transfers.transfers_payment_account_fk
+	ToMemberMember        bool // transfers.transfers_to_member_id_fkey
 }
 
 func buildTransferColumns(tableName string) transferColumns {
@@ -789,6 +791,35 @@ func (o TransferSlice) ReloadAll(ctx context.Context, exec bob.Executor) error {
 	return nil
 }
 
+// DocumentConfirmations starts a query for related objects on document_confirmations
+func (o *Transfer) DocumentConfirmations(mods ...bob.Mod[*dialect.SelectQuery]) DocumentConfirmationsQuery {
+	return DocumentConfirmations.Query(append(mods,
+		sm.Where(DocumentConfirmations.Columns.HouseholdID.EQ(psql.Arg(o.HouseholdID))), sm.Where(DocumentConfirmations.Columns.TransferID.EQ(psql.Arg(o.ID))),
+	)...)
+}
+
+func (os TransferSlice) DocumentConfirmations(mods ...bob.Mod[*dialect.SelectQuery]) DocumentConfirmationsQuery {
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	return DocumentConfirmations.Query(append(mods,
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(psql.Quote("bob_rel_keys_src", "HouseholdID"), psql.Quote("bob_rel_keys_src", "TransferID")),
+			sm.From(psql.F("unnest", psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"), psql.Cast(psql.Arg(pkID), "uuid[]"))).As("bob_rel_keys_src", "HouseholdID", "TransferID"),
+		)).As("bob_rel_keys").On(DocumentConfirmations.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")), DocumentConfirmations.Columns.TransferID.EQ(psql.Quote("bob_rel_keys", "TransferID"))),
+	)...)
+}
+
 // FromMemberMember starts a query for related objects on members
 func (o *Transfer) FromMemberMember(mods ...bob.Mod[*dialect.SelectQuery]) MembersQuery {
 	return Members.Query(append(mods,
@@ -982,6 +1013,78 @@ func (os TransferSlice) ToMemberMember(mods ...bob.Mod[*dialect.SelectQuery]) Me
 	return Members.Query(append(mods,
 		sm.Where(Members.Columns.ID.EQ(PKArgExpr)),
 	)...)
+}
+
+func insertTransferDocumentConfirmations0(ctx context.Context, exec bob.Executor, documentConfirmations1 []*DocumentConfirmationSetter, transfer0 *Transfer) (DocumentConfirmationSlice, error) {
+	for i := range documentConfirmations1 {
+		documentConfirmations1[i].HouseholdID = func() *uuid.UUID { return &transfer0.HouseholdID }()
+		documentConfirmations1[i].TransferID = func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: transfer0.ID, Valid: true}; return &v }()
+	}
+
+	ret, err := DocumentConfirmations.Insert(bob.ToMods(documentConfirmations1...)).All(ctx, exec)
+	if err != nil {
+		return ret, fmt.Errorf("insertTransferDocumentConfirmations0: %w", err)
+	}
+
+	return ret, nil
+}
+
+func attachTransferDocumentConfirmations0(ctx context.Context, exec bob.Executor, count int, documentConfirmations1 DocumentConfirmationSlice, transfer0 *Transfer) (DocumentConfirmationSlice, error) {
+	setter := &DocumentConfirmationSetter{
+		HouseholdID: func() *uuid.UUID { return &transfer0.HouseholdID }(),
+		TransferID:  func() *sql.Null[uuid.UUID] { v := sql.Null[uuid.UUID]{V: transfer0.ID, Valid: true}; return &v }(),
+	}
+
+	err := documentConfirmations1.UpdateAll(ctx, exec, *setter)
+	if err != nil {
+		return nil, fmt.Errorf("attachTransferDocumentConfirmations0: %w", err)
+	}
+
+	return documentConfirmations1, nil
+}
+
+func (transfer0 *Transfer) InsertDocumentConfirmations(ctx context.Context, exec bob.Executor, related ...*DocumentConfirmationSetter) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+
+	documentConfirmations1, err := insertTransferDocumentConfirmations0(ctx, exec, related, transfer0)
+	if err != nil {
+		return err
+	}
+
+	transfer0.R.DocumentConfirmations = append(transfer0.R.DocumentConfirmations, documentConfirmations1...)
+
+	for _, rel := range documentConfirmations1 {
+		rel.R.Transfer = transfer0
+		rel.R.Loaded.Transfer = true
+	}
+	return nil
+}
+
+func (transfer0 *Transfer) AttachDocumentConfirmations(ctx context.Context, exec bob.Executor, related ...*DocumentConfirmation) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	documentConfirmations1 := DocumentConfirmationSlice(related)
+
+	_, err = attachTransferDocumentConfirmations0(ctx, exec, len(related), documentConfirmations1, transfer0)
+	if err != nil {
+		return err
+	}
+
+	transfer0.R.DocumentConfirmations = append(transfer0.R.DocumentConfirmations, documentConfirmations1...)
+
+	for _, rel := range related {
+		rel.R.Transfer = transfer0
+		rel.R.Loaded.Transfer = true
+	}
+
+	return nil
 }
 
 func attachTransferFromMemberMember0(ctx context.Context, exec bob.Executor, count int, transfer0 *Transfer, member1 *Member) (*Transfer, error) {
@@ -1400,6 +1503,21 @@ type transferWhereR[Q psql.Filterable] struct {
 	cols transferColumns
 }
 
+// HasDocumentConfirmations filters parents that have a matching DocumentConfirmations using a
+// correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
+// multiply parent rows, so no DISTINCT is needed. The optional filters are
+// applied to the subquery (i.e. to DocumentConfirmations).
+func (w transferWhereR[Q]) HasDocumentConfirmations(filters ...bob.Mod[*dialect.SelectQuery]) mods.Where[Q] {
+	q := psql.Select(
+		sm.Columns(psql.Raw("1")),
+		sm.From(DocumentConfirmations.NameExpr()),
+		sm.Where(DocumentConfirmations.Columns.HouseholdID.EQ(w.cols.HouseholdID)),
+		sm.Where(DocumentConfirmations.Columns.TransferID.EQ(w.cols.ID)),
+	)
+	q.Apply(filters...)
+	return mods.Where[Q]{E: psql.Exists(q)}
+}
+
 // HasFromMemberMember filters parents that have a matching FromMemberMember using a
 // correlated EXISTS subquery (semi-join). Unlike an INNER JOIN it does not
 // multiply parent rows, so no DISTINCT is needed. The optional filters are
@@ -1633,6 +1751,22 @@ func (o *Transfer) Preload(name string, retrieved any) error {
 	}
 
 	switch name {
+	case "DocumentConfirmations":
+		rels, ok := retrieved.(DocumentConfirmationSlice)
+		if !ok {
+			return fmt.Errorf("transfer cannot load %T as %q", retrieved, name)
+		}
+
+		o.R.DocumentConfirmations = rels
+		o.R.Loaded.DocumentConfirmations = true
+
+		for _, rel := range rels {
+			if rel != nil {
+				rel.R.Transfer = o
+				rel.R.Loaded.Transfer = true
+			}
+		}
+		return nil
 	case "FromMemberMember":
 		rel, ok := retrieved.(*Member)
 		if !ok {
@@ -1826,16 +1960,20 @@ func buildTransferPreloader() transferPreloader {
 }
 
 type transferThenLoader[Q orm.Loadable] struct {
-	FromMemberMember func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Household        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	LedgerEntry      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Loan             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ReverseLoans     func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	Account          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
-	ToMemberMember   func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	FromMemberMember      func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Household             func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	LedgerEntry           func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Loan                  func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ReverseLoans          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	Account               func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ToMemberMember        func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildTransferThenLoader[Q orm.Loadable]() transferThenLoader[Q] {
+	type DocumentConfirmationsLoadInterface interface {
+		LoadDocumentConfirmations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type FromMemberMemberLoadInterface interface {
 		LoadFromMemberMember(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
@@ -1859,6 +1997,12 @@ func buildTransferThenLoader[Q orm.Loadable]() transferThenLoader[Q] {
 	}
 
 	return transferThenLoader[Q]{
+		DocumentConfirmations: thenLoadBuilder[Q](
+			"DocumentConfirmations",
+			func(ctx context.Context, exec bob.Executor, retrieved DocumentConfirmationsLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadDocumentConfirmations(ctx, exec, mods...)
+			},
+		),
 		FromMemberMember: thenLoadBuilder[Q](
 			"FromMemberMember",
 			func(ctx context.Context, exec bob.Executor, retrieved FromMemberMemberLoadInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -1902,6 +2046,78 @@ func buildTransferThenLoader[Q orm.Loadable]() transferThenLoader[Q] {
 			},
 		),
 	}
+}
+
+// LoadDocumentConfirmations loads the transfer's DocumentConfirmations into the .R struct
+func (o *Transfer) LoadDocumentConfirmations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	// Reset the relationship
+	o.R.DocumentConfirmations = nil
+	o.R.Loaded.DocumentConfirmations = false
+
+	related, err := o.DocumentConfirmations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, rel := range related {
+		rel.R.Transfer = o
+		rel.R.Loaded.Transfer = true
+	}
+
+	o.R.DocumentConfirmations = related
+	o.R.Loaded.DocumentConfirmations = true
+	return nil
+}
+
+// LoadDocumentConfirmations loads the transfer's DocumentConfirmations into the .R struct
+func (os TransferSlice) LoadDocumentConfirmations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	documentConfirmations, err := os.DocumentConfirmations(mods...).All(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		o.R.DocumentConfirmations = nil
+		o.R.Loaded.DocumentConfirmations = true
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+
+		for _, rel := range documentConfirmations {
+
+			if !(o.HouseholdID == rel.HouseholdID) {
+				continue
+			}
+
+			if !rel.TransferID.Valid {
+				continue
+			}
+			if !(rel.TransferID.Valid && o.ID == rel.TransferID.V) {
+				continue
+			}
+
+			rel.R.Transfer = o
+			rel.R.Loaded.Transfer = true
+
+			o.R.DocumentConfirmations = append(o.R.DocumentConfirmations, rel)
+		}
+	}
+
+	return nil
 }
 
 // LoadFromMemberMember loads the transfer's FromMemberMember into the .R struct
@@ -2435,7 +2651,8 @@ func (os TransferSlice) LoadToMemberMember(ctx context.Context, exec bob.Executo
 
 // transferC is where relationship counts are stored.
 type transferC struct {
-	ReverseLoans *int64
+	DocumentConfirmations *int64
+	ReverseLoans          *int64
 }
 
 // PreloadCount sets a count in the C struct by name
@@ -2445,6 +2662,8 @@ func (o *Transfer) PreloadCount(name string, count int64) error {
 	}
 
 	switch name {
+	case "DocumentConfirmations":
+		o.C.DocumentConfirmations = &count
 	case "ReverseLoans":
 		o.C.ReverseLoans = &count
 	}
@@ -2452,11 +2671,30 @@ func (o *Transfer) PreloadCount(name string, count int64) error {
 }
 
 type transferCountPreloader struct {
-	ReverseLoans func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
+	ReverseLoans          func(...bob.Mod[*dialect.SelectQuery]) psql.Preloader
 }
 
 func buildTransferCountPreloader() transferCountPreloader {
 	return transferCountPreloader{
+		DocumentConfirmations: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
+			return countPreloader[*Transfer]("DocumentConfirmations", func(parent string) bob.Expression {
+				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
+				if parent == "" {
+					parent = Transfers.Alias()
+				}
+
+				subqueryMods := []bob.Mod[*dialect.SelectQuery]{
+					sm.Columns(psql.Raw("count(*)")),
+
+					sm.From(DocumentConfirmations.NameAsExpr()),
+					sm.Where(psql.Quote(DocumentConfirmations.Alias(), "household_id").EQ(psql.Quote(parent, "household_id"))),
+					sm.Where(psql.Quote(DocumentConfirmations.Alias(), "transfer_id").EQ(psql.Quote(parent, "id"))),
+				}
+				subqueryMods = append(subqueryMods, mods...)
+				return psql.Group(psql.Select(subqueryMods...).Expression)
+			})
+		},
 		ReverseLoans: func(mods ...bob.Mod[*dialect.SelectQuery]) psql.Preloader {
 			return countPreloader[*Transfer]("ReverseLoans", func(parent string) bob.Expression {
 				// Build a correlated subquery: (SELECT COUNT(*) FROM related WHERE fk = parent.pk)
@@ -2478,15 +2716,25 @@ func buildTransferCountPreloader() transferCountPreloader {
 }
 
 type transferCountThenLoader[Q orm.Loadable] struct {
-	ReverseLoans func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	DocumentConfirmations func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
+	ReverseLoans          func(...bob.Mod[*dialect.SelectQuery]) orm.Loader[Q]
 }
 
 func buildTransferCountThenLoader[Q orm.Loadable]() transferCountThenLoader[Q] {
+	type DocumentConfirmationsCountInterface interface {
+		LoadCountDocumentConfirmations(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
+	}
 	type ReverseLoansCountInterface interface {
 		LoadCountReverseLoans(context.Context, bob.Executor, ...bob.Mod[*dialect.SelectQuery]) error
 	}
 
 	return transferCountThenLoader[Q]{
+		DocumentConfirmations: countThenLoadBuilder[Q](
+			"DocumentConfirmations",
+			func(ctx context.Context, exec bob.Executor, retrieved DocumentConfirmationsCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
+				return retrieved.LoadCountDocumentConfirmations(ctx, exec, mods...)
+			},
+		),
 		ReverseLoans: countThenLoadBuilder[Q](
 			"ReverseLoans",
 			func(ctx context.Context, exec bob.Executor, retrieved ReverseLoansCountInterface, mods ...bob.Mod[*dialect.SelectQuery]) error {
@@ -2494,6 +2742,116 @@ func buildTransferCountThenLoader[Q orm.Loadable]() transferCountThenLoader[Q] {
 			},
 		),
 	}
+}
+
+// LoadCountDocumentConfirmations loads the count of DocumentConfirmations into the C struct
+func (o *Transfer) LoadCountDocumentConfirmations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if o == nil {
+		return nil
+	}
+
+	count, err := o.DocumentConfirmations(mods...).Count(ctx, exec)
+	if err != nil {
+		return err
+	}
+
+	o.C.DocumentConfirmations = &count
+	return nil
+}
+
+// LoadCountDocumentConfirmations loads the count of DocumentConfirmations for a slice in a single batch query
+func (os TransferSlice) LoadCountDocumentConfirmations(ctx context.Context, exec bob.Executor, mods ...bob.Mod[*dialect.SelectQuery]) error {
+	if len(os) == 0 {
+		return nil
+	}
+
+	// Build the IN arg expression from parent PKs
+
+	pkHouseholdID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	pkID := make(pgtypes.Array[uuid.UUID], 0, len(os))
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		pkHouseholdID = append(pkHouseholdID, o.HouseholdID)
+		pkID = append(pkID, o.ID)
+	}
+
+	// countResult holds one scanned row from the batch count query.
+	// FK columns are aliased to the parent PK column names for direct map lookup.
+	type countResult struct {
+		HouseholdID uuid.UUID
+
+		ID    uuid.UUID
+		Count int64
+	}
+
+	batchMods := []bob.Mod[*dialect.SelectQuery]{
+		// SELECT fk AS parent_pk, count(*)
+		sm.Columns(
+			DocumentConfirmations.Columns.HouseholdID.As("household_id"),
+			DocumentConfirmations.Columns.TransferID.As("id"),
+			psql.Raw("count(*) as count"),
+		),
+		// Single-hop: FROM related table directly
+		sm.From(DocumentConfirmations.NameAsExpr()),
+
+		// WHERE fk IN (parent PKs) — psql single-column FK uses `= ANY(array)` (see PKArgExpr above)
+		sm.InnerJoin(psql.Select(
+			sm.Distinct(),
+			sm.Columns(
+				psql.Quote("bob_rel_keys_src", "HouseholdID"),
+				psql.Quote("bob_rel_keys_src", "TransferID"),
+			),
+			sm.From(psql.F("unnest",
+				psql.Cast(psql.Arg(pkHouseholdID), "uuid[]"),
+				psql.Cast(psql.Arg(pkID), "uuid[]"),
+			)).As("bob_rel_keys_src", "HouseholdID", "TransferID"),
+		)).As("bob_rel_keys").On(
+			DocumentConfirmations.Columns.HouseholdID.EQ(psql.Quote("bob_rel_keys", "HouseholdID")),
+			DocumentConfirmations.Columns.TransferID.EQ(psql.Quote("bob_rel_keys", "TransferID")),
+		),
+		// GROUP BY fk columns
+		sm.GroupBy(DocumentConfirmations.Columns.HouseholdID),
+		sm.GroupBy(DocumentConfirmations.Columns.TransferID),
+	}
+	batchMods = append(batchMods, mods...)
+
+	results, err := bob.All(ctx, exec,
+		psql.Select(batchMods...),
+		scan.StructMapper[countResult](),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Composite FK: use a key struct
+	type countKey struct {
+		HouseholdID uuid.UUID
+
+		ID uuid.UUID
+	}
+	countMap := make(map[countKey]int64, len(results))
+	for _, r := range results {
+		countMap[countKey{
+			HouseholdID: r.HouseholdID,
+
+			ID: r.ID,
+		}] = r.Count
+	}
+	for _, o := range os {
+		if o == nil {
+			continue
+		}
+		count := countMap[countKey{
+			HouseholdID: o.HouseholdID,
+
+			ID: o.ID,
+		}]
+		o.C.DocumentConfirmations = &count
+	}
+
+	return nil
 }
 
 // LoadCountReverseLoans loads the count of ReverseLoans into the C struct
@@ -2576,14 +2934,15 @@ func (os TransferSlice) LoadCountReverseLoans(ctx context.Context, exec bob.Exec
 }
 
 type transferJoins[Q dialect.Joinable] struct {
-	typ              string
-	FromMemberMember modAs[Q, memberColumns]
-	Household        modAs[Q, householdColumns]
-	LedgerEntry      modAs[Q, ledgerEntryColumns]
-	Loan             modAs[Q, transferColumns]
-	ReverseLoans     modAs[Q, transferColumns]
-	Account          modAs[Q, accountColumns]
-	ToMemberMember   modAs[Q, memberColumns]
+	typ                   string
+	DocumentConfirmations modAs[Q, documentConfirmationColumns]
+	FromMemberMember      modAs[Q, memberColumns]
+	Household             modAs[Q, householdColumns]
+	LedgerEntry           modAs[Q, ledgerEntryColumns]
+	Loan                  modAs[Q, transferColumns]
+	ReverseLoans          modAs[Q, transferColumns]
+	Account               modAs[Q, accountColumns]
+	ToMemberMember        modAs[Q, memberColumns]
 }
 
 func (j transferJoins[Q]) aliasedAs(alias string) transferJoins[Q] {
@@ -2593,6 +2952,20 @@ func (j transferJoins[Q]) aliasedAs(alias string) transferJoins[Q] {
 func buildTransferJoins[Q dialect.Joinable](cols transferColumns, typ string) transferJoins[Q] {
 	return transferJoins[Q]{
 		typ: typ,
+		DocumentConfirmations: modAs[Q, documentConfirmationColumns]{
+			c: DocumentConfirmations.Columns,
+			f: func(to documentConfirmationColumns) bob.Mod[Q] {
+				mods := make(mods.QueryMods[Q], 0, 1)
+
+				{
+					mods = append(mods, dialect.Join[Q](typ, DocumentConfirmations.NameExpr().As(to.Alias())).On(
+						to.HouseholdID.EQ(cols.HouseholdID), to.TransferID.EQ(cols.ID),
+					))
+				}
+
+				return mods
+			},
+		},
 		FromMemberMember: modAs[Q, memberColumns]{
 			c: Members.Columns,
 			f: func(to memberColumns) bob.Mod[Q] {

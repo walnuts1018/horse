@@ -16,6 +16,8 @@ const (
 	statementKindUnclassified    = "UNCLASSIFIED"
 	statementKindAccountTransfer = "ACCOUNT_TRANSFER"
 	statementKindCardBillPayment = "CARD_BILL_PAYMENT"
+	statementKindLoan            = "LOAN"
+	statementKindRepayment       = "REPAYMENT"
 	statementKindExternalIncome  = "EXTERNAL_INCOME"
 	statementFieldKind           = "kind"
 	statementFieldTransactionID  = "transactionId"
@@ -80,7 +82,7 @@ func VerifyStatements(sourceKind string, entries []StatementEntry, warnings []st
 
 func validBankStatementKind(kind string) bool {
 	switch kind {
-	case statementKindPayment, statementKindCardBillPayment, statementKindAccountTransfer, statementKindExternalIncome, statementKindRefund, statementKindUnclassified:
+	case statementKindPayment, statementKindCardBillPayment, statementKindAccountTransfer, statementKindLoan, statementKindRepayment, statementKindExternalIncome, statementKindRefund, statementKindUnclassified:
 		return true
 	default:
 		return false
@@ -198,6 +200,10 @@ func bankTransactionKind(value string) string {
 		return statementKindExternalIncome
 	case statementKindAccountTransfer, "TRANSFER", "振込", "振替":
 		return statementKindAccountTransfer
+	case statementKindLoan, "貸付", "貸付金", "借入", "借入金":
+		return statementKindLoan
+	case statementKindRepayment, "貸付返済", "借入返済", "ローン返済", "返済":
+		return statementKindRepayment
 	case statementKindRefund, "返金", "払い戻し":
 		return statementKindRefund
 	default:
