@@ -38,6 +38,10 @@ func updatePurchaseCommand(input model.UpdatePurchaseInput, actorID string, chan
 		}
 		command.OccurredAt = &occurredAt
 	}
+	if input.Patch.DatePrecision.IsSet() {
+		precision := string(*input.Patch.DatePrecision.Value())
+		command.DatePrecision = &precision
+	}
 	if input.Patch.Merchant.IsSet() {
 		command.Merchant = input.Patch.Merchant.Value()
 	}

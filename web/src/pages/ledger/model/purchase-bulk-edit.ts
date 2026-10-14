@@ -139,7 +139,9 @@ export function usePurchaseBulkEdit({
             baseRevision: purchase.revision,
             patch: {
               ...(merchantActive ? { merchant: merchant.trim() } : {}),
-              ...(occurredAtValue ? { occurredAt: occurredAtValue } : {}),
+              ...(occurredAtValue
+                ? { occurredAt: occurredAtValue, datePrecision: "DATE_TIME" }
+                : {}),
               ...(paymentAccountId
                 ? {
                     paymentAllocations: [{ paymentAccountId, amountYen: purchase.totalYen }],
@@ -152,7 +154,10 @@ export function usePurchaseBulkEdit({
       for (const purchase of targets) {
         const patch: PurchaseBulkPatch = {};
         if (merchantActive) patch.merchant = purchase.merchant;
-        if (occurredAtActive) patch.occurredAt = purchase.occurredAt;
+        if (occurredAtActive) {
+          patch.occurredAt = purchase.occurredAt;
+          patch.datePrecision = purchase.datePrecision;
+        }
         if (paymentAccountId)
           patch.paymentAllocations = purchase.paymentAllocations.map(
             ({ paymentAccountId: previousAccountId, amountYen }) => ({

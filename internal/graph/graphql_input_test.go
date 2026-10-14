@@ -15,9 +15,10 @@ func omittable[T any](value T) graphql.Omittable[T] {
 func TestPurchasePatchChangedFieldKeysUsesPresence(t *testing.T) {
 	t.Parallel()
 	date := model.DateTime("2026-10-13T12:00:00Z")
+	datePrecision := model.PurchaseDatePrecisionDateTime
 	merchant := "Store"
 	fields, err := purchasePatchChangedFieldKeys(&model.PurchasePatch{
-		OccurredAt: omittable(&date), Merchant: omittable(&merchant),
+		OccurredAt: omittable(&date), DatePrecision: omittable(&datePrecision), Merchant: omittable(&merchant),
 		PaymentAllocations: omittable([]*model.PurchasePaymentInput{}),
 	})
 	if err != nil || !reflect.DeepEqual(fields, []string{"occurredAt", "merchant", "paymentAllocations"}) {
@@ -25,6 +26,9 @@ func TestPurchasePatchChangedFieldKeysUsesPresence(t *testing.T) {
 	}
 	if _, err := purchasePatchChangedFieldKeys(&model.PurchasePatch{Merchant: omittable[*string](nil)}); err == nil {
 		t.Fatal("explicit null merchant must be rejected")
+	}
+	if _, err := purchasePatchChangedFieldKeys(&model.PurchasePatch{DatePrecision: omittable(&datePrecision)}); err == nil {
+		t.Fatal("date precision without occurredAt must be rejected")
 	}
 }
 

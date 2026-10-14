@@ -31,6 +31,10 @@ func (r *mutationResolver) bulkUpdatePurchases(ctx context.Context, input model.
 			}
 			bulkTarget.OccurredAt = &occurredAt
 		}
+		if target.Patch.DatePrecision.IsSet() {
+			precision := string(*target.Patch.DatePrecision.Value())
+			bulkTarget.DatePrecision = &precision
+		}
 		if target.Patch.Merchant.IsSet() {
 			bulkTarget.Merchant = target.Patch.Merchant.Value()
 		}

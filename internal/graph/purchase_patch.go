@@ -18,6 +18,14 @@ func purchasePatchChangedFieldKeys(patch *model.PurchasePatch) ([]string, error)
 		}
 		fields = append(fields, fieldOccurredAt)
 	}
+	if patch.DatePrecision.IsSet() {
+		if patch.DatePrecision.Value() == nil {
+			return nil, fmt.Errorf("%w: datePrecision cannot be null", ErrBadInput)
+		}
+		if !patch.OccurredAt.IsSet() {
+			return nil, fmt.Errorf("%w: datePrecision requires occurredAt", ErrBadInput)
+		}
+	}
 	if patch.Merchant.IsSet() {
 		if patch.Merchant.Value() == nil {
 			return nil, fmt.Errorf("%w: merchant cannot be null", ErrBadInput)
@@ -40,7 +48,7 @@ func bulkPurchasePatchChangedFieldKeys(patch *model.BulkPurchasePatch) ([]string
 		return nil, fmt.Errorf("%w: missing purchase patch", ErrBadInput)
 	}
 	return purchasePatchChangedFieldKeys(&model.PurchasePatch{
-		OccurredAt: patch.OccurredAt, Merchant: patch.Merchant, PaymentAllocations: patch.PaymentAllocations,
+		OccurredAt: patch.OccurredAt, DatePrecision: patch.DatePrecision, Merchant: patch.Merchant, PaymentAllocations: patch.PaymentAllocations,
 	})
 }
 func purchaseItemChangedFieldKeys(input model.UpdatePurchaseItemInput) ([]string, error) {

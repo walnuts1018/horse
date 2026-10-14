@@ -59,9 +59,10 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 	}
 	createPurchase := func(merchant string) *model.Purchase {
 		t.Helper()
+		datePrecision := model.PurchaseDatePrecisionDateOnly
 		purchase, err := resolver.createPurchase(ctx, model.CreatePurchaseInput{
 			IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID,
-			OccurredAt: "2026-05-10T12:00:00Z", Merchant: merchant,
+			OccurredAt: "2026-05-10T12:00:00Z", DatePrecision: &datePrecision, Merchant: merchant,
 			Items: []*model.PurchaseItemInput{{Name: "Test item", AmountYen: 100}},
 		})
 		if err != nil {
@@ -79,10 +80,11 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 		t.Fatal(err)
 	}
 	newDate := model.DateTime("2026-05-11T12:00:00Z")
+	dateTimePrecision := model.PurchaseDatePrecisionDateTime
 	updated, err := resolver.bulkUpdatePurchases(ctx, model.BulkUpdatePurchasesInput{
 		Targets: []*model.PurchaseUpdateTargetInput{
-			{PurchaseID: first.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{OccurredAt: omittable(&newDate)}},
-			{PurchaseID: second.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{OccurredAt: omittable(&newDate)}},
+			{PurchaseID: first.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{OccurredAt: omittable(&newDate), DatePrecision: omittable(&dateTimePrecision)}},
+			{PurchaseID: second.ID, BaseRevision: 1, Patch: &model.BulkPurchasePatch{OccurredAt: omittable(&newDate), DatePrecision: omittable(&dateTimePrecision)}},
 		},
 	})
 	if err != nil || len(updated) != 2 {
@@ -90,6 +92,11 @@ func TestBulkUpdatePurchasesMergesDisjointFieldsAndRollsBackConflicts(t *testing
 	}
 	if updated[0].Merchant != changedMerchant {
 		t.Fatalf("stale bulk update replaced a disjoint merchant change: got %q", updated[0].Merchant)
+	}
+	for _, purchase := range updated {
+		if purchase.DatePrecision != dateTimePrecision {
+			t.Fatalf("bulk update did not preserve explicit date precision: got %s", purchase.DatePrecision)
+		}
 	}
 	first = updated[0]
 	second = updated[1]

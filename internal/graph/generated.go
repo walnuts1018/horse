@@ -7174,6 +7174,7 @@ input BulkUpdatePurchasesInput {
 
 input BulkPurchasePatch {
   occurredAt: DateTime @goField(omittable: true)
+  datePrecision: PurchaseDatePrecision @goField(omittable: true)
   merchant: String @goField(omittable: true)
   paymentAllocations: [BulkUpdatePurchasePaymentInput!] @goField(omittable: true)
 }
@@ -9292,6 +9293,7 @@ input UpdatePurchaseInput {
 
 input PurchasePatch {
   occurredAt: DateTime @goField(omittable: true)
+  datePrecision: PurchaseDatePrecision @goField(omittable: true)
   merchant: String @goField(omittable: true)
   paymentAllocations: [UpdatePurchasePaymentInput!] @goField(omittable: true)
 }
@@ -34585,7 +34587,7 @@ func (ec *executionContext) unmarshalInputBulkPurchasePatch(ctx context.Context,
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"occurredAt", "merchant", "paymentAllocations"}
+	fieldsInOrder := [...]string{"occurredAt", "datePrecision", "merchant", "paymentAllocations"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -34599,6 +34601,13 @@ func (ec *executionContext) unmarshalInputBulkPurchasePatch(ctx context.Context,
 				return it, err
 			}
 			it.OccurredAt = graphql.OmittableOf(data)
+		case "datePrecision":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("datePrecision"))
+			data, err := ec.unmarshalOPurchaseDatePrecision2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDatePrecision(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DatePrecision = graphql.OmittableOf(data)
 		case "merchant":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("merchant"))
 			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
@@ -37824,7 +37833,7 @@ func (ec *executionContext) unmarshalInputPurchasePatch(ctx context.Context, obj
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"occurredAt", "merchant", "paymentAllocations"}
+	fieldsInOrder := [...]string{"occurredAt", "datePrecision", "merchant", "paymentAllocations"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -37838,6 +37847,13 @@ func (ec *executionContext) unmarshalInputPurchasePatch(ctx context.Context, obj
 				return it, err
 			}
 			it.OccurredAt = graphql.OmittableOf(data)
+		case "datePrecision":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("datePrecision"))
+			data, err := ec.unmarshalOPurchaseDatePrecision2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseDatePrecision(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DatePrecision = graphql.OmittableOf(data)
 		case "merchant":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("merchant"))
 			data, err := ec.unmarshalOString2ᚖstring(ctx, v)

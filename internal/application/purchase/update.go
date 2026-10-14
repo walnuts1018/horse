@@ -53,6 +53,11 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 	if _, ok := seen[updateFieldOccurredAt]; ok && command.OccurredAt == nil {
 		return UpdateResult{}, fmt.Errorf("%w: occurredAt is required", ErrBadInput)
 	}
+	if command.DatePrecision != nil {
+		if !slices.Contains(command.ChangedFields, updateFieldOccurredAt) || command.OccurredAt == nil || !validDatePrecision(*command.DatePrecision) {
+			return UpdateResult{}, fmt.Errorf("%w: valid date precision requires occurredAt", ErrBadInput)
+		}
+	}
 	if _, ok := seen[updateFieldMerchant]; ok && command.Merchant == nil {
 		return UpdateResult{}, fmt.Errorf("%w: merchant is required", ErrBadInput)
 	}
@@ -144,6 +149,9 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 	if command.OccurredAt != nil {
 		purchase.OccurredAt = *command.OccurredAt
 	}
+	if command.DatePrecision != nil {
+		purchase.DatePrecision = *command.DatePrecision
+	}
 	if command.Merchant != nil {
 		merchant := strings.TrimSpace(*command.Merchant)
 		purchase.Merchant = merchant
@@ -186,7 +194,7 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 
 	fieldRevisions := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(updatedFields)}
 	if _, err := models.Purchases.Update((&models.PurchaseSetter{
-		OccurredAt: &purchase.OccurredAt, Merchant: &purchase.Merchant, PaymentAccountID: &paymentAccountID,
+		OccurredAt: &purchase.OccurredAt, DatePrecision: &purchase.DatePrecision, Merchant: &purchase.Merchant, PaymentAccountID: &paymentAccountID,
 		Revision: &newRevision, FieldRevisions: &fieldRevisions,
 	}).UpdateMod(),
 		um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID))),
@@ -208,6 +216,10 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 		}
 	}
 	return UpdateResult{PurchaseID: command.PurchaseID}, nil
+}
+
+func validDatePrecision(value string) bool {
+	return value == "DATE_TIME" || value == "DATE_ONLY"
 }
 
 func requirePurchaseMember(ctx context.Context, executor bob.Executor, householdID, actorID gofrsuuid.UUID) error {

@@ -16,6 +16,7 @@ input UpdatePurchaseInput {
 
 input PurchasePatch {
   occurredAt: DateTime @goField(omittable: true)
+  datePrecision: PurchaseDatePrecision @goField(omittable: true)
   merchant: String @goField(omittable: true)
   paymentAllocations: [UpdatePurchasePaymentInput!] @goField(omittable: true)
 }

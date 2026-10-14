@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1a8bb229bb022d3ec89ad646e6e89b55>>
+ * @generated SignedSource<<37f25fc448c590872f0eb8ed5ccd13ea>>
  * @lightSyntaxTransform
  */
 
@@ -9,6 +9,7 @@
 
 import type { ConcreteRequest } from 'relay-runtime';
 export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
+export type PurchaseDatePrecision = "DATE_ONLY" | "DATE_TIME" | "%future added value";
 export type BulkUpdatePurchasesInput = {
   targets: ReadonlyArray<PurchaseUpdateTargetInput>;
 };
@@ -18,6 +19,7 @@ export type PurchaseUpdateTargetInput = {
   purchaseId: string;
 };
 export type BulkPurchasePatch = {
+  datePrecision?: PurchaseDatePrecision | null | undefined;
   merchant?: string | null | undefined;
   occurredAt?: string | null | undefined;
   paymentAllocations?: ReadonlyArray<BulkUpdatePurchasePaymentInput> | null | undefined;

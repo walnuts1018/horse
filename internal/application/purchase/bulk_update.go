@@ -32,6 +32,7 @@ type BulkUpdateTarget struct {
 	BaseRevision       int64
 	ChangedFields      []string
 	OccurredAt         *time.Time
+	DatePrecision      *string
 	Merchant           *string `validate:"omitempty,max=240"`
 	PaymentAllocations *[]Payment
 }
@@ -190,6 +191,9 @@ func (s *Service) BulkUpdate(ctx context.Context, command BulkUpdateCommand) (Bu
 		if target.command.OccurredAt != nil {
 			purchase.OccurredAt = target.targetAt
 		}
+		if target.command.DatePrecision != nil {
+			purchase.DatePrecision = *target.command.DatePrecision
+		}
 		if target.command.Merchant != nil {
 			purchase.Merchant = strings.TrimSpace(*target.command.Merchant)
 		}
@@ -202,7 +206,7 @@ func (s *Service) BulkUpdate(ctx context.Context, command BulkUpdateCommand) (Bu
 		}
 		fieldValue := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(fieldRevisions)}
 		if _, err := models.Purchases.Update((&models.PurchaseSetter{
-			OccurredAt: &purchase.OccurredAt, Merchant: &purchase.Merchant, PaymentAccountID: &paymentAccountID,
+			OccurredAt: &purchase.OccurredAt, DatePrecision: &purchase.DatePrecision, Merchant: &purchase.Merchant, PaymentAccountID: &paymentAccountID,
 			Revision: &newRevision, FieldRevisions: &fieldValue,
 		}).UpdateMod(), um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(target.id))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
 			return BulkUpdateResult{}, err
@@ -245,6 +249,11 @@ func validateBulkPurchaseFields(target BulkUpdateTarget) error {
 	}
 	if slices.Contains(target.ChangedFields, updateFieldOccurredAt) && target.OccurredAt == nil {
 		return fmt.Errorf("%w: occurredAt is required", ErrBadInput)
+	}
+	if target.DatePrecision != nil {
+		if !slices.Contains(target.ChangedFields, updateFieldOccurredAt) || target.OccurredAt == nil || !validDatePrecision(*target.DatePrecision) {
+			return fmt.Errorf("%w: valid date precision requires occurredAt", ErrBadInput)
+		}
 	}
 	if slices.Contains(target.ChangedFields, updateFieldMerchant) && target.Merchant == nil {
 		return fmt.Errorf("%w: merchant is required", ErrBadInput)

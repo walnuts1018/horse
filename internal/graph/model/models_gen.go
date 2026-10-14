@@ -598,6 +598,7 @@ type BulkPurchaseItemPatch struct {
 
 type BulkPurchasePatch struct {
 	OccurredAt         graphql.Omittable[*DateTime]               `json:"occurredAt,omitempty"`
+	DatePrecision      graphql.Omittable[*PurchaseDatePrecision]  `json:"datePrecision,omitempty"`
 	Merchant           graphql.Omittable[*string]                 `json:"merchant,omitempty"`
 	PaymentAllocations graphql.Omittable[[]*PurchasePaymentInput] `json:"paymentAllocations,omitempty"`
 }
@@ -1750,6 +1751,7 @@ func (PurchaseLedgerEntry) IsNode() {}
 
 type PurchasePatch struct {
 	OccurredAt         graphql.Omittable[*DateTime]               `json:"occurredAt,omitempty"`
+	DatePrecision      graphql.Omittable[*PurchaseDatePrecision]  `json:"datePrecision,omitempty"`
 	Merchant           graphql.Omittable[*string]                 `json:"merchant,omitempty"`
 	PaymentAllocations graphql.Omittable[[]*PurchasePaymentInput] `json:"paymentAllocations,omitempty"`
 }

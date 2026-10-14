@@ -71,6 +71,7 @@ type UpdateCommand struct {
 	PurchaseID         string
 	BaseRevision       int64
 	OccurredAt         *time.Time
+	DatePrecision      *string
 	Merchant           *string `validate:"omitempty,max=240"`
 	PaymentAllocations *[]Payment
 	ChangedFields      []string

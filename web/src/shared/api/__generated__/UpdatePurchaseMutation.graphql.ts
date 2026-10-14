@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<6dc4ff0550a56fd1547ab7ce608a31be>>
+ * @generated SignedSource<<c52b09fb37034c8002d5684f0c6fefbd>>
  * @lightSyntaxTransform
  */
 
@@ -16,6 +16,7 @@ export type UpdatePurchaseInput = {
   purchaseId: string;
 };
 export type PurchasePatch = {
+  datePrecision?: PurchaseDatePrecision | null | undefined;
   merchant?: string | null | undefined;
   occurredAt?: string | null | undefined;
   paymentAllocations?: ReadonlyArray<UpdatePurchasePaymentInput> | null | undefined;
