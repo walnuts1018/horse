@@ -7,6 +7,7 @@ import (
 
 	"github.com/99designs/gqlgen/graphql"
 	gofrsuuid "github.com/gofrs/uuid/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/walnuts1018/horse/internal/graph/model"
@@ -31,22 +32,12 @@ func (r *queryResolver) viewer(ctx context.Context) (*model.Viewer, error) {
 	for i, membership := range memberships {
 		householdIDs[i] = membership.HouseholdID
 	}
-	loadDetails := graphql.FieldRequested(ctx, "households.members") || graphql.FieldRequested(ctx, "households.pools") || graphql.FieldRequested(ctx, "households.accounts") || graphql.FieldRequested(ctx, "households.categories") || graphql.FieldRequested(ctx, "households.defaultAllocation")
-	var households map[gofrsuuid.UUID]*model.Household
-	if !loadDetails {
-		households, err = loadHouseholdSummaries(ctx, r.DB, householdIDs)
-		if err != nil {
-			return nil, err
-		}
+	households, err := loadHouseholds(ctx, r.DB, householdIDs, requestedHouseholdFields(ctx, "households."))
+	if err != nil {
+		return nil, err
 	}
 	for _, membership := range memberships {
 		household := households[membership.HouseholdID]
-		if loadDetails {
-			household, err = loadHousehold(ctx, r.DB, membership.HouseholdID.String())
-			if err != nil {
-				return nil, err
-			}
-		}
 		if household != nil {
 			result.Households = append(result.Households, household)
 		}
@@ -71,23 +62,13 @@ func (r *queryResolver) households(ctx context.Context) ([]*model.Household, err
 	for i, membership := range memberships {
 		householdIDs[i] = membership.HouseholdID
 	}
-	loadDetails := graphql.FieldRequested(ctx, "members") || graphql.FieldRequested(ctx, "pools") || graphql.FieldRequested(ctx, "accounts") || graphql.FieldRequested(ctx, "categories") || graphql.FieldRequested(ctx, "defaultAllocation")
-	var households map[gofrsuuid.UUID]*model.Household
-	if !loadDetails {
-		households, err = loadHouseholdSummaries(ctx, r.DB, householdIDs)
-		if err != nil {
-			return nil, err
-		}
+	households, err := loadHouseholds(ctx, r.DB, householdIDs, requestedHouseholdFields(ctx, ""))
+	if err != nil {
+		return nil, err
 	}
 	result := make([]*model.Household, 0, len(memberships))
 	for _, membership := range memberships {
 		household := households[membership.HouseholdID]
-		if loadDetails {
-			household, err = loadHousehold(ctx, r.DB, membership.HouseholdID.String())
-			if err != nil {
-				return nil, err
-			}
-		}
 		if household != nil {
 			result = append(result, household)
 		}
@@ -102,9 +83,37 @@ func (r *queryResolver) household(ctx context.Context, id string) (*model.Househ
 		}
 		return nil, err
 	}
-	household, err := loadHousehold(ctx, r.DB, id)
+	householdID, err := gofrsuuid.FromString(id)
+	if err != nil {
+		return nil, fmt.Errorf("parse household id: %w", err)
+	}
+	households, err := loadHouseholds(ctx, r.DB, []gofrsuuid.UUID{householdID}, requestedHouseholdFields(ctx, ""))
 	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
-	return household, err
+	if err != nil {
+		return nil, err
+	}
+	return households[householdID], nil
+}
+
+func requestedHouseholdFields(ctx context.Context, prefix string) householdFields {
+	return householdFields{
+		members:           graphql.FieldRequested(ctx, prefix+"members"),
+		pools:             graphql.FieldRequested(ctx, prefix+"pools"),
+		accounts:          graphql.FieldRequested(ctx, prefix+"accounts"),
+		categories:        graphql.FieldRequested(ctx, prefix+"categories"),
+		defaultAllocation: graphql.FieldRequested(ctx, prefix+"defaultAllocation"),
+	}
+}
+
+func loadHouseholds(ctx context.Context, db *pgxpool.Pool, ids []gofrsuuid.UUID, fields householdFields) (map[gofrsuuid.UUID]*model.Household, error) {
+	households, allocationVersions, err := loadHouseholdSummaryData(ctx, db, ids)
+	if err != nil {
+		return nil, err
+	}
+	if err := loadHouseholdDetails(ctx, db, households, allocationVersions, fields); err != nil {
+		return nil, err
+	}
+	return households, nil
 }
