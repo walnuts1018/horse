@@ -143,6 +143,27 @@ describe("createReceiptPurchaseInput", () => {
       }),
     ).toThrow("決済内訳と購入額を一致させてください");
   });
+
+  it("時刻のない日付を購入日時としてAPIへ渡さない", () => {
+    for (const occurredAt of [null, "2026-10-14"]) {
+      expect(() =>
+        createReceiptPurchaseInput({
+          document,
+          householdId: "household-1",
+          occurredAt,
+          candidateId: "candidate-1",
+          requiresCandidateSelection: false,
+          requiresOverrideReason: false,
+          overrideReason: "",
+          paymentDraft: [],
+          accountCount: 0,
+          manualAmounts: undefined,
+          allocations: undefined,
+          suggestedCategoryIds: [],
+        }),
+      ).toThrow("購入日時を入力してください");
+    }
+  });
 });
 
 describe("uniqueConsistentReceiptCandidate", () => {

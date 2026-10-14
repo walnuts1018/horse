@@ -71,7 +71,9 @@ export function createReceiptPurchaseInput({
   const totalYen = itemAmounts.reduce((total, amount) => total + amount, 0);
 
   if (!items.length) throw new Error("確定できる品目がありません");
-  if (!occurredAt) throw new Error("購入日を入力してください");
+  if (!occurredAt || !/[T ]\d{2}:\d{2}/.test(occurredAt) || Number.isNaN(Date.parse(occurredAt))) {
+    throw new Error("購入日時を入力してください");
+  }
   if (requiresCandidateSelection && !candidate) throw new Error("税計算候補を選択してください");
   if (requiresOverrideReason && overrideReason.length < 3) {
     throw new Error("金額の訂正理由を入力してください");
