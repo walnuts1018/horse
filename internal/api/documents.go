@@ -25,6 +25,7 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
+	documentapp "github.com/walnuts1018/horse/internal/application/document"
 	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
@@ -127,11 +128,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "household not found", http.StatusNotFound)
 		return
 	}
-	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
-		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
-	))).Exists(r.Context(), bobpgx.NewPool(s.db))
-	if err != nil || !member {
+	if err := documentapp.NewService(s.db).RequireHouseholdMember(r.Context(), householdUUID, memberID); err != nil {
 		http.Error(w, "household not found", http.StatusNotFound)
 		return
 	}
