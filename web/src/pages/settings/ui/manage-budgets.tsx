@@ -1,10 +1,10 @@
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type SubmitEvent } from "react";
 
-import { readBudgets } from "../../../entities/budget";
 import { type Budget, type Household } from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib";
 import { archiveBudget, createBudget, updateBudget } from "../api/budget-management";
+import { readBudgets } from "../api/read-budgets";
 
 import styles from "./settings-page.module.css";
 

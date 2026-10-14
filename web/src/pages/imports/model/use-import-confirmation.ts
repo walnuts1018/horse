@@ -15,10 +15,8 @@ import type {
   ReviewTarget,
   StatementEntry,
 } from "./imports";
-import {
-  createReceiptPurchaseInput,
-  effectiveReceiptItemAmount,
-} from "./receipt-confirmation";
+
+import { createReceiptPurchaseInput, effectiveReceiptItemAmount } from "./receipt-confirmation";
 import {
   createStatementExternalIncomeInput,
   createStatementPurchaseInput,
@@ -62,6 +60,7 @@ export function useImportConfirmation({
   selectedDocument,
   setDocuments,
   editedReceiptDocuments,
+  clearReceiptDraft,
   markUnsaved,
   setHasUnsavedChanges,
   onAdded,
@@ -70,6 +69,7 @@ export function useImportConfirmation({
   selectedDocument: DocumentReview | undefined;
   setDocuments: Dispatch<SetStateAction<DocumentReview[]>>;
   editedReceiptDocuments: RefObject<Set<string>>;
+  clearReceiptDraft: (documentId: string) => Promise<void>;
   markUnsaved: () => void;
   setHasUnsavedChanges: (unsaved: boolean) => void;
   onAdded: (keepOpen?: boolean) => void;
@@ -323,6 +323,21 @@ export function useImportConfirmation({
     editedReceiptDocuments.current.add(documentId);
     markUnsaved();
     setManualPurchaseDates((current) => ({ ...current, [documentId]: date }));
+    setDocuments((current) =>
+      current.map((document) => {
+        if (document.id !== documentId || !document.result) return document;
+        const purchasedAt = receiptOccurredAt(document.result.receipt?.purchasedAt, date);
+        return purchasedAt
+          ? {
+              ...document,
+              result: {
+                ...document.result,
+                receipt: { ...document.result.receipt, purchasedAt },
+              },
+            }
+          : document;
+      }),
+    );
   };
 
   const confirm = async (document: DocumentReview) => {
@@ -354,7 +369,7 @@ export function useImportConfirmation({
       ...purchaseInput,
       idempotencyKey: await importIdempotencyKey(document.id, "receipt"),
     });
-    editedReceiptDocuments.current.delete(document.id);
+    await clearReceiptDraft(document.id);
     setHasUnsavedChanges(false);
     refreshPurchases();
     onAdded();

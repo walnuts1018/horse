@@ -26,6 +26,7 @@ export type PurchaseDraft = {
   paymentAmountManuallyEdited?: boolean;
   itemName: string;
   itemAmount: string;
+  selectedProductVariantId?: string;
   categoryId: string;
   items: PurchaseDraftItem[];
 };
@@ -44,6 +45,13 @@ export type PurchaseOutboxEntry = {
   leaseUntil?: number;
 };
 
+export type ImportReceiptDraft = {
+  householdId: string;
+  documentId: string;
+  baseResult: Record<string, unknown>;
+  editedResult: Record<string, unknown>;
+};
+
 function isPurchaseDraft(
   value: unknown,
 ): value is PurchaseDraft & { storageKey: string; cleared?: boolean } {
@@ -54,6 +62,8 @@ function isPurchaseDraft(
     typeof value.occurredAt === "string" &&
     typeof value.itemName === "string" &&
     typeof value.itemAmount === "string" &&
+    (value.selectedProductVariantId === undefined ||
+      typeof value.selectedProductVariantId === "string") &&
     typeof value.categoryId === "string" &&
     Array.isArray(value.items)
   );
@@ -81,10 +91,15 @@ const unscopedDraftsStore = "purchase-drafts-v2";
 const unscopedOutboxStore = "purchase-outbox-v2";
 const draftsStore = "purchase-drafts-v3";
 const outboxStore = "purchase-outbox-v3";
+const importReceiptDraftsStore = "import-receipt-drafts-v1";
 const outboxChangeEvent = "horse:purchase-outbox-change";
 const databaseReloadEvent = "horse:database-reload-required";
 const leaseMilliseconds = 30_000;
-const databaseVersion = 3;
+const databaseVersion = 4;
+
+function importReceiptDraftStorageKey(householdId: string, documentId: string) {
+  return JSON.stringify([householdId, documentId]);
+}
 
 function draftStorageKey(memberId: string, householdId: string) {
   if (!memberId) throw new Error("ログイン中のメンバーを確認できません");
@@ -200,6 +215,8 @@ function openDatabase(): Promise<IDBPDatabase> {
           store.createIndex("memberHousehold", ["memberId", "householdId"]);
         }
       }
+      if (oldVersion < 4 && !database.objectStoreNames.contains(importReceiptDraftsStore))
+        database.createObjectStore(importReceiptDraftsStore, { keyPath: "storageKey" });
     },
     blocked() {
       wasBlocked = true;
@@ -300,6 +317,41 @@ export function deletePurchaseDraft(memberId: string, householdId: string) {
     storageKey: draftStorageKey(memberId, householdId),
     cleared: true,
   });
+}
+
+export async function loadImportReceiptDraft(householdId: string, documentId: string) {
+  const value: unknown = await readValue(
+    importReceiptDraftsStore,
+    importReceiptDraftStorageKey(householdId, documentId),
+  );
+  if (
+    !isRecord(value) ||
+    value.householdId !== householdId ||
+    value.documentId !== documentId ||
+    !isRecord(value.baseResult) ||
+    !isRecord(value.editedResult)
+  )
+    return undefined;
+  return {
+    householdId,
+    documentId,
+    baseResult: value.baseResult,
+    editedResult: value.editedResult,
+  } satisfies ImportReceiptDraft;
+}
+
+export function saveImportReceiptDraft(draft: ImportReceiptDraft) {
+  return writeValue(importReceiptDraftsStore, {
+    ...draft,
+    storageKey: importReceiptDraftStorageKey(draft.householdId, draft.documentId),
+  });
+}
+
+export function deleteImportReceiptDraft(householdId: string, documentId: string) {
+  return deleteValue(
+    importReceiptDraftsStore,
+    importReceiptDraftStorageKey(householdId, documentId),
+  );
 }
 
 export async function listPurchaseOutbox(memberId: string, householdId?: string) {

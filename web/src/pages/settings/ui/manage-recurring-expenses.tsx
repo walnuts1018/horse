@@ -1,10 +1,10 @@
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type SubmitEvent } from "react";
 
-import { readRecurringExpenses } from "../../../entities/recurring-expense";
 import { type Household, type RecurringExpense } from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib";
 import { isOneOf } from "../../../shared/lib/guard";
+import { readRecurringExpenses } from "../api/read-recurring-expenses";
 import {
   archiveRecurringExpense,
   createRecurringExpense,

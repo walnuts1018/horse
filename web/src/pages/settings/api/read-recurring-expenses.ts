@@ -6,7 +6,7 @@ import {
   type RecurringExpensesQuery,
   type RecurringExpensesQuery$data,
 } from "../../../shared/api";
-import { recurringExpensesQuery } from "./operations";
+import { recurringExpensesQuery } from "./recurring-expense-operations";
 
 type RecurringExpenseRecord =
   RecurringExpensesQuery$data["recurringExpenses"]["edges"][number]["node"];

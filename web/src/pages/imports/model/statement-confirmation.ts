@@ -1,5 +1,6 @@
 import type { CreatePurchaseInput } from "../../../shared/api";
 import type { DocumentReview, StatementEntry } from "./imports";
+
 import { statementSourceReference } from "./imports";
 
 export function statementConfirmationKey(documentId: string, entry: StatementEntry): string {

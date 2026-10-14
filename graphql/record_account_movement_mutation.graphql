@@ -1,9 +1,13 @@
 extend type Mutation {
   recordAccountMovement(input: RecordAccountMovementInput!): RecordAccountMovementResult!
-  linkStatementAccountMovement(input: LinkStatementAccountMovementInput!): LinkStatementAccountMovementResult!
+  linkStatementAccountMovement(
+    input: LinkStatementAccountMovementInput!
+  ): LinkStatementAccountMovementResult!
 }
 
-union LinkStatementAccountMovementResult = LinkStatementAccountMovementSuccess | LinkStatementAccountMovementUserError
+union LinkStatementAccountMovementResult =
+  | LinkStatementAccountMovementSuccess
+  | LinkStatementAccountMovementUserError
 
 type LinkStatementAccountMovementSuccess {
   result: AccountMovement!

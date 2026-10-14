@@ -5,12 +5,10 @@ import type {
   SourceKind,
   UnmatchedObservation,
   UnmatchedObservationState,
-  UnmatchedObservationsQuery,
-} from "../../../../shared/api";
-import type {
   UnmatchedObservationsFragment$data,
   UnmatchedObservationsFragment$key,
-} from "../../../../shared/api/__generated__/UnmatchedObservationsFragment.graphql";
+  UnmatchedObservationsQuery,
+} from "../../../../shared/api";
 
 import { unmatchedObservationsFragment, unmatchedObservationsQuery } from "./operations";
 

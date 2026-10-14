@@ -27,7 +27,9 @@ type StatementRefundCorrectionConnection {
 }
 
 extend type Mutation {
-  linkStatementRefundCorrection(input: LinkStatementRefundCorrectionInput!): LinkStatementRefundCorrectionResult!
+  linkStatementRefundCorrection(
+    input: LinkStatementRefundCorrectionInput!
+  ): LinkStatementRefundCorrectionResult!
 }
 
 input LinkStatementRefundCorrectionInput {
@@ -37,7 +39,9 @@ input LinkStatementRefundCorrectionInput {
   sourceReference: String!
 }
 
-union LinkStatementRefundCorrectionResult = LinkStatementRefundCorrectionSuccess | LinkStatementRefundCorrectionUserError
+union LinkStatementRefundCorrectionResult =
+  | LinkStatementRefundCorrectionSuccess
+  | LinkStatementRefundCorrectionUserError
 
 type LinkStatementRefundCorrectionSuccess {
   result: Purchase!

@@ -1,7 +1,6 @@
 import { fetchQuery } from "react-relay";
 
 import { loanBalancesQuery } from "../../../entities/ledger";
-import { settlementQuery } from "../../../entities/settlement";
 import {
   getRelayEnvironment,
   type LoanBalance,
@@ -11,6 +10,7 @@ import {
   type SettlementQuery,
   type SettlementQuery$data,
 } from "../../../shared/api";
+import { settlementQuery } from "./settlement-operations";
 
 type SettlementRecord = SettlementQuery$data["settlement"];
 type LoanBalanceRecord = LoanBalancesQuery$data["loanBalances"]["edges"][number]["node"];

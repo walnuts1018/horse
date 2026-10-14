@@ -80,7 +80,7 @@ export function ObservationLedger({
               <ObservationLinker
                 household={household}
                 observation={observation}
-                onConfirmed={() => void unmatched.refresh()}
+                onConfirmed={unmatched.refresh}
                 onDirtyChange={reportObservationDirty}
               />
             )}
@@ -94,7 +94,7 @@ export function ObservationLedger({
             className="button button-soft"
             type="button"
             disabled={unmatched.loadingMore}
-            onClick={() => void unmatched.loadMore()}
+            onClick={unmatched.loadMore}
           >
             {unmatched.loadingMore ? "読み込み中" : "さらに読み込む"}
           </button>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { LedgerItemDraft } from "./purchase-item-draft";
 
@@ -20,6 +20,7 @@ import {
 import { errorMessage, formatQuantity, parseQuantity } from "../../../shared/lib";
 import { readLedgerPurchase } from "../api/read-ledger-purchase";
 import { createPurchaseDraft, type PurchaseDraft } from "./purchase-draft";
+import { isLedgerPurchaseEditorDirty, ledgerPurchaseEditorSnapshot } from "./purchase-editor-dirty";
 
 type PurchaseConflict = {
   label: string;
@@ -35,9 +36,11 @@ const sameNullableString = (left?: string | null, right?: string | null) =>
 export function useLedgerPurchaseEditor({
   household,
   refresh,
+  onDirtyChange,
 }: {
   household: Household;
   refresh: () => void | Promise<void>;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const { mutate: mutatePostPurchase } = usePostPurchaseMutation();
   const mutateSavePurchaseItemEdits = useSavePurchaseItemEdits();
@@ -52,6 +55,13 @@ export function useLedgerPurchaseEditor({
     itemId: string;
   } | null>(null);
   const [conflict, setConflict] = useState<PurchaseConflict | null>(null);
+  const initialDraftSnapshot = useRef<string | null>(null);
+
+  const reportDirty = (nextPurchaseDraft = purchaseDraft, nextItemDrafts = itemDrafts) => {
+    onDirtyChange(
+      isLedgerPurchaseEditorDirty(initialDraftSnapshot.current, nextPurchaseDraft, nextItemDrafts),
+    );
+  };
 
   useEffect(() => {
     let active = true;
@@ -85,35 +95,56 @@ export function useLedgerPurchaseEditor({
 
   const latestPurchase = (purchaseId: string) => readLedgerPurchase(household.id, purchaseId);
   const startEditing = (purchase: Purchase) => {
-    setEditing(purchase.id);
-    setPurchaseDraft(createPurchaseDraft(purchase));
-    setItemDrafts(
-      Object.fromEntries(
-        purchase.items.map((item) => [
-          item.id,
-          {
-            name: item.name,
-            amountYen: String(item.amountYen),
-            quantity: formatQuantity(item.quantityNumerator, item.quantityDenominator),
-            quantityUnit: item.quantityUnit ?? "",
-            printedUnitPriceYen:
-              item.printedUnitPriceYen == null ? "" : String(item.printedUnitPriceYen),
-            printedBasisQuantity: formatQuantity(
-              item.printedUnitPriceQuantityNumerator,
-              item.printedUnitPriceQuantityDenominator,
-            ),
-            printedUnitPriceUnit: item.printedUnitPriceUnit ?? "",
-            categoryId: item.categoryId ?? "",
-            productVariantId: item.productVariantId ?? "",
-            allocations: item.allocations.map(({ poolId, weight }) => ({ poolId, weight })),
-            productLearning: "ITEM_ONLY",
-            variantName: "",
-          },
-        ]),
-      ),
+    const nextPurchaseDraft = createPurchaseDraft(purchase);
+    const nextItemDrafts = Object.fromEntries(
+      purchase.items.map((item) => [
+        item.id,
+        {
+          name: item.name,
+          amountYen: String(item.amountYen),
+          quantity: formatQuantity(item.quantityNumerator, item.quantityDenominator),
+          quantityUnit: item.quantityUnit ?? "",
+          printedUnitPriceYen:
+            item.printedUnitPriceYen == null ? "" : String(item.printedUnitPriceYen),
+          printedBasisQuantity: formatQuantity(
+            item.printedUnitPriceQuantityNumerator,
+            item.printedUnitPriceQuantityDenominator,
+          ),
+          printedUnitPriceUnit: item.printedUnitPriceUnit ?? "",
+          categoryId: item.categoryId ?? "",
+          productVariantId: item.productVariantId ?? "",
+          allocations: item.allocations.map(({ poolId, weight }) => ({ poolId, weight })),
+          productLearning: "ITEM_ONLY" as const,
+          variantName: "",
+        },
+      ]),
     );
+    initialDraftSnapshot.current = ledgerPurchaseEditorSnapshot(nextPurchaseDraft, nextItemDrafts);
+    onDirtyChange(false);
+    setEditing(purchase.id);
+    setPurchaseDraft(nextPurchaseDraft);
+    setItemDrafts(nextItemDrafts);
     setConflict(null);
     setEditError("");
+  };
+
+  const updatePurchaseDraft = (draft: PurchaseDraft) => {
+    setPurchaseDraft(draft);
+    reportDirty(draft);
+  };
+
+  const updateItemDraft = (itemId: string, updates: Partial<LedgerItemDraft>) => {
+    const draft = itemDrafts[itemId];
+    if (!draft) return;
+    const nextDrafts = { ...itemDrafts, [itemId]: { ...draft, ...updates } };
+    setItemDrafts(nextDrafts);
+    reportDirty(purchaseDraft, nextDrafts);
+  };
+
+  const cancelEditing = () => {
+    setEditing(null);
+    initialDraftSnapshot.current = null;
+    onDirtyChange(false);
   };
 
   const startCorrection = (purchase: Purchase, item: PurchaseItem) => {
@@ -290,6 +321,8 @@ export function useLedgerPurchaseEditor({
     const hasPurchaseChanges = Object.keys(purchasePatch).length > 0;
     if (!items.length && !hasPurchaseChanges) {
       setEditing(null);
+      initialDraftSnapshot.current = null;
+      onDirtyChange(false);
       setConflict(null);
       setEditError("");
       return;
@@ -305,6 +338,8 @@ export function useLedgerPurchaseEditor({
       });
       await refresh();
       setEditing(null);
+      initialDraftSnapshot.current = null;
+      onDirtyChange(false);
       setConflict(null);
       setEditError("");
     } catch (reason) {
@@ -338,11 +373,15 @@ export function useLedgerPurchaseEditor({
               await refresh();
               setConflict(null);
               setEditing(null);
+              initialDraftSnapshot.current = null;
+              onDirtyChange(false);
             },
             discard: async () => {
               await refresh();
               setConflict(null);
               setEditing(null);
+              initialDraftSnapshot.current = null;
+              onDirtyChange(false);
             },
           });
       } else setEditError(errorMessage(reason));
@@ -368,5 +407,8 @@ export function useLedgerPurchaseEditor({
     setPurchaseDraft,
     startCorrection,
     startEditing,
+    updateItemDraft,
+    updatePurchaseDraft,
+    cancelEditing,
   };
 }

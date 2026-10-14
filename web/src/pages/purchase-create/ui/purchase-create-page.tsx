@@ -12,7 +12,11 @@ import {
   loadPurchaseDefaults,
   savePurchaseDefaults,
 } from "../model/purchase-defaults";
-import { emptyPurchaseItemsValue, type PurchaseItemsValue } from "../model/purchase-items";
+import {
+  emptyPurchaseItemsValue,
+  restorePurchaseItemsValue,
+  type PurchaseItemsValue,
+} from "../model/purchase-items";
 import { resolveInitialPaymentAccountId, usePurchasePayments } from "../model/purchase-payments";
 import { usePurchaseDraft } from "../model/use-purchase-draft";
 import { usePurchaseSubmission } from "../model/use-purchase-submission";
@@ -167,16 +171,7 @@ function PurchaseCreatePageContent({
         payments.setAutoTotal(true);
         payments.setManualAmountEdited(false);
       }
-      const restoredCategoryId = isEnabledCategory(loaded.categoryId) ? loaded.categoryId : "";
-      setItemsValue({
-        itemName: loaded.itemName,
-        itemAmount: loaded.itemAmount,
-        categoryId: restoredCategoryId,
-        items: loaded.items.map((item) => ({
-          ...item,
-          categoryId: isEnabledCategory(item.categoryId) ? item.categoryId : "",
-        })),
-      });
+      setItemsValue(restorePurchaseItemsValue(loaded, isEnabledCategory));
     },
     onLoadError: (error) => setMessage(error.message),
     onUnsavedChanges,

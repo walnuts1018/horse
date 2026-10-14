@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { createReceiptPurchaseInput } from "./receipt-confirmation";
 import type { DocumentReview } from "./imports";
+
+import { createReceiptPurchaseInput } from "./receipt-confirmation";
 
 describe("createReceiptPurchaseInput", () => {
   const document: DocumentReview = {
@@ -79,6 +80,26 @@ describe("createReceiptPurchaseInput", () => {
         },
       ],
     });
+  });
+
+  it("選択した税計算候補の品目額を帳簿登録額として保存する", () => {
+    const input = createReceiptPurchaseInput({
+      document,
+      householdId: "household-1",
+      occurredAt: "2026-10-14T03:00:00.000Z",
+      candidateId: "candidate-1",
+      requiresCandidateSelection: true,
+      requiresOverrideReason: false,
+      overrideReason: "",
+      paymentDraft: [{ key: "payment-1", paymentAccountId: "account-1", amountYen: 315 }],
+      accountCount: 1,
+      manualAmounts: undefined,
+      allocations: undefined,
+      suggestedCategoryIds: [],
+    });
+
+    expect(input.items.map((item) => item.amountYen)).toEqual([210, 105]);
+    expect(input.items.reduce((total, item) => total + item.amountYen, 0)).toBe(315);
   });
 
   it("決済合計が補正後の品目合計と一致しない場合は拒否する", () => {

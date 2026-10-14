@@ -7,7 +7,6 @@ import {
   loanBalancesQuery,
   statementTransferCandidatesQuery,
 } from "../../../entities/ledger";
-import { statementRefundCorrectionsQuery } from "../api/operations";
 import {
   getRelayEnvironment,
   type Account,
@@ -19,6 +18,7 @@ import {
   type StatementTransferCandidatesQuery,
   type StatementRefundCorrectionsQuery,
 } from "../../../shared/api";
+import { statementRefundCorrectionsQuery } from "../api/operations";
 import {
   statementConfirmationIssue,
   statementSourceReference,
@@ -73,10 +73,15 @@ export function StatementReview({
   const [refundTargets, setRefundTargets] = useState<
     Record<string, { purchaseId: string; itemId: string }>
   >({});
-  const [refundCorrectionTargets, setRefundCorrectionTargets] = useState<Record<string, string>>({});
+  const [refundCorrectionTargets, setRefundCorrectionTargets] = useState<Record<string, string>>(
+    {},
+  );
   const [openRefundCorrections, setOpenRefundCorrections] = useState<Record<string, boolean>>({});
   const [refundCorrectionCandidates, setRefundCorrectionCandidates] = useState<
-    Record<string, StatementRefundCorrectionsQuery["response"]["statementRefundCorrections"]["edges"]>
+    Record<
+      string,
+      StatementRefundCorrectionsQuery["response"]["statementRefundCorrections"]["edges"]
+    >
   >({});
   const [refundCorrectionPages, setRefundCorrectionPages] = useState<
     Record<string, { after: string | null; hasNextPage: boolean; loading: boolean }>
@@ -127,20 +132,22 @@ export function StatementReview({
       ...current,
       [key]: { after: current[key]?.after ?? null, hasNextPage: false, loading: true },
     }));
-    fetchQuery<StatementRefundCorrectionsQuery>(getRelayEnvironment(), statementRefundCorrectionsQuery, {
-      householdId: household.id,
-      sourceDocumentId: document.id,
-      sourceReference: reference,
-      first: 50,
-      after: after ?? null,
-    }).subscribe({
+    fetchQuery<StatementRefundCorrectionsQuery>(
+      getRelayEnvironment(),
+      statementRefundCorrectionsQuery,
+      {
+        householdId: household.id,
+        sourceDocumentId: document.id,
+        sourceReference: reference,
+        first: 50,
+        after: after ?? null,
+      },
+    ).subscribe({
       next: (data) => {
         const page = data.statementRefundCorrections;
         setRefundCorrectionCandidates((current) => ({
           ...current,
-          [key]: after
-            ? [...(current[key] ?? []), ...page.edges]
-            : page.edges,
+          [key]: after ? [...(current[key] ?? []), ...page.edges] : page.edges,
         }));
         setRefundCorrectionPages((current) => ({
           ...current,
@@ -151,17 +158,16 @@ export function StatementReview({
           },
         }));
       },
-      error: () =>
-        {
-          setRefundCorrectionPages((current) => ({
-            ...current,
-            [key]: { after: current[key]?.after ?? null, hasNextPage: false, loading: false },
-          }));
-          setRefundCorrectionErrors((current) => ({
-            ...current,
-            [key]: "返金記録を読み込めませんでした",
-          }));
-        },
+      error: () => {
+        setRefundCorrectionPages((current) => ({
+          ...current,
+          [key]: { after: current[key]?.after ?? null, hasNextPage: false, loading: false },
+        }));
+        setRefundCorrectionErrors((current) => ({
+          ...current,
+          [key]: "返金記録を読み込めませんでした",
+        }));
+      },
     });
   };
   const toggleRefundCorrections = (entry: StatementEntry) => {
@@ -503,11 +509,11 @@ export function StatementReview({
                     <button
                       type="button"
                       className="text-button"
-                      disabled={pending || Boolean(refundCorrectionPage?.loading)}
-                      aria-expanded={Boolean(openRefundCorrections[key])}
+                      disabled={pending || refundCorrectionPage.loading}
+                      aria-expanded={openRefundCorrections[key]}
                       onClick={() => toggleRefundCorrections(entry)}
                     >
-                      {refundCorrectionPage?.loading
+                      {refundCorrectionPage.loading
                         ? "読み込み中"
                         : openRefundCorrections[key]
                           ? "候補を閉じる"
@@ -560,7 +566,7 @@ export function StatementReview({
                         {refundCorrectionErrors[key] && (
                           <small role="alert">{refundCorrectionErrors[key]}</small>
                         )}
-                        {refundCorrectionPage?.hasNextPage && (
+                        {refundCorrectionPage.hasNextPage && (
                           <button
                             type="button"
                             className="text-button"

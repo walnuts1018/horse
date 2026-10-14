@@ -4,8 +4,8 @@ import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import { RelayEnvironmentProvider } from "react-relay";
 
 import { getRelayEnvironment } from "../../shared/api";
+import { QueryProvider } from "../data/query-provider";
 import { App } from "../horse-app";
-import { QueryProvider } from "../providers/query-provider";
 
 import "../styles/global.css";
 

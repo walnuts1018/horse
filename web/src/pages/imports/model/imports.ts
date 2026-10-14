@@ -66,6 +66,24 @@ export function receiptOccurredAt(purchasedAt?: string, manualDate?: string): st
     ) {
       return null;
     }
+    const extractedDate = purchasedAt ? new Date(purchasedAt) : null;
+    if (extractedDate && !Number.isNaN(extractedDate.getTime())) {
+      const timeParts = Object.fromEntries(
+        new Intl.DateTimeFormat("en", {
+          timeZone: "Asia/Tokyo",
+          hour: "2-digit",
+          hourCycle: "h23",
+          minute: "2-digit",
+          second: "2-digit",
+        })
+          .formatToParts(extractedDate)
+          .map((part) => [part.type, part.value]),
+      );
+      const milliseconds = String(extractedDate.getUTCMilliseconds()).padStart(3, "0");
+      return new Date(
+        `${manualDate}T${timeParts.hour}:${timeParts.minute}:${timeParts.second}.${milliseconds}+09:00`,
+      ).toISOString();
+    }
     return new Date(`${manualDate}T12:00:00+09:00`).toISOString();
   }
   if (!purchasedAt) return null;

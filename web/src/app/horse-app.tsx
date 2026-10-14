@@ -50,11 +50,11 @@ import {
 } from "./household-route-context";
 import { useHouseholdSession } from "./model/use-household-session";
 import { usePendingInvitation } from "./model/use-pending-invitation";
-import { useUnsavedChanges } from "./model/use-unsaved-changes";
 import {
   shouldAutoNavigateAfterPurchase,
   usePurchaseOutboxSender,
 } from "./model/use-purchase-outbox-sender";
+import { useUnsavedChanges } from "./model/use-unsaved-changes";
 
 export { shouldAutoNavigateAfterPurchase };
 

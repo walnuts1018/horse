@@ -1,6 +1,5 @@
 import { fetchQuery } from "react-relay";
 
-import { matchRecurringExpenseMutation } from "../../../entities/recurring-expense";
 import {
   getRelayEnvironment,
   commitGraphQLMutationResult,
@@ -9,6 +8,7 @@ import {
   type RecurringExpenseMatchCandidatesQuery$data,
 } from "../../../shared/api";
 import { recurringExpenseMatchCandidatesQuery } from "./operations";
+import { matchRecurringExpenseMutation } from "./recurring-expense-operations";
 
 export type RecurringExpenseMatchCandidate =
   RecurringExpenseMatchCandidatesQuery$data["purchases"]["edges"][number]["node"];

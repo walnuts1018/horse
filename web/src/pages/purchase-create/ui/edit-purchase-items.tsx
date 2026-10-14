@@ -64,7 +64,7 @@ export function EditPurchaseItems({
   const [draft, setDraft] = useState(value);
   const draftRef = useRef(draft);
   const onChangeRef = useRef(onChange);
-  const [selectedProductVariantId, setSelectedProductVariantId] = useState("");
+  const selectedProductVariantId = draft.selectedProductVariantId;
   const [productSuggestions, setProductSuggestions] = useState<ProductSuggestion[]>([]);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
@@ -124,10 +124,9 @@ export function EditPurchaseItems({
   const updateCategory = useCallback((id: string) => patchDraft({ categoryId: id }), [patchDraft]);
   const changeItemName = useCallback(
     (name: string) => {
-      setSelectedProductVariantId("");
       setActiveSuggestionIndex(-1);
       setSuggestionsDismissed(false);
-      patchDraft({ itemName: name });
+      patchDraft({ itemName: name, selectedProductVariantId: "" });
     },
     [patchDraft],
   );
@@ -145,7 +144,6 @@ export function EditPurchaseItems({
   );
   const reset = useCallback(() => {
     const empty = emptyPurchaseItemsValue();
-    setSelectedProductVariantId("");
     rememberUndo(null);
     setProductSuggestions([]);
     update(empty);
@@ -239,9 +237,9 @@ export function EditPurchaseItems({
       items: [...draft.items, item],
       itemName: "",
       itemAmount: "",
+      selectedProductVariantId: "",
       categoryId: "",
     });
-    setSelectedProductVariantId("");
     setProductSuggestions([]);
     setFocused("name");
     nameRef.current?.focus();
@@ -252,10 +250,14 @@ export function EditPurchaseItems({
     setFocused("amount");
   };
   const selectProductSuggestion = (candidate: ProductSuggestion) => {
-    changeItemName(candidate.matchedName || draft.itemName.trim());
-    setSelectedProductVariantId(candidate.variant.id);
-    if (isEnabledCategory(candidate.concept.categoryId) && !draft.categoryId)
-      updateCategory(candidate.concept.categoryId);
+    markDirty();
+    patchDraft({
+      itemName: candidate.matchedName || draft.itemName.trim(),
+      selectedProductVariantId: candidate.variant.id,
+      ...(isEnabledCategory(candidate.concept.categoryId) && !draft.categoryId
+        ? { categoryId: candidate.concept.categoryId }
+        : {}),
+    });
     setProductSuggestions([]);
     amountRef.current?.focus();
     setFocused("amount");

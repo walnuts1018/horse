@@ -1,5 +1,5 @@
 import { BookOpen, ChevronDown, ChevronRight, Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useHouseholdPurchases } from "../../../entities/purchase";
 import { readTags } from "../../../entities/tag";
@@ -56,9 +56,23 @@ export function LedgerPage({
   onAdd: () => void;
   onUnsavedChanges: (unsaved: boolean) => void;
 }) {
+  const dirtySources = useRef(new Set<string>());
+  const reportDirtySource = useCallback(
+    (source: string, dirty: boolean) => {
+      const sources = dirtySources.current;
+      if (sources.has(source) === dirty) return;
+      if (dirty) sources.add(source);
+      else sources.delete(source);
+      onUnsavedChanges(sources.size > 0);
+    },
+    [onUnsavedChanges],
+  );
   useEffect(() => {
-    onUnsavedChanges(false);
-    return () => onUnsavedChanges(false);
+    const sources = dirtySources.current;
+    return () => {
+      sources.clear();
+      onUnsavedChanges(false);
+    };
   }, [onUnsavedChanges]);
   const {
     recordMode,
@@ -204,9 +218,19 @@ export function LedgerPage({
     ]),
   });
   const setBulkError = ledgerItemBulkEdit.setError;
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const purchaseRowRefs = useRef(new Map<string, HTMLDivElement>());
+  const expanded = filters.purchaseId || null;
+  const purchaseCount = purchases.length;
+  useEffect(() => {
+    if (!expanded || purchaseCount === 0) return;
+    purchaseRowRefs.current.get(expanded)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [expanded, purchaseCount]);
   const { evidence: purchaseEvidence, error: evidenceError } = usePurchaseEvidence(expanded);
-  const purchaseEditor = useLedgerPurchaseEditor({ household, refresh });
+  const purchaseEditor = useLedgerPurchaseEditor({
+    household,
+    refresh,
+    onDirtyChange: (dirty) => reportDirtySource("purchase-editor", dirty),
+  });
   const {
     catalog,
     conflict,
@@ -220,11 +244,11 @@ export function LedgerPage({
     savePurchase,
     setCorrectionTarget,
     setEditError,
-    setEditing,
-    setItemDrafts,
-    setPurchaseDraft,
     startCorrection,
     startEditing,
+    updateItemDraft,
+    updatePurchaseDraft,
+    cancelEditing,
   } = purchaseEditor;
   const [highlightedEvidenceItem, setHighlightedEvidenceItem] = useState<string | null>(null);
   useEffect(() => {
@@ -320,7 +344,7 @@ export function LedgerPage({
         <ObservationLedger
           household={household}
           unmatched={unmatchedObservations}
-          onUnsavedChanges={onUnsavedChanges}
+          onUnsavedChanges={(dirty) => reportDirtySource("observations", dirty)}
         />
       )}
       {recordMode === "purchases" && viewMode === "items" && (
@@ -381,8 +405,11 @@ export function LedgerPage({
                     className="text-button"
                     type="button"
                     onClick={() => {
-                      updateFilters({ recordMode: "purchases", viewMode: "purchases" });
-                      setExpanded(purchase.id);
+                      updateFilters({
+                        recordMode: "purchases",
+                        viewMode: "purchases",
+                        purchaseId: purchase.id,
+                      });
                       setHighlightedEvidenceItem(item.id);
                     }}
                   >
@@ -427,6 +454,10 @@ export function LedgerPage({
             filtered.map((purchase) => (
               <div
                 key={purchase.id}
+                ref={(node) => {
+                  if (node) purchaseRowRefs.current.set(purchase.id, node);
+                  else purchaseRowRefs.current.delete(purchase.id);
+                }}
                 className={`ledger-entry ${expanded === purchase.id ? "ledger-expanded" : ""}`}
               >
                 <label>
@@ -451,7 +482,7 @@ export function LedgerPage({
                   onClick={() => {
                     setHighlightedEvidenceItem(null);
                     const opening = expanded !== purchase.id;
-                    setExpanded(opening ? purchase.id : null);
+                    onFiltersChange({ purchaseId: opening ? purchase.id : "" });
                     if (
                       opening &&
                       (!correctionPages[purchase.id] || correctionPages[purchase.id].error)
@@ -540,8 +571,8 @@ export function LedgerPage({
                         purchase={purchase}
                         draft={purchaseDraft}
                         accounts={household.accounts}
-                        onChange={setPurchaseDraft}
-                        onCancel={() => setEditing(null)}
+                        onChange={updatePurchaseDraft}
+                        onCancel={cancelEditing}
                         onSave={(target) => void savePurchase(target)}
                       />
                     ) : (
@@ -634,13 +665,7 @@ export function LedgerPage({
                             household={household}
                             categories={household.categories}
                             catalog={catalog}
-                            onChange={(updates) =>
-                              setItemDrafts((current) => {
-                                const draft = current[item.id];
-                                if (!draft) return current;
-                                return { ...current, [item.id]: { ...draft, ...updates } };
-                              })
-                            }
+                            onChange={(updates) => updateItemDraft(item.id, updates)}
                           />
                         ) : (
                           <>

@@ -22,6 +22,12 @@ describe("receipt purchase date confirmation", () => {
     expect(receiptOccurredAt(undefined, "2025-04-01")).toBe("2025-04-01T03:00:00.000Z");
   });
 
+  it("preserves the extracted purchase time when correcting its date", () => {
+    expect(receiptOccurredAt("2025-03-31T16:45:12.345Z", "2025-04-02")).toBe(
+      "2025-04-01T16:45:12.345Z",
+    );
+  });
+
   it("rejects invalid manual dates and malformed extracted dates", () => {
     expect(receiptOccurredAt(undefined, "2025-02-30")).toBeNull();
     expect(receiptOccurredAt("invalid-date")).toBeNull();

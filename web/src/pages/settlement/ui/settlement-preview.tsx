@@ -36,6 +36,14 @@ export function SettlementPreview({
   onRecordFunding: (memberId: string) => void;
   onRestoreFunding: (memberId: string) => void;
 }) {
+  const sharedPoolIds = new Set(
+    household.pools
+      .filter(
+        (pool) => pool.__typename === "SharedPool" || pool.__typename === "UnconfiguredSharedPool",
+      )
+      .map((pool) => pool.id),
+  );
+
   return (
     <>
       <section className="settlement-hero">
@@ -62,6 +70,28 @@ export function SettlementPreview({
             {settlement?.__typename === "ClosedSettlement" ? "締め済み" : "未締め"}
           </span>
         </div>
+        <label className="settlement-account-select">
+          <span>共通入金先</span>
+          <select
+            value={fundingDestinationAccountId}
+            disabled={pending || Object.keys(pendingFunding).length > 0}
+            onChange={(event) => onFundingDestinationChange(event.target.value)}
+          >
+            <option value="">未指定</option>
+            {household.accounts
+              .filter(
+                (account) =>
+                  account.poolId != null &&
+                  sharedPoolIds.has(account.poolId) &&
+                  account.kind !== "CARD",
+              )
+              .map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+          </select>
+        </label>
         {!settlement ? (
           <div className="skeleton-list">
             <i />
@@ -125,30 +155,6 @@ export function SettlementPreview({
                             pool?.__typename === "PersonalPool" &&
                             pool.ownerMemberId === line.memberId
                           );
-                        })
-                        .map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {account.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label className="settlement-account-select">
-                    <span>入金先</span>
-                    <select
-                      value={fundingDestinationAccountId}
-                      disabled={pending || Boolean(pendingIntent)}
-                      onChange={(event) => onFundingDestinationChange(event.target.value)}
-                    >
-                      <option value="">未指定</option>
-                      {household.accounts
-                        .filter((account) => {
-                          const sharedPool = household.pools.find(
-                            (pool) =>
-                              pool.__typename === "SharedPool" ||
-                              pool.__typename === "UnconfiguredSharedPool",
-                          );
-                          return sharedPool?.id === account.poolId && account.kind !== "CARD";
                         })
                         .map((account) => (
                           <option key={account.id} value={account.id}>

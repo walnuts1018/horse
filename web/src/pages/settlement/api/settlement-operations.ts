@@ -24,26 +24,3 @@ export const settlementQuery = graphql`
     }
   }
 `;
-
-export const closePeriodMutation = graphql`
-  mutation ClosePeriodMutation($input: ClosePeriodInput!) {
-    closePeriod(input: $input) {
-      __typename
-      ... on ClosePeriodSuccess {
-        result {
-          __typename
-          id
-          period
-          revision
-          ... on ClosedSettlement {
-            createdAt
-          }
-        }
-      }
-      ... on MutationError {
-        code
-        message
-      }
-    }
-  }
-`;

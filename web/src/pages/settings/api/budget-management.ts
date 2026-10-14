@@ -4,12 +4,12 @@ import type {
   UpdateBudgetMutation,
 } from "../../../shared/api";
 
+import { commitGraphQLMutationResult } from "../../../shared/api";
 import {
   archiveBudgetMutation,
   createBudgetMutation,
   updateBudgetMutation,
-} from "../../../entities/budget";
-import { commitGraphQLMutationResult } from "../../../shared/api";
+} from "./budget-operations";
 
 export function createBudget(input: CreateBudgetMutation["variables"]["input"]) {
   return commitGraphQLMutationResult<

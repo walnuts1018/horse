@@ -24,6 +24,7 @@ const arbitraryAmount = fc.oneof(
 );
 
 const arbitrarySearch = fc.record({
+  purchaseId: arbitraryUnknown,
   recordMode: fc.oneof(fc.constantFrom("purchases", "observations"), arbitraryUnknown),
   viewMode: fc.oneof(fc.constantFrom("purchases", "items"), arbitraryUnknown),
   search: arbitraryUnknown,
@@ -76,5 +77,12 @@ describe("ledger search", () => {
       observationStateFilter: "ALL",
     });
     expect(parseLedgerSearch({ observationStateFilter: "ALL" }).observationStateFilter).toBe("");
+  });
+
+  it("対象購入のIDをURLに保持する", () => {
+    expect(parseLedgerSearch({ purchaseId: "purchase-1" }).purchaseId).toBe("purchase-1");
+    expect(serializeLedgerSearch({ ...defaultLedgerSearch, purchaseId: "purchase-1" })).toEqual({
+      purchaseId: "purchase-1",
+    });
   });
 });

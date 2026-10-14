@@ -79,6 +79,7 @@ export function ImportsPage({
     nextDocumentCursor,
     loadingOlderDocuments,
     editedReceiptDocuments,
+    clearReceiptDraft,
     refreshDocuments,
     loadOlderDocuments,
   } = useImportDocuments(household.id, documentFilters, setMessage);
@@ -105,7 +106,6 @@ export function ImportsPage({
     document: selectedDocument,
     preview: evidencePreview,
     setDocuments,
-    editedReceiptDocuments,
     refreshDocuments,
     markUnsaved: () => setHasUnsavedChanges(true),
     onError: setMessage,
@@ -115,6 +115,7 @@ export function ImportsPage({
     selectedDocument,
     setDocuments,
     editedReceiptDocuments,
+    clearReceiptDraft,
     markUnsaved: () => setHasUnsavedChanges(true),
     setHasUnsavedChanges,
     onAdded,

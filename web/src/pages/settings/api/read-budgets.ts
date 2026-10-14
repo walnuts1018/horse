@@ -6,7 +6,7 @@ import {
   type BudgetsQuery,
   type BudgetsQuery$data,
 } from "../../../shared/api";
-import { budgetsQuery } from "./operations";
+import { budgetsQuery } from "./budget-operations";
 
 type BudgetRecord = BudgetsQuery$data["budgets"]["edges"][number]["node"];
 

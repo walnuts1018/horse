@@ -2,6 +2,7 @@ import type { PurchaseAmountTarget, PurchasesQuery } from "../../../entities/pur
 import type { Purchase, SourceKind, UnmatchedObservationState } from "../../../shared/api";
 
 export type LedgerSearch = {
+  purchaseId: string;
   recordMode: "purchases" | "observations";
   viewMode: "purchases" | "items";
   search: string;
@@ -20,6 +21,7 @@ export type LedgerSearch = {
 };
 
 export const defaultLedgerSearch: LedgerSearch = {
+  purchaseId: "",
   recordMode: "purchases",
   viewMode: "purchases",
   search: "",
@@ -73,6 +75,7 @@ export function parseLedgerSearch(search: Record<string, unknown>): LedgerSearch
     maximumAmount = "";
 
   return {
+    purchaseId: stringValue(search.purchaseId, 128),
     recordMode: search.recordMode === "observations" ? "observations" : "purchases",
     viewMode: search.viewMode === "items" ? "items" : "purchases",
     search: stringValue(search.search),
@@ -120,6 +123,7 @@ export function serializeLedgerSearch(filters: LedgerSearch): Omit<
   const result: Omit<Partial<LedgerSearch>, "observationStateFilter"> & {
     observationStateFilter?: UnmatchedObservationState | "ALL";
   } = {};
+  if (filters.purchaseId !== defaultLedgerSearch.purchaseId) result.purchaseId = filters.purchaseId;
   if (filters.recordMode !== defaultLedgerSearch.recordMode) result.recordMode = filters.recordMode;
   if (filters.viewMode !== defaultLedgerSearch.viewMode) result.viewMode = filters.viewMode;
   if (filters.search !== defaultLedgerSearch.search) result.search = filters.search;

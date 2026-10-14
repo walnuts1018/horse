@@ -10,6 +10,12 @@ import {
 } from "react";
 
 import { errorMessage } from "../../../shared/lib/errors";
+import {
+  deleteImportReceiptDraft,
+  loadImportReceiptDraft,
+  saveImportReceiptDraft,
+  type ImportReceiptDraft,
+} from "../../../shared/lib/purchase-storage";
 import { documentListURL } from "../api/documents";
 import {
   asRecord,
@@ -19,6 +25,7 @@ import {
   type DocumentFilters,
   type DocumentReview,
 } from "./imports";
+import { createImportReceiptDraft, reconcileReceiptReviewDraft } from "./receipt-review-draft";
 
 type DocumentPage = {
   documents: DocumentReview[];
@@ -94,6 +101,8 @@ export function useImportDocuments(
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
   const editedReceiptDocuments = useRef(new Set<string>());
+  const receiptDrafts = useRef(new Map<string, ImportReceiptDraft>());
+  const notifiedDraftConflicts = useRef(new Set<string>());
   const notifiedError = useRef<unknown>(null);
   const filterScope = JSON.stringify(filters);
   const queryKey = useMemo<DocumentQueryKey>(
@@ -113,10 +122,41 @@ export function useImportDocuments(
           document,
         ]),
       );
-      return {
-        ...page,
-        documents: page.documents.map((document) => {
+      const documents = await Promise.all(
+        page.documents.map(async (document) => {
           const existing = cachedDocuments.get(document.id);
+          let draft = receiptDrafts.current.get(document.id);
+          if (!draft) {
+            draft = await loadImportReceiptDraft(householdId, document.id);
+            if (draft) receiptDrafts.current.set(document.id, draft);
+          }
+          if (draft) {
+            editedReceiptDocuments.current.add(document.id);
+            if (!document.result) {
+              return withDocumentName({ ...document, result: draft.editedResult }, existing);
+            }
+            const reconciled = reconcileReceiptReviewDraft(document, draft);
+            if (reconciled.conflicts.length && !notifiedDraftConflicts.current.has(document.id)) {
+              notifiedDraftConflicts.current.add(document.id);
+              onError(
+                `${document.name ?? "レシート"}のAI解析結果が更新され、${reconciled.conflicts.join("・")}の修正を自動復元できませんでした。品目を確認してください。`,
+              );
+            }
+            const rebasedDraft = createImportReceiptDraft(
+              householdId,
+              document.id,
+              document.result,
+              reconciled.document.result,
+            );
+            if (rebasedDraft) {
+              receiptDrafts.current.set(document.id, rebasedDraft);
+              await saveImportReceiptDraft(rebasedDraft);
+            } else {
+              receiptDrafts.current.delete(document.id);
+              await deleteImportReceiptDraft(householdId, document.id);
+            }
+            return withDocumentName(reconciled.document, existing);
+          }
           return {
             ...withDocumentName(document, existing),
             ...(existing && editedReceiptDocuments.current.has(document.id)
@@ -124,12 +164,17 @@ export function useImportDocuments(
               : {}),
           };
         }),
+      );
+      return {
+        ...page,
+        documents,
       };
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchInterval: (currentQuery) =>
       hasProcessingDocuments(currentQuery.state.data) ? 1200 : false,
   });
+  const { fetchNextPage, hasNextPage, isFetchingNextPage, refetch } = query;
   const documents = flattenPages(query.data);
   const householdScope = `${householdId}:${filterScope}`;
   const filterScopeRef = useRef(householdScope);
@@ -138,6 +183,7 @@ export function useImportDocuments(
     if (filterScopeRef.current === householdScope) return;
     filterScopeRef.current = householdScope;
     editedReceiptDocuments.current.clear();
+    notifiedDraftConflicts.current.clear();
     setSelected(null);
   }, [householdScope]);
 
@@ -151,14 +197,47 @@ export function useImportDocuments(
     onError(errorMessage(query.error));
   }, [onError, query.data, query.error]);
 
+  const clearReceiptDraft = useCallback(
+    async (documentId: string) => {
+      editedReceiptDocuments.current.delete(documentId);
+      receiptDrafts.current.delete(documentId);
+      await deleteImportReceiptDraft(householdId, documentId);
+    },
+    [householdId],
+  );
+
   const setDocuments: Dispatch<SetStateAction<DocumentReview[]>> = useCallback(
     (action) => {
+      const changedDrafts: ImportReceiptDraft[] = [];
+      const removedDocumentIDs: string[] = [];
       queryClient.setQueryData<InfiniteData<DocumentPage>>(queryKey, (current) => {
         if (!current) return current;
         const currentDocuments = flattenPages(current);
         const nextDocuments = typeof action === "function" ? action(currentDocuments) : action;
         const nextByID = new Map(nextDocuments.map((document) => [document.id, document]));
         const existingIDs = new Set(currentDocuments.map((document) => document.id));
+        removedDocumentIDs.push(
+          ...currentDocuments
+            .filter((document) => !nextByID.has(document.id))
+            .map((document) => document.id),
+        );
+        for (const document of currentDocuments) {
+          const next = nextByID.get(document.id);
+          if (
+            !next ||
+            !editedReceiptDocuments.current.has(document.id) ||
+            !document.result ||
+            !next.result ||
+            JSON.stringify(document.result) === JSON.stringify(next.result)
+          )
+            continue;
+          const baseResult = receiptDrafts.current.get(document.id)?.baseResult ?? document.result;
+          const draft = createImportReceiptDraft(householdId, document.id, baseResult, next.result);
+          if (draft) {
+            receiptDrafts.current.set(document.id, draft);
+            changedDrafts.push(draft);
+          }
+        }
         const added = nextDocuments.filter((document) => !existingIDs.has(document.id));
         return {
           ...current,
@@ -174,26 +253,36 @@ export function useImportDocuments(
           })),
         };
       });
+      for (const draft of changedDrafts) {
+        void saveImportReceiptDraft(draft).catch((reason: unknown) => {
+          onError(errorMessage(reason));
+        });
+      }
+      for (const documentId of removedDocumentIDs) {
+        void clearReceiptDraft(documentId).catch((reason: unknown) => {
+          onError(errorMessage(reason));
+        });
+      }
     },
-    [queryClient, queryKey],
+    [clearReceiptDraft, householdId, onError, queryClient, queryKey],
   );
 
   const refreshDocuments = useCallback(
     async (silent = false) => {
-      const result = await query.refetch();
+      const result = await refetch();
       if (result.error && !silent && notifiedError.current !== result.error) {
         notifiedError.current = result.error;
         onError(errorMessage(result.error));
       }
     },
-    [onError, query.refetch],
+    [onError, refetch],
   );
 
   const loadOlderDocuments = useCallback(async () => {
-    if (!query.hasNextPage || query.isFetchingNextPage) return;
-    const result = await query.fetchNextPage();
+    if (!hasNextPage || isFetchingNextPage) return;
+    const result = await fetchNextPage();
     if (result.error) onError(errorMessage(result.error));
-  }, [onError, query.fetchNextPage, query.hasNextPage, query.isFetchingNextPage]);
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, onError]);
 
   const data = query.data;
   const nextDocumentCursor = data?.pages.at(-1)?.nextCursor ?? null;
@@ -206,6 +295,7 @@ export function useImportDocuments(
     nextDocumentCursor,
     loadingOlderDocuments: query.isFetchingNextPage,
     editedReceiptDocuments,
+    clearReceiptDraft,
     refreshDocuments,
     loadOlderDocuments,
   };

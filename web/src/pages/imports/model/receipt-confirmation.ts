@@ -96,9 +96,7 @@ export function createReceiptPurchaseInput({
         printedUnitPriceQuantityDenominator: item.printedUnitPriceQuantityDenominator,
         printedUnitPriceUnit: item.printedUnitPriceUnit,
         categoryId:
-          item.categoryId != null
-            ? item.categoryId || null
-            : suggestedCategoryIds[index] || null,
+          item.categoryId != null ? item.categoryId || null : suggestedCategoryIds[index] || null,
         productVariantId: item.productVariantId || null,
         allocations: itemAllocations.length ? itemAllocations : null,
       };

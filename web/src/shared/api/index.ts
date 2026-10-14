@@ -120,6 +120,31 @@ export type {
   ProductSuggestionsQuery$data,
 } from "./__generated__/ProductSuggestionsQuery.graphql";
 export type {
+  AnalysisBudgetsFragment$key,
+  AnalysisBudgetsFragment$data,
+} from "./__generated__/AnalysisBudgetsFragment.graphql";
+export type {
+  AnalysisRecurringExpensesFragment$key,
+  AnalysisRecurringExpensesFragment$data,
+} from "./__generated__/AnalysisRecurringExpensesFragment.graphql";
+export type {
+  AnalysisDashboardQuery,
+  AnalysisDashboardQuery$data,
+} from "./__generated__/AnalysisDashboardQuery.graphql";
+export type {
+  HomeDashboardQuery,
+  HomeDashboardQuery$data,
+} from "./__generated__/HomeDashboardQuery.graphql";
+export type {
+  UnmatchedObservationsFragment$data,
+  UnmatchedObservationsFragment$key,
+} from "./__generated__/UnmatchedObservationsFragment.graphql";
+export type {
+  SavePurchaseItemEditsMutation,
+  SavePurchaseItemEditsMutation$data,
+  SavePurchaseItemEditsMutation$variables,
+} from "./__generated__/SavePurchaseItemEditsMutation.graphql";
+export type {
   HomeSummaryQuery,
   HomeSummaryQuery$data,
 } from "./__generated__/HomeSummaryQuery.graphql";

@@ -12,6 +12,7 @@ import {
   type ReviewTarget,
   yen,
 } from "../model/imports";
+import { addReceiptPayment, updateReceiptPaymentAmount } from "../model/receipt-payment-split";
 import { effectiveReceiptItemAmount } from "../model/use-import-confirmation";
 import { ProductVariantSelect } from "./product-variant-select";
 
@@ -183,16 +184,19 @@ export function ReceiptReview({
                 value={payment.amountYen}
                 onChange={(event) => {
                   markUnsaved();
-                  setReceiptPayments((current) => ({
-                    ...current,
-                    [selectedDocument.id]: paymentDraftFor(selectedDocument).map((entry) =>
-                      entry.key === payment.key
-                        ? Object.assign({}, entry, {
-                            amountYen: Number(event.target.value) || 0,
-                          })
-                        : entry,
-                    ),
-                  }));
+                  setReceiptPayments((current) => {
+                    const payments =
+                      current[selectedDocument.id] ?? paymentDraftFor(selectedDocument);
+                    return {
+                      ...current,
+                      [selectedDocument.id]: updateReceiptPaymentAmount(
+                        payments,
+                        payment.key,
+                        Number(event.target.value) || 0,
+                        receiptTotal(selectedDocument),
+                      ),
+                    };
+                  });
                 }}
               />
               <button
@@ -220,30 +224,17 @@ export function ReceiptReview({
             disabled={household.accounts.length < 2}
             onClick={() => {
               markUnsaved();
-              const current = paymentDraftFor(selectedDocument);
-              const total = receiptTotal(selectedDocument);
-              const rows =
-                current.length === 1 && current[0].amountYen === total
-                  ? [
-                      { ...current[0], amountYen: Math.floor(total / 2) },
-                      {
-                        key: crypto.randomUUID(),
-                        paymentAccountId: "",
-                        amountYen: total - Math.floor(total / 2),
-                      },
-                    ]
-                  : [
-                      ...current,
-                      {
-                        key: crypto.randomUUID(),
-                        paymentAccountId: "",
-                        amountYen: 0,
-                      },
-                    ];
-              setReceiptPayments((previous) => ({
-                ...previous,
-                [selectedDocument.id]: rows,
-              }));
+              setReceiptPayments((previous) => {
+                const payments = previous[selectedDocument.id] ?? paymentDraftFor(selectedDocument);
+                return {
+                  ...previous,
+                  [selectedDocument.id]: addReceiptPayment(payments, {
+                    key: crypto.randomUUID(),
+                    paymentAccountId: "",
+                    amountYen: 0,
+                  }),
+                };
+              });
             }}
           >
             <Check size={14} />
@@ -313,8 +304,11 @@ export function ReceiptReview({
               />
             </div>
             <label>
+              帳簿に登録する金額
+              <small>レシート印字額 {yen(item.printedAmount)}</small>
               ¥
               <input
+                aria-label={`${item.name}の帳簿に登録する金額`}
                 inputMode="numeric"
                 value={String(
                   effectiveReceiptItemAmount(
@@ -447,6 +441,13 @@ export function ReceiptReview({
                 key={candidate.id}
                 onClick={() => {
                   markUnsaved();
+                  if (selectedCandidates[selectedDocument.id] !== candidate.id) {
+                    setManualAmountOverrides((current) => {
+                      const next = { ...current };
+                      delete next[selectedDocument.id];
+                      return next;
+                    });
+                  }
                   setSelectedCandidates((current) => ({
                     ...current,
                     [selectedDocument.id]: candidate.id,
@@ -488,14 +489,8 @@ export function ReceiptReview({
           </label>
         )}
         <div className="review-total">
-          <span>認識した合計</span>
-          <b>
-            {yen(
-              selectedDocument.result.candidates?.find(
-                (candidate) => candidate.id === selectedCandidates[selectedDocument.id],
-              )?.computedTotal ?? selectedDocument.result.computedTotal,
-            )}
-          </b>
+          <span>帳簿に登録する金額の合計</span>
+          <b>{yen(receiptTotal(selectedDocument))}</b>
         </div>
         <button
           type="button"

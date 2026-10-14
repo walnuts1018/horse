@@ -8,22 +8,6 @@
 
 ## 1. 優先度の高い改善
 
-### 1-2. 入力途中の商品マスタの選択が下書きに保存されない
-
-P1 · 入力のやり直し
-
-対象：[edit-purchase-items.tsx](https://github.com/walnuts1018/horse/blob/main/web/src/pages/purchase-create/ui/edit-purchase-items.tsx#L63-L75)、[purchase-items.ts](https://github.com/walnuts1018/horse/blob/main/web/src/pages/purchase-create/model/purchase-items.ts#L6-L18)
-
-品名入力中に商品候補を選ぶと、`selectedProductVariantId`に商品マスタのIDが保持されます。
-
-しかし、この値は`EditPurchaseItems`のローカルstateであり、永続化する`PurchaseItemsValue`には含まれていません。
-
-つまり、商品候補を選択したあと、金額を入力する前に画面を離れたり再読み込みしたりすると、商品名は下書きから復元できても、商品マスタとの紐付けは失われます。
-
-改善案： `selectedProductVariantId`を下書きの入力中品目のデータに含めます。下書き復元後にも選択済み商品を明示し、再選択を不要にします。
-
-入力途中のカテゴリや金額と同じく、ユーザーが明示的に選択した正規化商品も保存対象にするべきです。
-
 ### 1-3. レシートの切り抜きが原本を置き換えてしまう
 
 P1 · 証拠情報の欠落
@@ -42,69 +26,11 @@ P1 · 証拠情報の欠落
 
 これにより、利用者は気軽に切り抜きでき、将来別のAIモデルで再解析するときにも原本を利用できます。
 
-### 1-4. AI取り込みで決済を分割すると、根拠なく50:50の金額が設定される
-
-P1 · 誤入力の誘発
-
-対象：[receipt-review.tsx](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/receipt-review.tsx#L194-L229)
-
-レシートの決済を分割する操作では、現在の決済額が合計と一致している場合、金額を自動的に半分ずつにしています。
-
-例えば、合計2,980円の買い物について「決済を分割」を押すと、1,490円と1,490円に分かれます。
-
-しかし実際には、現金1,000円＋クレジットカード1,980円などの支払いだったかもしれません。
-
-半額という推定には特別な根拠がありません。
-
-改善案： 既存の決済額を保持し、新しい決済元の金額を入力したら、残額が元の決済元に自動反映される方式にします。
-
-例えば、新しい決済額へ1,000円と入力すると、既存側が自動的に1,980円となります。これならユーザーが入力すべき金額は1つだけです。
-
-複数決済時も、最後の1口座を自動的な残額受け皿にすると、入力回数を減らせます。
-
-### 1-5. AIで選択した税計算候補と、画面に表示される品目金額が一致しない可能性がある
-
-P0 — 保存される金額を誤認する
-
-対象：[receipt-review.tsx:284–299](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/receipt-review.tsx#L284-L299)、[use-import-confirmation.ts:121–131](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/model/use-import-confirmation.ts#L121-L131)
-
-これは今回のレビューで特に重要な問題です。
-
-レシート確認画面の商品金額欄には、常に`item.grossAmount`が表示されます。
-
-一方、保存する際の`receiptItemAmount()`は、計算候補が選択されている場合に`candidate.amounts[index]`を優先します。
-
-つまり、画面で198円と表示されている商品が、選択した税計算候補によって216円として保存される可能性があります。
-
-利用者にとって「表示されている金額と登録される金額が違う」のは重大です。
-
-改善方法： 品目ごとに「レシート印字額」と「帳簿に登録する金額」を明確に区別します。通常は後者だけを編集可能な金額として表示し、計算候補を切り替えたときは該当する品目金額を即座に更新します。
-
-印字額との関係は、必要な場合に展開できるようにします。
-
-### 1-6. 帳簿の編集中に画面を移動すると、変更内容が失われる可能性がある
-
-P0 — 入力のやり直し
-
-対象：[ledger-page.tsx:59–62](https://github.com/walnuts1018/horse/blob/main/web/src/pages/ledger/ui/ledger-page.tsx#L59-L62)、[use-ledger-purchase-editor.ts:95–124](https://github.com/walnuts1018/horse/blob/main/web/src/pages/ledger/model/use-ledger-purchase-editor.ts#L95-L124)
-
-帳簿画面では、`onUnsavedChanges(false)`を無条件で呼び出しています。
-
-しかし、購入や品目の編集中には`purchaseDraft`や`itemDrafts`に未保存の変更が保持されています。
-
-アプリ全体には未保存変更を検知して画面遷移を防ぐ仕組みがありますが、帳簿の編集状態がそこへ反映されていません。
-
-そのため、複数品目を修正している途中で分析画面などへ移動すると、入力内容を失うおそれがあります。
-
-改善方法： 編集開始時の値と現在の入力を比較してdirty状態を管理し、変更がある場合だけナビゲーションをブロックします。
-
-既存の未保存変更管理と接続し、保存またはキャンセルで状態を解除します。編集中の内容を下書きとして復元できるようにすれば、さらに安全です。
-
 ### 1-7. AIレシートの修正内容はページを再読み込みすると失われる
 
 P0 — 大量の修正作業を失う
 
-対象：[use-import-documents.ts:95–126](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/model/use-import-documents.ts#L95-L126)、[query-provider.tsx](https://github.com/walnuts1018/horse/blob/main/web/src/app/providers/query-provider.tsx)
+対象：[use-import-documents.ts:95–126](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/model/use-import-documents.ts#L95-L126)、[query-provider.tsx](https://github.com/walnuts1018/horse/blob/main/web/src/app/data/query-provider.tsx)
 
 AI取り込み画面で修正したレシートは、React Queryのキャッシュ上で更新されています。
 
@@ -114,11 +40,7 @@ AI取り込み画面で修正したレシートは、React Queryのキャッシ�
 
 例えば、20品目あるレシートを10品目修正した後にブラウザを更新すると、それまでの修正を失う可能性があります。
 
-改善方法： レシートの修正差分を原本IDごとにIndexedDBへ自動保存します。
-
-再表示時には修正中の内容を復元し、元のAI解析結果が更新されている場合は差分を調停します。
-
-新規購入だけでなく、AI確認も中断・再開できる編集セッションとして扱うべきです。
+対応状況： 店舗名、品目、購入日時など`DocumentReview.result`へ反映する編集差分を原本IDごとにIndexedDBへ保存し、再表示時に復元します。再解析後は印字額で一意に特定できる品目へ編集を戻し、対応できない変更は通知して誤った品目へ適用しません。税候補、手動金額上書き、決済内訳、品目配賦など確認画面内だけに保持する値はまだ復元しないため、この指摘は未解決です。
 
 ### 1-8. レシートの購入日を修正すると、認識済みの購入時刻が失われる
 
@@ -126,13 +48,13 @@ P1 — 意図しない情報変更
 
 対象：[imports.ts:59–73](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/model/imports.ts#L59-L73)
 
-`receiptOccurredAt()`では、ユーザーが購入日を変更すると、購入時刻を固定で12:00にしています。
+`receiptOccurredAt()`では、購入日だけを変更しても、抽出済みの購入時刻を維持します。
 
-例えばAIが「10月12日 18:32」と認識し、日付だけを「10月13日」に修正すると、保存される日時は「10月13日 12:00」になります。
+例えばAIが「10月12日 18:32」と認識し、日付だけを「10月13日」に修正すると、保存される日時は「10月13日 18:32」になります。
 
 ユーザーは時刻を修正したつもりがないのに、時刻が変更されてしまいます。
 
-改善方法： 日付の変更では、認識済みの時刻を維持します。時刻が本当に分からない場合は「時刻不明」として管理し、便宜的な12:00を事実として表示しないようにします。
+対応状況： 認識済みの時刻は日付変更後も維持します。時刻が不明な場合は現在も12:00を補完値として使うため、時刻不明の表現と保存方法は未解決です。
 
 日時全体を変更したい場合だけ、時刻編集も開けるようにします。
 
@@ -179,15 +101,12 @@ P1 — 確認に必要な思考・操作を減らす
 | P1 | 商品名変更直後も、前の検索語の商品候補が残る。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/purchase-create/ui/edit-purchase-items.tsx#L130-L137) | 入力変更と同時に旧候補を無効化し、検索語と一致するレスポンスだけ表示する。古い候補を誤選択させない |
 | P1 | 過去の購入をコピーすると、最初の商品カテゴリが次の新規品目へ引き継がれる。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/purchase-create/ui/edit-purchase-items.tsx#L165-L187) | コピー後に新しい商品を追加するときはカテゴリを商品名から再推定する。先頭商品のカテゴリを無関係な品目に使わない |
 | P1 | レシート金額欄を空にすると`0`が即座に入る。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/receipt-review.tsx#L284-L299) | 入力中は文字列として保持して空欄を許可し、フォーカス終了時や確定時に数値検証する |
-| P1 | 精算の共用口座選択で、最初に見つかった共用プールの口座だけを候補にしている。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/settlement/ui/settlement-preview.tsx#L136-L157) | すべての共用プールの口座を候補に含め、用途に応じて絞り込む |
-| P1 | 精算の入金先選択がメンバーごとに重複表示されるのに、変更する状態は共通。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/settlement/ui/settlement-preview.tsx#L136-L159) | 共通の入金先は画面上部で1回だけ指定し、例外時だけ個別指定できるようにする |
 | P2 | AIの原本一覧がファイル名と処理状態中心で、どの買い物か判別しにくい。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/import-document-list.tsx#L173-L196) | 店舗・購入日・合計額・品目数を優先表示する。自動生成ファイル名は補助情報へ |
 | P2 | カメラのファイル選択では`image/*`を許可するのに、選択後はJPEG/PNG/WebP以外を拒否する。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/camera-capture.tsx#L84-L92) | 選択可能形式と処理可能形式を一致させる。HEICなどは対応変換を用意するか、最初から適切に案内する |
 | P2 | 撮影画像を触ると、切り抜きモードを明示的に選んでいなくても範囲選択が始まる。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/camera-capture.tsx#L226-L260) | 通常時は拡大・移動を優先し、切り抜きモードを選択したときだけ範囲選択を有効にする |
 | P2 | 既存購入の決済行が口座IDをReactのkeyに使い、口座変更で行が再マウントされる。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/ledger/ui/purchase-edit-form.tsx#L47-L55) | 決済行に編集セッション内の安定IDを持たせ、口座変更しても入力フォーカスと行状態を維持する |
 | P2 | 取り込み画面のエラーメッセージが2か所に重複表示される。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/imports/ui/imports-page.tsx#L525-L528) | 一か所に統一し、修正すべき入力欄・原本への移動を提供する |
 | P2 | ホーム画面の「今日」と「今月」は初回マウント時に固定される。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/home/ui/home-page.tsx#L35-L40) | 日付変更時やタブ復帰時に更新する。月が変わった場合は当月の集計も更新する |
-| P2 | ホーム画面の最近の購入行がクリックできない。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/home/ui/home-page.tsx#L261-L285) | 最近の購入を直接開けるようにする。修正したい取引を帳簿で探し直す必要をなくす |
 | P2 | 負担割合ルールの一覧から既存ルールを編集できず、別フォームで再指定する必要がある。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/settings/ui/manage-allocation-catalog.tsx#L37-L76) | ルール行から編集を開き、現在の対象・割合をそのまま編集開始状態にする |
 | P2 | カテゴリ管理UIには追加と非表示しかなく、カテゴリ名の修正ができない。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/settings/ui/manage-categories-section.tsx#L38-L68) | インラインの名前変更を追加し、カテゴリIDと既存の購入への紐付けを維持する |
 | P3 | 現在のデフォルト割合と数学的に同じ比率でも、配列の順序や重みの表現が異なると標準扱いされない。[コード](https://github.com/walnuts1018/horse/blob/main/web/src/pages/purchase-create/ui/edit-purchase-item-allocations.tsx#L18-L29) | 比率を正規化して比較する。3:2と6:4、配列順序の違いを意味的に同一とみなす |
@@ -232,7 +151,7 @@ P1 — 確認に必要な思考・操作を減らす
 
 ### 3.2 AI確認では「解析結果」と「編集中の値」を分ける
 
-今回確認した、金額表示と保存額の不一致、修正の消失、時刻の消失は、いずれもAIの解析結果とユーザーの編集中データの責務が曖昧になっていることが原因の一つです。
+残っている確認状態の未保存、時刻不明の扱い、AI再解析結果との統合は、AIの解析結果とユーザーの編集中データの責務を分ける必要があります。
 
 次のように扱うのが適切です。
 
@@ -254,7 +173,7 @@ AI解析結果（不変）
 
 表示する金額は常に編集セッションの値を参照し、最終Mutationも同じ状態から生成します。
 
-これなら、画面に表示されている内容と、実際に保存される内容の不一致を構造的に防げます。
+この構成なら、画面の表示値と確定Mutationの値を同じ編集セッションから生成できます。
 
 また、ユーザーが手動で修正した項目をAIが後から再解析しても、その修正を勝手に上書きしないようにできます。
 
@@ -264,16 +183,13 @@ AI解析結果（不変）
 
 | 順位 | 改善 | 最も大きい効果 |
 | -- | ------------------------ | ------------- |
-| 1 | AI確認画面の金額表示と実際の保存額を一致させる | 金額の誤認防止 |
-| 2 | 帳簿編集中の未保存変更を正しく検出する | 入力内容の消失防止 |
-| 3 | AIレシート修正内容を永続化する | 長時間の修正作業を保護 |
-| 4 | 決済の残額自動計算を複数口座へ拡張する | 決済額の手入力削減 |
-| 5 | レシート原本を補正画像と分離して保存する | 証拠の完全性を維持 |
-| 6 | カード末尾番号による決済元の補完 | AI取り込み時の操作削減 |
-| 7 | レシートの税計算候補を意味のある名前で表示する | 確認の高速化 |
-| 8 | 日付だけの修正で時刻を保持する | 意図しないデータ変更の防止 |
-| 9 | 商品サジェストの古い候補を無効化する | 誤選択防止 |
-| 10 | その他の細かな入力・ナビゲーション改善 | 操作の引っ掛かり解消 |
+| 1 | AI確認画面の全編集状態を永続化する | 長時間の修正作業を保護 |
+| 2 | レシート原本を補正画像と分離して保存する | 証拠の完全性を維持 |
+| 3 | カード末尾番号による決済元の補完 | AI取り込み時の操作削減 |
+| 4 | レシートの税計算候補を意味のある名前で表示する | 確認の高速化 |
+| 5 | 日付不明時刻を事実の日時として補完しない | 意図しないデータ変更の防止 |
+| 6 | 商品サジェストの古い候補を無効化する | 誤選択防止 |
+| 7 | その他の細かな入力・ナビゲーション改善 | 操作の引っ掛かり解消 |
 
 ## 総評
 

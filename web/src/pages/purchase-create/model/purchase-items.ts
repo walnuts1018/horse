@@ -1,11 +1,12 @@
 import type { CreatePurchaseInput } from "../../../shared/api";
-import type { PurchaseDraftItem } from "../../../shared/lib";
+import type { PurchaseDraft, PurchaseDraftItem } from "../../../shared/lib";
 
 import { parseQuantity } from "../../../shared/lib";
 
 export type PurchaseItemsValue = {
   itemName: string;
   itemAmount: string;
+  selectedProductVariantId: string;
   categoryId: string;
   items: PurchaseDraftItem[];
 };
@@ -13,9 +14,29 @@ export type PurchaseItemsValue = {
 export const emptyPurchaseItemsValue = (): PurchaseItemsValue => ({
   itemName: "",
   itemAmount: "",
+  selectedProductVariantId: "",
   categoryId: "",
   items: [],
 });
+
+export function restorePurchaseItemsValue(
+  draft: Pick<
+    PurchaseDraft,
+    "itemName" | "itemAmount" | "selectedProductVariantId" | "categoryId" | "items"
+  >,
+  isEnabledCategory: (id: string | null | undefined) => boolean,
+): PurchaseItemsValue {
+  return {
+    itemName: draft.itemName,
+    itemAmount: draft.itemAmount,
+    selectedProductVariantId: draft.selectedProductVariantId ?? "",
+    categoryId: isEnabledCategory(draft.categoryId) ? draft.categoryId : "",
+    items: draft.items.map((item) => ({
+      ...item,
+      categoryId: isEnabledCategory(item.categoryId) ? item.categoryId : "",
+    })),
+  };
+}
 
 export function convertPurchaseItems(items: PurchaseDraftItem[]): CreatePurchaseInput["items"] {
   return items.map((item) => {

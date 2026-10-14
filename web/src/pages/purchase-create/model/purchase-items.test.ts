@@ -1,7 +1,38 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { convertPurchaseItems } from "./purchase-items";
+import { convertPurchaseItems, restorePurchaseItemsValue } from "./purchase-items";
+
+describe("purchase item draft restoration", () => {
+  it("restores the selected product variant with the unfinished item", () => {
+    const restored = restorePurchaseItemsValue(
+      {
+        itemName: "牛乳",
+        itemAmount: "258",
+        selectedProductVariantId: "variant-1",
+        categoryId: "category-1",
+        items: [],
+      },
+      (id) => id === "category-1",
+    );
+
+    expect(restored).toMatchObject({
+      itemName: "牛乳",
+      itemAmount: "258",
+      selectedProductVariantId: "variant-1",
+      categoryId: "category-1",
+    });
+  });
+
+  it("loads older drafts without a selected product variant", () => {
+    const restored = restorePurchaseItemsValue(
+      { itemName: "牛乳", itemAmount: "258", categoryId: "", items: [] },
+      () => false,
+    );
+
+    expect(restored.selectedProductVariantId).toBe("");
+  });
+});
 
 describe("purchase item conversion", () => {
   it("金額の合計を保ち、正の割当だけを送信する", () => {

@@ -1,11 +1,11 @@
 import { useCallback } from "react";
 
-import type {
-  SavePurchaseItemEditsMutation,
-  SavePurchaseItemEditsMutation$data,
-} from "../../../shared/api/__generated__/SavePurchaseItemEditsMutation.graphql";
-
-import { MutationUserError, useTypedGraphqlMutation } from "../../../shared/api";
+import {
+  MutationUserError,
+  useTypedGraphqlMutation,
+  type SavePurchaseItemEditsMutation,
+  type SavePurchaseItemEditsMutation$data,
+} from "../../../shared/api";
 import { savePurchaseItemEditsMutation } from "./operations";
 
 type SavePurchaseItemEditsSuccess = Extract<

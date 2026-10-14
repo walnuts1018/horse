@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLazyLoadQuery, usePaginationFragment } from "react-relay";
 
-import type { Budget, RecurringExpense } from "../../../shared/api";
-import type { AnalysisBudgetsFragment$key } from "../../../shared/api/__generated__/AnalysisBudgetsFragment.graphql";
-import type { AnalysisDashboardQuery } from "../../../shared/api/__generated__/AnalysisDashboardQuery.graphql";
-import type { AnalysisRecurringExpensesFragment$key } from "../../../shared/api/__generated__/AnalysisRecurringExpensesFragment.graphql";
+import type {
+  AnalysisBudgetsFragment$key,
+  AnalysisDashboardQuery,
+  AnalysisRecurringExpensesFragment$key,
+  Budget,
+  RecurringExpense,
+} from "../../../shared/api";
 import type { Dimension } from "./purchase-analytics";
 
 import { useHouseholdPurchases } from "../../../entities/purchase";

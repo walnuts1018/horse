@@ -4,12 +4,12 @@ import type {
   UpdateRecurringExpenseMutation,
 } from "../../../shared/api";
 
+import { commitGraphQLMutationResult } from "../../../shared/api";
 import {
   archiveRecurringExpenseMutation,
   createRecurringExpenseMutation,
   updateRecurringExpenseMutation,
-} from "../../../entities/recurring-expense";
-import { commitGraphQLMutationResult } from "../../../shared/api";
+} from "./recurring-expense-operations";
 
 export function createRecurringExpense(
   input: CreateRecurringExpenseMutation["variables"]["input"],

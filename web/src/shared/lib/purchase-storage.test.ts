@@ -6,11 +6,14 @@ const {
   completePurchaseOutbox,
   discardPurchaseOutbox,
   enqueuePurchase,
+  deleteImportReceiptDraft,
   listPurchaseOutbox,
+  loadImportReceiptDraft,
   loadPurchaseDraft,
   markPurchaseOutboxFailed,
   retryPurchaseOutbox,
   savePurchaseDraft,
+  saveImportReceiptDraft,
 } = await import("./purchase-storage");
 
 const databaseName = "horse-browser-data";
@@ -68,7 +71,7 @@ function seedUnscopedVersionTwoRecords() {
 
 function readUnscopedRecords() {
   return new Promise<{ draft: unknown; outbox: unknown }>((resolve, reject) => {
-    const request = indexedDB.open(databaseName, 3);
+    const request = indexedDB.open(databaseName, 4);
     request.onsuccess = () => {
       const database = request.result;
       const transaction = database.transaction(
@@ -216,5 +219,26 @@ describe("purchase outbox storage", () => {
     const records = await readUnscopedRecords();
     expect(records.draft).toMatchObject({ merchant: "所有者不明の下書き" });
     expect(records.outbox).toMatchObject({ input: { merchant: "所有者不明の送信待ち" } });
+  });
+});
+
+describe("import receipt draft storage", () => {
+  beforeEach(deleteDatabase);
+
+  it("家庭と原本ごとに編集差分を保存し、削除できる", async () => {
+    const draft = {
+      householdId: "household-1",
+      documentId: "document-1",
+      baseResult: { receipt: { merchant: "AI店舗" } },
+      editedResult: { receipt: { merchant: "修正店舗" } },
+    };
+    await saveImportReceiptDraft(draft);
+
+    expect(await loadImportReceiptDraft("household-1", "document-1")).toEqual(draft);
+    expect(await loadImportReceiptDraft("household-2", "document-1")).toBeUndefined();
+    expect(await loadImportReceiptDraft("household-1", "document-2")).toBeUndefined();
+
+    await deleteImportReceiptDraft("household-1", "document-1");
+    expect(await loadImportReceiptDraft("household-1", "document-1")).toBeUndefined();
   });
 });

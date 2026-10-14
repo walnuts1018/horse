@@ -13,12 +13,7 @@ import type {
   PurchaseAmountTarget,
   PurchasesQuery,
 } from "..";
-import type {
-  Purchase,
-  PurchaseCorrection,
-  PurchaseListFragment$data,
-  PurchaseOrigin,
-} from "../../../shared/api";
+import type { Purchase, PurchaseCorrection, PurchaseOrigin } from "../../../shared/api";
 
 import { getRelayEnvironment } from "../../../shared/api";
 import { isOneOf } from "../../../shared/lib";
@@ -134,7 +129,9 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
   useEffect(() => {
     activeRequestKey.current = requestKey;
   }, [requestKey]);
-  const [correctionPages, setCorrectionPages] = useState<Record<string, PurchaseCorrectionPageState>>({});
+  const [correctionPages, setCorrectionPages] = useState<
+    Record<string, PurchaseCorrectionPageState>
+  >({});
   const loadingCorrectionPages = useRef(new Set<string>());
   const purchases: Purchase[] = data.purchases.edges.map(({ node }) => {
     return {

@@ -1,8 +1,4 @@
-import type {
-  Purchase,
-  PurchaseHistoryQuery$data,
-  PurchaseOrigin,
-} from "../../../shared/api";
+import type { Purchase, PurchaseHistoryQuery$data, PurchaseOrigin } from "../../../shared/api";
 
 import { mapPurchaseItem } from "./map-purchase-item";
 

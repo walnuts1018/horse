@@ -1,4 +1,4 @@
-import { useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 
 import type { Region } from "./evidence-geometry";
 import type { EvidencePreviewController } from "./evidence-preview";
@@ -22,7 +22,6 @@ export function useDocumentEvidence({
   document,
   preview,
   setDocuments,
-  editedReceiptDocuments,
   refreshDocuments,
   markUnsaved,
   onError,
@@ -30,7 +29,6 @@ export function useDocumentEvidence({
   document: DocumentReview | undefined;
   preview: EvidencePreviewController;
   setDocuments: Dispatch<SetStateAction<DocumentReview[]>>;
-  editedReceiptDocuments: RefObject<Set<string>>;
   refreshDocuments: (silent?: boolean) => Promise<void>;
   markUnsaved: () => void;
   onError: (message: string) => void;
@@ -70,7 +68,6 @@ export function useDocumentEvidence({
         body: JSON.stringify({ crop: cropRegion }),
       });
       if (!response.ok) throw new Error(`範囲を再抽出できませんでした (${response.status})`);
-      editedReceiptDocuments.current.delete(document.id);
       const accepted = toJobStatus(await response.json());
       setDocuments((current) =>
         current.map((entry) =>

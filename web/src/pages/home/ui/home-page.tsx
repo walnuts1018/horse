@@ -3,10 +3,8 @@ import { BookOpen, ChevronRight, Plus, Upload, Wallet } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLazyLoadQuery } from "react-relay";
 
-import type { HomeDashboardQuery } from "../../../shared/api/__generated__/HomeDashboardQuery.graphql";
-
 import { useHouseholdPurchases } from "../../../entities/purchase";
-import { type Household, type Purchase } from "../../../shared/api";
+import { type Household, type HomeDashboardQuery, type Purchase } from "../../../shared/api";
 import { japanMonth } from "../../../shared/lib";
 import { EmptyState } from "../../../shared/ui";
 import { homeDashboardQuery } from "../api/home-summary";
@@ -190,7 +188,9 @@ export function HomePage({
         ) : (
           purchases
             .slice(0, 8)
-            .map((purchase) => <PurchaseRow key={purchase.id} purchase={purchase} />)
+            .map((purchase) => (
+              <PurchaseRow key={purchase.id} householdId={household.id} purchase={purchase} />
+            ))
         )}
       </section>
     </div>
@@ -237,9 +237,14 @@ function MiniBars({ dailySpending }: { dailySpending: HomeSummary["dailySpending
   );
 }
 
-function PurchaseRow({ purchase }: { purchase: Purchase }) {
+function PurchaseRow({ householdId, purchase }: { householdId: string; purchase: Purchase }) {
   return (
-    <div className="purchase-row">
+    <Link
+      className="purchase-row"
+      to="/households/$householdId/ledger"
+      params={{ householdId }}
+      search={{ purchaseId: purchase.id, recordMode: "purchases", viewMode: "purchases" }}
+    >
       <div className="merchant-icon">{purchase.merchant.slice(0, 1) || "買"}</div>
       <div className="purchase-description">
         <b>{purchase.merchant || "店舗未入力"}</b>
@@ -260,6 +265,6 @@ function PurchaseRow({ purchase }: { purchase: Purchase }) {
           })}
         </span>
       </div>
-    </div>
+    </Link>
   );
 }
