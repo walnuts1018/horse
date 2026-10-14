@@ -246,6 +246,7 @@ export function EditPurchaseItems({
   }, [clearAllocationUndoGroup, updateHistory, update]);
   const undo = useCallback(() => {
     clearAllocationUndoGroup();
+    setBulkAllocation(null);
     const transition = undoPurchaseEdit(historyRef.current, {
       items: draftRef.current.items,
       categoryId: draftRef.current.categoryId,
@@ -269,6 +270,7 @@ export function EditPurchaseItems({
   }, [clearAllocationUndoGroup, markDirty, updateHistory, update, merchant, copiedPurchase]);
   const redo = useCallback(() => {
     clearAllocationUndoGroup();
+    setBulkAllocation(null);
     const transition = redoPurchaseEdit(historyRef.current, {
       items: draftRef.current.items,
       categoryId: draftRef.current.categoryId,
@@ -595,11 +597,15 @@ export function EditPurchaseItems({
   };
   const selectedItems = draft.items.filter((item) => selectedItemKeys.has(item.key));
   const clearSelection = () => {
+    clearAllocationUndoGroup();
     setSelectedItemKeys(new Set());
+    setBulkAllocation(null);
     selectionAnchorKey.current = null;
     setMobileSelectionMode(false);
   };
   const changeSelection = (key: string, shiftKey: boolean) => {
+    clearAllocationUndoGroup();
+    setBulkAllocation(null);
     const currentIndex = draft.items.findIndex((item) => item.key === key);
     const anchorIndex = draft.items.findIndex((item) => item.key === selectionAnchorKey.current);
     if (shiftKey && anchorIndex >= 0 && currentIndex >= 0) {
@@ -618,29 +624,37 @@ export function EditPurchaseItems({
   };
   const applyBulkPatch = (
     patchForItem: (item: PurchaseDraftItem) => Partial<PurchaseDraftItem>,
+    allocationUndoKey?: string,
   ) => {
     if (!selectedItems.length) return;
     markDirty();
-    recordUndo({ items: draft.items });
+    if (allocationUndoKey) recordAllocationUndo(allocationUndoKey, { items: draft.items });
+    else recordUndo({ items: draft.items });
     const selectedKeys = new Set(selectedItems.map((item) => item.key));
     replaceItems(
       draft.items.map((item) =>
         selectedKeys.has(item.key) ? { ...item, ...patchForItem(item) } : item,
       ),
     );
-    clearSelection();
     setBulkCategory("");
-    setBulkAllocation(null);
   };
-  const applyBulkCategory = () => {
-    if (!bulkCategory) return;
-    const categoryId = bulkCategory === "__uncategorized" ? "" : bulkCategory;
+  const applyBulkCategory = (categoryValue: string) => {
+    setBulkCategory(categoryValue);
+    if (!categoryValue) return;
+    const categoryId = categoryValue === "__uncategorized" ? "" : categoryValue;
     if (categoryId && !isEnabledCategory(categoryId)) return;
+    if (!selectedItems.some((item) => item.categoryId !== categoryId)) return;
     applyBulkPatch(() => ({ categoryId }));
   };
-  const applyBulkAllocation = () => {
-    if (bulkAllocation === null) return;
-    applyBulkPatch(() => ({ allocations: bulkAllocation }));
+  const applyBulkAllocation = (allocations: PurchaseDraftItem["allocations"]) => {
+    setBulkAllocation(allocations);
+    if (
+      !selectedItems.some(
+        (item) => JSON.stringify(item.allocations) !== JSON.stringify(allocations),
+      )
+    )
+      return;
+    applyBulkPatch(() => ({ allocations }), "bulk-allocation");
   };
   const removeSelectedItems = () => {
     if (!selectedItems.length) return;
@@ -680,7 +694,10 @@ export function EditPurchaseItems({
           <span className={styles.selectionCount}>{selectedItems.length}品目を選択中</span>
           <label>
             <span>カテゴリ</span>
-            <select value={bulkCategory} onChange={(event) => setBulkCategory(event.target.value)}>
+            <select
+              value={bulkCategory}
+              onChange={(event) => applyBulkCategory(event.target.value)}
+            >
               <option value="">変更なし</option>
               <option value="__uncategorized">未分類</option>
               {enabledCategories.map((category) => (
@@ -690,28 +707,12 @@ export function EditPurchaseItems({
               ))}
             </select>
           </label>
-          <button
-            className="button button-soft"
-            type="button"
-            disabled={!bulkCategory}
-            onClick={applyBulkCategory}
-          >
-            カテゴリ変更
-          </button>
           <EditPurchaseItemAllocations
             allocations={bulkAllocation ?? []}
             defaultAllocations={defaultAllocations}
             pools={household.pools}
-            onChange={setBulkAllocation}
+            onChange={applyBulkAllocation}
           />
-          <button
-            className="button button-soft"
-            type="button"
-            disabled={bulkAllocation === null}
-            onClick={applyBulkAllocation}
-          >
-            負担変更
-          </button>
           <button className="button button-soft" type="button" onClick={removeSelectedItems}>
             削除
           </button>
