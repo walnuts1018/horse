@@ -16,7 +16,10 @@ import type { PurchaseDraftItem } from "../../../shared/lib";
 import { readProductSuggestions, type ProductSuggestion } from "../../../entities/product";
 import { type Household, type Purchase } from "../../../shared/api";
 import { parsePastedPurchaseItems } from "../model/pasted-purchase-items";
-import { productSuggestionsForQuery } from "../model/product-suggestions";
+import {
+  productSuggestionsForQuery,
+  type ProductSuggestionResponse,
+} from "../model/product-suggestions";
 import {
   emptyPurchaseEditHistory,
   recordPurchaseEdit,
@@ -82,11 +85,14 @@ export function EditPurchaseItems({
   const allocationUndoGroup = useRef<{ key: string; timer: number } | null>(null);
   const onChangeRef = useRef(onChange);
   const selectedProductVariantId = draft.selectedProductVariantId;
-  const [productSuggestionResponse, setProductSuggestionResponse] = useState<{
-    query: string;
-    suggestions: ProductSuggestion[];
-  } | null>(null);
-  const productSuggestions = productSuggestionsForQuery(draft.itemName, productSuggestionResponse);
+  const [productSuggestionResponse, setProductSuggestionResponse] =
+    useState<ProductSuggestionResponse<ProductSuggestion>>(null);
+  const productSuggestions = productSuggestionsForQuery(
+    householdId,
+    draft.itemName,
+    merchant,
+    productSuggestionResponse,
+  );
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const historyRef = useRef<PurchaseEditHistory>(emptyPurchaseEditHistory());
@@ -362,12 +368,22 @@ export function EditPurchaseItems({
       void readProductSuggestions(householdId, query, merchant.trim() || null, 6)
         .then((result) => {
           if (!active) return;
-          setProductSuggestionResponse({ query, suggestions: result });
+          setProductSuggestionResponse({
+            householdId,
+            query,
+            merchant: merchant.trim() || null,
+            suggestions: result,
+          });
           setActiveSuggestionIndex(-1);
         })
         .catch(() => {
           if (!active) return;
-          setProductSuggestionResponse({ query, suggestions: [] });
+          setProductSuggestionResponse({
+            householdId,
+            query,
+            merchant: merchant.trim() || null,
+            suggestions: [],
+          });
           setActiveSuggestionIndex(-1);
         });
     }, 220);
