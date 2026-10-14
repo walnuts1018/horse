@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { productSuggestionsForQuery } from "./product-suggestions";
+import type { ProductSuggestion } from "../../../entities/product";
+
+import { productSuggestionsForQuery, purchaseEntrySuggestions } from "./product-suggestions";
 
 describe("productSuggestionsForQuery", () => {
   it("returns suggestions only for the current trimmed query", () => {
@@ -34,5 +36,42 @@ describe("productSuggestionsForQuery", () => {
     };
 
     expect(productSuggestionsForQuery("household-1", "milk", null, response)).toEqual([exact]);
+  });
+
+  it("prioritizes historically confirmed products over purchase names and estimated catalog matches", () => {
+    const catalog = [
+      {
+        variant: { id: "confirmed-variant", name: "Whole milk" },
+        concept: { id: "confirmed-concept", name: "Milk" },
+        matchedName: "milk",
+        score: 100,
+      },
+      {
+        variant: { id: "estimated-variant", name: "Milk drink" },
+        concept: { id: "estimated-concept", name: "Milk drink" },
+        matchedName: "milk drink",
+        score: 75,
+      },
+    ] satisfies ProductSuggestion[];
+    const history = [
+      {
+        items: [
+          { name: "牛乳", productVariantId: "confirmed-variant", categoryId: "dairy" },
+          { name: "牛乳ドリンク", productVariantId: null, categoryId: null },
+          { name: "牛乳", productVariantId: "archived-variant", categoryId: "dairy" },
+        ],
+      },
+    ] satisfies Parameters<typeof purchaseEntrySuggestions>[0];
+
+    expect(purchaseEntrySuggestions(history, "牛乳", catalog)).toEqual([
+      {
+        kind: "confirmed",
+        name: "牛乳",
+        categoryId: "dairy",
+        candidate: catalog[0],
+      },
+      { kind: "history", name: "牛乳ドリンク" },
+      { kind: "catalog", candidate: catalog[1] },
+    ]);
   });
 });

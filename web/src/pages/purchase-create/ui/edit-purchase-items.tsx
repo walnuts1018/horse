@@ -17,6 +17,7 @@ import { readProductSuggestions, type ProductSuggestion } from "../../../entitie
 import { type Household, type Purchase } from "../../../shared/api";
 import { parsePastedPurchaseItems } from "../model/pasted-purchase-items";
 import {
+  purchaseEntrySuggestions,
   productSuggestionsForQuery,
   type ProductSuggestionResponse,
 } from "../model/product-suggestions";
@@ -97,6 +98,9 @@ export function EditPurchaseItems({
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const historyRef = useRef<PurchaseEditHistory>(emptyPurchaseEditHistory());
   const [selectedItemKeys, setSelectedItemKeys] = useState<Set<string>>(() => new Set());
+  const [copiedPrices, setCopiedPrices] = useState<
+    Map<string, { amount: string; occurredAt: string }>
+  >(() => new Map());
   const [mobileSelectionMode, setMobileSelectionMode] = useState(false);
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkAllocation, setBulkAllocation] = useState("");
@@ -296,6 +300,11 @@ export function EditPurchaseItems({
             }
           : {}),
       }));
+      setCopiedPrices(
+        new Map(
+          items.map((item) => [item.key, { amount: item.amount, occurredAt: purchase.occurredAt }]),
+        ),
+      );
       recordUndo({
         items: draftRef.current.items,
         categoryId: draftRef.current.categoryId,
@@ -393,18 +402,10 @@ export function EditPurchaseItems({
     };
   }, [householdId, draft.itemName, merchant]);
 
-  const suggestions = useMemo(() => {
-    const seen = new Set<string>();
-    return history
-      .flatMap((purchase) => purchase.items.map((item) => item.name))
-      .filter(
-        (name) =>
-          name.toLocaleLowerCase().includes(draft.itemName.trim().toLocaleLowerCase()) &&
-          !seen.has(name) &&
-          Boolean(seen.add(name)),
-      )
-      .slice(0, 4);
-  }, [history, draft.itemName]);
+  const suggestions = useMemo(
+    () => purchaseEntrySuggestions(history, draft.itemName, productSuggestions),
+    [history, draft.itemName, productSuggestions],
+  );
 
   const addItem = () => {
     const parsed = purchaseItemSchema.safeParse({ name: draft.itemName, amount: draft.itemAmount });
@@ -450,16 +451,35 @@ export function EditPurchaseItems({
     amountRef.current?.focus();
     setFocused("amount");
   };
+  const selectEntrySuggestion = (suggestion: (typeof suggestions)[number]) => {
+    if (suggestion.kind === "catalog") {
+      selectProductSuggestion(suggestion.candidate);
+      return;
+    }
+    if (suggestion.kind === "history") {
+      selectHistorySuggestion(suggestion.name);
+      return;
+    }
+    if (!productSuggestions.includes(suggestion.candidate)) return;
+    markDirty();
+    patchDraft({
+      itemName: suggestion.name,
+      selectedProductVariantId: suggestion.candidate.variant.id,
+      ...(isEnabledCategory(suggestion.categoryId) && !draft.categoryId
+        ? { categoryId: suggestion.categoryId }
+        : {}),
+    });
+    setProductSuggestionResponse(null);
+    amountRef.current?.focus();
+    setFocused("amount");
+  };
   const clearProductSelection = () => {
     markDirty();
     patchDraft({ selectedProductVariantId: "" });
     setFocused("name");
     nameRef.current?.focus();
   };
-  const visibleSuggestionCount =
-    productSuggestions.length > 0 && !selectedProductVariantId
-      ? productSuggestions.length
-      : suggestions.length;
+  const visibleSuggestionCount = selectedProductVariantId ? 0 : suggestions.length;
   const onNameKey = (event: KeyboardEvent<HTMLInputElement>) => {
     if (
       (event.key === "Escape" || event.key === "ArrowDown" || event.key === "ArrowUp") &&
@@ -488,13 +508,8 @@ export function EditPurchaseItems({
       !composing.current
     ) {
       event.preventDefault();
-      if (productSuggestions.length > 0 && !selectedProductVariantId) {
-        const candidate = productSuggestions.at(activeSuggestionIndex);
-        if (candidate) selectProductSuggestion(candidate);
-      } else {
-        const suggestion = suggestions[activeSuggestionIndex];
-        if (suggestion) selectHistorySuggestion(suggestion);
-      }
+      const suggestion = suggestions[activeSuggestionIndex];
+      selectEntrySuggestion(suggestion);
       return;
     }
     if (event.key === "Enter" && !event.nativeEvent.isComposing && !composing.current) {
@@ -613,6 +628,14 @@ export function EditPurchaseItems({
     if (allocationChanged) recordAllocationUndo(key, { items: draft.items });
     else if (categoryChanged) recordUndo({ items: draft.items });
     markDirty();
+    if (patch.amount !== undefined) {
+      setCopiedPrices((current) => {
+        if (!current.has(key)) return current;
+        const next = new Map(current);
+        next.delete(key);
+        return next;
+      });
+    }
     update(
       {
         ...draftRef.current,
@@ -773,6 +796,7 @@ export function EditPurchaseItems({
       )}
       <PurchaseItemsGrid
         items={draft.items}
+        copiedPrices={copiedPrices}
         household={household}
         defaultAllocations={defaultAllocations}
         enabledCategories={enabledCategories}
@@ -791,7 +815,6 @@ export function EditPurchaseItems({
         categoryId={effectiveCategoryId}
         categories={enabledCategories}
         suggestions={suggestions}
-        productSuggestions={productSuggestions}
         selectedProductVariantId={selectedProductVariantId}
         activeSuggestionIndex={activeSuggestionIndex}
         suggestionsDismissed={suggestionsDismissed}
@@ -821,8 +844,7 @@ export function EditPurchaseItems({
         onCompositionEnd={() => {
           composing.current = false;
         }}
-        onSelectHistorySuggestion={selectHistorySuggestion}
-        onSelectProductSuggestion={selectProductSuggestion}
+        onSelectSuggestion={selectEntrySuggestion}
         onClearProductSelection={clearProductSelection}
         onSuggestionHover={setActiveSuggestionIndex}
         onAmountChange={(amount) => {

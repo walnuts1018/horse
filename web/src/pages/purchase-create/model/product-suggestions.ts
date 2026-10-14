@@ -1,3 +1,6 @@
+import type { ProductSuggestion } from "../../../entities/product";
+import type { Purchase } from "../../../shared/api";
+
 export type ProductSuggestionResponse<
   T extends { matchedName: string } = { matchedName: string },
 > = {
@@ -6,6 +9,73 @@ export type ProductSuggestionResponse<
   merchant: string | null;
   suggestions: T[];
 } | null;
+
+export type PurchaseEntrySuggestion =
+  | {
+      kind: "confirmed";
+      name: string;
+      categoryId: string | null;
+      candidate: ProductSuggestion;
+    }
+  | { kind: "history"; name: string }
+  | { kind: "catalog"; candidate: ProductSuggestion };
+
+type PurchaseHistoryItem = Pick<
+  Purchase["items"][number],
+  "name" | "productVariantId" | "categoryId"
+>;
+type PurchaseHistory = Array<{ items: PurchaseHistoryItem[] }>;
+
+export function purchaseEntrySuggestions(
+  history: PurchaseHistory,
+  query: string,
+  catalog: ProductSuggestion[],
+): PurchaseEntrySuggestion[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (!normalizedQuery) return [];
+
+  const catalogByVariant = new Map(catalog.map((candidate) => [candidate.variant.id, candidate]));
+  const confirmed: PurchaseEntrySuggestion[] = [];
+  const confirmedVariants = new Set<string>();
+  const confirmedNames = new Set<string>();
+  const historyNames = new Set<string>();
+  for (const item of history.flatMap((purchase) => purchase.items)) {
+    const normalizedName = item.name.toLocaleLowerCase();
+    if (!normalizedName.includes(normalizedQuery)) continue;
+    const candidate = item.productVariantId
+      ? catalogByVariant.get(item.productVariantId)
+      : undefined;
+    if (
+      candidate &&
+      item.productVariantId &&
+      !confirmedVariants.has(item.productVariantId) &&
+      confirmed.length < 4
+    ) {
+      confirmedVariants.add(item.productVariantId);
+      confirmedNames.add(normalizedName);
+      confirmed.push({
+        kind: "confirmed",
+        name: item.name,
+        categoryId: item.categoryId ?? null,
+        candidate,
+      });
+    } else if (!historyNames.has(normalizedName)) {
+      historyNames.add(normalizedName);
+    }
+  }
+
+  const names = [
+    ...confirmed,
+    ...[...historyNames]
+      .filter((name) => !confirmedNames.has(name))
+      .slice(0, 4)
+      .map((name) => ({ kind: "history" as const, name })),
+  ];
+  const catalogSuggestions = catalog
+    .filter((candidate) => !confirmedVariants.has(candidate.variant.id))
+    .map((candidate) => ({ kind: "catalog" as const, candidate }));
+  return [...names, ...catalogSuggestions];
+}
 
 export function productSuggestionsForQuery<
   T extends { matchedName: string } = { matchedName: string },

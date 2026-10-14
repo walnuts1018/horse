@@ -202,22 +202,25 @@ export function ReceiptReview({
       [selectedDocument.id]: reason,
     }));
   };
+  const focusReceiptItem = (index: number) => {
+    const item = receiptItems[index];
+    const itemKey = item.key ?? `item-${index}`;
+    const targetId = `receipt-review-item-${encodeURIComponent(itemKey)}`;
+    const targetIndex = reviewTargets.findIndex((target) => target.elementId === targetId);
+    if (targetIndex >= 0) setReviewTargetIndex(targetIndex);
+    selectReceiptEvidenceItem(selectedDocument.id, {
+      itemKey,
+      index,
+      focusEditor: true,
+    });
+    document.getElementById(targetId)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    itemNameInputs.current.get(itemKey)?.focus({ preventScroll: true });
+  };
   const navigateToIssue = (issue: string) => {
     const itemNumber = issue.match(/品目\s*(\d+)/)?.[1];
     const itemIndex = itemNumber ? Number(itemNumber) - 1 : -1;
     if (itemIndex >= 0 && itemIndex < receiptItems.length) {
-      const item = receiptItems[itemIndex];
-      const itemKey = item.key ?? `item-${itemIndex}`;
-      const targetId = `receipt-review-item-${encodeURIComponent(itemKey)}`;
-      const targetIndex = reviewTargets.findIndex((target) => target.elementId === targetId);
-      if (targetIndex >= 0) setReviewTargetIndex(targetIndex);
-      selectReceiptEvidenceItem(selectedDocument.id, {
-        itemKey,
-        index: itemIndex,
-        focusEditor: true,
-      });
-      document.getElementById(targetId)?.scrollIntoView({ block: "center", behavior: "smooth" });
-      itemNameInputs.current.get(itemKey)?.focus({ preventScroll: true });
+      focusReceiptItem(itemIndex);
       return;
     }
 
@@ -876,9 +879,7 @@ export function ReceiptReview({
                         className="candidate-difference-jump"
                         type="button"
                         onClick={() => {
-                          document
-                            .getElementById(`receipt-review-item-${differences[0].index}`)
-                            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                          focusReceiptItem(differences[0].index);
                         }}
                       >
                         差額品目へ

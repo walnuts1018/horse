@@ -75,6 +75,7 @@ function PurchaseCreatePageContent({
   const markUnsavedRef = useRef<() => void>(() => {});
   const markUnsaved = useCallback(() => markUnsavedRef.current(), []);
   const [copiedPurchase, setCopiedPurchase] = useState<Purchase | null>(null);
+  const [copiedAt, setCopiedAt] = useState<number | null>(null);
   const outbox = usePurchaseOutbox(memberId, household.id);
   const householdOutbox = outbox.entries.filter(
     (entry) => entry.input.householdId === household.id,
@@ -276,6 +277,7 @@ function PurchaseCreatePageContent({
     itemsCommands.current?.copy(purchase);
     updateMerchant(purchase.merchant, false, true);
     setCopiedPurchase({ ...purchase });
+    setCopiedAt(Date.now());
     setMessage("");
   };
   if (!storageReady)
@@ -306,6 +308,7 @@ function PurchaseCreatePageContent({
         recentMerchants={recentMerchants}
         recentPurchases={recentPurchases}
         copiedPurchase={copiedPurchase}
+        copiedAt={copiedAt}
         classNames={{ details: styles.details, history: styles.history }}
         onMerchantChange={(value) => {
           updateMerchant(value, recentMerchants.includes(value));

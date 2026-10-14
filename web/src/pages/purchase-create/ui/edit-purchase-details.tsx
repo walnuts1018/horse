@@ -22,6 +22,7 @@ export function EditPurchaseDetails({
   recentMerchants,
   recentPurchases,
   copiedPurchase,
+  copiedAt,
   classNames,
   onMerchantChange,
   onOccurredAtChange,
@@ -35,6 +36,7 @@ export function EditPurchaseDetails({
   recentMerchants: string[];
   recentPurchases: Purchase[];
   copiedPurchase: Purchase | null;
+  copiedAt: number | null;
   classNames: { details: string; history: string };
   onMerchantChange: (value: string) => void;
   onOccurredAtChange: (value: string) => void;
@@ -46,6 +48,10 @@ export function EditPurchaseDetails({
     () => indexRecentPurchasesByMerchant(recentPurchases),
     [recentPurchases],
   );
+  const copiedPurchaseAgeInDays =
+    copiedPurchase && copiedAt !== null
+      ? Math.floor((copiedAt - new Date(copiedPurchase.occurredAt).getTime()) / 86_400_000)
+      : -1;
   const merchantPurchase = recentPurchasesByMerchant.get(purchaseMerchantKey(merchant));
   const setDate = (daysAgo: number) => {
     const date = new Date();
@@ -150,7 +156,8 @@ export function EditPurchaseDetails({
               {copiedPurchase && (
                 <output>
                   {copiedPurchase.merchant || "店名未入力"}
-                  の品目と前回価格をコピーしました。価格、日時、決済元を確認してください。
+                  の品目をコピーしました。前回価格は各品目に表示しています。
+                  {copiedPurchaseAgeInDays >= 30 && " 前回購入から30日以上経過しています。"}
                 </output>
               )}
             </div>

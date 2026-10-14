@@ -2,8 +2,8 @@ import type { ClipboardEvent, KeyboardEvent, RefObject } from "react";
 
 import { Plus, Search } from "lucide-react";
 
-import type { ProductSuggestion } from "../../../entities/product";
 import type { Household } from "../../../shared/api";
+import type { PurchaseEntrySuggestion } from "../model/product-suggestions";
 
 export function PurchaseItemEntry({
   itemName,
@@ -11,7 +11,6 @@ export function PurchaseItemEntry({
   categoryId,
   categories,
   suggestions,
-  productSuggestions,
   selectedProductVariantId,
   activeSuggestionIndex,
   suggestionsDismissed,
@@ -26,8 +25,7 @@ export function PurchaseItemEntry({
   onPaste,
   onCompositionStart,
   onCompositionEnd,
-  onSelectHistorySuggestion,
-  onSelectProductSuggestion,
+  onSelectSuggestion,
   onClearProductSelection,
   onSuggestionHover,
   onAmountChange,
@@ -42,8 +40,7 @@ export function PurchaseItemEntry({
   itemAmount: string;
   categoryId: string;
   categories: Household["categories"];
-  suggestions: string[];
-  productSuggestions: ProductSuggestion[];
+  suggestions: PurchaseEntrySuggestion[];
   selectedProductVariantId: string;
   activeSuggestionIndex: number;
   suggestionsDismissed: boolean;
@@ -58,8 +55,7 @@ export function PurchaseItemEntry({
   onPaste: (event: ClipboardEvent<HTMLInputElement>) => void;
   onCompositionStart: () => void;
   onCompositionEnd: () => void;
-  onSelectHistorySuggestion: (name: string) => void;
-  onSelectProductSuggestion: (candidate: ProductSuggestion) => void;
+  onSelectSuggestion: (suggestion: PurchaseEntrySuggestion) => void;
   onClearProductSelection: () => void;
   onSuggestionHover: (index: number) => void;
   onAmountChange: (amount: string) => void;
@@ -70,10 +66,7 @@ export function PurchaseItemEntry({
   onAdd: () => void;
   invalidEntryField: "name" | "amount" | null;
 }) {
-  const visibleSuggestionCount =
-    productSuggestions.length > 0 && !selectedProductVariantId
-      ? productSuggestions.length
-      : suggestions.length;
+  const visibleSuggestionCount = selectedProductVariantId ? 0 : suggestions.length;
 
   return (
     <>
@@ -113,55 +106,48 @@ export function PurchaseItemEntry({
           {focused === "name" &&
             !suggestionsDismissed &&
             suggestions.length > 0 &&
-            productSuggestions.length === 0 && (
-              <div
-                className="suggestions"
-                id="purchase-item-suggestions"
-                aria-label="購入履歴の商品候補"
-              >
-                {suggestions.map((name, index) => (
-                  <button
-                    type="button"
-                    key={name}
-                    id={`purchase-item-suggestion-${index}`}
-                    aria-current={activeSuggestionIndex === index}
-                    style={{ background: activeSuggestionIndex === index ? "#f3f7f3" : undefined }}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onMouseEnter={() => onSuggestionHover(index)}
-                    onClick={() => onSelectHistorySuggestion(name)}
-                  >
-                    <Search size={13} />
-                    {name}
-                    <span>購入履歴</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          {focused === "name" &&
-            !suggestionsDismissed &&
-            productSuggestions.length > 0 &&
             !selectedProductVariantId && (
               <div
                 className="suggestions product-suggestions"
                 id="purchase-item-suggestions"
-                aria-label="商品候補"
+                aria-label="確認済み商品、購入履歴、推定商品候補"
               >
-                {productSuggestions.map((candidate, index) => (
+                {suggestions.map((suggestion, index) => (
                   <button
                     type="button"
-                    key={candidate.variant.id}
+                    key={
+                      suggestion.kind === "catalog" || suggestion.kind === "confirmed"
+                        ? suggestion.candidate.variant.id
+                        : `${suggestion.kind}-${suggestion.name}`
+                    }
                     id={`purchase-item-suggestion-${index}`}
                     aria-current={activeSuggestionIndex === index}
                     style={{ background: activeSuggestionIndex === index ? "#f3f7f3" : undefined }}
                     onMouseDown={(event) => event.preventDefault()}
                     onMouseEnter={() => onSuggestionHover(index)}
-                    onClick={() => onSelectProductSuggestion(candidate)}
+                    onClick={() => onSelectSuggestion(suggestion)}
                   >
                     <Search size={13} />
-                    <span>{candidate.matchedName}</span>
-                    <small>
-                      {candidate.concept.name} · {candidate.variant.name}
-                    </small>
+                    {suggestion.kind === "catalog" ? (
+                      <>
+                        <span>{suggestion.candidate.matchedName}</span>
+                        <small>
+                          {suggestion.candidate.concept.name} · {suggestion.candidate.variant.name}
+                        </small>
+                        <span>推定候補</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{suggestion.name}</span>
+                        {suggestion.kind === "confirmed" && (
+                          <small>
+                            {suggestion.candidate.concept.name} ·{" "}
+                            {suggestion.candidate.variant.name}
+                          </small>
+                        )}
+                        <span>{suggestion.kind === "confirmed" ? "確認済み商品" : "購入履歴"}</span>
+                      </>
+                    )}
                   </button>
                 ))}
               </div>

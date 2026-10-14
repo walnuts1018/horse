@@ -10,6 +10,7 @@ import styles from "./edit-purchase-items.module.css";
 
 export function PurchaseItemsGrid({
   items,
+  copiedPrices,
   household,
   defaultAllocations,
   enabledCategories,
@@ -23,6 +24,7 @@ export function PurchaseItemsGrid({
   onRemove,
 }: {
   items: PurchaseDraftItem[];
+  copiedPrices: ReadonlyMap<string, { amount: string; occurredAt: string }>;
   household: Household;
   defaultAllocations: PurchaseDraftItem["allocations"];
   enabledCategories: Household["categories"];
@@ -54,100 +56,111 @@ export function PurchaseItemsGrid({
         className={`item-list ${classNames.itemList} ${styles.itemList}${mobileSelectionMode ? ` ${styles.mobileSelectionMode}` : ""}`}
         ref={gridRef}
       >
-        {items.map((item, index) => (
-          <div className={`item-entry ${styles.itemEntry}`} key={item.key}>
-            <div className="item-edit-row">
-              <span className={`item-index ${styles.itemIndex}`}>
+        {items.map((item, index) => {
+          const copiedPrice = copiedPrices.get(item.key);
+          return (
+            <div className={`item-entry ${styles.itemEntry}`} key={item.key}>
+              {copiedPrice?.amount === item.amount && (
+                <span className={styles.copiedPrice}>
+                  前回価格 ·{" "}
+                  {new Date(copiedPrice.occurredAt).toLocaleDateString("ja-JP", {
+                    timeZone: "Asia/Tokyo",
+                  })}
+                </span>
+              )}
+              <div className="item-edit-row">
+                <span className={`item-index ${styles.itemIndex}`}>
+                  <input
+                    className={styles.selectionCheckbox}
+                    type="checkbox"
+                    aria-label={`${item.name || "品目"}を選択`}
+                    checked={selectedKeys.has(item.key)}
+                    onClick={(event) => {
+                      selectionShiftKey.current = event.shiftKey;
+                    }}
+                    onChange={() => {
+                      onSelectionChange(item.key, selectionShiftKey.current);
+                      selectionShiftKey.current = false;
+                    }}
+                  />
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                </span>
                 <input
-                  className={styles.selectionCheckbox}
-                  type="checkbox"
-                  aria-label={`${item.name || "品目"}を選択`}
-                  checked={selectedKeys.has(item.key)}
-                  onClick={(event) => {
-                    selectionShiftKey.current = event.shiftKey;
-                  }}
-                  onChange={() => {
-                    onSelectionChange(item.key, selectionShiftKey.current);
-                    selectionShiftKey.current = false;
-                  }}
-                />
-                <span>{String(index + 1).padStart(2, "0")}</span>
-              </span>
-              <input
-                className={styles.selectionName}
-                aria-label="品名"
-                data-grid-row={index}
-                data-grid-column="name"
-                value={item.name}
-                onChange={(event) => onPatch(item.key, { name: event.target.value })}
-                onKeyDown={(event) => onKeyDown(event, index, "name")}
-              />
-              <div className="yen-input">
-                <span>¥</span>
-                <input
-                  aria-label="金額"
+                  className={styles.selectionName}
+                  aria-label="品名"
                   data-grid-row={index}
-                  data-grid-column="amount"
-                  inputMode="numeric"
-                  value={item.amount}
-                  onChange={(event) =>
-                    onPatch(item.key, { amount: event.target.value.replace(/\D/g, "") })
-                  }
-                  onKeyDown={(event) => onKeyDown(event, index, "amount")}
+                  data-grid-column="name"
+                  value={item.name}
+                  onChange={(event) => onPatch(item.key, { name: event.target.value })}
+                  onKeyDown={(event) => onKeyDown(event, index, "name")}
                 />
+                <div className="yen-input">
+                  <span>¥</span>
+                  <input
+                    aria-label="金額"
+                    data-grid-row={index}
+                    data-grid-column="amount"
+                    inputMode="numeric"
+                    value={item.amount}
+                    onChange={(event) =>
+                      onPatch(item.key, { amount: event.target.value.replace(/\D/g, "") })
+                    }
+                    onKeyDown={(event) => onKeyDown(event, index, "amount")}
+                  />
+                </div>
+                <select
+                  className={styles.selectionCategory}
+                  aria-label="カテゴリ"
+                  value={item.categoryId}
+                  onChange={(event) => onPatch(item.key, { categoryId: event.target.value })}
+                >
+                  <option value="">未分類</option>
+                  {enabledCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                <EditPurchaseItemAllocations
+                  allocations={item.allocations}
+                  defaultAllocations={defaultAllocations}
+                  pools={household.pools}
+                  onChange={(allocations) => onPatch(item.key, { allocations })}
+                />
+                <button
+                  type="button"
+                  className="row-remove"
+                  aria-label="品目を削除"
+                  onClick={() => onRemove(item.key)}
+                >
+                  <X size={15} />
+                </button>
               </div>
-              <select
-                className={styles.selectionCategory}
-                aria-label="カテゴリ"
-                value={item.categoryId}
-                onChange={(event) => onPatch(item.key, { categoryId: event.target.value })}
-              >
-                <option value="">未分類</option>
-                {enabledCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-              <EditPurchaseItemAllocations
-                allocations={item.allocations}
-                defaultAllocations={defaultAllocations}
-                pools={household.pools}
-                onChange={(allocations) => onPatch(item.key, { allocations })}
-              />
-              <button
-                type="button"
-                className="row-remove"
-                aria-label="品目を削除"
-                onClick={() => onRemove(item.key)}
-              >
-                <X size={15} />
-              </button>
+              <details className="item-measure-details">
+                <summary>数量</summary>
+                <label>
+                  数量
+                  <input
+                    aria-label={`${item.name}の数量`}
+                    value={item.quantity ?? ""}
+                    onChange={(event) => onPatch(item.key, { quantity: event.target.value })}
+                    placeholder="1、1/2"
+                  />
+                </label>
+                <label>
+                  単位
+                  <input
+                    aria-label={`${item.name}の数量単位`}
+                    value={item.quantityUnit ?? ""}
+                    onChange={(event) => onPatch(item.key, { quantityUnit: event.target.value })}
+                    placeholder="個、g、ml"
+                    maxLength={32}
+                  />
+                </label>
+              </details>
             </div>
-            <details className="item-measure-details">
-              <summary>数量</summary>
-              <label>
-                数量
-                <input
-                  aria-label={`${item.name}の数量`}
-                  value={item.quantity ?? ""}
-                  onChange={(event) => onPatch(item.key, { quantity: event.target.value })}
-                  placeholder="1、1/2"
-                />
-              </label>
-              <label>
-                単位
-                <input
-                  aria-label={`${item.name}の数量単位`}
-                  value={item.quantityUnit ?? ""}
-                  onChange={(event) => onPatch(item.key, { quantityUnit: event.target.value })}
-                  placeholder="個、g、ml"
-                  maxLength={32}
-                />
-              </label>
-            </details>
-          </div>
-        ))}
+          );
+        })}
         {items.length === 0 && (
           <div className="empty-items">
             <ReceiptJapaneseYen size={24} />

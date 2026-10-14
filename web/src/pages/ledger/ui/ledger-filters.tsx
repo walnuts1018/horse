@@ -8,6 +8,24 @@ import { isOneOf } from "../../../shared/lib";
 
 import styles from "./ledger-search.module.css";
 
+const selectionFilterKeys = [
+  "recordMode",
+  "viewMode",
+  "search",
+  "fromMonth",
+  "toMonth",
+  "categoryFilter",
+  "poolFilter",
+  "accountFilter",
+  "tagFilter",
+  "originFilter",
+  "evidenceFilter",
+  "observationSourceFilter",
+  "observationStateFilter",
+  "minimumAmount",
+  "maximumAmount",
+] as const satisfies ReadonlyArray<keyof LedgerSearch>;
+
 export function LedgerFilters({
   household,
   filters,
@@ -23,7 +41,12 @@ export function LedgerFilters({
   onFiltersChange: (updates: Partial<LedgerSearch>) => void;
   onClearSelection: () => void;
 }) {
-  const updateFilters = (updates: Partial<LedgerSearch>) => onFiltersChange(updates);
+  const updateFilters = (updates: Partial<LedgerSearch>) => {
+    if (selectionFilterKeys.some((key) => key in updates && filters[key] !== updates[key])) {
+      onClearSelection();
+    }
+    onFiltersChange(updates);
+  };
   const [searchInput, setSearchInput] = useState({ source: filters.search, value: filters.search });
   const searchDraft = searchInput.source === filters.search ? searchInput.value : filters.search;
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

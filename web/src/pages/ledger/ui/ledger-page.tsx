@@ -303,7 +303,10 @@ export function LedgerPage({
               : `${filtered.length}件表示 · ${purchases.length}/${totalCount}件読込`
         }
         onFiltersChange={onFiltersChange}
-        onClearSelection={ledgerItemBulkEdit.clearSelection}
+        onClearSelection={() => {
+          ledgerItemBulkEdit.clearSelection();
+          purchaseBulkEdit.clearSelection();
+        }}
       />
       <PurchaseBulkActions
         accounts={household.accounts}

@@ -50,6 +50,13 @@
   font-weight: 600;
 }
 
+.copiedPrice {
+  display: block;
+  margin: 2px 8px 0;
+  color: #68776d;
+  font-size: 12px;
+}
+
 .itemList .itemIndex {
   display: flex;
   align-items: center;
