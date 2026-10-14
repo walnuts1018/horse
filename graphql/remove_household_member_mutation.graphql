@@ -1,7 +1,5 @@
 extend type Mutation {
-  removeHouseholdMember(
-    input: RemoveHouseholdMemberInput!
-  ): RemoveHouseholdMemberResult!
+  removeHouseholdMember(input: RemoveHouseholdMemberInput!): RemoveHouseholdMemberResult!
 }
 
 input RemoveHouseholdMemberInput {
@@ -9,9 +7,7 @@ input RemoveHouseholdMemberInput {
   memberId: ID! @nodeID(of: "Member")
 }
 
-union RemoveHouseholdMemberResult =
-  | RemoveHouseholdMemberSuccess
-  | RemoveHouseholdMemberUserError
+union RemoveHouseholdMemberResult = RemoveHouseholdMemberSuccess | RemoveHouseholdMemberUserError
 
 type RemoveHouseholdMemberSuccess {
   householdId: ID! @goField(forceResolver: true)

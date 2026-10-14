@@ -188,6 +188,10 @@ type SetProductAliasResult interface {
 	IsSetProductAliasResult()
 }
 
+type TransferHouseholdOwnerResult interface {
+	IsTransferHouseholdOwnerResult()
+}
+
 type TransferLedgerEntry interface {
 	IsLedgerEntry()
 	IsNode()
@@ -1989,6 +1993,28 @@ type TagEdge struct {
 	Cursor string `json:"cursor"`
 	Node   *Tag   `json:"node"`
 }
+
+type TransferHouseholdOwnerInput struct {
+	HouseholdID string `json:"householdId"`
+	NewOwnerID  string `json:"newOwnerId"`
+}
+
+type TransferHouseholdOwnerSuccess struct {
+	HouseholdID string `json:"householdId"`
+}
+
+func (TransferHouseholdOwnerSuccess) IsTransferHouseholdOwnerResult() {}
+
+type TransferHouseholdOwnerUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (TransferHouseholdOwnerUserError) IsTransferHouseholdOwnerResult() {}
+
+func (TransferHouseholdOwnerUserError) IsMutationError()                {}
+func (this TransferHouseholdOwnerUserError) GetCode() MutationErrorCode { return this.Code }
+func (this TransferHouseholdOwnerUserError) GetMessage() string         { return this.Message }
 
 type UnmatchedObservationConnection struct {
 	Edges      []*UnmatchedObservationEdge `json:"edges"`

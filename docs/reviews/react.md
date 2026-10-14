@@ -14,7 +14,7 @@
 
 高優先度
 
-# 3
+# 2
 
 不整合・競合・データ損失リスク
 
@@ -34,7 +34,6 @@
 
 | 対象 | 問題と改善方針 |
 | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| [取り込み L44–128](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/pages/imports/ui/imports-page.tsx#L44-L128) | URL、フィルター state、フィルター下書きの三重管理 |
 | [購入履歴 L116–195](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/entities/purchase/api/use-household-purchases.ts#L116-L195) | 履歴の全件ロードと訂正履歴の追加取得がクライアントの Effect に依存 |
 | [Relay Environment L437–550](https://github.com/walnuts1018/horse/blob/8e1fbcac/web/src/shared/api/household.ts#L437-L550) | SSR 時にモジュールスコープの singleton を使用する構造。サーバーでデータ取得する場合はリクエスト間の分離が必要 |
 

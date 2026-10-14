@@ -89,6 +89,47 @@ func TestHouseholdMemberOffboarding(t *testing.T) {
 	if result, ok := unauthorized.(*model.RemoveHouseholdMemberUserError); !ok || result.Code != model.MutationErrorCodeNotFound {
 		t.Fatalf("non-owner removal = %#v, want NOT_FOUND", unauthorized)
 	}
+	transferred, err := resolver.TransferHouseholdOwner(ownerContext, model.TransferHouseholdOwnerInput{HouseholdID: household.ID, NewOwnerID: memberID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := transferred.(*model.TransferHouseholdOwnerSuccess); !ok {
+		t.Fatalf("owner transfer = %T, want success", transferred)
+	}
+	for memberID, wantRole := range map[string]string{ownerID: "MEMBER", memberID: "OWNER"} {
+		memberUUID := generatedUUID(memberID)
+		membership, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+			models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+			models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberUUID)),
+		))).One(ctx, bobpgx.NewPool(db))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if membership.Role != wantRole {
+			t.Errorf("member %s role = %q, want %q", memberID, membership.Role, wantRole)
+		}
+	}
+	unauthorizedTransfer, err := resolver.TransferHouseholdOwner(ownerContext, model.TransferHouseholdOwnerInput{HouseholdID: household.ID, NewOwnerID: secondOwnerID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, ok := unauthorizedTransfer.(*model.TransferHouseholdOwnerUserError); !ok || result.Code != model.MutationErrorCodeNotFound {
+		t.Fatalf("non-owner transfer = %#v, want NOT_FOUND", unauthorizedTransfer)
+	}
+	transferredAgain, err := resolver.TransferHouseholdOwner(memberContext, model.TransferHouseholdOwnerInput{HouseholdID: household.ID, NewOwnerID: secondOwnerID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := transferredAgain.(*model.TransferHouseholdOwnerSuccess); !ok {
+		t.Fatalf("transfer to existing owner = %T, want success", transferredAgain)
+	}
+	selfTransfer, err := resolver.TransferHouseholdOwner(secondOwnerContext, model.TransferHouseholdOwnerInput{HouseholdID: household.ID, NewOwnerID: secondOwnerID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, ok := selfTransfer.(*model.TransferHouseholdOwnerUserError); !ok || result.Code != model.MutationErrorCodeConflict {
+		t.Fatalf("self transfer = %#v, want CONFLICT", selfTransfer)
+	}
 	leaveMember, err := resolver.LeaveHousehold(initialMemberContext, model.LeaveHouseholdInput{HouseholdID: household.ID})
 	if err != nil {
 		t.Fatal(err)
@@ -146,8 +187,15 @@ func TestHouseholdMemberOffboarding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 1 || events[0].Type != "household.member.removed" {
-		t.Fatalf("offboarding events = %#v, want member removal event", events)
+	if len(events) != 2 {
+		t.Fatalf("member events = %#v, want owner transfer and removal events", events)
+	}
+	seenEvents := map[string]bool{}
+	for _, event := range events {
+		seenEvents[event.Type] = true
+	}
+	if !seenEvents["household.owner.transferred"] || !seenEvents["household.member.removed"] {
+		t.Fatalf("member events = %#v, want owner transfer and removal events", events)
 	}
 
 }

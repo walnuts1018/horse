@@ -80,6 +80,7 @@ type ResolverRoot interface {
 	SharedPool() SharedPoolResolver
 	Subscription() SubscriptionResolver
 	Tag() TagResolver
+	TransferHouseholdOwnerSuccess() TransferHouseholdOwnerSuccessResolver
 	UnconfiguredPersonalPool() UnconfiguredPersonalPoolResolver
 	UnconfiguredSharedPool() UnconfiguredSharedPoolResolver
 	UnmatchedObservation() UnmatchedObservationResolver
@@ -689,6 +690,7 @@ type ComplexityRoot struct {
 		SetFundingSchedule           func(childComplexity int, input model.SetFundingScheduleInput) int
 		SetPoolFundingRule           func(childComplexity int, input model.SetPoolFundingRuleInput) int
 		SetProductAlias              func(childComplexity int, input model.SetProductAliasInput) int
+		TransferHouseholdOwner       func(childComplexity int, input model.TransferHouseholdOwnerInput) int
 		UpdateBudget                 func(childComplexity int, input model.UpdateBudgetInput) int
 		UpdatePurchase               func(childComplexity int, input model.UpdatePurchaseInput) int
 		UpdatePurchaseItem           func(childComplexity int, input model.UpdatePurchaseItemInput) int
@@ -1152,6 +1154,15 @@ type ComplexityRoot struct {
 		Node   func(childComplexity int) int
 	}
 
+	TransferHouseholdOwnerSuccess struct {
+		HouseholdID func(childComplexity int) int
+	}
+
+	TransferHouseholdOwnerUserError struct {
+		Code    func(childComplexity int) int
+		Message func(childComplexity int) int
+	}
+
 	UnconfiguredPersonalPool struct {
 		DefaultShareWeight func(childComplexity int) int
 		FundingRuleVersion func(childComplexity int) int
@@ -1393,6 +1404,7 @@ type MutationResolver interface {
 	SetFundingSchedule(ctx context.Context, input model.SetFundingScheduleInput) (model.SetFundingScheduleResult, error)
 	SetPoolFundingRule(ctx context.Context, input model.SetPoolFundingRuleInput) (model.SetPoolFundingRuleResult, error)
 	SetProductAlias(ctx context.Context, input model.SetProductAliasInput) (model.SetProductAliasResult, error)
+	TransferHouseholdOwner(ctx context.Context, input model.TransferHouseholdOwnerInput) (model.TransferHouseholdOwnerResult, error)
 	UpdateBudget(ctx context.Context, input model.UpdateBudgetInput) (model.UpdateBudgetResult, error)
 	UpdatePurchaseItem(ctx context.Context, input model.UpdatePurchaseItemInput) (model.UpdatePurchaseItemResult, error)
 	UpdatePurchase(ctx context.Context, input model.UpdatePurchaseInput) (model.UpdatePurchaseResult, error)
@@ -1524,6 +1536,9 @@ type SubscriptionResolver interface {
 type TagResolver interface {
 	ID(ctx context.Context, obj *model.Tag) (string, error)
 	HouseholdID(ctx context.Context, obj *model.Tag) (string, error)
+}
+type TransferHouseholdOwnerSuccessResolver interface {
+	HouseholdID(ctx context.Context, obj *model.TransferHouseholdOwnerSuccess) (string, error)
 }
 type UnconfiguredPersonalPoolResolver interface {
 	ID(ctx context.Context, obj *model.UnconfiguredPersonalPool) (string, error)
@@ -3757,6 +3772,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Mutation.SetProductAlias(childComplexity, args["input"].(model.SetProductAliasInput)), true
+	case "Mutation.transferHouseholdOwner":
+		if e.ComplexityRoot.Mutation.TransferHouseholdOwner == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_transferHouseholdOwner_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Mutation.TransferHouseholdOwner(childComplexity, args["input"].(model.TransferHouseholdOwnerInput)), true
 	case "Mutation.updateBudget":
 		if e.ComplexityRoot.Mutation.UpdateBudget == nil {
 			break
@@ -5575,6 +5601,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.TagEdge.Node(childComplexity), true
 
+	case "TransferHouseholdOwnerSuccess.householdId":
+		if e.ComplexityRoot.TransferHouseholdOwnerSuccess.HouseholdID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.TransferHouseholdOwnerSuccess.HouseholdID(childComplexity), true
+
+	case "TransferHouseholdOwnerUserError.code":
+		if e.ComplexityRoot.TransferHouseholdOwnerUserError.Code == nil {
+			break
+		}
+
+		return e.ComplexityRoot.TransferHouseholdOwnerUserError.Code(childComplexity), true
+	case "TransferHouseholdOwnerUserError.message":
+		if e.ComplexityRoot.TransferHouseholdOwnerUserError.Message == nil {
+			break
+		}
+
+		return e.ComplexityRoot.TransferHouseholdOwnerUserError.Message(childComplexity), true
+
 	case "UnconfiguredPersonalPool.defaultShareWeight":
 		if e.ComplexityRoot.UnconfiguredPersonalPool.DefaultShareWeight == nil {
 			break
@@ -5919,6 +5965,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputSetPoolFundingRuleInput,
 		ec.unmarshalInputSetProductAliasInput,
 		ec.unmarshalInputSharedPoolFundingRuleInput,
+		ec.unmarshalInputTransferHouseholdOwnerInput,
 		ec.unmarshalInputUpdateBudgetInput,
 		ec.unmarshalInputUpdatePurchaseInput,
 		ec.unmarshalInputUpdatePurchaseItemAllocationInput,
@@ -6968,18 +7015,14 @@ extend type Query {
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/leave_household_mutation.graphql", Input: `extend type Mutation {
-  leaveHousehold(
-    input: LeaveHouseholdInput!
-  ): LeaveHouseholdResult!
+  leaveHousehold(input: LeaveHouseholdInput!): LeaveHouseholdResult!
 }
 
 input LeaveHouseholdInput {
   householdId: ID! @nodeID(of: "Household")
 }
 
-union LeaveHouseholdResult =
-  | LeaveHouseholdSuccess
-  | LeaveHouseholdUserError
+union LeaveHouseholdResult = LeaveHouseholdSuccess | LeaveHouseholdUserError
 
 type LeaveHouseholdSuccess {
   householdId: ID! @goField(forceResolver: true)
@@ -7729,9 +7772,7 @@ type RecurringExpenseConnection {
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/remove_household_member_mutation.graphql", Input: `extend type Mutation {
-  removeHouseholdMember(
-    input: RemoveHouseholdMemberInput!
-  ): RemoveHouseholdMemberResult!
+  removeHouseholdMember(input: RemoveHouseholdMemberInput!): RemoveHouseholdMemberResult!
 }
 
 input RemoveHouseholdMemberInput {
@@ -7739,9 +7780,7 @@ input RemoveHouseholdMemberInput {
   memberId: ID! @nodeID(of: "Member")
 }
 
-union RemoveHouseholdMemberResult =
-  | RemoveHouseholdMemberSuccess
-  | RemoveHouseholdMemberUserError
+union RemoveHouseholdMemberResult = RemoveHouseholdMemberSuccess | RemoveHouseholdMemberUserError
 
 type RemoveHouseholdMemberSuccess {
   householdId: ID! @goField(forceResolver: true)
@@ -8055,6 +8094,26 @@ extend type Query {
     first: Int
     last: Int
   ): TagConnection!
+}
+`, BuiltIn: false},
+	{Name: "../../graphql/transfer_household_owner_mutation.graphql", Input: `extend type Mutation {
+  transferHouseholdOwner(input: TransferHouseholdOwnerInput!): TransferHouseholdOwnerResult!
+}
+
+input TransferHouseholdOwnerInput {
+  householdId: ID! @nodeID(of: "Household")
+  newOwnerId: ID! @nodeID(of: "Member")
+}
+
+union TransferHouseholdOwnerResult = TransferHouseholdOwnerSuccess | TransferHouseholdOwnerUserError
+
+type TransferHouseholdOwnerSuccess {
+  householdId: ID! @goField(forceResolver: true)
+}
+
+type TransferHouseholdOwnerUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
 }
 `, BuiltIn: false},
 	{Name: "../../graphql/transfer_ledger_entry.graphql", Input: `interface TransferLedgerEntry implements LedgerEntry & Node {
@@ -9927,6 +9986,20 @@ func (ec *executionContext) field_Mutation_setProductAlias_args(ctx context.Cont
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
 		func(ctx context.Context, v any) (model.SetProductAliasInput, error) {
 			return ec.unmarshalNSetProductAliasInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSetProductAliasInput(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_transferHouseholdOwner_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input",
+		func(ctx context.Context, v any) (model.TransferHouseholdOwnerInput, error) {
+			return ec.unmarshalNTransferHouseholdOwnerInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTransferHouseholdOwnerInput(ctx, v)
 		})
 	if err != nil {
 		return nil, err
@@ -20867,6 +20940,50 @@ func (ec *executionContext) fieldContext_Mutation_setProductAlias(ctx context.Co
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_transferHouseholdOwner(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Mutation_transferHouseholdOwner(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Mutation().TransferHouseholdOwner(ctx, fc.Args["input"].(model.TransferHouseholdOwnerInput))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.TransferHouseholdOwnerResult) graphql.Marshaler {
+			return ec.marshalNTransferHouseholdOwnerResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTransferHouseholdOwnerResult(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Mutation_transferHouseholdOwner(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type TransferHouseholdOwnerResult does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_transferHouseholdOwner_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_updateBudget(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -28180,6 +28297,75 @@ func (ec *executionContext) fieldContext_TagEdge_node(_ context.Context, field g
 	return fc, nil
 }
 
+func (ec *executionContext) _TransferHouseholdOwnerSuccess_householdId(ctx context.Context, field graphql.CollectedField, obj *model.TransferHouseholdOwnerSuccess) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_TransferHouseholdOwnerSuccess_householdId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return ec.Resolvers.TransferHouseholdOwnerSuccess().HouseholdID(ctx, obj)
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_TransferHouseholdOwnerSuccess_householdId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("TransferHouseholdOwnerSuccess", field, true, true, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _TransferHouseholdOwnerUserError_code(ctx context.Context, field graphql.CollectedField, obj *model.TransferHouseholdOwnerUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_TransferHouseholdOwnerUserError_code(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Code, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.MutationErrorCode) graphql.Marshaler {
+			return ec.marshalNMutationErrorCode2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐMutationErrorCode(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_TransferHouseholdOwnerUserError_code(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("TransferHouseholdOwnerUserError", field, false, false, errors.New("field of type MutationErrorCode does not have child fields"))
+}
+
+func (ec *executionContext) _TransferHouseholdOwnerUserError_message(ctx context.Context, field graphql.CollectedField, obj *model.TransferHouseholdOwnerUserError) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_TransferHouseholdOwnerUserError_message(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Message, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_TransferHouseholdOwnerUserError_message(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("TransferHouseholdOwnerUserError", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _UnconfiguredPersonalPool_id(ctx context.Context, field graphql.CollectedField, obj *model.UnconfiguredPersonalPool) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -35228,6 +35414,83 @@ func (ec *executionContext) unmarshalInputSharedPoolFundingRuleInput(ctx context
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputTransferHouseholdOwnerInput(ctx context.Context, obj any) (model.TransferHouseholdOwnerInput, error) {
+	var it model.TransferHouseholdOwnerInput
+	if obj == nil {
+		return it, nil
+	}
+
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"householdId", "newOwnerId"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "householdId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Household")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.HouseholdID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		case "newOwnerId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("newOwnerId"))
+			directive0 := func(ctx context.Context) (any, error) { return ec.unmarshalNID2string(ctx, v) }
+
+			directive1 := func(ctx context.Context) (any, error) {
+				of, err := ec.unmarshalNString2string(ctx, "Member")
+				if err != nil {
+					var zeroVal string
+					return zeroVal, err
+				}
+				if ec.Directives.NodeID == nil {
+					var zeroVal string
+					return zeroVal, errors.New("directive nodeID is not implemented")
+				}
+				return ec.Directives.NodeID(ctx, obj, directive0, of)
+			}
+
+			tmp, err := directive1(ctx)
+			if err != nil {
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+			if data, ok := tmp.(string); ok {
+				it.NewOwnerID = data
+			} else {
+				err := fmt.Errorf(`unexpected type %T from directive, should be string`, tmp)
+				return it, graphql.ErrorOnPath(ctx, err)
+			}
+		}
+	}
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputUpdateBudgetInput(ctx context.Context, obj any) (model.UpdateBudgetInput, error) {
 	var it model.UpdateBudgetInput
 	if obj == nil {
@@ -36903,6 +37166,13 @@ func (ec *executionContext) _MutationError(ctx context.Context, sel ast.Selectio
 			return graphql.Null
 		}
 		return ec._UpdateBudgetUserError(ctx, sel, obj)
+	case model.TransferHouseholdOwnerUserError:
+		return ec._TransferHouseholdOwnerUserError(ctx, sel, &obj)
+	case *model.TransferHouseholdOwnerUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._TransferHouseholdOwnerUserError(ctx, sel, obj)
 	case model.SetProductAliasUserError:
 		return ec._SetProductAliasUserError(ctx, sel, &obj)
 	case *model.SetProductAliasUserError:
@@ -37970,6 +38240,33 @@ func (ec *executionContext) _Settlement(ctx context.Context, sel ast.SelectionSe
 			return typedObj
 		} else {
 			panic(fmt.Errorf("unexpected type %T; non-generated variants of Settlement must implement graphql.Marshaler", obj))
+		}
+	}
+}
+
+func (ec *executionContext) _TransferHouseholdOwnerResult(ctx context.Context, sel ast.SelectionSet, obj model.TransferHouseholdOwnerResult) graphql.Marshaler {
+	switch obj := (obj).(type) {
+	case nil:
+		return graphql.Null
+	case model.TransferHouseholdOwnerUserError:
+		return ec._TransferHouseholdOwnerUserError(ctx, sel, &obj)
+	case *model.TransferHouseholdOwnerUserError:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._TransferHouseholdOwnerUserError(ctx, sel, obj)
+	case model.TransferHouseholdOwnerSuccess:
+		return ec._TransferHouseholdOwnerSuccess(ctx, sel, &obj)
+	case *model.TransferHouseholdOwnerSuccess:
+		if obj == nil {
+			return graphql.Null
+		}
+		return ec._TransferHouseholdOwnerSuccess(ctx, sel, obj)
+	default:
+		if typedObj, ok := obj.(graphql.Marshaler); ok {
+			return typedObj
+		} else {
+			panic(fmt.Errorf("unexpected type %T; non-generated variants of TransferHouseholdOwnerResult must implement graphql.Marshaler", obj))
 		}
 	}
 }
@@ -44509,6 +44806,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "transferHouseholdOwner":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_transferHouseholdOwner(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "updateBudget":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_updateBudget(ctx, field)
@@ -49880,6 +50184,120 @@ func (ec *executionContext) _TagEdge(ctx context.Context, sel ast.SelectionSet, 
 	return out
 }
 
+var transferHouseholdOwnerSuccessImplementors = []string{"TransferHouseholdOwnerSuccess", "TransferHouseholdOwnerResult"}
+
+func (ec *executionContext) _TransferHouseholdOwnerSuccess(ctx context.Context, sel ast.SelectionSet, obj *model.TransferHouseholdOwnerSuccess) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, transferHouseholdOwnerSuccessImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("TransferHouseholdOwnerSuccess")
+		case "householdId":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._TransferHouseholdOwnerSuccess_householdId(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.IsDeferred() {
+				deferredFieldSet.AddField(field)
+				fieldIndex := len(deferredFieldSet.Values) - 1
+				deferredFieldSet.Concurrently(fieldIndex, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, deferredFieldSet)
+				})
+
+				for _, deferrable := range field.Deferrables {
+					view, ok := deferLabelToView[deferrable.Label]
+					if !ok {
+						view = deferredFieldSet.NewView()
+						deferLabelToView[deferrable.Label] = view
+					}
+					view.AddIndices(fieldIndex)
+				}
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
+var transferHouseholdOwnerUserErrorImplementors = []string{"TransferHouseholdOwnerUserError", "TransferHouseholdOwnerResult", "MutationError"}
+
+func (ec *executionContext) _TransferHouseholdOwnerUserError(ctx context.Context, sel ast.SelectionSet, obj *model.TransferHouseholdOwnerUserError) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, transferHouseholdOwnerUserErrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("TransferHouseholdOwnerUserError")
+		case "code":
+			out.Values[i] = ec._TransferHouseholdOwnerUserError_code(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "message":
+			out.Values[i] = ec._TransferHouseholdOwnerUserError_message(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var unconfiguredPersonalPoolImplementors = []string{"UnconfiguredPersonalPool", "Node", "Pool"}
 
 func (ec *executionContext) _UnconfiguredPersonalPool(ctx context.Context, sel ast.SelectionSet, obj *model.UnconfiguredPersonalPool) graphql.Marshaler {
@@ -53437,6 +53855,21 @@ func (ec *executionContext) marshalNTagEdge2ᚖgithubᚗcomᚋwalnuts1018ᚋhors
 		return graphql.Null
 	}
 	return ec._TagEdge(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNTransferHouseholdOwnerInput2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTransferHouseholdOwnerInput(ctx context.Context, v any) (model.TransferHouseholdOwnerInput, error) {
+	res, err := ec.unmarshalInputTransferHouseholdOwnerInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNTransferHouseholdOwnerResult2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTransferHouseholdOwnerResult(ctx context.Context, sel ast.SelectionSet, v model.TransferHouseholdOwnerResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._TransferHouseholdOwnerResult(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNTransferInputKind2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐTransferInputKind(ctx context.Context, v any) (model.TransferInputKind, error) {

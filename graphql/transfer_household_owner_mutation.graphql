@@ -1,0 +1,19 @@
+extend type Mutation {
+  transferHouseholdOwner(input: TransferHouseholdOwnerInput!): TransferHouseholdOwnerResult!
+}
+
+input TransferHouseholdOwnerInput {
+  householdId: ID! @nodeID(of: "Household")
+  newOwnerId: ID! @nodeID(of: "Member")
+}
+
+union TransferHouseholdOwnerResult = TransferHouseholdOwnerSuccess | TransferHouseholdOwnerUserError
+
+type TransferHouseholdOwnerSuccess {
+  householdId: ID! @goField(forceResolver: true)
+}
+
+type TransferHouseholdOwnerUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}
