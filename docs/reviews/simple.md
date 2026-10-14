@@ -28,7 +28,7 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 - [purchase/correction.go — Correct()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/correction.go#L250-L606)
 - [purchase/update_operations.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/update_operations.go)
 
-`updateItem()`は約360行あり、以下のようなまったく異なる作業を一度に行っています。
+`updateItem()`には、以下のような異なる作業が集まっています。
 
 入力フィールドの検証から始まり、購入の取得、世帯所属の検証、会計期間のロック、リビジョン競合判定、商品規格とカテゴリの検証、商品名の学習、配賦ルールの解決、支払額の調整、DB更新、商品修正履歴の登録、配賦の再登録、監査イベント記録、会計仕訳の同期まで続きます。
 
@@ -62,7 +62,7 @@ type ItemChanges struct {
 
 このような型を用意すれば、例えば商品名だけを変更するときに、配賦や支払情報を変更する必要があるのかがコード上で明確になります。
 
-現在の`updateItem()`は、変更内容にかかわらず配賦を計算し、`ItemAllocations`を削除して再登録する経路に進みます（355〜374行）。変更差分に応じて必要な処理だけ実施できる設計の方が読みやすく、無駄な書き込みも減らせます。
+通常更新と一括更新は`itemChangePlan`を共有し、配賦の再計算と`ItemAllocations`の更新を必要な変更に限るようになりました。この点は改善済みです。一方、`updateItem()`には入力検証、権限確認、ロック、DB更新、商品学習、監査イベント、仕訳同期などが残っており、変更計画も配賦やリビジョンの一部を扱うものです。支払や仕訳を含む変更全体の計画化と適用処理の分離は引き続き改善候補です。
 
 ### 2. GraphQLの巨大な一括組み立て処理を見直す
 
@@ -136,7 +136,7 @@ Worker / MailboxPoller
 
 例えば購入自体の更新は、通常更新の`update()`と一括更新の`BulkUpdate()`に、似たようなリビジョン確認・入力検証・支払検証・DB更新・仕訳同期がそれぞれ実装されています。
 
-明細も`updateItem()`と`updateBulkItem()`が別の更新経路になっています。
+明細更新では`updateItem()`と`updateBulkItem()`が`itemChangePlan`を共有し、リビジョンと配賦計算の一部を共通化しました。購入全体の`update()`と`BulkUpdate()`にある検証や仕訳同期は別経路のままです。
 
 さらに`SaveItemEdits()`では、各明細について`updateItem()`を呼び、その後に購入全体の`update()`を呼んでいます。
 
@@ -170,9 +170,9 @@ GraphQLなどの公開API
 
 | 対象 | 確認した問題 | 推奨する改善 |
 | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
-| [GraphQL Node解決](https://github.com/walnuts1018/horse/blob/main/internal/graph/nodes.go#L22-L106) | `node()`や`nodes()`の解決過程で所属世帯一覧のロードに依存し、単一Node取得でも多くの関連情報を読み得る | Node種別とIDに応じた直接取得、世帯スコープ確認、種別別のバッチ取得に変更 |
-| [購入一覧クエリ](https://github.com/walnuts1018/horse/blob/main/internal/graph/query_purchases.go#L26) | `purchases()`の引数が非常に多く、追加のフィルタを可変長引数で渡している | `PurchaseFilter`などの名前付き構造体を使い、フィルタ組み立てとページネーションを分離 |
-| [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 約420行の`Do()`に取引種別ごとの条件、権限確認、仕訳作成、精算調整が集中 | 取引種別の検証・仕訳作成・精算への影響を純粋な関数へ分離 |
+| [GraphQL Node解決](https://github.com/walnuts1018/horse/blob/main/internal/graph/nodes.go#L22-L106) | バッチ対応Nodeだけを取得する場合は世帯参照にとどめるよう改善された。その他のNode種別では世帯一覧をロードして探索する経路が残る | 残るNode種別も種別とIDに応じて直接取得し、世帯スコープを確認する |
+| [購入一覧クエリ](https://github.com/walnuts1018/horse/blob/main/internal/graph/query_purchases.go#L26) | フィルタ処理は`PurchaseFilter`、ページネーションは専用構造体へ整理された。一方、GraphQL resolverの`purchases()`は引数が多く、金額条件を可変長引数で受け取る | resolver境界の引数も構造化し、フィルタ組み立てとページネーションの分離を進める |
+| [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離された。`Do()`にはDB操作や権限確認などのユースケース調整が残る | `Do()`に残る処理の責務と順序を整理する |
 | [GraphQLエラー変換](https://github.com/walnuts1018/horse/blob/main/internal/graph/errors.go) | Application共通エラーに加えて、各機能固有のエラーを手動列挙して分類している | すべてのApplicationで既存の`apperror`を統一使用 |
 | [Gemini Router](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/router.go#L81-L199) | 無料・有料、Flash-Lite・Flashのフォールバックが多重の条件分岐になっている | まず実行候補の順序をデータとして生成し、共通の試行処理で順に実行 |
 | [抽出Worker](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/worker_extract.go#L10-L141) | OCR、AI抽出、品質検証、再実行、Pro再検証が一つの流れに密集 | 初回抽出と再検証を共通のパイプライン部品に整理 |
@@ -269,13 +269,13 @@ Horseで重要なのは、ビジネスルールを読もうとしたときにSQL
 
 | 順位 | 作業 | 期待できる効果 |
 | -- | ------------------------------------------ | -------------------- |
-| P0 | Purchaseの通常・一括・複数明細更新を共通の変更処理へ統合 | 重複した業務ロジックを大幅に削減 |
+| P0 | Purchaseの購入全体と明細の通常・一括・複数明細更新を共通の変更処理へ統合 | 残る重複した業務ロジックを削減 |
 | P0 | `updateItem()`・`create()`・`Correct()`の責務分離 | 最も複雑なコードの理解と保守が容易になる |
 | P0 | Document登録処理のサービス化、メール取り込みとの共通化 | 重複処理とHTTP依存を解消 |
-| P1 | GraphQLの巨大ローダー、Node解決の最適化 | 可読性だけでなくDBアクセスも改善 |
+| P1 | GraphQLの巨大ローダー、残るNode解決の最適化 | 可読性だけでなくDBアクセスも改善 |
 | P1 | エラー・入力検証・数量の扱いを統一 | 小規模な重複コードを継続的に減らせる |
 | P1 | Gemini Routerの実行計画とProvider処理を分離 | フォールバックロジックが追いやすくなる |
-| P2 | Transfer・Settlementの業務ルールを純粋な計算として切り出す | 複雑な会計処理の検証と拡張が容易になる |
+| P2 | Transfer・Settlementの残る業務調整を整理する | 複雑な会計処理の理解と拡張が容易になる |
 | P2 | Riverなどによるジョブ基盤の置き換えを評価 | 自前の非同期処理基盤を縮小できる可能性 |
 
 ### リファクタリング時に絶対に守りたいこと
