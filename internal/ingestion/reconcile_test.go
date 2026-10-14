@@ -41,6 +41,8 @@ func TestReconcile(t *testing.T) {
 		{"分割発送", Observation{OrderID: "order", Amount: 100}, Observation{OrderID: "order", Amount: 200}, statementMatchPossible},
 		{"同額でも別購入を確定統合しない", Observation{Merchant: "店", Amount: 100, OccurredAt: now}, Observation{Merchant: "店", Amount: 100, OccurredAt: now}, statementMatchPossible},
 		{"銀行明細とカード利用を直接照合しない", Observation{Merchant: "店", Amount: 100, OccurredAt: now, SourceKind: statementSourceBank, TransactionKind: statementKindPayment}, Observation{Merchant: "店", Amount: 100, OccurredAt: now, SourceKind: statementSourceCard, TransactionKind: statementKindCardPurchase}, ""},
+		{"取引番号が一致し店舗情報が欠ける", Observation{TransactionID: "tx", Amount: 100}, Observation{TransactionID: "tx", Merchant: "店", Amount: 100}, "IDENTICAL"},
+		{"取引番号が一致して店舗が異なる", Observation{TransactionID: "tx", Merchant: "別の店", Amount: 100}, Observation{TransactionID: "tx", Merchant: "店", Amount: 100}, "CONFLICT"},
 		{"取引番号の金額相違", Observation{Merchant: "店", TransactionID: "tx", Amount: 100}, Observation{Merchant: "店", TransactionID: "tx", Amount: 200}, "CONFLICT"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
