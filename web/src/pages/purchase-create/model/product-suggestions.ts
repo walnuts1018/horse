@@ -25,6 +25,49 @@ type PurchaseHistoryItem = Pick<
   "name" | "productVariantId" | "categoryId"
 >;
 type PurchaseHistory = Array<{ items: PurchaseHistoryItem[] }>;
+type PurchasePriceHistory = Array<
+  Pick<Purchase, "occurredAt" | "merchant" | "status"> & {
+    items: Array<Pick<Purchase["items"][number], "name" | "amountYen" | "productVariantId">>;
+  }
+>;
+
+export type RecentPurchasePrice = {
+  amountYen: number;
+  occurredAt: string;
+  merchant: string;
+};
+
+export function recentPurchasePrice(
+  history: PurchasePriceHistory,
+  name: string,
+  productVariantId: string | null,
+): RecentPurchasePrice | null {
+  const normalizedName = name.trim().toLocaleLowerCase();
+  if (!normalizedName) return null;
+
+  let latest: RecentPurchasePrice | null = null;
+  for (const purchase of history) {
+    if (purchase.status === "DRAFT") continue;
+    for (const item of purchase.items) {
+      if (
+        (productVariantId
+          ? item.productVariantId !== productVariantId
+          : item.name.trim().toLocaleLowerCase() !== normalizedName) ||
+        item.amountYen <= 0
+      ) {
+        continue;
+      }
+      if (!latest || Date.parse(purchase.occurredAt) > Date.parse(latest.occurredAt)) {
+        latest = {
+          amountYen: item.amountYen,
+          occurredAt: purchase.occurredAt,
+          merchant: purchase.merchant,
+        };
+      }
+    }
+  }
+  return latest;
+}
 
 export function purchaseEntrySuggestions(
   history: PurchaseHistory,

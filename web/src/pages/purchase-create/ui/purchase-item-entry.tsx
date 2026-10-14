@@ -4,7 +4,7 @@ import { Combobox } from "@base-ui/react/combobox";
 import { Plus } from "lucide-react";
 
 import type { Household } from "../../../shared/api";
-import type { PurchaseEntrySuggestion } from "../model/product-suggestions";
+import type { PurchaseEntrySuggestion, RecentPurchasePrice } from "../model/product-suggestions";
 
 import {
   ProductCandidateList,
@@ -34,6 +34,8 @@ export function PurchaseItemEntry({
   onClearProductSelection,
   onSuggestionsOpenChange,
   onAmountChange,
+  recentPurchasePrice,
+  onApplyRecentPrice,
   onAmountFocus,
   onAmountBlur,
   onAmountKey,
@@ -63,6 +65,8 @@ export function PurchaseItemEntry({
   onClearProductSelection: () => void;
   onSuggestionsOpenChange: (open: boolean) => void;
   onAmountChange: (amount: string) => void;
+  recentPurchasePrice: RecentPurchasePrice | null;
+  onApplyRecentPrice: () => void;
   onAmountFocus: () => void;
   onAmountBlur: () => void;
   onAmountKey: (event: KeyboardEvent<HTMLInputElement>) => void;
@@ -70,6 +74,16 @@ export function PurchaseItemEntry({
   onAdd: () => void;
   invalidEntryField: "name" | "amount" | null;
 }) {
+  const dateLabel = recentPurchasePrice
+    ? new Intl.DateTimeFormat("ja-JP", {
+        month: "numeric",
+        day: "numeric",
+        timeZone: "Asia/Tokyo",
+      }).format(new Date(recentPurchasePrice.occurredAt))
+    : "";
+  const amountLabel = recentPurchasePrice
+    ? new Intl.NumberFormat("ja-JP").format(recentPurchasePrice.amountYen)
+    : "";
   const suggestionsVisible =
     focused === "name" &&
     suggestions.length > 0 &&
@@ -169,27 +183,41 @@ export function PurchaseItemEntry({
             </div>
           )}
         </div>
-        <div className={`entry-input-wrap amount-wrap ${classNames.entryInputTarget}`}>
-          <span>¥</span>
-          <input
-            ref={amountRef}
-            value={itemAmount}
-            inputMode="numeric"
-            onChange={(event) => onAmountChange(event.target.value)}
-            onFocus={onAmountFocus}
-            onBlur={onAmountBlur}
-            onKeyDown={onAmountKey}
-            onCompositionStart={onCompositionStart}
-            onCompositionEnd={onCompositionEnd}
-            enterKeyHint="done"
-            onPaste={onPaste}
-            placeholder="金額"
-            aria-label="金額"
-            aria-invalid={invalidEntryField === "amount"}
-            aria-describedby={
-              invalidEntryField === "amount" ? "purchase-item-entry-error" : undefined
-            }
-          />
+        <div className="amount-entry">
+          <div className={`entry-input-wrap amount-wrap ${classNames.entryInputTarget}`}>
+            <span>¥</span>
+            <input
+              ref={amountRef}
+              value={itemAmount}
+              inputMode="numeric"
+              onChange={(event) => onAmountChange(event.target.value)}
+              onFocus={onAmountFocus}
+              onBlur={onAmountBlur}
+              onKeyDown={onAmountKey}
+              onCompositionStart={onCompositionStart}
+              onCompositionEnd={onCompositionEnd}
+              enterKeyHint="done"
+              onPaste={onPaste}
+              placeholder="金額"
+              aria-label="金額"
+              aria-invalid={invalidEntryField === "amount"}
+              aria-describedby={
+                invalidEntryField === "amount" ? "purchase-item-entry-error" : undefined
+              }
+            />
+          </div>
+          {recentPurchasePrice && (
+            <div className="recent-price-action">
+              <span>{`${recentPurchasePrice.merchant} · ${dateLabel}`}</span>
+              <button
+                type="button"
+                aria-label={`${dateLabel}の${recentPurchasePrice.merchant}での購入価格¥${amountLabel}を金額に適用`}
+                onClick={onApplyRecentPrice}
+              >
+                {`前回 ¥${amountLabel}`}
+              </button>
+            </div>
+          )}
         </div>
         <select
           aria-label="新しい品目のカテゴリ"

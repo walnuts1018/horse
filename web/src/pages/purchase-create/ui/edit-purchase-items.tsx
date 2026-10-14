@@ -18,7 +18,7 @@ import { EditPurchaseItemAllocations } from "../../../entities/purchase";
 import { useProductSuggestions } from "../../../features/product-variant-select";
 import { type Household, type Purchase } from "../../../shared/api";
 import { parsePastedPurchaseItems } from "../model/pasted-purchase-items";
-import { purchaseEntrySuggestions } from "../model/product-suggestions";
+import { purchaseEntrySuggestions, recentPurchasePrice } from "../model/product-suggestions";
 import {
   emptyPurchaseEditHistory,
   recordPurchaseEdit,
@@ -379,6 +379,10 @@ export function EditPurchaseItems({
   const suggestions = useMemo(
     () => purchaseEntrySuggestions(history, draft.itemName, productSuggestions),
     [history, draft.itemName, productSuggestions],
+  );
+  const suggestedPrice = useMemo(
+    () => recentPurchasePrice(history, draft.itemName, draft.selectedProductVariantId || null),
+    [history, draft.itemName, draft.selectedProductVariantId],
   );
 
   const addItem = () => {
@@ -777,6 +781,14 @@ export function EditPurchaseItems({
           markDirty();
           setInvalidEntryField(null);
           update({ ...draft, itemAmount: amount.replace(/\D/g, "") });
+        }}
+        recentPurchasePrice={suggestedPrice}
+        onApplyRecentPrice={() => {
+          if (!suggestedPrice) return;
+          markDirty();
+          update({ ...draft, itemAmount: String(suggestedPrice.amountYen) });
+          setFocused("amount");
+          amountRef.current?.focus();
         }}
         onAmountFocus={() => setFocused("amount")}
         onAmountBlur={() => window.setTimeout(() => setFocused(null), 160)}

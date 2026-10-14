@@ -370,6 +370,38 @@
   padding-right: 7px;
 }
 
+.amount-entry {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.recent-price-action {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  color: #5f6d65;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.recent-price-action span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-price-action button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #286d58;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .entry-form > select {
   height: 34px;
   width: 100%;
@@ -618,9 +650,23 @@
     grid-row: 1;
   }
 
-  .amount-wrap {
+  .amount-entry {
     grid-column: 2;
     grid-row: 1;
+  }
+
+  .recent-price-action {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    white-space: normal;
+  }
+
+  .recent-price-action span {
+    flex-basis: 100%;
+  }
+
+  .recent-price-action button {
+    min-height: 44px;
   }
 
   .entry-form > select {

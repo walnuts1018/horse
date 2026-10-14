@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { ProductSuggestion } from "../../../entities/product";
 
-import { productSuggestionsForQuery, purchaseEntrySuggestions } from "./product-suggestions";
+import {
+  productSuggestionsForQuery,
+  purchaseEntrySuggestions,
+  recentPurchasePrice,
+} from "./product-suggestions";
 
 describe("productSuggestionsForQuery", () => {
   it("returns suggestions only for the current trimmed query", () => {
@@ -73,5 +77,58 @@ describe("productSuggestionsForQuery", () => {
       { kind: "history", name: "牛乳ドリンク" },
       { kind: "catalog", candidate: catalog[1] },
     ]);
+  });
+});
+
+describe("recentPurchasePrice", () => {
+  it("returns the latest positive price for the selected variant", () => {
+    const history = [
+      {
+        status: "POSTED",
+        occurredAt: "2026-01-10T12:00:00Z",
+        merchant: "古い店",
+        items: [{ name: "牛乳", amountYen: 180, productVariantId: "variant-1" }],
+      },
+      {
+        status: "POSTED",
+        occurredAt: "2026-02-10T12:00:00Z",
+        merchant: "別商品",
+        items: [{ name: "牛乳", amountYen: 230, productVariantId: "variant-2" }],
+      },
+      {
+        status: "CLOSED",
+        occurredAt: "2026-03-10T12:00:00Z",
+        merchant: "新しい店",
+        items: [{ name: "牛乳 1L", amountYen: 198, productVariantId: "variant-1" }],
+      },
+      {
+        status: "DRAFT",
+        occurredAt: "2026-04-10T12:00:00Z",
+        merchant: "下書き",
+        items: [{ name: "牛乳", amountYen: 160, productVariantId: "variant-1" }],
+      },
+    ] satisfies Parameters<typeof recentPurchasePrice>[0];
+
+    expect(recentPurchasePrice(history, "牛乳", "variant-1")).toEqual({
+      amountYen: 198,
+      occurredAt: "2026-03-10T12:00:00Z",
+      merchant: "新しい店",
+    });
+  });
+
+  it("requires an exact item name and a positive price when no variant is selected", () => {
+    const history = [
+      {
+        status: "POSTED",
+        occurredAt: "2026-01-10T12:00:00Z",
+        merchant: "店",
+        items: [
+          { name: "牛乳ドリンク", amountYen: 190, productVariantId: "variant-1" },
+          { name: "牛乳", amountYen: 0, productVariantId: null },
+        ],
+      },
+    ] satisfies Parameters<typeof recentPurchasePrice>[0];
+
+    expect(recentPurchasePrice(history, "牛乳", null)).toBeNull();
   });
 });
