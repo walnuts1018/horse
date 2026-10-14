@@ -380,6 +380,8 @@ ImportsのREST一覧はTanStack Queryの`useInfiniteQuery`、選択文書とプ�
 
 Testcontainers PostgreSQLで異なる複数品目の更新、期間変更、支払検証、rollbackをGraphQL mutation経由で確認しました。訂正履歴のRelay Global ID、旧cursor互換、金額集計とページ分割もTestcontainersで確認しました。FrontendはRelay codegen、TypeScript型検査、対象oxlintを実行し、`git diff --check`も成功しました。解決した購入入力と帳簿編集の指摘を`docs/reviews/ux.md`から削除しました。
 
+購入入力の日時に「今日」「昨日」のクイック指定を追加しました。選択中の時刻を保って日付だけを切り替えられます。
+
 ### 2026年10月14日の入力誤操作防止とRelay取得
 
 購入送信完了後の自動遷移は、送信キーが現在の入力と一致し、新規購入画面で未保存変更がない場合に限りました。空の品名欄のEnter送信を防ぎ、IME変換中は矢印キーとEscapeを商品候補操作に使わず、金額にカンマを含むTSVと引用符付きCSVを解析する純粋関数を追加しました。自動遷移のfocused test 2件、貼り付け解析テスト3件、対象oxlintとformat検査が成功しました。

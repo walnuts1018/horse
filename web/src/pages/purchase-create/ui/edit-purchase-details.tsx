@@ -13,6 +13,7 @@ const yen = (amount = 0) =>
     currency: "JPY",
     maximumFractionDigits: 0,
   }).format(amount);
+const padDatePart = (value: number) => String(value).padStart(2, "0");
 
 export function EditPurchaseDetails({
   merchant,
@@ -46,6 +47,14 @@ export function EditPurchaseDetails({
     [recentPurchases],
   );
   const merchantPurchase = recentPurchasesByMerchant.get(purchaseMerchantKey(merchant));
+  const setDate = (daysAgo: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() - daysAgo);
+    const time = /T\d{2}:\d{2}$/.test(occurredAt) ? occurredAt.slice(11) : "12:00";
+    onOccurredAtChange(
+      `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}T${time}`,
+    );
+  };
 
   return (
     <>
@@ -91,6 +100,14 @@ export function EditPurchaseDetails({
             value={occurredAt}
             onChange={(event) => onOccurredAtChange(event.target.value)}
           />
+          <div className="purchase-history-actions" aria-label="日時のクイック選択">
+            <button className="text-button" type="button" onClick={() => setDate(0)}>
+              今日
+            </button>
+            <button className="text-button" type="button" onClick={() => setDate(1)}>
+              昨日
+            </button>
+          </div>
         </div>
         {children}
       </section>
