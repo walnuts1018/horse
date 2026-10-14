@@ -24,7 +24,7 @@ require (
 	github.com/exaring/otelpgx v0.12.0
 	github.com/gabriel-vasile/mimetype v1.4.15
 	github.com/go-playground/validator/v10 v10.30.5
-	github.com/gofrs/uuid/v5 v5.4.0
+	github.com/gofrs/uuid/v5 v5.5.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/labstack/echo/v5 v5.3.1
 	github.com/mazrean/kessoku v1.1.1
