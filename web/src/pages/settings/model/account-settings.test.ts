@@ -69,8 +69,11 @@ describe("reconcileFundingDrafts", () => {
       [sharedPool("pool-a", [{ memberId: "member-a", memberName: "A", weight: 2 }])],
     );
     const drafts = reconcileFundingDrafts(initial, initial.id, {});
-    drafts["pool-a"].weights["member-a"] = "7";
-    drafts["pool-a"].policy = "REIMBURSE_PERSONAL";
+    const draft = drafts["pool-a"];
+    expect(draft).toBeDefined();
+    if (!draft) throw new Error("pool draft was not initialized");
+    draft.weights["member-a"] = "7";
+    draft.policy = "REIMBURSE_PERSONAL";
 
     const refreshed = household(
       "household-a",
@@ -99,7 +102,10 @@ describe("reconcileFundingDrafts", () => {
       [sharedPool("pool-a", [{ memberId: "member-a", memberName: "A", weight: 2 }])],
     );
     const drafts = reconcileFundingDrafts(firstHousehold, firstHousehold.id, {});
-    drafts["pool-a"].weights["member-a"] = "7";
+    const draft = drafts["pool-a"];
+    expect(draft).toBeDefined();
+    if (!draft) throw new Error("pool draft was not initialized");
+    draft.weights["member-a"] = "7";
 
     const nextHousehold = household(
       "household-b",
