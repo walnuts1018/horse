@@ -21,7 +21,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
-	github.com/exaring/otelpgx v0.12.0
+	github.com/exaring/otelpgx v0.13.0
 	github.com/gabriel-vasile/mimetype v1.4.15
 	github.com/go-playground/validator/v10 v10.30.5
 	github.com/gofrs/uuid/v5 v5.4.0
