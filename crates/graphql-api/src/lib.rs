@@ -10,6 +10,7 @@ use uuid::Uuid;
 pub mod account_balances;
 pub mod account_creation;
 pub mod account_mutations;
+pub mod catalog_mutations;
 pub mod category;
 pub mod funding;
 pub mod household_membership;
@@ -225,6 +226,54 @@ impl MutationRoot {
     ) -> Result<household_membership::TransferHouseholdOwnerResult> {
         household_membership::transfer_household_owner(ctx, input).await
     }
+
+    async fn create_tag(
+        &self,
+        ctx: &Context<'_>,
+        input: catalog_mutations::CreateTagInput,
+    ) -> Result<catalog_mutations::CreateTagResult> {
+        catalog_mutations::create_tag(ctx, input).await
+    }
+
+    async fn update_tag(
+        &self,
+        ctx: &Context<'_>,
+        input: catalog_mutations::UpdateTagInput,
+    ) -> Result<catalog_mutations::UpdateTagResult> {
+        catalog_mutations::update_tag(ctx, input).await
+    }
+
+    async fn archive_tag(
+        &self,
+        ctx: &Context<'_>,
+        input: catalog_mutations::ArchiveTagInput,
+    ) -> Result<catalog_mutations::ArchiveTagResult> {
+        catalog_mutations::archive_tag(ctx, input).await
+    }
+
+    async fn create_product_concept(
+        &self,
+        ctx: &Context<'_>,
+        input: catalog_mutations::CreateProductConceptInput,
+    ) -> Result<catalog_mutations::CreateProductConceptResult> {
+        catalog_mutations::create_product_concept(ctx, input).await
+    }
+
+    async fn create_product_variant(
+        &self,
+        ctx: &Context<'_>,
+        input: catalog_mutations::CreateProductVariantInput,
+    ) -> Result<catalog_mutations::CreateProductVariantResult> {
+        catalog_mutations::create_product_variant(ctx, input).await
+    }
+
+    async fn set_product_alias(
+        &self,
+        ctx: &Context<'_>,
+        input: catalog_mutations::SetProductAliasInput,
+    ) -> Result<catalog_mutations::SetProductAliasResult> {
+        catalog_mutations::set_product_alias(ctx, input).await
+    }
 }
 
 async fn issue_or_rotate(
@@ -389,6 +438,12 @@ pub enum MutationError {
     LeaveHouseholdUserError(household_membership::LeaveHouseholdUserError),
     RemoveHouseholdMemberUserError(household_membership::RemoveHouseholdMemberUserError),
     TransferHouseholdOwnerUserError(household_membership::TransferHouseholdOwnerUserError),
+    CreateTagUserError(catalog_mutations::CreateTagUserError),
+    UpdateTagUserError(catalog_mutations::UpdateTagUserError),
+    ArchiveTagUserError(catalog_mutations::ArchiveTagUserError),
+    CreateProductConceptUserError(catalog_mutations::CreateProductConceptUserError),
+    CreateProductVariantUserError(catalog_mutations::CreateProductVariantUserError),
+    SetProductAliasUserError(catalog_mutations::SetProductAliasUserError),
 }
 
 #[derive(Clone, Debug, SimpleObject)]

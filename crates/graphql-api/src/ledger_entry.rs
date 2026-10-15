@@ -1,6 +1,9 @@
 use async_graphql::{ID, Interface, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use horse_postgres::funding_command_result::FundingLedgerEntryResult;
+use horse_postgres::{
+    financial_command_result::TransferLedgerEntryResult,
+    funding_command_result::FundingLedgerEntryResult,
+};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -15,10 +18,94 @@ pub struct FundingLedgerEntry {
     pool: crate::member_pool::Pool,
 }
 
+#[derive(Clone, Debug, SimpleObject)]
+pub struct AdvanceTransferLedgerEntry {
+    id: ID,
+    occurred_at: crate::DateTime,
+    description: String,
+    amount_yen: crate::Long,
+    currency: String,
+    created_at: crate::DateTime,
+    from_member: crate::member_pool::Member,
+    to_member: crate::member_pool::Member,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct LoanTransferLedgerEntry {
+    id: ID,
+    occurred_at: crate::DateTime,
+    description: String,
+    amount_yen: crate::Long,
+    currency: String,
+    created_at: crate::DateTime,
+    from_member: crate::member_pool::Member,
+    to_member: crate::member_pool::Member,
+    loan: LoanBalance,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct RepaymentTransferLedgerEntry {
+    id: ID,
+    occurred_at: crate::DateTime,
+    description: String,
+    amount_yen: crate::Long,
+    currency: String,
+    created_at: crate::DateTime,
+    from_member: crate::member_pool::Member,
+    to_member: crate::member_pool::Member,
+    loan: LoanBalance,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct GiftTransferLedgerEntry {
+    id: ID,
+    occurred_at: crate::DateTime,
+    description: String,
+    amount_yen: crate::Long,
+    currency: String,
+    created_at: crate::DateTime,
+    from_member: crate::member_pool::Member,
+    to_member: crate::member_pool::Member,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct LoanBalance {
+    id: ID,
+    lender_member_id: ID,
+    borrower_member_id: ID,
+    principal_yen: crate::Long,
+    repaid_yen: crate::Long,
+    balance_yen: crate::Long,
+    created_at: crate::DateTime,
+}
+
+#[derive(Clone, Debug, Interface)]
+#[graphql(
+    field(name = "id", ty = "&ID"),
+    field(name = "occurred_at", ty = "&crate::DateTime"),
+    field(name = "description", ty = "&String"),
+    field(name = "amount_yen", ty = "&crate::Long"),
+    field(name = "currency", ty = "&String"),
+    field(name = "created_at", ty = "&crate::DateTime"),
+    field(name = "from_member", ty = "&crate::member_pool::Member"),
+    field(name = "to_member", ty = "&crate::member_pool::Member")
+)]
+pub enum TransferLedgerEntry {
+    AdvanceTransferLedgerEntry(AdvanceTransferLedgerEntry),
+    LoanTransferLedgerEntry(LoanTransferLedgerEntry),
+    RepaymentTransferLedgerEntry(RepaymentTransferLedgerEntry),
+    GiftTransferLedgerEntry(GiftTransferLedgerEntry),
+}
+
 #[derive(Clone, Debug, Interface)]
 #[graphql(field(name = "id", ty = "&ID"))]
 pub enum Node {
     FundingLedgerEntry(FundingLedgerEntry),
+    AdvanceTransferLedgerEntry(AdvanceTransferLedgerEntry),
+    LoanTransferLedgerEntry(LoanTransferLedgerEntry),
+    RepaymentTransferLedgerEntry(RepaymentTransferLedgerEntry),
+    GiftTransferLedgerEntry(GiftTransferLedgerEntry),
+    LoanBalance(LoanBalance),
 }
 
 #[derive(Clone, Debug, Interface)]
@@ -32,6 +119,10 @@ pub enum Node {
 )]
 pub enum LedgerEntry {
     FundingLedgerEntry(FundingLedgerEntry),
+    AdvanceTransferLedgerEntry(AdvanceTransferLedgerEntry),
+    LoanTransferLedgerEntry(LoanTransferLedgerEntry),
+    RepaymentTransferLedgerEntry(RepaymentTransferLedgerEntry),
+    GiftTransferLedgerEntry(GiftTransferLedgerEntry),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -39,6 +130,101 @@ pub enum FundingLedgerEntryMappingError {
     InvalidMemberRole,
     InvalidPoolKind,
     InvalidSettlementPolicy,
+    InvalidTransferKind,
+    MissingLoanBalance,
+    InvalidLoanBalance,
+}
+
+impl TryFrom<TransferLedgerEntryResult> for LedgerEntry {
+    type Error = FundingLedgerEntryMappingError;
+
+    fn try_from(value: TransferLedgerEntryResult) -> Result<Self, Self::Error> {
+        let id = encode_node_id("LedgerEntry", value.id);
+        let occurred_at = value.occurred_at.into();
+        let description = value.description;
+        let amount_yen = crate::Long(value.amount_yen);
+        let currency = value.currency;
+        let created_at = value.created_at.into();
+        let from_member = member_projection(value.from_member)?;
+        let to_member = member_projection(value.to_member)?;
+        let common = || {
+            (
+                id.clone(),
+                occurred_at.clone(),
+                description.clone(),
+                amount_yen,
+                currency.clone(),
+                created_at.clone(),
+                from_member.clone(),
+                to_member.clone(),
+            )
+        };
+        match value.kind.as_str() {
+            "ADVANCE" => {
+                let (id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member) = common();
+                Ok(Self::AdvanceTransferLedgerEntry(AdvanceTransferLedgerEntry {
+                    id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member,
+                }))
+            }
+            "LOAN" => {
+                let loan = value.loan.ok_or(FundingLedgerEntryMappingError::MissingLoanBalance)?;
+                let (id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member) = common();
+                Ok(Self::LoanTransferLedgerEntry(LoanTransferLedgerEntry {
+                    id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member,
+                    loan: loan_balance(loan)?,
+                }))
+            }
+            "REPAYMENT" => {
+                let loan = value.loan.ok_or(FundingLedgerEntryMappingError::MissingLoanBalance)?;
+                let (id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member) = common();
+                Ok(Self::RepaymentTransferLedgerEntry(RepaymentTransferLedgerEntry {
+                    id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member,
+                    loan: loan_balance(loan)?,
+                }))
+            }
+            "GIFT" => {
+                let (id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member) = common();
+                Ok(Self::GiftTransferLedgerEntry(GiftTransferLedgerEntry {
+                    id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member,
+                }))
+            }
+            _ => Err(FundingLedgerEntryMappingError::InvalidTransferKind),
+        }
+    }
+}
+
+fn member_projection(
+    value: horse_postgres::financial_command_result::TransferMemberProjection,
+) -> Result<crate::member_pool::Member, FundingLedgerEntryMappingError> {
+    use crate::member_pool::{MemberProjection, MemberRole};
+    let role = match value.role.as_str() {
+        "OWNER" => MemberRole::Owner,
+        "MEMBER" => MemberRole::Member,
+        _ => return Err(FundingLedgerEntryMappingError::InvalidMemberRole),
+    };
+    Ok(MemberProjection {
+        id: value.id,
+        display_name: value.display_name,
+        role,
+    }
+    .into())
+}
+
+fn loan_balance(
+    value: horse_postgres::financial_command_result::LoanBalanceProjection,
+) -> Result<LoanBalance, FundingLedgerEntryMappingError> {
+    if value.principal_yen < 0 || value.repaid_yen < 0 || value.balance_yen < 0 {
+        return Err(FundingLedgerEntryMappingError::InvalidLoanBalance);
+    }
+    Ok(LoanBalance {
+        id: encode_node_id("LoanBalance", value.id),
+        lender_member_id: encode_node_id("Member", value.lender_member_id),
+        borrower_member_id: encode_node_id("Member", value.borrower_member_id),
+        principal_yen: crate::Long(value.principal_yen),
+        repaid_yen: crate::Long(value.repaid_yen),
+        balance_yen: crate::Long(value.balance_yen),
+        created_at: value.created_at.into(),
+    })
 }
 
 impl TryFrom<FundingLedgerEntryResult> for FundingLedgerEntry {

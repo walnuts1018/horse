@@ -73,8 +73,32 @@ pub async fn persist_post_purchase(
         .get()
         .await
         .map_err(|error| PostPurchasePersistenceError::Pool(error.to_string()))?;
-    let conn = &mut *pooled;
-    conn.transaction::<PersistedPostPurchase, PostPurchasePersistenceError, _>(async |conn| {
+    (&mut *pooled)
+        .transaction::<PersistedPostPurchase, PostPurchasePersistenceError, _>(async |conn| {
+            persist_post_purchase_in_transaction(conn, input, decision).await
+        })
+        .await
+}
+
+pub async fn persist_post_purchase_in_transaction(
+    conn: &mut diesel_async::AsyncPgConnection,
+    input: PersistPostPurchase,
+    decision: PostPurchaseDecision,
+) -> Result<PersistedPostPurchase, PostPurchasePersistenceError> {
+    if input.idempotency_key.is_empty() || input.idempotency_key.len() > 200 {
+        return Err(PostPurchasePersistenceError::InvalidIdempotencyKey);
+    }
+    let household_id = parse_uuid(&input.household_id, "household_id")?;
+    let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
+    let purchase_id = parse_uuid(decision.purchase_id.as_str(), "purchase_id")?;
+    let expected_revision = i64::try_from(input.expected_revision)
+        .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("expected_revision"))?;
+    let new_revision = i64::try_from(decision.new_revision)
+        .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("new_revision"))?;
+    let journal_id = Uuid::new_v4();
+    let ledger_entry_id = Uuid::new_v4();
+    validate_decision(&decision, expected_revision)?;
+
         use public::idempotency_records::dsl as idem;
         use public::journals::dsl as journals;
         use public::ledger_entries::dsl as ledger;
@@ -348,9 +372,8 @@ pub async fn persist_post_purchase(
             journal_id: journal_id.to_string(),
             ledger_entry_id: ledger_entry_id.to_string(),
         })
-    })
-    .await
 }
+
 
 fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, PostPurchasePersistenceError> {
     Uuid::parse_str(value).map_err(|_| PostPurchasePersistenceError::InvalidUuid(field))

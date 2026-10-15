@@ -9,5 +9,5 @@ horse-auth = { path = "../../crates/auth" }
 horse-graphql-api = { path = "../../crates/graphql-api" }
 horse-http-api = { path = "../../crates/http-api" }
 horse-postgres = { path = "../../crates/postgres" }
-tokio = { version = "1.53.1", features = ["macros", "net", "rt-multi-thread", "signal"] }
+tokio = { version = "1.53.3", features = ["macros", "net", "rt-multi-thread", "signal"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

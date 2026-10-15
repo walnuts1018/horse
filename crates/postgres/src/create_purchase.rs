@@ -94,6 +94,43 @@ pub async fn persist_create_purchase(
         .map_err(|error| CreatePurchasePersistenceError::Pool(error.to_string()))?;
     (&mut *pooled)
         .transaction::<PersistedCreatePurchase, CreatePurchasePersistenceError, _>(async |conn| {
+            persist_create_purchase_in_transaction(conn, input, decision).await
+        })
+        .await
+}
+
+pub async fn persist_create_purchase_in_transaction(
+    conn: &mut diesel_async::AsyncPgConnection,
+    input: PersistCreatePurchase,
+    mut decision: CreatePurchaseDecision,
+) -> Result<PersistedCreatePurchase, CreatePurchasePersistenceError> {
+    if input.idempotency_key.is_empty() || input.idempotency_key.len() > 200 {
+        return Err(CreatePurchasePersistenceError::InvalidIdempotencyKey);
+    }
+    let household_id = parse_uuid(&input.household_id, "household_id")?;
+    let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
+    let purchase_id = parse_uuid(&decision.purchase_id, "purchase_id")?;
+    let occurred_at = DateTime::parse_from_rfc3339(&decision.occurred_at)
+        .map_err(|_| CreatePurchasePersistenceError::InvalidOccurredAt)?
+        .with_timezone(&Utc);
+    let tokyo_offset = FixedOffset::east_opt(9 * 60 * 60)
+        .ok_or(CreatePurchasePersistenceError::InvalidDecision)?;
+    let period_start = NaiveDate::from_ymd_opt(
+        occurred_at.with_timezone(&tokyo_offset).year(),
+        occurred_at.with_timezone(&tokyo_offset).month(),
+        1,
+    )
+    .ok_or(CreatePurchasePersistenceError::InvalidOccurredAt)?;
+    let allocation_rule_version = i64::try_from(decision.allocation_rule_version)
+        .map_err(|_| CreatePurchasePersistenceError::NumericOutOfRange("allocation_rule_version"))?;
+    if decision.items.is_empty()
+        || decision.items.iter().any(|item| item.allocations.is_empty())
+        || decision.date_precision.is_empty()
+        || decision.origin.is_empty()
+    {
+        return Err(CreatePurchasePersistenceError::InvalidDecision);
+    }
+
             use public::accounting_periods::dsl as periods;
             use public::household_members::dsl as members;
             use public::households::dsl as households;
@@ -377,9 +414,8 @@ pub async fn persist_create_purchase(
                 purchase_id: purchase_id.to_string(),
                 created: true,
             })
-        })
-        .await
 }
+
 
 async fn validate_catalog_references(
     conn: &mut diesel_async::AsyncPgConnection,
