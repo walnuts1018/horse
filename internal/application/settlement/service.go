@@ -140,47 +140,17 @@ func (w *Workflow) Close(ctx context.Context, command CloseCommand) (Settlement,
 	}
 	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
-	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForUpdate()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
-		return Settlement{}, ErrNotFound
-	} else if err != nil {
-		return Settlement{}, err
-	}
-	openStatus, zeroRevision := "OPEN", int64(0)
-	if _, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{
-		HouseholdID: &householdUUID, Period: &command.Period, Status: &openStatus, Revision: &zeroRevision,
-	}, im.OnConflict("household_id", "period").DoNothing()).Exec(ctx, executor); err != nil {
-		return Settlement{}, err
-	}
-	periodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
-		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(command.Period)),
-	)), sm.ForUpdate()).One(ctx, executor)
+	periodRow, err := lockAccountingPeriod(ctx, executor, householdUUID, command.Period, command.ExpectedRevision)
 	if err != nil {
 		return Settlement{}, err
 	}
-	if periodRow.Status == closedStatus || periodRow.Revision != command.ExpectedRevision {
-		return Settlement{}, ErrConflict
-	}
-	drafts, err := models.Purchases.Query(sm.Where(psql.And(
-		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.Purchases.Columns.Status.EQ(psql.Arg("DRAFT")),
-		models.Purchases.Columns.OccurredAt.GTE(psql.Arg(periodStart)),
-		models.Purchases.Columns.OccurredAt.LT(psql.Arg(periodEnd)),
-	))).All(ctx, executor)
-	if err != nil {
+	if err := ensureNoDraftPurchases(ctx, executor, householdUUID, periodStart, periodEnd); err != nil {
 		return Settlement{}, err
-	}
-	if len(drafts) != 0 {
-		return Settlement{}, fmt.Errorf("%w: post or remove draft purchases before closing the period", ErrConflict)
 	}
 	if err := materializeFundingObligations(ctx, executor, householdUUID, command.Period, periodStart, periodEnd); err != nil {
 		return Settlement{}, err
 	}
-	rules, err := PoolFundingRules(ctx, executor, command.HouseholdID)
-	if err != nil {
-		return Settlement{}, err
-	}
-	lines, err := calculateSettlementPreviewWithRules(ctx, executor, command.HouseholdID, command.Period)
+	rules, lines, err := calculateCloseSettlement(ctx, executor, command.HouseholdID, command.Period)
 	if err != nil {
 		return Settlement{}, err
 	}
@@ -189,22 +159,92 @@ func (w *Workflow) Close(ctx context.Context, command CloseCommand) (Settlement,
 		return Settlement{}, err
 	}
 	newRevision := periodRow.Revision + 1
+	if err := insertSettlementSnapshot(ctx, executor, householdUUID, command.Period, actorUUID, settlementID, newRevision, rules, lines); err != nil {
+		return Settlement{}, err
+	}
+	updatedAt := time.Now()
+	if err := closePostedPurchases(ctx, executor, householdUUID, periodStart, periodEnd, updatedAt); err != nil {
+		return Settlement{}, err
+	}
+	if err := recordPeriodClosure(ctx, executor, householdUUID, command.Period, settlementID, newRevision, actorUUID, updatedAt); err != nil {
+		return Settlement{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Settlement{}, err
+	}
+	return w.Get(ctx, command.HouseholdID, command.Period)
+}
+
+func lockAccountingPeriod(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, period string, expectedRevision int64) (*models.AccountingPeriod, error) {
+	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	openStatus, zeroRevision := "OPEN", int64(0)
+	if _, err := models.AccountingPeriods.Insert(&models.AccountingPeriodSetter{
+		HouseholdID: &householdID, Period: &period, Status: &openStatus, Revision: &zeroRevision,
+	}, im.OnConflict("household_id", "period").DoNothing()).Exec(ctx, executor); err != nil {
+		return nil, err
+	}
+	periodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(period)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if periodRow.Status == closedStatus || periodRow.Revision != expectedRevision {
+		return nil, ErrConflict
+	}
+	return periodRow, nil
+}
+
+func ensureNoDraftPurchases(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, start, end time.Time) error {
+	drafts, err := models.Purchases.Query(sm.Where(psql.And(
+		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.Purchases.Columns.Status.EQ(psql.Arg("DRAFT")),
+		models.Purchases.Columns.OccurredAt.GTE(psql.Arg(start)),
+		models.Purchases.Columns.OccurredAt.LT(psql.Arg(end)),
+	))).All(ctx, executor)
+	if err != nil {
+		return err
+	}
+	if len(drafts) != 0 {
+		return fmt.Errorf("%w: post or remove draft purchases before closing the period", ErrConflict)
+	}
+	return nil
+}
+
+func calculateCloseSettlement(ctx context.Context, executor bob.Executor, householdID, period string) (map[string]domain.PoolFundingRule, []domain.SettlementAmount, error) {
+	rules, err := PoolFundingRules(ctx, executor, householdID)
+	if err != nil {
+		return nil, nil, err
+	}
+	lines, err := calculateSettlementPreviewWithRules(ctx, executor, householdID, period)
+	if err != nil {
+		return nil, nil, err
+	}
+	return rules, lines, nil
+}
+
+func insertSettlementSnapshot(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, period string, actorID, settlementID gofrsuuid.UUID, revision int64, rules map[string]domain.PoolFundingRule, lines []domain.SettlementAmount) error {
 	fundingSnapshotBytes, err := json.Marshal(rules, json.Deterministic(true))
 	if err != nil {
-		return Settlement{}, err
+		return err
 	}
 	fundingSnapshot := types.JSON[stdjson.RawMessage]{Val: fundingSnapshotBytes}
 	status := closedStatus
 	if _, err := models.SettlementRuns.Insert(&models.SettlementRunSetter{
-		ID: &settlementID, HouseholdID: &householdUUID, Period: &command.Period, Revision: &newRevision,
-		Status: &status, CreatedBy: &actorUUID, FundingSnapshot: &fundingSnapshot,
+		ID: &settlementID, HouseholdID: &householdID, Period: &period, Revision: &revision,
+		Status: &status, CreatedBy: &actorID, FundingSnapshot: &fundingSnapshot,
 	}).Exec(ctx, executor); err != nil {
-		return Settlement{}, err
+		return err
 	}
 	for _, line := range lines {
 		memberUUID, err := gofrsuuid.FromString(line.MemberID)
 		if err != nil {
-			return Settlement{}, err
+			return err
 		}
 		scheduled, paid := line.ScheduledYen, line.PaidYen
 		carry, adjustment := line.CarryYen, line.MonthlyAdjustmentYen
@@ -213,43 +253,45 @@ func (w *Workflow) Close(ctx context.Context, command CloseCommand) (Settlement,
 			SettlementRunID: &settlementID, MemberID: &memberUUID, ScheduledYen: &scheduled, PaidYen: &paid,
 			CarryYen: &carry, MonthlyAdjustmentYen: &adjustment, AdvanceCreditYen: &advanceCredit, AmountDueYen: &amountDue,
 		}).Exec(ctx, executor); err != nil {
-			return Settlement{}, err
+			return err
 		}
 	}
+	return nil
+}
+
+func closePostedPurchases(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, start, end, updatedAt time.Time) error {
 	postedStatus, closedPurchaseStatus := "POSTED", closedStatus
-	updatedAt := time.Now()
 	postedPurchases, err := models.Purchases.Query(sm.Where(psql.And(
-		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.Purchases.Columns.Status.EQ(psql.Arg(postedStatus)),
-		models.Purchases.Columns.OccurredAt.GTE(psql.Arg(periodStart)),
-		models.Purchases.Columns.OccurredAt.LT(psql.Arg(periodEnd)),
+		models.Purchases.Columns.OccurredAt.GTE(psql.Arg(start)),
+		models.Purchases.Columns.OccurredAt.LT(psql.Arg(end)),
 	))).All(ctx, executor)
 	if err != nil {
-		return Settlement{}, err
+		return err
 	}
 	for _, purchase := range postedPurchases {
 		revision := purchase.Revision + 1
 		if _, err := models.Purchases.Update((&models.PurchaseSetter{Status: &closedPurchaseStatus, Revision: &revision, UpdatedAt: &updatedAt}).UpdateMod(), um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchase.ID)))).Exec(ctx, executor); err != nil {
-			return Settlement{}, err
+			return err
 		}
 	}
-	closedBy := sql.Null[gofrsuuid.UUID]{V: actorUUID, Valid: true}
+	return nil
+}
+
+func recordPeriodClosure(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, period string, settlementID gofrsuuid.UUID, revision int64, actorID gofrsuuid.UUID, updatedAt time.Time) error {
+	status := closedStatus
+	closedBy := sql.Null[gofrsuuid.UUID]{V: actorID, Valid: true}
 	closedAt := sql.Null[time.Time]{V: updatedAt, Valid: true}
 	if _, err := models.AccountingPeriods.Update((&models.AccountingPeriodSetter{
-		Status: &status, Revision: &newRevision, ClosedBy: &closedBy, ClosedAt: &closedAt,
+		Status: &status, Revision: &revision, ClosedBy: &closedBy, ClosedAt: &closedAt,
 	}).UpdateMod(), um.Where(psql.And(
-		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(command.Period)),
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(period)),
 	))).Exec(ctx, executor); err != nil {
-		return Settlement{}, err
+		return err
 	}
-	if err := insertPeriodClosedEvent(ctx, executor, householdUUID, settlementID, newRevision, actorUUID); err != nil {
-		return Settlement{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return Settlement{}, err
-	}
-	return w.Get(ctx, command.HouseholdID, command.Period)
+	return insertPeriodClosedEvent(ctx, executor, householdID, settlementID, revision, actorID)
 }
 
 func materializeFundingObligations(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, period string, start, end time.Time) error {
