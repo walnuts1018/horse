@@ -1906,6 +1906,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "horse-auth",
+ "horse-graphql-api",
  "horse-http-api",
  "horse-postgres",
  "tokio",
@@ -1964,11 +1965,13 @@ dependencies = [
 name = "horse-http-api"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "axum",
  "chrono",
  "diesel",
  "diesel-async",
  "horse-auth",
+ "horse-graphql-api",
  "horse-postgres",
  "serde_json",
  "tracing",

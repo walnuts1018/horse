@@ -1,6 +1,7 @@
 use std::{env, error::Error, net::SocketAddr};
 
 use horse_auth::{AuthConfig, AuthService};
+use horse_graphql_api::{Config as GraphqlConfig, schema};
 use horse_http_api::{Config, router};
 use horse_postgres::connect;
 use tokio::net::TcpListener;
@@ -35,6 +36,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         },
     )
     .await?;
+    let mailbox_domain = env::var("MAIL_FORWARDING_MAILBOX_DOMAIN").unwrap_or_default();
+    let local_part_prefix =
+        env::var("MAIL_FORWARDING_ADDRESS_LOCAL_PART_PREFIX").unwrap_or_default();
+    let graphql_schema = schema(
+        pool.clone(),
+        GraphqlConfig {
+            mail_forwarding_enabled: !mailbox_domain.is_empty() && !local_part_prefix.is_empty(),
+            mailbox_domain,
+            local_part_prefix,
+        },
+    );
     let listener = TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], port))).await?;
     axum::serve(
         listener,
@@ -45,6 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 frontend_origin,
                 auth,
             },
+            graphql_schema,
         ),
     )
     .with_graceful_shutdown(shutdown_signal())

@@ -1,13 +1,15 @@
 use axum::{
     Json, Router,
+    body::{Body, to_bytes},
     extract::{RawQuery, State},
-    http::{HeaderMap, HeaderValue, StatusCode, header},
+    http::{HeaderMap, HeaderValue, Request, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
 };
 use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
-use horse_auth::{AuthService, Cookie, OidcError, revoke_cookie, resolve_cookie};
+use horse_auth::{AuthService, Cookie, OidcError, resolve_cookie, revoke_cookie};
+use horse_graphql_api::{Actor, Schema as GraphqlSchema};
 use horse_postgres::{PgPool, schema::public::households};
 use serde_json::json;
 use url::Url;
@@ -23,17 +25,96 @@ pub struct Config {
 struct ApiState {
     pool: PgPool,
     config: Config,
+    graphql_schema: GraphqlSchema,
 }
 
-pub fn router(pool: PgPool, config: Config) -> Router {
+pub fn router(pool: PgPool, config: Config, graphql_schema: GraphqlSchema) -> Router {
     Router::new()
+        .route("/graphql", post(graphql))
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
         .route("/auth/login", get(login))
         .route("/auth/callback", get(callback))
         .route("/auth/me", get(me))
         .route("/auth/logout", axum::routing::post(logout))
-        .with_state(ApiState { pool, config })
+        .with_state(ApiState {
+            pool,
+            config,
+            graphql_schema,
+        })
+}
+
+async fn graphql(State(state): State<ApiState>, request: Request<Body>) -> Response {
+    if !same_origin(request.headers(), &state.config) {
+        return (StatusCode::FORBIDDEN, "request origin rejected").into_response();
+    }
+
+    if state.config.auth.is_none() {
+        return unauthenticated_graphql();
+    }
+    let cookie = request
+        .headers()
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return unauthenticated_graphql(),
+        Err(error) => {
+            tracing::error!(error = ?error, "GraphQL session lookup failed");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "errors": [{
+                        "message": "service unavailable",
+                        "extensions": {"code": "SERVICE_UNAVAILABLE"}
+                    }]
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let is_json = request
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value.split(';').next().is_some_and(|media_type| {
+                media_type.trim().eq_ignore_ascii_case("application/json")
+            })
+        });
+    if !is_json {
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
+
+    let body = match to_bytes(request.into_body(), 2 << 20).await {
+        Ok(body) => body,
+        Err(_) => return StatusCode::PAYLOAD_TOO_LARGE.into_response(),
+    };
+    let request = match serde_json::from_slice::<async_graphql::Request>(&body) {
+        Ok(request) => request,
+        Err(_) => return StatusCode::BAD_REQUEST.into_response(),
+    };
+    let response = GraphqlSchema::execute(
+        &state.graphql_schema,
+        request.data(Actor(principal.member_id)),
+    )
+    .await;
+    Json(response).into_response()
+}
+
+fn unauthenticated_graphql() -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(json!({
+            "errors": [{
+                "message": "authentication required",
+                "extensions": {"code": "UNAUTHENTICATED"}
+            }]
+        })),
+    )
+        .into_response()
 }
 
 async fn login(State(state): State<ApiState>, RawQuery(query): RawQuery) -> Response {
