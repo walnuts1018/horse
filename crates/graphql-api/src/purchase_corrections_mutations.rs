@@ -247,12 +247,13 @@ async fn execute(
     request: postgres_correct_purchase::CorrectPurchaseRequest,
 ) -> Result<CorrectPurchaseResult> {
     let household_id = Uuid::parse_str(&request.household_id).map_err(crate::internal_error)?;
+    let purchase_id = request.purchase_id.clone();
     match postgres_correct_purchase::correct_purchase(ctx.data::<PgPool>()?, request).await {
         Ok(value) => Ok(CorrectPurchaseSuccess {
             result: crate::purchase_mutations::purchase_result(
                 ctx.data::<PgPool>()?,
                 household_id,
-                &value.purchase_id,
+                &purchase_id,
             )
             .await?,
         }
@@ -369,7 +370,7 @@ fn parse_payments(
 }
 
 fn decode_node_id(id: &ID, expected_kind: &str) -> std::result::Result<Uuid, ()> {
-    let bytes = URL_SAFE_NO_PAD.decode(id.as_str()).map_err(|_| ())?;
+    let bytes = URL_SAFE_NO_PAD.decode(&id.0).map_err(|_| ())?;
     let separator = bytes.iter().position(|byte| *byte == b':').ok_or(())?;
     let (kind, rest) = bytes.split_at(separator);
     if kind != expected_kind.as_bytes() || rest.len() != 17 {
@@ -431,10 +432,4 @@ fn user_error(
         }
         .to_owned(),
     })
-}
-
-impl From<CorrectPurchaseUserError> for CorrectPurchaseResult {
-    fn from(value: CorrectPurchaseUserError) -> Self {
-        Self::UserError(value)
-    }
 }

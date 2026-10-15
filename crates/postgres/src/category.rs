@@ -24,7 +24,8 @@ impl TryFrom<PersistedCategory> for Category {
 
     // DB復元値を無検証で信用せず、Smart Constructorを通して制約を再確認する。
     fn try_from(category: PersistedCategory) -> Result<Self, Self::Error> {
-        CategoryName::new(&category.name).map_err(|_| CategoryPersistenceError::CorruptStoredData)?;
+        CategoryName::new(&category.name)
+            .map_err(|_| CategoryPersistenceError::CorruptStoredData)?;
         Ok(Self {
             id: category.id.to_string(),
             household_id: category.household_id.to_string(),

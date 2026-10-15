@@ -118,7 +118,7 @@ pub struct AllocationObject {
 #[derive(Clone, Debug, SimpleObject)]
 #[graphql(name = "AllocationRule")]
 pub struct AllocationRuleObject {
-    id: ID,
+    pub(crate) id: ID,
     household_id: ID,
     target: crate::catalog_mutations::AllocationRuleTarget,
     revision: i32,
@@ -321,7 +321,7 @@ pub async fn set_pool_funding_rule(
     )
     .await
     {
-        Ok(value) => {
+        Ok(_) => {
             let projection = match postgres_pool_mutations::load_pool_read_model(
                 ctx.data::<PgPool>()?,
                 actor.0,

@@ -5,9 +5,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_workflows::{
     bulk_delete_items::BulkDeleteItemTarget,
     bulk_update_items::{BulkUpdateItemPatch, BulkUpdateItemTarget, ItemAllocationWeight},
-    update_purchase::{
-        UpdatePurchaseCommand, UpdatePurchaseDraft, UpdatePurchasePayment, decide_update_purchase,
-    },
+    update_purchase::{UpdatePurchaseCommand, UpdatePurchaseDraft, UpdatePurchasePayment},
     update_purchase_item::{
         ItemAllocationWeight as UpdateItemAllocationWeight, PrintedUnitPrice, ProductLearning,
         UpdatePurchaseItemCommand, UpdatePurchaseItemError,
@@ -539,7 +537,7 @@ pub(crate) fn item_update_command(
         }
         MaybeUndefined::Value(value) => {
             changed_fields.push("quantity".to_owned());
-            (true, Some(value.into()))
+            (true, Some(parse_measure(value)?))
         }
     };
     let (printed_unit_price_set, printed_unit_price) = match input.printed_unit_price {
@@ -550,7 +548,7 @@ pub(crate) fn item_update_command(
         }
         MaybeUndefined::Value(value) => {
             changed_fields.push("printedUnitPrice".to_owned());
-            (true, Some(value.into()))
+            (true, Some(parse_printed_unit_price(value)?))
         }
     };
     let (category_id_set, category_id) = match input.category_id {
@@ -632,23 +630,23 @@ pub(crate) fn item_update_command(
     })
 }
 
-impl From<UpdatePurchaseItemQuantityInput> for bookkeeping_workflows::create_purchase::Measure {
-    fn from(value: UpdatePurchaseItemQuantityInput) -> Self {
-        Self {
-            numerator: value.numerator,
-            denominator: value.denominator,
-            unit: value.unit,
-        }
-    }
+fn parse_measure(
+    value: UpdatePurchaseItemQuantityInput,
+) -> std::result::Result<bookkeeping_workflows::create_purchase::Measure, ()> {
+    Ok(bookkeeping_workflows::create_purchase::Measure {
+        numerator: value.numerator.parse().map_err(|_| ())?,
+        denominator: value.denominator.parse().map_err(|_| ())?,
+        unit: value.unit,
+    })
 }
 
-impl From<UpdatePurchaseItemPrintedUnitPriceInput> for PrintedUnitPrice {
-    fn from(value: UpdatePurchaseItemPrintedUnitPriceInput) -> Self {
-        Self {
-            amount_yen: value.amount_yen.0,
-            basis: value.basis.into(),
-        }
-    }
+fn parse_printed_unit_price(
+    value: UpdatePurchaseItemPrintedUnitPriceInput,
+) -> std::result::Result<PrintedUnitPrice, ()> {
+    Ok(PrintedUnitPrice {
+        amount_yen: value.amount_yen.0,
+        basis: parse_measure(value.basis)?,
+    })
 }
 
 fn parse_targets(

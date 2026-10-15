@@ -77,9 +77,12 @@ fn decode_relay_id(global_id: &ID) -> Result<DecodedRelayId> {
     let bytes = URL_SAFE_NO_PAD
         .decode(global_id.as_str())
         .map_err(|_| Error::new("invalid node ID"))?;
-    let (type_name, payload) = bytes
-        .split_once(|byte| *byte == b':')
+    let separator = bytes
+        .iter()
+        .position(|byte| *byte == b':')
         .ok_or_else(|| Error::new("invalid node ID"))?;
+    let (type_name, payload) = bytes.split_at(separator);
+    let payload = &payload[1..];
     let type_name = std::str::from_utf8(type_name)
         .map_err(|_| Error::new("invalid node ID"))?
         .to_owned();
@@ -102,9 +105,12 @@ fn decode_uuid_payload(type_name: &str, payload: &[u8]) -> Result<Uuid> {
 }
 
 fn decode_unmatched_payload(payload: &[u8]) -> Result<(Uuid, String)> {
-    let (document_bytes, rest) = payload
-        .split_once(|byte| *byte == 0)
+    let separator = payload
+        .iter()
+        .position(|byte| *byte == 0)
         .ok_or_else(|| Error::new("invalid UnmatchedObservation node ID payload"))?;
+    let (document_bytes, rest) = payload.split_at(separator);
+    let rest = &rest[1..];
     let document_id = match document_bytes.len() {
         16 => Uuid::from_slice(document_bytes),
         36 => Uuid::parse_str(
@@ -447,9 +453,12 @@ pub(crate) fn decode_global_node_id(value: &ID, expected_type: &str) -> Result<U
     let bytes = URL_SAFE_NO_PAD
         .decode(value.as_str())
         .map_err(|_| Error::new("invalid node ID"))?;
-    let (type_name, raw_id) = bytes
-        .split_once(|byte| *byte == b':')
+    let separator = bytes
+        .iter()
+        .position(|byte| *byte == b':')
         .ok_or_else(|| Error::new("invalid node ID"))?;
+    let (type_name, raw_id) = bytes.split_at(separator);
+    let raw_id = &raw_id[1..];
     if type_name != expected_type.as_bytes() || raw_id.len() != 16 {
         return Err(Error::new("invalid node ID"));
     }

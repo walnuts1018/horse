@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct FundingLedgerEntry {
-    id: ID,
+    pub(crate) id: ID,
     occurred_at: crate::DateTime,
     description: String,
     amount_yen: crate::Long,
@@ -20,7 +20,7 @@ pub struct FundingLedgerEntry {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct PurchaseLedgerEntry {
-    id: ID,
+    pub(crate) id: ID,
     occurred_at: crate::DateTime,
     description: String,
     amount_yen: crate::Long,
@@ -31,7 +31,7 @@ pub struct PurchaseLedgerEntry {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct CorrectionLedgerEntry {
-    id: ID,
+    pub(crate) id: ID,
     occurred_at: crate::DateTime,
     description: String,
     amount_yen: crate::Long,
@@ -42,7 +42,7 @@ pub struct CorrectionLedgerEntry {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct AdvanceTransferLedgerEntry {
-    id: ID,
+    pub(crate) id: ID,
     occurred_at: crate::DateTime,
     description: String,
     amount_yen: crate::Long,
@@ -54,7 +54,7 @@ pub struct AdvanceTransferLedgerEntry {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct LoanTransferLedgerEntry {
-    id: ID,
+    pub(crate) id: ID,
     occurred_at: crate::DateTime,
     description: String,
     amount_yen: crate::Long,
@@ -67,7 +67,7 @@ pub struct LoanTransferLedgerEntry {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct RepaymentTransferLedgerEntry {
-    id: ID,
+    pub(crate) id: ID,
     occurred_at: crate::DateTime,
     description: String,
     amount_yen: crate::Long,
@@ -80,7 +80,7 @@ pub struct RepaymentTransferLedgerEntry {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct GiftTransferLedgerEntry {
-    id: ID,
+    pub(crate) id: ID,
     occurred_at: crate::DateTime,
     description: String,
     amount_yen: crate::Long,

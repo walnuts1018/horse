@@ -203,11 +203,11 @@ fn decrypt_email_body(
 }
 
 fn email_fingerprint(key: &[u8], plaintext: &[u8]) -> Result<String, StoreError> {
-    let mut derivation = <Hmac<Sha256> as Mac>::new_from_slice(key)
+    let mut derivation = <Hmac<Sha256> as hmac::digest::KeyInit>::new_from_slice(key)
         .map_err(|_| StoreError("decrypt original document failed"))?;
     derivation.update(b"horse/email-object-fingerprint-key/v1");
     let derived = derivation.finalize().into_bytes();
-    let mut fingerprint = <Hmac<Sha256> as Mac>::new_from_slice(&derived)
+    let mut fingerprint = <Hmac<Sha256> as hmac::digest::KeyInit>::new_from_slice(&derived)
         .map_err(|_| StoreError("decrypt original document failed"))?;
     fingerprint.update(plaintext);
     Ok(hex::encode(fingerprint.finalize().into_bytes()))

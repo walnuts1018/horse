@@ -136,10 +136,8 @@ pub async fn persist_create_concept(
                     events::entity_kind.eq("product_concept"),
                     events::entity_id.eq(concept.id),
                     events::revision.eq(1_i64),
-                    events::changed_fields.eq(vec![
-                        Some("name".to_owned()),
-                        Some("categoryId".to_owned()),
-                    ]),
+                    events::changed_fields
+                        .eq(vec![Some("name".to_owned()), Some("categoryId".to_owned())]),
                     events::actor_id.eq(actor_id),
                     events::created_at.eq(Utc::now()),
                 ))
@@ -239,10 +237,8 @@ pub async fn persist_create_variant(
                     events::entity_kind.eq("product_variant"),
                     events::entity_id.eq(variant.id),
                     events::revision.eq(1_i64),
-                    events::changed_fields.eq(vec![
-                        Some("name".to_owned()),
-                        Some("conceptId".to_owned()),
-                    ]),
+                    events::changed_fields
+                        .eq(vec![Some("name".to_owned()), Some("conceptId".to_owned())]),
                     events::actor_id.eq(actor_id),
                     events::created_at.eq(Utc::now()),
                 ))

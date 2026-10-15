@@ -23,19 +23,20 @@ pub async fn graphql_purchase_defaults(
     let rows = postgres_query::purchase_defaults(ctx.data::<PgPool>()?, actor.0, household_id)
         .await
         .map_err(map_query_error)?;
-    Ok(rows
-        .into_iter()
-        .map(|row| PurchaseDefault {
-            merchant: row.merchant,
-            payment_account_id: crate::catalog_mutations::encode_node_id(
-                "Account",
-                &row.payment_account_id.to_string(),
-            )
-            .map_err(|_| crate::internal_error("invalid account node ID"))?,
-            purchase_count: row.purchase_count,
-            last_used_at: row.last_used_at.into(),
+    rows.into_iter()
+        .map(|row| {
+            Ok(PurchaseDefault {
+                merchant: row.merchant,
+                payment_account_id: crate::catalog_mutations::encode_node_id(
+                    "Account",
+                    &row.payment_account_id.to_string(),
+                )
+                .map_err(|_| crate::internal_error("invalid account node ID"))?,
+                purchase_count: row.purchase_count,
+                last_used_at: row.last_used_at.into(),
+            })
         })
-        .collect())
+        .collect()
 }
 
 fn map_query_error(error: postgres_query::PurchaseDefaultsQueryError) -> Error {

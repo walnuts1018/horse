@@ -558,6 +558,7 @@ fn refund_persistence_error(
         E::StatementAlreadyConfirmed => Ok(refund_error(MutationErrorCode::Conflict).into()),
         E::InvalidUuid(_)
         | E::InvalidDecision
+        | E::StatementNotRefundable
         | E::StatementExtractionUnavailable
         | E::StatementReferenceNotFound
         | E::RefundDoesNotMatchCorrection => Ok(refund_error(MutationErrorCode::BadInput).into()),

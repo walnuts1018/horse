@@ -1,6 +1,4 @@
-use async_graphql::{
-    Context, Error, ID, InputObject, Interface, Object, Result, SimpleObject, Union,
-};
+use async_graphql::{Context, Error, ID, InputObject, Interface, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
 use horse_postgres::{
@@ -61,7 +59,7 @@ pub struct HouseholdAllocation {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct PendingHouseholdInvitation {
-    id: ID,
+    pub(crate) id: ID,
     household_id: ID,
     expires_at: crate::DateTime,
     created_at: crate::DateTime,
@@ -69,7 +67,7 @@ pub struct PendingHouseholdInvitation {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct AcceptedHouseholdInvitation {
-    id: ID,
+    pub(crate) id: ID,
     household_id: ID,
     expires_at: crate::DateTime,
     created_at: crate::DateTime,
@@ -78,7 +76,7 @@ pub struct AcceptedHouseholdInvitation {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct RevokedHouseholdInvitation {
-    id: ID,
+    pub(crate) id: ID,
     household_id: ID,
     expires_at: crate::DateTime,
     created_at: crate::DateTime,
@@ -87,7 +85,7 @@ pub struct RevokedHouseholdInvitation {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct ExpiredHouseholdInvitation {
-    id: ID,
+    pub(crate) id: ID,
     household_id: ID,
     expires_at: crate::DateTime,
     created_at: crate::DateTime,
@@ -535,10 +533,12 @@ pub(crate) fn map_household(value: postgres_household::HouseholdReadModel) -> Re
     let default_allocation = value
         .default_allocation
         .into_iter()
-        .map(|allocation| HouseholdAllocation {
-            pool_id: encode_node_id("Pool", &allocation.pool_id.to_string())?,
-            pool_name: allocation.pool_name,
-            weight: crate::Long(allocation.weight),
+        .map(|allocation| {
+            Ok(HouseholdAllocation {
+                pool_id: encode_node_id("Pool", &allocation.pool_id.to_string())?,
+                pool_name: allocation.pool_name,
+                weight: crate::Long(allocation.weight),
+            })
         })
         .collect::<Result<Vec<_>>>()?;
 

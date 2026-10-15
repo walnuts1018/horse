@@ -1127,7 +1127,7 @@ async fn load_statement_refund_entry(
         return Ok(LoadedStatementRefund {
             observation: statement_observation(statement, source_reference)?,
             evidence: serde_json::json!({
-                "jobId": job_id,
+                "jobId": job_id.to_string(),
                 "statement": statement,
                 "sourceHash": source_kind.1,
             }),

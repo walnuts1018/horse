@@ -20,6 +20,7 @@ pub mod correct_purchase;
 pub mod create_account;
 pub mod create_household;
 pub mod create_pool;
+pub mod create_product;
 pub mod create_purchase;
 pub mod financial_command_context;
 pub mod financial_command_result;

@@ -197,7 +197,7 @@ async fn resolve_source(
         let type_name = match source_kind {
             "PURCHASE" => "Purchase",
             "CORRECTION" => {
-                return crate::node_query::resolve_purchase_correction_node(
+                return crate::purchase_mutations::resolve_purchase_correction_node(
                     ctx,
                     household_id,
                     source_id,
@@ -282,7 +282,9 @@ fn encode_cursor(id: Uuid) -> String {
 
 fn decode_cursor(value: &str) -> std::result::Result<Uuid, ()> {
     let bytes = URL_SAFE_NO_PAD.decode(value).map_err(|_| ())?;
-    let (kind, raw_id) = bytes.split_once(|byte| *byte == b':').ok_or(())?;
+    let separator = bytes.iter().position(|byte| *byte == b':').ok_or(())?;
+    let (kind, raw_id) = bytes.split_at(separator);
+    let raw_id = &raw_id[1..];
     if kind != b"AccountBalanceChange" || raw_id.len() != 16 {
         return Err(());
     }

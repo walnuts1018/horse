@@ -19,7 +19,7 @@ pub enum UnmatchedObservationState {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct UnmatchedObservation {
-    id: ID,
+    pub(crate) id: ID,
     document_id: ID,
     source_reference: String,
     source_kind: SourceKind,
@@ -32,7 +32,7 @@ pub struct UnmatchedObservation {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct ConfirmedObservation {
-    id: ID,
+    pub(crate) id: ID,
     document_id: ID,
     source_reference: String,
     source_kind: SourceKind,
@@ -44,7 +44,7 @@ pub struct ConfirmedObservation {
     purchase: PurchaseObject,
 }
 
-#[derive(Interface)]
+#[derive(Clone, Debug, Interface)]
 #[graphql(
     field(name = "id", ty = "&ID"),
     field(name = "document_id", ty = "&ID"),

@@ -10,7 +10,7 @@ pub enum MemberRole {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct Member {
-    id: ID,
+    pub(crate) id: ID,
     display_name: String,
     role: MemberRole,
 }
@@ -36,7 +36,7 @@ pub struct PoolFundingShare {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct PersonalPool {
-    id: ID,
+    pub(crate) id: ID,
     name: String,
     default_share_weight: crate::Long,
     funding_shares: Vec<PoolFundingShare>,
@@ -46,7 +46,7 @@ pub struct PersonalPool {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct UnconfiguredPersonalPool {
-    id: ID,
+    pub(crate) id: ID,
     name: String,
     default_share_weight: crate::Long,
     funding_shares: Vec<PoolFundingShare>,
@@ -55,7 +55,7 @@ pub struct UnconfiguredPersonalPool {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct SharedPool {
-    id: ID,
+    pub(crate) id: ID,
     name: String,
     default_share_weight: crate::Long,
     funding_shares: Vec<PoolFundingShare>,
@@ -65,7 +65,7 @@ pub struct SharedPool {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct UnconfiguredSharedPool {
-    id: ID,
+    pub(crate) id: ID,
     name: String,
     default_share_weight: crate::Long,
     funding_shares: Vec<PoolFundingShare>,

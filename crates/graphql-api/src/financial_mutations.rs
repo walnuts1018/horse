@@ -2,11 +2,10 @@ use async_graphql::{Context, Enum, ID, InputObject, Result, SimpleObject, Union}
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_domain::PositiveYen;
 use bookkeeping_workflows::{
-    AccountId, MemberId,
+    MemberId,
     record_repayment::{RecordRepaymentCommand, RepaymentError, decide_record_repayment},
     record_transfer::{
-        AccountingPeriodStatus, RecordTransferCommand, RecordTransferError, TransferBase,
-        decide_record_transfer,
+        RecordTransferCommand, RecordTransferError, TransferBase, decide_record_transfer,
     },
 };
 use chrono::{DateTime as ChronoDateTime, Utc};
@@ -426,15 +425,18 @@ fn parse_transfer_input(
             TransferInputKind::Loan => "LOAN",
             TransferInputKind::Gift => "GIFT",
         },
-        payment_account_id: input.payment_account_id.as_ref().map(ID::as_str),
-        destination_account_id: input.destination_account_id.as_ref().map(ID::as_str),
+        payment_account_id: input.payment_account_id.as_ref().map(|id| id.0.as_str()),
+        destination_account_id: input
+            .destination_account_id
+            .as_ref()
+            .map(|id| id.0.as_str()),
         amount_yen: amount,
         occurred_at: input.occurred_at.as_str(),
         description: &input.description,
         idempotency_key: &input.idempotency_key,
-        source_document_id: input.source_document_id.as_ref().map(ID::as_str),
+        source_document_id: input.source_document_id.as_ref().map(|id| id.0.as_str()),
         source_reference: input.source_reference.as_deref(),
-        source_account_id: input.source_account_id.as_ref().map(ID::as_str),
+        source_account_id: input.source_account_id.as_ref().map(|id| id.0.as_str()),
     };
     let fingerprint = fingerprint(&fingerprint_data)?;
     Ok(ParsedTransferInput {
@@ -460,15 +462,21 @@ fn parse_repayment_input(
 ) -> std::result::Result<ParsedRepaymentInput, RecordRepaymentUserError> {
     let household_id =
         crate::decode_household_id(&input.household_id).map_err(|_| bad_repayment_error())?;
-    let from_member_id = decode_node_id(&input.from_member_id, "Member")?;
-    let to_member_id = decode_node_id(&input.to_member_id, "Member")?;
-    let loan_id = decode_node_id(&input.loan_id, "LoanBalance")?;
-    let payment_account_id = decode_optional_node_id(input.payment_account_id.as_ref(), "Account")?;
+    let from_member_id =
+        decode_node_id(&input.from_member_id, "Member").map_err(|_| bad_repayment_error())?;
+    let to_member_id =
+        decode_node_id(&input.to_member_id, "Member").map_err(|_| bad_repayment_error())?;
+    let loan_id =
+        decode_node_id(&input.loan_id, "LoanBalance").map_err(|_| bad_repayment_error())?;
+    let payment_account_id = decode_optional_node_id(input.payment_account_id.as_ref(), "Account")
+        .map_err(|_| bad_repayment_error())?;
     let destination_account_id =
-        decode_optional_node_id(input.destination_account_id.as_ref(), "Account")?;
+        decode_optional_node_id(input.destination_account_id.as_ref(), "Account")
+            .map_err(|_| bad_repayment_error())?;
     let source_document_id = decode_optional_uuid(input.source_document_id.as_ref())
         .map_err(|_| bad_repayment_error())?;
-    let source_account_id = decode_optional_node_id(input.source_account_id.as_ref(), "Account")?;
+    let source_account_id = decode_optional_node_id(input.source_account_id.as_ref(), "Account")
+        .map_err(|_| bad_repayment_error())?;
     let occurred_at = input
         .occurred_at
         .parse_utc()
@@ -493,17 +501,20 @@ fn parse_repayment_input(
         from_member_id: input.from_member_id.as_str(),
         to_member_id: input.to_member_id.as_str(),
         loan_id: input.loan_id.as_str(),
-        payment_account_id: input.payment_account_id.as_ref().map(ID::as_str),
-        destination_account_id: input.destination_account_id.as_ref().map(ID::as_str),
+        payment_account_id: input.payment_account_id.as_ref().map(|id| id.0.as_str()),
+        destination_account_id: input
+            .destination_account_id
+            .as_ref()
+            .map(|id| id.0.as_str()),
         amount_yen: input.amount_yen.0,
         occurred_at: input.occurred_at.as_str(),
         description: &input.description,
         idempotency_key: &input.idempotency_key,
-        source_document_id: input.source_document_id.as_ref().map(ID::as_str),
+        source_document_id: input.source_document_id.as_ref().map(|id| id.0.as_str()),
         source_reference: input.source_reference.as_deref(),
-        source_account_id: input.source_account_id.as_ref().map(ID::as_str),
+        source_account_id: input.source_account_id.as_ref().map(|id| id.0.as_str()),
     };
-    let fingerprint = fingerprint(&fingerprint_data)?;
+    let fingerprint = fingerprint(&fingerprint_data).map_err(|_| bad_repayment_error())?;
     Ok(ParsedRepaymentInput {
         household_id,
         from_member_id,
@@ -755,17 +766,5 @@ fn not_found_repayment_error() -> RecordRepaymentUserError {
     RecordRepaymentUserError {
         code: MutationErrorCode::NotFound,
         message: "対象が見つかりません。".to_owned(),
-    }
-}
-
-impl From<RecordTransferUserError> for RecordTransferResult {
-    fn from(value: RecordTransferUserError) -> Self {
-        Self::UserError(value)
-    }
-}
-
-impl From<RecordRepaymentUserError> for RecordRepaymentResult {
-    fn from(value: RecordRepaymentUserError) -> Self {
-        Self::UserError(value)
     }
 }

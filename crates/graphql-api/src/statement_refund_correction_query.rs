@@ -107,9 +107,12 @@ fn decode_node_id(value: &ID, expected_kind: &str) -> Result<Uuid> {
     let decoded = URL_SAFE_NO_PAD
         .decode(value.as_str())
         .map_err(|_| Error::new("invalid node ID"))?;
-    let (kind, raw_id) = decoded
-        .split_once(|byte| *byte == b':')
+    let separator = decoded
+        .iter()
+        .position(|byte| *byte == b':')
         .ok_or_else(|| Error::new("invalid node ID"))?;
+    let (kind, raw_id) = decoded.split_at(separator);
+    let raw_id = &raw_id[1..];
     if kind != expected_kind.as_bytes() {
         return Err(Error::new("invalid node ID"));
     }
@@ -126,9 +129,12 @@ fn decode_cursor(value: &str) -> Result<Uuid> {
     let decoded = URL_SAFE_NO_PAD
         .decode(value)
         .map_err(|_| Error::new("invalid cursor"))?;
-    let (kind, raw_id) = decoded
-        .split_once(|byte| *byte == b':')
+    let separator = decoded
+        .iter()
+        .position(|byte| *byte == b':')
         .ok_or_else(|| Error::new("invalid cursor"))?;
+    let (kind, raw_id) = decoded.split_at(separator);
+    let raw_id = &raw_id[1..];
     if kind != b"PurchaseCorrection" {
         return Err(Error::new("invalid cursor"));
     }

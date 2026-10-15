@@ -36,7 +36,7 @@ pub enum ClosePeriodResult {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct OpenSettlement {
-    id: ID,
+    pub(crate) id: ID,
     household_id: ID,
     period: super::policy_mutations::YearMonth,
     revision: i32,
@@ -45,7 +45,7 @@ pub struct OpenSettlement {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct ClosedSettlement {
-    id: ID,
+    pub(crate) id: ID,
     household_id: ID,
     period: super::policy_mutations::YearMonth,
     revision: i32,
@@ -226,7 +226,7 @@ async fn load_settlement(pool: &PgPool, household_id: Uuid, period: &str) -> Res
     match result.status.as_str() {
         "OPEN" => Ok(Settlement::OpenSettlement(OpenSettlement {
             id: ID(settlement_id),
-            household_id: ID(household_node_id),
+            household_id: household_node_id.clone(),
             period,
             revision,
             lines,
@@ -237,7 +237,7 @@ async fn load_settlement(pool: &PgPool, household_id: Uuid, period: &str) -> Res
                 .ok_or_else(|| crate::internal_error("closed settlement has no creation time"))?;
             Ok(Settlement::ClosedSettlement(ClosedSettlement {
                 id: ID(settlement_id),
-                household_id: ID(household_node_id),
+                household_id: household_node_id,
                 period,
                 revision,
                 lines,

@@ -9,7 +9,6 @@ use bookkeeping_workflows::{
     },
     decide_post_purchase,
 };
-use chrono::Utc;
 use diesel_async::AsyncConnection;
 use horse_postgres::{
     PgPool, create_purchase as postgres_create, household_access as postgres_household_access,
@@ -274,6 +273,7 @@ pub(crate) async fn purchase_corrections_connection(
     .map_err(correction_error)?;
     let mut edges = Vec::with_capacity(projection.edges.len());
     for correction in projection.edges {
+        let cursor = horse_postgres::purchase_corrections::encode_cursor(&correction);
         let payments = correction
             .payment_allocations
             .into_iter()
@@ -301,7 +301,7 @@ pub(crate) async fn purchase_corrections_connection(
                 id,
                 item_id: encode_node_id("PurchaseItem", item_id),
                 amount_delta_yen: Long(correction.amount_delta_yen),
-                reason: correction.reason,
+                reason: correction.reason.clone(),
                 occurred_at,
                 settlement_month,
                 payment_allocations: payments,
@@ -309,13 +309,12 @@ pub(crate) async fn purchase_corrections_connection(
             None => PurchaseCorrection::Wide(PurchaseWideCorrection {
                 id,
                 amount_delta_yen: Long(correction.amount_delta_yen),
-                reason: correction.reason,
+                reason: correction.reason.clone(),
                 occurred_at,
                 settlement_month,
                 payment_allocations: payments,
             }),
         };
-        let cursor = horse_postgres::purchase_corrections::encode_cursor(&correction);
         edges.push(PurchaseCorrectionEdge { cursor, node });
     }
     let total_count = i32::try_from(projection.total_count).map_err(crate::internal_error)?;
@@ -623,7 +622,7 @@ pub async fn post_purchase(
     let actor = crate::actor(ctx)?;
     let purchase_id = match decode_node_id(&input.purchase_id, "Purchase") {
         Ok(id) => id,
-        Err(()) => return Ok(bad_input().into()),
+        Err(_) => return Ok(bad_input().into()),
     };
     if input.expected_revision < 0 || input.idempotency_key.is_empty() {
         return Ok(bad_input().into());
@@ -986,8 +985,8 @@ fn canonical_input(input: &CreatePurchaseInput) -> CanonicalCreatePurchase {
                         },
                     }
                 }),
-                category_id: value.category_id.as_ref().map(ToString::to_string),
-                product_variant_id: value.product_variant_id.as_ref().map(ToString::to_string),
+                category_id: value.category_id.as_ref().map(|id| id.0.clone()),
+                product_variant_id: value.product_variant_id.as_ref().map(|id| id.0.clone()),
                 allocations: value
                     .allocations
                     .as_deref()
@@ -1398,8 +1397,7 @@ fn create_user_error(
         | E::InvalidIdempotencyKey
         | E::NumericOutOfRange(_)
         | E::InvalidDecision
-        | E::InvalidSourceReference
-        | E::InvalidReceiptOverrideReason => Some(bad_input()),
+        | E::ReceiptConfirmationInvalid => Some(bad_input()),
         E::Pool(_) | E::Database(_) => None,
         _ => Some(bad_input()),
     }

@@ -1971,6 +1971,7 @@ dependencies = [
  "diesel-async",
  "horse-postgres",
  "household-workflows",
+ "policy-workflows",
  "serde",
  "serde_json",
  "sha2 0.11.1",
