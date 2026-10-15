@@ -302,7 +302,7 @@ pub async fn load_purchase_command_result(
             .filter(confirmations::purchase_id.eq(Some(purchase_id)))
             .select(confirmations::id)
             .first::<Uuid>(&mut *conn)
-            .await?
+            .await
             .optional()?
             .is_some();
     let correction_rows = corrections::purchase_corrections

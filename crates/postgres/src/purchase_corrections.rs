@@ -1,5 +1,5 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, result::Error as DieselError};
+use diesel::{BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 

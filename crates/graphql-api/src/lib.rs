@@ -18,6 +18,7 @@ pub mod household_membership;
 pub mod ledger_entry;
 pub mod member_pool;
 pub mod pagination;
+pub mod policy_mutations;
 pub mod scalars;
 pub use scalars::{DateTime, Long};
 
@@ -74,6 +75,42 @@ impl QueryRoot {
             Err(postgres_mail_forwarding::MailForwardingError::HouseholdNotFound) => Ok(None),
             Err(error) => Err(internal_error(error)),
         }
+    }
+
+    async fn budgets(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        period: policy_mutations::YearMonth,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<policy_mutations::BudgetConnection> {
+        policy_mutations::graphql_budgets(ctx, household_id, period, after, before, first, last)
+            .await
+    }
+
+    async fn recurring_expenses(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        #[graphql(default = false)] include_archived: bool,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<policy_mutations::RecurringExpenseConnection> {
+        policy_mutations::graphql_recurring_expenses(
+            ctx,
+            household_id,
+            include_archived,
+            after,
+            before,
+            first,
+            last,
+        )
+        .await
     }
 }
 
@@ -284,6 +321,62 @@ impl MutationRoot {
     ) -> Result<card_last4::SetAccountCardLast4Result> {
         card_last4::set_account_card_last4(ctx, input).await
     }
+
+    async fn create_budget(
+        &self,
+        ctx: &Context<'_>,
+        input: policy_mutations::CreateBudgetInput,
+    ) -> Result<policy_mutations::CreateBudgetResult> {
+        policy_mutations::create_budget(ctx, input).await
+    }
+
+    async fn update_budget(
+        &self,
+        ctx: &Context<'_>,
+        input: policy_mutations::UpdateBudgetInput,
+    ) -> Result<policy_mutations::UpdateBudgetResult> {
+        policy_mutations::update_budget(ctx, input).await
+    }
+
+    async fn archive_budget(
+        &self,
+        ctx: &Context<'_>,
+        input: policy_mutations::ArchiveBudgetInput,
+    ) -> Result<policy_mutations::ArchiveBudgetResult> {
+        policy_mutations::archive_budget(ctx, input).await
+    }
+
+    async fn create_recurring_expense(
+        &self,
+        ctx: &Context<'_>,
+        input: policy_mutations::CreateRecurringExpenseInput,
+    ) -> Result<policy_mutations::CreateRecurringExpenseResult> {
+        policy_mutations::create_recurring_expense(ctx, input).await
+    }
+
+    async fn update_recurring_expense(
+        &self,
+        ctx: &Context<'_>,
+        input: policy_mutations::UpdateRecurringExpenseInput,
+    ) -> Result<policy_mutations::UpdateRecurringExpenseResult> {
+        policy_mutations::update_recurring_expense(ctx, input).await
+    }
+
+    async fn archive_recurring_expense(
+        &self,
+        ctx: &Context<'_>,
+        input: policy_mutations::ArchiveRecurringExpenseInput,
+    ) -> Result<policy_mutations::ArchiveRecurringExpenseResult> {
+        policy_mutations::archive_recurring_expense(ctx, input).await
+    }
+
+    async fn match_recurring_expense(
+        &self,
+        ctx: &Context<'_>,
+        input: policy_mutations::MatchRecurringExpenseInput,
+    ) -> Result<policy_mutations::MatchRecurringExpenseResult> {
+        policy_mutations::match_recurring_expense(ctx, input).await
+    }
 }
 
 async fn issue_or_rotate(
@@ -455,6 +548,13 @@ pub enum MutationError {
     CreateProductVariantUserError(catalog_mutations::CreateProductVariantUserError),
     SetProductAliasUserError(catalog_mutations::SetProductAliasUserError),
     SetAccountCardLast4UserError(card_last4::SetAccountCardLast4UserError),
+    CreateBudgetUserError(policy_mutations::CreateBudgetUserError),
+    UpdateBudgetUserError(policy_mutations::UpdateBudgetUserError),
+    ArchiveBudgetUserError(policy_mutations::ArchiveBudgetUserError),
+    CreateRecurringExpenseUserError(policy_mutations::CreateRecurringExpenseUserError),
+    UpdateRecurringExpenseUserError(policy_mutations::UpdateRecurringExpenseUserError),
+    ArchiveRecurringExpenseUserError(policy_mutations::ArchiveRecurringExpenseUserError),
+    MatchRecurringExpenseUserError(policy_mutations::MatchRecurringExpenseUserError),
 }
 
 #[derive(Clone, Debug, SimpleObject)]
