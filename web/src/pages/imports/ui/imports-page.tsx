@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Camera, FileImage, PenLine, ShieldCheck, Upload } from "lucide-react";
+import { AlertCircle, Camera, FileImage, PenLine, ShieldCheck, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import "./imports-page.css";
@@ -112,20 +112,15 @@ export function ImportsPage({
     loadOlderDocuments,
   } = useImportDocuments(household.id, documentFilters, setMessage);
   const [pending, setPending] = useState(false);
-  const notifiedQuotaLimits = useRef(new Set<string>());
-  useEffect(() => {
-    const limited = documents.find((document) => {
-      const key = `${document.id}:${document.errorCode}`;
-      return isQuotaLimitedExtraction(document) && !notifiedQuotaLimits.current.has(key);
-    });
-    if (!limited) return;
-
-    notifiedQuotaLimits.current.add(`${limited.id}:${limited.errorCode}`);
-    setImportModel(proImportModel);
-    setMessage(
-      "モデルの利用上限に達しました。Gemini 3.1 Pro Previewへ切り替えました。Proで再抽出すると料金が発生します。",
-    );
-  }, [documents]);
+  const [handledQuotaLimits, setHandledQuotaLimits] = useState<Set<string>>(() => new Set());
+  const quotaLimitedDocuments = documents.filter(isQuotaLimitedExtraction);
+  const quotaLimitKeys = quotaLimitedDocuments.map(
+    (document) => `${document.id}:${document.errorCode}`,
+  );
+  const unhandledQuotaLimit = quotaLimitedDocuments.find(
+    (document) => !handledQuotaLimits.has(`${document.id}:${document.errorCode}`),
+  );
+  const importModelForUpload = unhandledQuotaLimit ? proImportModel : importModel;
   const selectedDocumentID = useRef(selected);
   useEffect(() => {
     selectedDocumentID.current = selected;
@@ -154,16 +149,15 @@ export function ImportsPage({
       (selectedDocumentQuery.data ? withStableEvidenceKeys(selectedDocumentQuery.data) : undefined),
     [listedDocument, selectedDocumentQuery.data],
   );
+  const displayedMessage =
+    !listedDocument && selectedDocumentQuery.error
+      ? errorMessage(selectedDocumentQuery.error)
+      : message;
   const receiptProgress = useMemo(
     () => receiptReviewProgress(documents, completedReceiptIDs),
     [completedReceiptIDs, documents],
   );
   const selectedReceipt = documents.find((document) => document.id === selected);
-  useEffect(() => {
-    if (!listedDocument && selectedDocumentQuery.error) {
-      setMessage(errorMessage(selectedDocumentQuery.error));
-    }
-  }, [listedDocument, selectedDocumentQuery.error]);
   const evidencePreview = useEvidencePreview(selectedDocument);
   const evidence = useDocumentEvidence({
     document: selectedDocument,
@@ -206,7 +200,7 @@ export function ImportsPage({
         id: crypto.randomUUID(),
         file,
         sourceKind: defaultUploadSourceKind(file),
-        model: importModel,
+        model: importModelForUpload,
         status: "queued" as const,
       })),
     ]);
@@ -291,6 +285,13 @@ export function ImportsPage({
     }
   };
   const retryDocument = async (document: DocumentReview) => {
+    const quotaLimited = isQuotaLimitedExtraction(document);
+    if (quotaLimited) {
+      setImportModel(proImportModel);
+      setHandledQuotaLimits(
+        (current) => new Set([...current, `${document.id}:${document.errorCode}`]),
+      );
+    }
     setPending(true);
     setMessage("");
     try {
@@ -487,7 +488,7 @@ export function ImportsPage({
             analysisFile,
             analysisTransform,
             sourceKind: defaultUploadSourceKind(originalFile),
-            model: importModel,
+            model: importModelForUpload,
             status: "queued",
           };
           setFiles((current) => [...current, upload]);
@@ -517,9 +518,12 @@ export function ImportsPage({
             <label htmlFor="import-model">AIモデル</label>
             <select
               id="import-model"
-              value={importModel}
+              value={importModelForUpload}
               onChange={(event) => {
-                if (isImportModel(event.target.value)) setImportModel(event.target.value);
+                if (isImportModel(event.target.value)) {
+                  setImportModel(event.target.value);
+                  setHandledQuotaLimits((current) => new Set([...current, ...quotaLimitKeys]));
+                }
               }}
             >
               <optgroup label="無料枠">
@@ -554,6 +558,16 @@ export function ImportsPage({
               </small>
             )}
           </div>
+          {quotaLimitedDocuments.length > 0 && (
+            <output className="import-quota-notice">
+              <AlertCircle size={16} aria-hidden="true" />
+              <span>
+                {importModelForUpload === proImportModel
+                  ? "モデルの利用上限に達しました。Gemini 3.1 Pro Previewへ切り替えました。Proで再抽出すると料金が発生します。"
+                  : "モデルの利用上限に達しました。Gemini 3.1 Pro Previewで再抽出できます。料金が発生します。"}
+              </span>
+            </output>
+          )}
           <div className="import-actions dropzone-import-actions">
             <button
               type="button"
@@ -694,7 +708,7 @@ export function ImportsPage({
               onSelectDocument={handleSelectDocument}
             />
           )}
-          {message && <InlineError message={message} />}
+          {displayedMessage && <InlineError message={displayedMessage} />}
         </section>
       </div>
       <div className="import-note">
