@@ -19,6 +19,7 @@ pub use purchase::{
     MemberBurdenSnapshot, MemberFundingBasis, MemberId, MemberWeight, Payment,
     PaymentFundingBasis, PaymentFundingSnapshot, PoolAllocation, PostPurchaseCommand,
     PostPurchaseDecision, PostPurchaseError, PostingTarget, Purchase, PurchaseEvent, PurchaseId,
-    PurchaseItem, PurchaseLifecycle, SettlementPolicy, Side, decide_post_purchase,
+    PurchaseItem, PurchaseLifecycle, PurchasePostingMemo, SettlementPolicy, Side,
+    decide_post_purchase,
 };
 pub use settlement::{SettlementAmounts, SettlementError, SettlementInput, calculate_settlement};

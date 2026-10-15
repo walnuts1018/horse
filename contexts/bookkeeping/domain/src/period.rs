@@ -13,12 +13,15 @@ impl YearMonth {
     }
 
     pub fn parse(value: &str) -> Result<Self, AccountingPeriodError> {
-        let (year, month) = value
-            .split_once('-')
-            .ok_or(AccountingPeriodError::InvalidMonth)?;
-        if year.len() != 4 || month.len() != 2 {
+        if value.len() != 7
+            || value.as_bytes()[4] != b'-'
+            || !value.as_bytes()[..4].iter().all(u8::is_ascii_digit)
+            || !value.as_bytes()[5..].iter().all(u8::is_ascii_digit)
+        {
             return Err(AccountingPeriodError::InvalidMonth);
         }
+        let year = &value[..4];
+        let month = &value[5..];
         Self::new(
             year.parse().map_err(|_| AccountingPeriodError::InvalidMonth)?,
             month.parse().map_err(|_| AccountingPeriodError::InvalidMonth)?,

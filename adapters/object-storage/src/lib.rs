@@ -139,6 +139,20 @@ impl ObjectStore {
         Ok((object_key, hash))
     }
 
+    pub async fn delete(&self, object_key: &str) -> Result<(), StoreError> {
+        if object_key.is_empty() {
+            return Err(StoreError("invalid original document key"));
+        }
+        self.client
+            .delete_object()
+            .bucket(&self.bucket)
+            .key(object_key)
+            .send()
+            .await
+            .map_err(|_| StoreError("delete original document failed"))?;
+        Ok(())
+    }
+
     pub async fn get(&self, object_key: &str, mime_type: &str) -> Result<Document, StoreError> {
         let object = self
             .client

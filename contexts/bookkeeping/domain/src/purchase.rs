@@ -160,7 +160,7 @@ pub enum SettlementPolicy {
 }
 
 impl SettlementPolicy {
-    const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::BalanceToStandard => "BALANCE_TO_STANDARD",
             Self::ReimbursePersonal => "REIMBURSE_PERSONAL",
@@ -266,6 +266,7 @@ pub struct PostPurchaseCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostPurchaseDecision {
     purchase: PostedPurchase,
+    period: AccountingPeriod,
     events: Vec<PurchaseEvent>,
 }
 
@@ -273,6 +274,7 @@ impl PostPurchaseDecision {
     pub fn purchase_id(&self) -> &PurchaseId { &self.purchase.id }
     pub const fn new_revision(&self) -> u64 { self.purchase.revision }
     pub fn purchase(&self) -> &PostedPurchase { &self.purchase }
+    pub fn period(&self) -> &AccountingPeriod { &self.period }
     pub fn journal(&self) -> &BalancedJournal { &self.purchase.journal }
     pub fn journal_lines(&self) -> &[JournalLine] { self.purchase.journal.entries() }
     pub fn member_burden_snapshots(&self) -> &[MemberBurdenSnapshot] { &self.purchase.member_burden_snapshots }
@@ -289,7 +291,22 @@ pub struct JournalLine {
     side: Side,
     target: PostingTarget,
     amount: PositiveYen,
-    memo: &'static str,
+    memo: PurchasePostingMemo,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PurchasePostingMemo {
+    Allocation,
+    Payment,
+}
+
+impl PurchasePostingMemo {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Allocation => "Purchase allocation",
+            Self::Payment => "Payment",
+        }
+    }
 }
 
 // 借方・貸方の相手先はプールか口座のどちらか一つだけを指す。両方なし・両方ありの明細は型で表現できない。
@@ -305,7 +322,7 @@ impl JournalLine {
         side: Side,
         pool_id: PoolId,
         amount: PositiveYen,
-        memo: &'static str,
+        memo: PurchasePostingMemo,
     ) -> Self {
         Self {
             line_no,
@@ -321,7 +338,7 @@ impl JournalLine {
         side: Side,
         account_id: AccountId,
         amount: PositiveYen,
-        memo: &'static str,
+        memo: PurchasePostingMemo,
     ) -> Self {
         Self {
             line_no,
@@ -349,7 +366,7 @@ impl JournalLine {
     }
 
     pub const fn memo(&self) -> &'static str {
-        self.memo
+        self.memo.as_str()
     }
 }
 
@@ -367,7 +384,7 @@ pub struct MemberBurdenSnapshot {
     pub amount: Yen,
     pub funding_rule_version: u32,
     pub funding_weight: u64,
-    pub settlement_policy: Option<String>,
+    pub settlement_policy: Option<SettlementPolicy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -378,7 +395,7 @@ pub struct PaymentFundingSnapshot {
     pub member_id: MemberId,
     pub funding_rule_version: u32,
     pub funding_weight: u64,
-    pub settlement_policy: Option<String>,
+    pub settlement_policy: Option<SettlementPolicy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -576,7 +593,7 @@ pub fn decide_post_purchase(
             Side::Debit,
             pool_id,
             PositiveYen::new(amount.value()).expect("nonzero pool total is positive"),
-            "Purchase allocation",
+            PurchasePostingMemo::Allocation,
         ));
     }
     for payment in &command.draft.payments {
@@ -585,7 +602,7 @@ pub fn decide_post_purchase(
             Side::Credit,
             payment.account_id.clone(),
             payment.amount,
-            "Payment",
+            PurchasePostingMemo::Payment,
         ));
     }
     let debit_total = sum_yen(
@@ -622,6 +639,7 @@ pub fn decide_post_purchase(
     };
     Ok(PostPurchaseDecision {
         purchase,
+        period: command.period,
         events: vec![PurchaseEvent::Posted { purchase_id, revision: new_revision }],
     })
 }

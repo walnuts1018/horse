@@ -226,6 +226,12 @@ impl fmt::Display for MailboxError {
 
 impl Error for MailboxError {}
 
+impl From<diesel::result::Error> for MailboxError {
+    fn from(_: diesel::result::Error) -> Self {
+        Self("mailbox database operation failed")
+    }
+}
+
 impl MailboxConfig {
     pub fn from_env() -> Result<Option<Self>, MailboxError> {
         let address = env::var("MAILBOX_IMAPS_ADDRESS").unwrap_or_default();

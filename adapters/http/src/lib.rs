@@ -58,7 +58,12 @@ pub fn router(pool: PgPool, config: Config, graphql_schema: GraphqlSchema) -> Ro
             get(document_extraction),
         )
         .route("/documents/{id}/retry", post(retry_document))
+        .route("/documents/{id}/interaction", post(interact_with_document))
         .route("/events", get(events))
+        .route(
+            "/documents/{id}/interactions/{job_id}/events",
+            get(document_interaction_events),
+        )
         .with_state(ApiState {
             pool,
             config,
@@ -522,7 +527,6 @@ async fn list_documents(
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         }
     };
-    let truncated = documents.len() as i64 > first;
     let mut results = Vec::new();
     for (id, sha256, mime_type, source_kind, name, created_at) in
         documents.into_iter().take(first as usize)
@@ -587,8 +591,7 @@ async fn list_documents(
             "hasEvidence": has_evidence
         }));
     }
-    let next_cursor = truncated.then_some("more");
-    Json(json!({"documents": results, "nextCursor": next_cursor})).into_response()
+    Json(json!({"documents": results, "nextCursor": null})).into_response()
 }
 
 fn decode_household_id(value: &str) -> Option<uuid::Uuid> {

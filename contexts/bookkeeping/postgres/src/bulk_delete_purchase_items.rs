@@ -561,7 +561,7 @@ async fn sync_posted_accounting(
                         BulkDeletePurchaseItemsPersistenceError::NumericOutOfRange("funding_weight")
                     },
                 )?),
-                burdens::settlement_policy.eq(snapshot.settlement_policy.as_deref()),
+                burdens::settlement_policy.eq(snapshot.settlement_policy.map(|policy| policy.as_str())),
                 burdens::snapshot_source.eq(burden_sources
                     .get(&(item, pool, member))
                     .map(String::as_str)
@@ -611,7 +611,7 @@ async fn sync_posted_accounting(
                             )
                         },
                     )?),
-                    snapshots::settlement_policy.eq(snapshot.settlement_policy.as_deref()),
+                    snapshots::settlement_policy.eq(snapshot.settlement_policy.map(|policy| policy.as_str())),
                     snapshots::snapshot_source.eq(payment_sources
                         .get(&(account, pool, member))
                         .or_else(|| {

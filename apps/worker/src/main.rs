@@ -6,9 +6,11 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let log_filter =
+        tracing_subscriber::EnvFilter::from_default_env().add_directive("async_imap=off".parse()?);
     tracing_subscriber::fmt()
         .json()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(log_filter)
         .init();
 
     let listener = TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], 8081))).await?;

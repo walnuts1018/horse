@@ -1037,7 +1037,7 @@ pub(crate) async fn sync_posted_accounting(
                     UpdatePurchaseItemPersistenceError::NumericOutOfRange("funding_weight")
                 })?),
                 public::purchase_member_burdens::settlement_policy
-                    .eq(snapshot.settlement_policy.as_deref()),
+                    .eq(snapshot.settlement_policy.map(|policy| policy.as_str())),
                 public::purchase_member_burdens::snapshot_source.eq(source),
             ))
             .execute(&mut *conn)
@@ -1102,7 +1102,7 @@ pub(crate) async fn sync_posted_accounting(
                     UpdatePurchaseItemPersistenceError::NumericOutOfRange("funding_weight")
                 })?),
                 public::purchase_payment_funding_snapshots::settlement_policy
-                    .eq(snapshot.settlement_policy.as_deref()),
+                    .eq(snapshot.settlement_policy.map(|policy| policy.as_str())),
                 public::purchase_payment_funding_snapshots::snapshot_source.eq(source),
             ))
             .execute(&mut *conn)

@@ -775,7 +775,7 @@ async fn sync_posted_accounting(
                     BulkUpdatePurchaseItemsPersistenceError::NumericOutOfRange("funding_weight")
                 })?),
                 public::purchase_member_burdens::dsl::settlement_policy
-                    .eq(snapshot.settlement_policy.as_deref()),
+                    .eq(snapshot.settlement_policy.map(|policy| policy.as_str())),
                 public::purchase_member_burdens::dsl::snapshot_source.eq(sources
                     .get(&(item_id, pool_id, member_id))
                     .map(String::as_str)

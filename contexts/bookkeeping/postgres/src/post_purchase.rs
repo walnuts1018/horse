@@ -318,7 +318,7 @@ pub async fn persist_post_purchase_in_transaction(
                 public::purchase_member_burdens::funding_rule_version.eq(rule_version),
                 public::purchase_member_burdens::funding_weight.eq(weight),
                 public::purchase_member_burdens::settlement_policy
-                    .eq(snapshot.settlement_policy.as_deref()),
+                    .eq(snapshot.settlement_policy.map(|policy| policy.as_str())),
                 public::purchase_member_burdens::snapshot_source.eq("POSTED"),
             ))
             .execute(&mut *conn)
@@ -346,7 +346,7 @@ pub async fn persist_post_purchase_in_transaction(
                 public::purchase_payment_funding_snapshots::funding_rule_version.eq(rule_version),
                 public::purchase_payment_funding_snapshots::funding_weight.eq(weight),
                 public::purchase_payment_funding_snapshots::settlement_policy
-                    .eq(snapshot.settlement_policy.as_deref()),
+                    .eq(snapshot.settlement_policy.map(|policy| policy.as_str())),
                 public::purchase_payment_funding_snapshots::snapshot_source.eq("POSTED"),
             ))
             .execute(&mut *conn)
