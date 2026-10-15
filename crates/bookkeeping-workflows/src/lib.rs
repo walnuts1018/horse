@@ -1,0 +1,570 @@
+use std::collections::BTreeMap;
+
+use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId, PositiveYen, Yen, allocate};
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PurchaseId(String);
+
+impl PurchaseId {
+    pub fn new(value: impl Into<String>) -> Result<Self, IdentifierError> {
+        identifier(value).map(Self)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AccountId(String);
+
+impl AccountId {
+    pub fn new(value: impl Into<String>) -> Result<Self, IdentifierError> {
+        identifier(value).map(Self)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MemberId(String);
+
+impl MemberId {
+    pub fn new(value: impl Into<String>) -> Result<Self, IdentifierError> {
+        identifier(value).map(Self)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ItemId(String);
+
+impl ItemId {
+    pub fn new(value: impl Into<String>) -> Result<Self, IdentifierError> {
+        identifier(value).map(Self)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IdentifierError;
+
+fn identifier(value: impl Into<String>) -> Result<String, IdentifierError> {
+    let value = value.into();
+    if value.is_empty() {
+        return Err(IdentifierError);
+    }
+    Ok(value)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PurchaseStatus {
+    Draft,
+    Posted,
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PurchaseDraft {
+    pub id: PurchaseId,
+    pub revision: u64,
+    pub status: PurchaseStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PoolAllocation {
+    pub item_id: ItemId,
+    pub pool_id: PoolId,
+    pub amount: Yen,
+    pub funding: MemberFundingBasis,
+}
+
+/// 会員負担snapshotの算出に使うfunding rule情報。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberFundingBasis {
+    pub rule_version: u32,
+    pub weights: Vec<MemberWeight>,
+    pub requires_settlement_policy: bool,
+    pub settlement_policy: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberWeight {
+    pub member_id: MemberId,
+    pub weight: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Payment {
+    pub account_id: AccountId,
+    pub amount: Yen,
+    pub funding: PaymentFundingBasis,
+}
+
+/// 支払口座の所属poolとpayment funding snapshotの算出に使うrule情報。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaymentFundingBasis {
+    pub pool_id: PoolId,
+    pub rule_version: u32,
+    pub weights: Vec<MemberWeight>,
+    pub requires_settlement_policy: bool,
+    pub settlement_policy: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostPurchaseCommand {
+    pub draft: PurchaseDraft,
+    pub expected_revision: u64,
+    pub accounting_period_open: bool,
+    pub total: PositiveYen,
+    pub allocations: Vec<PoolAllocation>,
+    pub payments: Vec<Payment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostPurchaseDecision {
+    pub purchase_id: PurchaseId,
+    pub new_revision: u64,
+    pub new_status: PurchaseStatus,
+    pub journal_lines: Vec<JournalLine>,
+    pub member_burden_snapshots: Vec<MemberBurdenSnapshot>,
+    pub payment_funding_snapshots: Vec<PaymentFundingSnapshot>,
+    pub events: Vec<DomainEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JournalLine {
+    pub line_no: u32,
+    pub side: Side,
+    pub account_id: Option<AccountId>,
+    pub pool_id: Option<PoolId>,
+    pub amount: PositiveYen,
+    pub memo: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Debit,
+    Credit,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberBurdenSnapshot {
+    pub item_id: ItemId,
+    pub pool_id: PoolId,
+    pub member_id: MemberId,
+    pub amount: Yen,
+    pub funding_rule_version: u32,
+    pub funding_weight: u64,
+    pub settlement_policy: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaymentFundingSnapshot {
+    pub line_no: u32,
+    pub account_id: AccountId,
+    pub pool_id: PoolId,
+    pub member_id: MemberId,
+    pub funding_rule_version: u32,
+    pub funding_weight: u64,
+    pub settlement_policy: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DomainEvent {
+    pub event_type: &'static str,
+    pub entity_id: PurchaseId,
+    pub revision: u64,
+    pub changed_fields: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PostPurchaseError {
+    AccountingPeriodClosed,
+    AmountOverflow,
+    RevisionMismatch { expected: u64, actual: u64 },
+    PurchaseNotDraft,
+    AllocationTotalMismatch,
+    PaymentTotalMismatch,
+    EmptyAllocation,
+    InvalidFundingRule { pool_id: PoolId },
+    InvalidMemberShares { pool_id: PoolId },
+    RevisionOverflow,
+    JournalLineCountOverflow,
+    JournalUnbalanced,
+}
+
+/// 処理本体はDB状態を参照せず、post前提を検証して永続化に必要な決定を返す。
+pub fn decide_post_purchase(
+    command: PostPurchaseCommand,
+) -> Result<PostPurchaseDecision, PostPurchaseError> {
+    if !command.accounting_period_open {
+        return Err(PostPurchaseError::AccountingPeriodClosed);
+    }
+    if command.draft.revision != command.expected_revision {
+        return Err(PostPurchaseError::RevisionMismatch {
+            expected: command.expected_revision,
+            actual: command.draft.revision,
+        });
+    }
+    if command.draft.status != PurchaseStatus::Draft {
+        return Err(PostPurchaseError::PurchaseNotDraft);
+    }
+    if command.allocations.is_empty() {
+        return Err(PostPurchaseError::EmptyAllocation);
+    }
+
+    let allocation_total = sum_yen(
+        command
+            .allocations
+            .iter()
+            .map(|allocation| allocation.amount),
+    )?;
+    if allocation_total != command.total.yen() {
+        return Err(PostPurchaseError::AllocationTotalMismatch);
+    }
+    if !command.payments.is_empty() {
+        let payment_total = sum_yen(command.payments.iter().map(|payment| payment.amount))?;
+        if payment_total != command.total.yen() {
+            return Err(PostPurchaseError::PaymentTotalMismatch);
+        }
+    }
+
+    let mut pool_totals = BTreeMap::<PoolId, Yen>::new();
+    let mut member_burden_snapshots = Vec::new();
+    for allocation in &command.allocations {
+        let existing = pool_totals
+            .get(&allocation.pool_id)
+            .copied()
+            .unwrap_or(Yen::new(0).expect("0 is in range"));
+        pool_totals.insert(
+            allocation.pool_id.clone(),
+            existing
+                .checked_add(allocation.amount)
+                .map_err(|_| PostPurchaseError::AmountOverflow)?,
+        );
+        validate_funding(&allocation.pool_id, &allocation.funding)?;
+        let shares = shares(&allocation.pool_id, &allocation.funding.weights)?;
+        for part in allocate(allocation.amount, &shares) {
+            let weight = allocation
+                .funding
+                .weights
+                .iter()
+                .find(|weight| weight.member_id.as_str() == part.pool_id().as_str())
+                .expect("shares preserve member ids");
+            member_burden_snapshots.push(MemberBurdenSnapshot {
+                item_id: allocation.item_id.clone(),
+                pool_id: allocation.pool_id.clone(),
+                member_id: weight.member_id.clone(),
+                amount: part.amount(),
+                funding_rule_version: allocation.funding.rule_version,
+                funding_weight: weight.weight,
+                settlement_policy: allocation.funding.settlement_policy.clone(),
+            });
+        }
+    }
+
+    let mut payment_funding_snapshots = Vec::new();
+    for (index, payment) in command.payments.iter().enumerate() {
+        validate_funding(
+            &payment.funding.pool_id,
+            &MemberFundingBasis {
+                rule_version: payment.funding.rule_version,
+                weights: payment.funding.weights.clone(),
+                requires_settlement_policy: payment.funding.requires_settlement_policy,
+                settlement_policy: payment.funding.settlement_policy.clone(),
+            },
+        )?;
+        shares(&payment.funding.pool_id, &payment.funding.weights)?;
+        if index + 1 > u32::MAX as usize {
+            return Err(PostPurchaseError::JournalLineCountOverflow);
+        }
+        let mut weights = payment.funding.weights.iter().collect::<Vec<_>>();
+        weights.sort_by(|left, right| left.member_id.cmp(&right.member_id));
+        for weight in weights {
+            payment_funding_snapshots.push(PaymentFundingSnapshot {
+                line_no: (index + 1) as u32,
+                account_id: payment.account_id.clone(),
+                pool_id: payment.funding.pool_id.clone(),
+                member_id: weight.member_id.clone(),
+                funding_rule_version: payment.funding.rule_version,
+                funding_weight: weight.weight,
+                settlement_policy: payment.funding.settlement_policy.clone(),
+            });
+        }
+    }
+
+    let mut journal_lines = Vec::new();
+    for (pool_id, amount) in pool_totals {
+        if amount.value() == 0 {
+            continue;
+        }
+        journal_lines.push(JournalLine {
+            line_no: next_line_no(journal_lines.len())?,
+            side: Side::Debit,
+            account_id: None,
+            pool_id: Some(pool_id),
+            amount: PositiveYen::new(amount.value()).expect("nonzero pool total is positive"),
+            memo: "Purchase allocation",
+        });
+    }
+    if command.payments.is_empty() {
+        journal_lines.push(JournalLine {
+            line_no: next_line_no(journal_lines.len())?,
+            side: Side::Credit,
+            account_id: None,
+            pool_id: None,
+            amount: command.total,
+            memo: "Payment",
+        });
+    } else {
+        for payment in &command.payments {
+            journal_lines.push(JournalLine {
+                line_no: next_line_no(journal_lines.len())?,
+                side: Side::Credit,
+                account_id: Some(payment.account_id.clone()),
+                pool_id: None,
+                amount: PositiveYen::new(payment.amount.value())
+                    .map_err(|_| PostPurchaseError::PaymentTotalMismatch)?,
+                memo: "Payment",
+            });
+        }
+    }
+    let debit_total = sum_yen(
+        journal_lines
+            .iter()
+            .filter(|line| line.side == Side::Debit)
+            .map(|line| line.amount.yen()),
+    )?;
+    let credit_total = sum_yen(
+        journal_lines
+            .iter()
+            .filter(|line| line.side == Side::Credit)
+            .map(|line| line.amount.yen()),
+    )?;
+    if debit_total != credit_total {
+        return Err(PostPurchaseError::JournalUnbalanced);
+    }
+
+    let new_revision = command
+        .draft
+        .revision
+        .checked_add(1)
+        .ok_or(PostPurchaseError::RevisionOverflow)?;
+    let purchase_id = command.draft.id;
+    Ok(PostPurchaseDecision {
+        purchase_id: purchase_id.clone(),
+        new_revision,
+        new_status: PurchaseStatus::Posted,
+        journal_lines,
+        member_burden_snapshots,
+        payment_funding_snapshots,
+        events: vec![DomainEvent {
+            event_type: "purchase.posted",
+            entity_id: purchase_id,
+            revision: new_revision,
+            changed_fields: vec!["status"],
+        }],
+    })
+}
+
+fn validate_funding(pool_id: &PoolId, basis: &MemberFundingBasis) -> Result<(), PostPurchaseError> {
+    if basis.rule_version == 0
+        || basis.weights.is_empty()
+        || (basis.requires_settlement_policy
+            && basis.settlement_policy.as_deref().unwrap_or("").is_empty())
+    {
+        return Err(PostPurchaseError::InvalidFundingRule {
+            pool_id: pool_id.clone(),
+        });
+    }
+    shares(pool_id, &basis.weights)?;
+    Ok(())
+}
+
+fn shares(
+    pool_id: &PoolId,
+    weights: &[MemberWeight],
+) -> Result<AllocationShares, PostPurchaseError> {
+    let domain_weights = weights
+        .iter()
+        .map(|weight| {
+            let member_as_pool =
+                PoolId::new(weight.member_id.as_str().to_owned()).expect("member IDs are nonempty");
+            AllocationWeight::new(member_as_pool, weight.weight)
+        })
+        .collect::<Result<Vec<_>, _>>();
+    let domain_weights = domain_weights.map_err(|_| PostPurchaseError::InvalidMemberShares {
+        pool_id: pool_id.clone(),
+    })?;
+    AllocationShares::new(domain_weights).map_err(|_| PostPurchaseError::InvalidMemberShares {
+        pool_id: pool_id.clone(),
+    })
+}
+
+fn sum_yen(mut values: impl Iterator<Item = Yen>) -> Result<Yen, PostPurchaseError> {
+    values.try_fold(Yen::new(0).expect("0 is in range"), |total, amount| {
+        total
+            .checked_add(amount)
+            .map_err(|_| PostPurchaseError::AmountOverflow)
+    })
+}
+
+fn next_line_no(current_count: usize) -> Result<u32, PostPurchaseError> {
+    u32::try_from(current_count + 1).map_err(|_| PostPurchaseError::JournalLineCountOverflow)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn id<T>(new: impl FnOnce(String) -> Result<T, IdentifierError>, value: &str) -> T {
+        new(value.to_owned()).unwrap()
+    }
+
+    fn command() -> PostPurchaseCommand {
+        let pool_id = PoolId::new("pool-a").unwrap();
+        PostPurchaseCommand {
+            draft: PurchaseDraft {
+                id: id(PurchaseId::new, "purchase-1"),
+                revision: 4,
+                status: PurchaseStatus::Draft,
+            },
+            expected_revision: 4,
+            accounting_period_open: true,
+            total: PositiveYen::new(101).unwrap(),
+            allocations: vec![PoolAllocation {
+                item_id: id(ItemId::new, "item-1"),
+                pool_id: pool_id.clone(),
+                amount: Yen::new(101).unwrap(),
+                funding: MemberFundingBasis {
+                    rule_version: 2,
+                    weights: vec![
+                        MemberWeight {
+                            member_id: id(MemberId::new, "member-b"),
+                            weight: 1,
+                        },
+                        MemberWeight {
+                            member_id: id(MemberId::new, "member-a"),
+                            weight: 1,
+                        },
+                    ],
+                    requires_settlement_policy: true,
+                    settlement_policy: Some("monthly".into()),
+                },
+            }],
+            payments: vec![Payment {
+                account_id: id(AccountId::new, "account-1"),
+                amount: Yen::new(101).unwrap(),
+                funding: PaymentFundingBasis {
+                    pool_id,
+                    rule_version: 2,
+                    weights: vec![MemberWeight {
+                        member_id: id(MemberId::new, "member-a"),
+                        weight: 1,
+                    }],
+                    requires_settlement_policy: false,
+                    settlement_policy: None,
+                },
+            }],
+        }
+    }
+
+    #[test]
+    fn posting_returns_balanced_deterministic_journal_and_snapshots() {
+        let decision = decide_post_purchase(command()).unwrap();
+        assert_eq!(decision.new_revision, 5);
+        assert_eq!(decision.new_status, PurchaseStatus::Posted);
+        assert_eq!(
+            decision
+                .journal_lines
+                .iter()
+                .map(|line| line.line_no)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert_eq!(
+            decision
+                .member_burden_snapshots
+                .iter()
+                .map(|row| (row.member_id.as_str(), row.amount.value()))
+                .collect::<Vec<_>>(),
+            vec![("member-a", 51), ("member-b", 50)]
+        );
+        assert_eq!(decision.events[0].event_type, "purchase.posted");
+    }
+
+    #[test]
+    fn posting_rejects_stale_or_unbalanced_inputs() {
+        let mut stale = command();
+        stale.expected_revision -= 1;
+        assert!(matches!(
+            decide_post_purchase(stale),
+            Err(PostPurchaseError::RevisionMismatch { .. })
+        ));
+
+        let mut unbalanced = command();
+        unbalanced.allocations[0].amount = Yen::new(100).unwrap();
+        assert_eq!(
+            decide_post_purchase(unbalanced),
+            Err(PostPurchaseError::AllocationTotalMismatch)
+        );
+
+        let mut closed = command();
+        closed.accounting_period_open = false;
+        assert_eq!(
+            decide_post_purchase(closed),
+            Err(PostPurchaseError::AccountingPeriodClosed)
+        );
+    }
+
+    #[test]
+    fn posting_aggregates_journal_by_pool_and_keeps_item_snapshots_separate() {
+        let mut command = command();
+        command.total = PositiveYen::new(150).unwrap();
+        command.allocations[0].amount = Yen::new(101).unwrap();
+        let mut second_item = command.allocations[0].clone();
+        second_item.item_id = id(ItemId::new, "item-2");
+        second_item.amount = Yen::new(49).unwrap();
+        command.allocations.push(second_item);
+        command.payments[0].amount = Yen::new(75).unwrap();
+        let mut second_payment = command.payments[0].clone();
+        second_payment.account_id = id(AccountId::new, "account-2");
+        second_payment.amount = Yen::new(75).unwrap();
+        command.payments.push(second_payment);
+
+        let decision = decide_post_purchase(command).unwrap();
+
+        assert_eq!(decision.journal_lines.len(), 3);
+        assert_eq!(decision.journal_lines[0].side, Side::Debit);
+        assert_eq!(decision.journal_lines[0].amount.value(), 150);
+        assert_eq!(
+            decision
+                .member_burden_snapshots
+                .iter()
+                .filter(|row| row.item_id.as_str() == "item-1")
+                .map(|row| row.amount.value())
+                .sum::<i64>(),
+            101
+        );
+        assert_eq!(
+            decision
+                .member_burden_snapshots
+                .iter()
+                .filter(|row| row.item_id.as_str() == "item-2")
+                .map(|row| row.amount.value())
+                .sum::<i64>(),
+            49
+        );
+        assert_eq!(decision.payment_funding_snapshots[0].line_no, 1);
+        assert_eq!(decision.payment_funding_snapshots[1].line_no, 2);
+    }
+}
