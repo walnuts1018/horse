@@ -231,7 +231,13 @@ func (r *queryResolver) purchases(ctx context.Context, filter model.PurchaseFilt
 		pageInfo.HasNextPage = true
 	}
 	connection := &model.PurchaseConnection{Edges: make([]*model.PurchaseEdge, 0, len(purchases)), TotalCount: int(count), PageInfo: pageInfo, SyncCursor: strconv.FormatInt(syncCursor, 10)}
-	loadedPurchases, err := loadPurchases(ctx, r.DB, purchases)
+	purchaseFields := requestedPurchaseLoadFields(ctx)
+	if filterItemsByCriteria {
+		purchaseFields.items = true
+		purchaseFields.itemTags = purchaseFields.itemTags || filter.TagID != nil
+		purchaseFields.itemAllocations = purchaseFields.itemAllocations || filter.PoolID != nil
+	}
+	loadedPurchases, err := loadPurchasesWithFields(ctx, r.DB, purchases, purchaseFields)
 	if err != nil {
 		return nil, err
 	}

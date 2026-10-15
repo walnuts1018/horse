@@ -1,14 +1,12 @@
 package settlement
 
 import (
-	"cmp"
 	"context"
 	"database/sql"
 	stdjson "encoding/json"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
@@ -65,59 +63,11 @@ func (w *Workflow) Preview(ctx context.Context, householdID, period string) ([]d
 }
 
 func (w *Workflow) Get(ctx context.Context, householdID, period string) (Settlement, error) {
-	if _, err := parsePeriod(period); err != nil {
-		return Settlement{}, fmt.Errorf("%w: period must use YYYY-MM", ErrBadInput)
-	}
-	householdUUID, err := gofrsuuid.FromString(householdID)
-	if err != nil {
-		return Settlement{}, fmt.Errorf("%w: invalid household id", ErrBadInput)
-	}
-	db := bobpgx.NewPool(w.db)
-	runs, err := models.SettlementRuns.Query(sm.Where(psql.And(
-		models.SettlementRuns.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.SettlementRuns.Columns.Period.EQ(psql.Arg(period)),
-		models.SettlementRuns.Columns.Status.EQ(psql.Arg(closedStatus)),
-	)), sm.OrderBy(models.SettlementRuns.Columns.Revision).Desc(), sm.Limit(1)).All(ctx, db)
+	results, err := w.GetMany(ctx, []GetRequest{{HouseholdID: householdID, Period: period}})
 	if err != nil {
 		return Settlement{}, err
 	}
-	if len(runs) == 0 {
-		lines, err := calculateSettlementPreview(ctx, db, householdID, period)
-		if err != nil {
-			return Settlement{}, err
-		}
-		return Settlement{HouseholdID: householdID, Period: period, Status: "OPEN", Lines: lines}, nil
-	}
-	run := runs[0]
-	lines, err := models.SettlementLines.Query(sm.Where(models.SettlementLines.Columns.SettlementRunID.EQ(psql.Arg(run.ID)))).All(ctx, db)
-	if err != nil {
-		return Settlement{}, err
-	}
-	members, err := models.HouseholdMembers.Query(sm.Where(models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)))).All(ctx, db)
-	if err != nil {
-		return Settlement{}, err
-	}
-	if err := members.LoadMember(ctx, db); err != nil {
-		return Settlement{}, err
-	}
-	names := make(map[gofrsuuid.UUID]string, len(members))
-	for _, member := range members {
-		names[member.MemberID] = member.R.Member.DisplayName
-	}
-	slices.SortFunc(lines, func(left, right *models.SettlementLine) int {
-		return cmp.Compare(names[left.MemberID], names[right.MemberID])
-	})
-	result := Settlement{HouseholdID: householdID, Period: period, Status: closedStatus, Revision: run.Revision, Lines: make([]domain.SettlementAmount, 0, len(lines))}
-	createdAt := run.CreatedAt
-	result.CreatedAt = &createdAt
-	for _, line := range lines {
-		result.Lines = append(result.Lines, domain.SettlementAmount{
-			MemberID: line.MemberID.String(), MemberName: names[line.MemberID], ScheduledYen: line.ScheduledYen,
-			PaidYen: line.PaidYen, CarryYen: line.CarryYen, MonthlyAdjustmentYen: line.MonthlyAdjustmentYen,
-			AdvanceCreditYen: line.AdvanceCreditYen, AmountDueYen: line.AmountDueYen,
-		})
-	}
-	return result, nil
+	return results[0], nil
 }
 
 func (w *Workflow) Close(ctx context.Context, command CloseCommand) (Settlement, error) {

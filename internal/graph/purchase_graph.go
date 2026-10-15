@@ -11,7 +11,7 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
-func mapPurchases(purchases models.PurchaseSlice, correctionAggregates map[gofrsuuid.UUID]purchaseCorrectionAggregate, itemCorrectionAggregates map[gofrsuuid.UUID]int64) ([]*model.Purchase, error) {
+func mapPurchases(purchases models.PurchaseSlice, correctionAggregates map[gofrsuuid.UUID]purchaseCorrectionAggregate, itemCorrectionAggregates map[gofrsuuid.UUID]int64, fields purchaseLoadFields) ([]*model.Purchase, error) {
 	result := make([]*model.Purchase, 0, len(purchases))
 	for _, purchase := range purchases {
 		loaded := &model.Purchase{
@@ -44,10 +44,13 @@ func mapPurchases(purchases models.PurchaseSlice, correctionAggregates map[gofrs
 
 		var total int64
 		for _, storedItem := range purchase.R.PurchaseItems {
-			itemCorrectionAmount := itemCorrectionAggregates[storedItem.ID]
-			remainingItemRefundable, ok := checkedAdd(storedItem.AmountYen, itemCorrectionAmount)
-			if !ok {
-				return nil, fmt.Errorf("purchase item %s refundable total exceeds int64", storedItem.ID)
+			var remainingItemRefundable int64
+			if fields.itemCorrections {
+				var ok bool
+				remainingItemRefundable, ok = checkedAdd(storedItem.AmountYen, itemCorrectionAggregates[storedItem.ID])
+				if !ok {
+					return nil, fmt.Errorf("purchase item %s refundable total exceeds int64", storedItem.ID)
+				}
 			}
 			item := &model.PurchaseItem{
 				ID: storedItem.ID.String(), Name: storedItem.Name, AmountYen: graphLong(storedItem.AmountYen),
@@ -81,11 +84,13 @@ func mapPurchases(purchases models.PurchaseSlice, correctionAggregates map[gofrs
 				variantID := storedItem.ProductVariantID.V.String()
 				item.ProductVariantID = &variantID
 			}
-			nextTotal, ok := checkedAdd(total, storedItem.AmountYen)
-			if !ok {
-				return nil, fmt.Errorf("purchase %s total exceeds int64", purchase.ID)
+			if fields.total {
+				nextTotal, ok := checkedAdd(total, storedItem.AmountYen)
+				if !ok {
+					return nil, fmt.Errorf("purchase %s total exceeds int64", purchase.ID)
+				}
+				total = nextTotal
 			}
-			total = nextTotal
 			for _, storedAllocation := range storedItem.R.ItemAllocations {
 				if storedAllocation.R.Pool == nil {
 					return nil, fmt.Errorf("item allocation for item %s has no pool", storedItem.ID)
@@ -103,15 +108,21 @@ func mapPurchases(purchases models.PurchaseSlice, correctionAggregates map[gofrs
 			}
 			loaded.Items = append(loaded.Items, item)
 		}
-		loaded.TotalYen = graphLong(total)
-		aggregate := correctionAggregates[purchase.ID]
-		remainingRefundable, ok := checkedAdd(total, aggregate.AmountYen)
-		if !ok {
-			return nil, fmt.Errorf("purchase %s refundable total exceeds int64", purchase.ID)
+		if fields.total {
+			loaded.TotalYen = graphLong(total)
 		}
-		loaded.CorrectionAmountYen = graphLong(aggregate.AmountYen)
-		loaded.CorrectionCount = int(aggregate.Count)
-		loaded.RemainingRefundableAmountYen = graphLong(remainingRefundable)
+		if fields.purchaseCorrections {
+			aggregate := correctionAggregates[purchase.ID]
+			loaded.CorrectionAmountYen = graphLong(aggregate.AmountYen)
+			loaded.CorrectionCount = int(aggregate.Count)
+			if fields.remainingRefundable {
+				remainingRefundable, ok := checkedAdd(total, aggregate.AmountYen)
+				if !ok {
+					return nil, fmt.Errorf("purchase %s refundable total exceeds int64", purchase.ID)
+				}
+				loaded.RemainingRefundableAmountYen = graphLong(remainingRefundable)
+			}
+		}
 		for _, storedPayment := range purchase.R.PurchasePayments {
 			loaded.PaymentAllocations = append(loaded.PaymentAllocations, &model.PurchasePayment{
 				PaymentAccountID: storedPayment.AccountID.String(), AmountYen: graphLong(storedPayment.AmountYen),

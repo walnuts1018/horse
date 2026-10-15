@@ -18,6 +18,11 @@ import (
 )
 
 func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gofrsuuid.UUID, start, end time.Time) (map[string][]domain.FundingExpense, map[string]domain.PoolFundingRule, error) {
+	results, rules, err := loadFundingExpensesForHouseholds(ctx, db, []gofrsuuid.UUID{householdUUID}, start, end)
+	return results[householdUUID], rules, err
+}
+
+func loadFundingExpensesForHouseholds(ctx context.Context, db bob.Executor, householdIDs []gofrsuuid.UUID, start, end time.Time) (map[gofrsuuid.UUID]map[string][]domain.FundingExpense, map[string]domain.PoolFundingRule, error) {
 	const queryBatchSize = 500
 	uuidArgs := func(ids []gofrsuuid.UUID) []any {
 		args := make([]any, len(ids))
@@ -34,8 +39,12 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 		row    *models.PoolFundingRule
 		shares map[gofrsuuid.UUID]int64
 	}
+	householdArgs := make([]bob.Expression, len(householdIDs))
+	for index, householdID := range householdIDs {
+		householdArgs[index] = psql.Arg(householdID)
+	}
 	purchases, err := models.Purchases.Query(sm.Where(psql.And(
-		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.Purchases.Columns.HouseholdID.In(householdArgs...),
 		models.Purchases.Columns.Status.In(psql.Arg(string("POSTED")), psql.Arg(string("CLOSED"))),
 		models.Purchases.Columns.OccurredAt.GTE(psql.Arg(start)),
 		models.Purchases.Columns.OccurredAt.LT(psql.Arg(end)),
@@ -60,7 +69,7 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 		batch := purchaseIDs[start:end]
 		items, err := models.PurchaseItems.Query(
 			sm.Where(psql.And(
-				models.PurchaseItems.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+				models.PurchaseItems.Columns.HouseholdID.In(householdArgs...),
 				models.PurchaseItems.Columns.PurchaseID.In(psql.Arg(uuidArgs(batch)...)),
 			)),
 			sm.OrderBy(models.PurchaseItems.Columns.PurchaseID),
@@ -74,7 +83,7 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 		}
 		payments, err := models.PurchasePayments.Query(
 			sm.Where(psql.And(
-				models.PurchasePayments.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+				models.PurchasePayments.Columns.HouseholdID.In(householdArgs...),
 				models.PurchasePayments.Columns.PurchaseID.In(psql.Arg(uuidArgs(batch)...)),
 			)),
 			sm.OrderBy(models.PurchasePayments.Columns.PurchaseID),
@@ -88,7 +97,7 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 		}
 		paymentSnapshots, err := models.PurchasePaymentFundingSnapshots.Query(
 			sm.Where(psql.And(
-				models.PurchasePaymentFundingSnapshots.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+				models.PurchasePaymentFundingSnapshots.Columns.HouseholdID.In(householdArgs...),
 				models.PurchasePaymentFundingSnapshots.Columns.PurchaseID.In(psql.Arg(uuidArgs(batch)...)),
 			)),
 			sm.OrderBy(models.PurchasePaymentFundingSnapshots.Columns.PurchaseID),
@@ -103,7 +112,7 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 		}
 		burdens, err := models.PurchaseMemberBurdens.Query(
 			sm.Where(psql.And(
-				models.PurchaseMemberBurdens.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+				models.PurchaseMemberBurdens.Columns.HouseholdID.In(householdArgs...),
 				models.PurchaseMemberBurdens.Columns.PurchaseID.In(psql.Arg(uuidArgs(batch)...)),
 			)),
 			sm.OrderBy(models.PurchaseMemberBurdens.Columns.PurchaseID),
@@ -148,7 +157,7 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 	for start := 0; start < len(accountIDs); start += queryBatchSize {
 		end := min(start+queryBatchSize, len(accountIDs))
 		accounts, err := models.Accounts.Query(sm.Where(psql.And(
-			models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.Accounts.Columns.HouseholdID.In(householdArgs...),
 			models.Accounts.Columns.ID.In(psql.Arg(uuidArgs(accountIDs[start:end])...)),
 		))).All(ctx, db)
 		if err != nil {
@@ -185,7 +194,7 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 			))
 		}
 		storedRules, err := models.PoolFundingRules.Query(sm.Where(psql.And(
-			models.PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+			models.PoolFundingRules.Columns.HouseholdID.In(householdArgs...),
 			psql.Or(conditions...),
 		))).All(ctx, db)
 		if err != nil {
@@ -214,7 +223,7 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 		}
 		shares, err := models.PoolFundingShares.Query(
 			sm.Where(psql.And(
-				models.PoolFundingShares.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+				models.PoolFundingShares.Columns.HouseholdID.In(householdArgs...),
 				psql.Or(conditions...),
 			)),
 			sm.OrderBy(models.PoolFundingShares.Columns.PoolID),
@@ -234,7 +243,7 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 			historicalRulesByKey[key] = historicalRule
 		}
 	}
-	expensesByPeriod := make(map[string][]domain.FundingExpense)
+	expensesByHousehold := make(map[gofrsuuid.UUID]map[string][]domain.FundingExpense, len(householdIDs))
 	rules := make(map[string]domain.PoolFundingRule)
 	for _, purchase := range purchases {
 		items := itemsByPurchase[purchase.ID]
@@ -351,7 +360,10 @@ func loadFundingExpenses(ctx context.Context, db bob.Executor, householdUUID gof
 			return nil, nil, fmt.Errorf("purchase %s: %w", purchase.ID, err)
 		}
 		period := accounting.PeriodFor(purchase.OccurredAt)
-		expensesByPeriod[period] = append(expensesByPeriod[period], split...)
+		if expensesByHousehold[purchase.HouseholdID] == nil {
+			expensesByHousehold[purchase.HouseholdID] = make(map[string][]domain.FundingExpense)
+		}
+		expensesByHousehold[purchase.HouseholdID][period] = append(expensesByHousehold[purchase.HouseholdID][period], split...)
 	}
-	return expensesByPeriod, rules, nil
+	return expensesByHousehold, rules, nil
 }

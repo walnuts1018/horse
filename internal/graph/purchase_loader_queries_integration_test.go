@@ -101,8 +101,10 @@ func TestPurchaseLoaderQueryCountDoesNotScaleWithPurchaseCount(t *testing.T) {
 	}
 
 	selection := "query { purchases { edges { node { id hasEvidence sourceKinds items { id allocations { poolId poolName amountYen } tags { id name } } } } } }"
+	minimalSelection := "query { purchases { edges { node { id merchant } } } }"
+	summarySelection := "query { purchases { edges { node { id totalYen correctionAmountYen correctionCount remainingRefundableAmountYen } } } }"
 	queryResolver := &queryResolver{Resolver: &Resolver{DB: db}}
-	measure := func(first int) (int64, *model.PurchaseConnection) {
+	measure := func(first int, selection string) (int64, *model.PurchaseConnection) {
 		t.Helper()
 		queryCounter.count.Store(0)
 		purchaseCtx := purchaseSelectionContext(t, ctx, selection)
@@ -113,17 +115,31 @@ func TestPurchaseLoaderQueryCountDoesNotScaleWithPurchaseCount(t *testing.T) {
 		return queryCounter.count.Load(), connection
 	}
 
-	singleQueryCount, singlePurchase := measure(1)
-	multipleQueryCount, multiplePurchases := measure(5)
+	singleQueryCount, singlePurchase := measure(1, selection)
+	multipleQueryCount, multiplePurchases := measure(5, selection)
+	minimalQueryCount, minimalPurchases := measure(5, minimalSelection)
+	summaryQueryCount, summaryPurchases := measure(5, summarySelection)
 	t.Logf("purchase query count for one and five parents: %d and %d", singleQueryCount, multipleQueryCount)
-	if singleQueryCount != 15 {
-		t.Fatalf("purchase query count for one parent = %d, want 15", singleQueryCount)
+	t.Logf("purchase query count for five minimal and summary selections: %d and %d", minimalQueryCount, summaryQueryCount)
+	if singleQueryCount != 13 {
+		t.Fatalf("purchase query count for one parent = %d, want 13", singleQueryCount)
 	}
 	if multipleQueryCount != singleQueryCount {
 		t.Fatalf("purchase query count scaled with parent count: one=%d five=%d", singleQueryCount, multipleQueryCount)
 	}
 	if len(singlePurchase.Edges) != 1 || len(multiplePurchases.Edges) != 5 {
 		t.Fatalf("purchase page sizes = %d and %d, want 1 and 5", len(singlePurchase.Edges), len(multiplePurchases.Edges))
+	}
+	if len(minimalPurchases.Edges) != 5 {
+		t.Fatalf("minimal purchase page size = %d, want 5", len(minimalPurchases.Edges))
+	}
+	if minimalQueryCount >= multipleQueryCount {
+		t.Fatalf("minimal purchase query count = %d, want fewer queries than full selection count %d", minimalQueryCount, multipleQueryCount)
+	}
+	for _, edge := range summaryPurchases.Edges {
+		if int64(edge.Node.TotalYen) != 100 || int64(edge.Node.CorrectionAmountYen) != 0 || edge.Node.CorrectionCount != 0 || int64(edge.Node.RemainingRefundableAmountYen) != 100 {
+			t.Fatalf("purchase summary fields are incorrect: total=%d correctionAmount=%d correctionCount=%d refundable=%d", edge.Node.TotalYen, edge.Node.CorrectionAmountYen, edge.Node.CorrectionCount, edge.Node.RemainingRefundableAmountYen)
+		}
 	}
 	for _, edge := range multiplePurchases.Edges {
 		if !edge.Node.HasEvidence || len(edge.Node.SourceKinds) != 1 || edge.Node.SourceKinds[0] != model.SourceKindReceipt {
