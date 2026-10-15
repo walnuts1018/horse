@@ -281,6 +281,7 @@ func (p *interactionReplyPublisher) publish(ctx context.Context, reply string, f
 		return false, err
 	}
 	p.lastPublished = time.Now()
+
 	return true, nil
 }
 
