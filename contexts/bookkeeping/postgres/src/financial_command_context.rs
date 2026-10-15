@@ -9,9 +9,9 @@ use bookkeeping_application::{
         Loan as RepaymentLoan, LoanId as RepaymentLoanId, PoolKind as RepaymentPoolKind,
         RepaymentSource,
     },
-    record_transfer::{AccountingPeriodStatus, PoolKind as TransferPoolKind, TransferAccount},
+    record_transfer::{PoolKind as TransferPoolKind, TransferAccount},
 };
-use bookkeeping_domain::{PoolId, PositiveYen, Yen};
+use bookkeeping_domain::{AccountingPeriod, PoolId, PositiveYen, Yen, YearMonth};
 
 use crate::{PgPool, schema::public};
 
@@ -37,15 +37,14 @@ impl From<diesel::result::Error> for FinancialCommandContextError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransferCommandContext {
-    pub period_status: AccountingPeriodStatus,
+    pub accounting_period: AccountingPeriod,
     pub payment_account: Option<TransferAccount>,
     pub destination_account: Option<TransferAccount>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepaymentCommandContext {
-    pub accounting_period: String,
-    pub accounting_period_open: bool,
+    pub accounting_period: AccountingPeriod,
     pub loan: RepaymentLoan,
     pub repaid_so_far: Yen,
     pub source: Option<RepaymentSource>,
@@ -61,13 +60,13 @@ pub async fn load_transfer_command_context(
     destination_account_id: Option<Uuid>,
     occurred_at: DateTime<Utc>,
 ) -> Result<TransferCommandContext, FinancialCommandContextError> {
-    let (_, period_status) = load_period(pool, household_id, occurred_at).await?;
+    let (_, accounting_period) = load_period(pool, household_id, occurred_at).await?;
     let payment_account =
         load_transfer_account(pool, household_id, from_member_id, payment_account_id).await?;
     let destination_account =
         load_transfer_account(pool, household_id, to_member_id, destination_account_id).await?;
     Ok(TransferCommandContext {
-        period_status,
+        accounting_period,
         payment_account,
         destination_account,
     })
@@ -83,7 +82,7 @@ pub async fn load_repayment_command_context(
     to_member_id: Uuid,
     occurred_at: DateTime<Utc>,
 ) -> Result<RepaymentCommandContext, FinancialCommandContextError> {
-    let (period_start, period_status) = load_period(pool, household_id, occurred_at).await?;
+    let (_, accounting_period) = load_period(pool, household_id, occurred_at).await?;
     let mut conn = pool
         .get()
         .await
@@ -151,10 +150,8 @@ pub async fn load_repayment_command_context(
         .map(|(id, _, _)| AccountId::new(id.to_string()))
         .transpose()
         .map_err(|_| FinancialCommandContextError::InvalidLoan)?;
-    let period = format!("{}-{:02}", period_start.year(), period_start.month());
     Ok(RepaymentCommandContext {
-        accounting_period: period,
-        accounting_period_open: period_status == AccountingPeriodStatus::Open,
+        accounting_period,
         loan,
         repaid_so_far: repaid,
         source,
@@ -166,7 +163,7 @@ async fn load_period(
     pool: &PgPool,
     household_id: Uuid,
     occurred_at: DateTime<Utc>,
-) -> Result<(NaiveDate, AccountingPeriodStatus), FinancialCommandContextError> {
+) -> Result<(NaiveDate, AccountingPeriod), FinancialCommandContextError> {
     let tokyo = FixedOffset::east_opt(9 * 60 * 60)
         .ok_or(FinancialCommandContextError::InvalidTokyoOffset)?;
     let period_start = occurred_at
@@ -185,23 +182,41 @@ async fn load_period(
         .await
         .optional()?
         .ok_or(FinancialCommandContextError::HouseholdNotFound)?;
-    let status = public::accounting_periods::table
+    let persisted_period = public::accounting_periods::table
         .filter(public::accounting_periods::household_id.eq(household_id))
         .filter(public::accounting_periods::period_start.eq(period_start))
-        .select(public::accounting_periods::status)
-        .first::<String>(&mut *conn)
+        .select((public::accounting_periods::status, public::accounting_periods::revision))
+        .first::<(String, i64)>(&mut *conn)
         .await
         .optional()?;
-    let status = match status.as_deref() {
-        None | Some("OPEN") => AccountingPeriodStatus::Open,
-        Some("CLOSED") => AccountingPeriodStatus::Closed,
-        Some(value) => {
-            return Err(FinancialCommandContextError::InvalidAccountingPeriod(
-                value.to_owned(),
-            ));
+    let year_month = YearMonth::new(
+        u16::try_from(period_start.year()).map_err(|_| {
+            FinancialCommandContextError::InvalidAccountingPeriod(period_start.to_string())
+        })?,
+        u8::try_from(period_start.month()).map_err(|_| {
+            FinancialCommandContextError::InvalidAccountingPeriod(period_start.to_string())
+        })?,
+    )
+    .map_err(|_| FinancialCommandContextError::InvalidAccountingPeriod(period_start.to_string()))?;
+    let accounting_period = match persisted_period {
+        None => AccountingPeriod::open(year_month, 1),
+        Some((status, revision)) => {
+            let revision = u64::try_from(revision).map_err(|_| {
+                FinancialCommandContextError::InvalidAccountingPeriod(revision.to_string())
+            })?;
+            match status.as_str() {
+                "OPEN" => AccountingPeriod::open(year_month, revision),
+                "CLOSED" => AccountingPeriod::closed(year_month, revision),
+                value => {
+                    return Err(FinancialCommandContextError::InvalidAccountingPeriod(
+                        value.to_owned(),
+                    ));
+                }
+            }
         }
-    };
-    Ok((period_start, status))
+    }
+    .map_err(|_| FinancialCommandContextError::InvalidAccountingPeriod(period_start.to_string()))?;
+    Ok((period_start, accounting_period))
 }
 
 async fn load_transfer_account(

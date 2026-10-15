@@ -10,7 +10,7 @@ use axum::{
     routing::{get, post},
 };
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
-use diesel_async::RunQueryDsl;
+use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::{Stream, stream};
 use horse_auth::{AuthService, Cookie, OidcError, resolve_cookie, revoke_cookie};
 use horse_graphql_api::{Actor, Schema as GraphqlSchema, viewer_query::ViewerIdentity};
@@ -52,6 +52,7 @@ pub fn router(pool: PgPool, config: Config, graphql_schema: GraphqlSchema) -> Ro
             ),
         )
         .route("/documents/{id}/content", get(document_content))
+        .route("/documents/{id}", get(read_document).delete(delete_document))
         .route("/documents/{id}/extractions", get(document_extractions))
         .route(
             "/documents/{id}/extractions/{version_id}",
@@ -59,10 +60,15 @@ pub fn router(pool: PgPool, config: Config, graphql_schema: GraphqlSchema) -> Ro
         )
         .route("/documents/{id}/retry", post(retry_document))
         .route("/documents/{id}/interaction", post(interact_with_document))
+        .route("/documents/{id}/confirm", post(confirm_document_evidence))
         .route("/events", get(events))
         .route(
             "/documents/{id}/interactions/{job_id}/events",
             get(document_interaction_events),
+        )
+        .route(
+            "/purchases/{id}/evidence",
+            get(read_purchase_evidence).post(link_purchase_evidence),
         )
         .with_state(ApiState {
             pool,
@@ -594,6 +600,327 @@ async fn list_documents(
     Json(json!({"documents": results, "nextCursor": null})).into_response()
 }
 
+async fn read_document(
+    State(state): State<ApiState>,
+    Path(raw_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let Ok(document_id) = uuid::Uuid::parse_str(&raw_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    use horse_postgres_common::schema::public::{
+        evidence_links, extraction_jobs, household_members, source_documents,
+    };
+    let mut pooled = match state.pool.get().await {
+        Ok(pooled) => pooled,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let document = source_documents::table
+        .inner_join(
+            household_members::table
+                .on(household_members::household_id.eq(source_documents::household_id)),
+        )
+        .filter(source_documents::id.eq(document_id))
+        .filter(household_members::member_id.eq(principal.member_id))
+        .select((
+            source_documents::household_id,
+            source_documents::sha256,
+            source_documents::mime_type,
+            source_documents::source_kind,
+            source_documents::original_filename,
+            source_documents::created_at,
+        ))
+        .first::<(
+            uuid::Uuid,
+            String,
+            String,
+            String,
+            String,
+            chrono::DateTime<chrono::Utc>,
+        )>(&mut *pooled)
+        .await;
+    let (household_id, sha256, mime_type, source_kind, name, created_at) = match document {
+        Ok(document) => document,
+        Err(diesel::result::Error::NotFound) => return StatusCode::NOT_FOUND.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let latest = extraction_jobs::table
+        .filter(extraction_jobs::household_id.eq(household_id))
+        .filter(extraction_jobs::source_document_id.eq(document_id))
+        .order_by(extraction_jobs::version.desc())
+        .select((
+            extraction_jobs::id,
+            extraction_jobs::status,
+            extraction_jobs::model,
+            extraction_jobs::error_code,
+            extraction_jobs::result,
+            extraction_jobs::request,
+        ))
+        .first::<(
+            uuid::Uuid,
+            String,
+            String,
+            Option<String>,
+            Option<Value>,
+            Value,
+        )>(&mut *pooled)
+        .await;
+    let (job_id, status, model, error_code, result, request) = match latest {
+        Ok(job) => job,
+        Err(diesel::result::Error::NotFound) => {
+            (uuid::Uuid::nil(), "queued".to_owned(), String::new(), None, None, Value::Null)
+        }
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let has_evidence = diesel::select(diesel::dsl::exists(
+        evidence_links::table
+            .filter(evidence_links::household_id.eq(household_id))
+            .filter(evidence_links::source_document_id.eq(document_id)),
+    ))
+    .get_result::<bool>(&mut *pooled)
+    .await
+    .unwrap_or(false);
+    let model = request
+        .get("model")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&model);
+    Json(json!({
+        "id": document_id,
+        "householdId": household_id,
+        "name": name,
+        "sha256": sha256,
+        "mimeType": mime_type,
+        "sourceKind": source_kind,
+        "status": status,
+        "model": model,
+        "errorCode": error_code,
+        "jobId": if job_id.is_nil() { None } else { Some(job_id) },
+        "result": result,
+        "createdAt": created_at,
+        "confirmations": [],
+        "hasEvidence": has_evidence
+    }))
+    .into_response()
+}
+
+async fn delete_document(
+    State(state): State<ApiState>,
+    Path(raw_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    if !same_origin(&headers, &state.config) {
+        return (StatusCode::FORBIDDEN, "request origin rejected").into_response();
+    }
+    let Some(store) = &state.config.object_store else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+    let Ok(document_id) = uuid::Uuid::parse_str(&raw_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    use horse_postgres_common::schema::public::{
+        evidence_links, extraction_jobs, household_members, source_document_attachments,
+        source_documents, source_confirmations,
+    };
+    let mut pooled = match state.pool.get().await {
+        Ok(pooled) => pooled,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let pending = (&mut *pooled)
+        .transaction::<(String, Option<String>), diesel::result::Error, _>(async |conn| {
+            let document = source_documents::table
+                .filter(source_documents::id.eq(document_id))
+                .for_update()
+                .select((
+                    source_documents::household_id,
+                    source_documents::object_key,
+                    source_documents::analysis_object_key,
+                    source_documents::metadata,
+                ))
+                .first::<(uuid::Uuid, String, Option<String>, Value)>(conn)
+                .await?;
+            let household_id = document.0;
+            let member_exists = diesel::select(diesel::dsl::exists(
+                household_members::table
+                    .filter(household_members::household_id.eq(household_id))
+                    .filter(household_members::member_id.eq(principal.member_id)),
+            ))
+            .get_result::<bool>(conn)
+            .await?;
+            if !member_exists {
+                return Err(diesel::result::Error::NotFound);
+            }
+            let status = extraction_jobs::table
+                .filter(extraction_jobs::household_id.eq(household_id))
+                .filter(extraction_jobs::source_document_id.eq(document_id))
+                .order_by(extraction_jobs::version.desc())
+                .select(extraction_jobs::status)
+                .first::<String>(conn)
+                .await?;
+            if status != "succeeded" && status != "failed" {
+                return Err(diesel::result::Error::RollbackTransaction);
+            }
+            let has_evidence = diesel::select(diesel::dsl::exists(
+                evidence_links::table
+                    .filter(evidence_links::household_id.eq(household_id))
+                    .filter(evidence_links::source_document_id.eq(document_id)),
+            ))
+            .get_result::<bool>(conn)
+            .await?;
+            let has_confirmation = diesel::select(diesel::dsl::exists(
+                source_confirmations::table
+                    .filter(source_confirmations::household_id.eq(household_id))
+                    .filter(source_confirmations::source_document_id.eq(document_id)),
+            ))
+            .get_result::<bool>(conn)
+            .await?;
+            let has_attachments = diesel::select(diesel::dsl::exists(
+                source_document_attachments::table.filter(
+                    source_document_attachments::parent_document_id
+                        .eq(document_id)
+                        .or(source_document_attachments::child_document_id.eq(document_id)),
+                ),
+            ))
+            .get_result::<bool>(conn)
+            .await?;
+            if has_evidence || has_confirmation || has_attachments {
+                return Err(diesel::result::Error::RollbackTransaction);
+            }
+            let mut metadata = document.3;
+            let Some(metadata) = metadata.as_object_mut() else {
+                return Err(diesel::result::Error::RollbackTransaction);
+            };
+            metadata.insert("deletionPending".to_owned(), Value::Bool(true));
+            diesel::update(source_documents::table.filter(source_documents::id.eq(document_id)))
+                .set(source_documents::metadata.eq(Value::Object(metadata.clone())))
+                .execute(conn)
+                .await?;
+            Ok((document.1, document.2))
+        })
+        .await;
+    let (object_key, analysis_key) = match pending {
+        Ok(keys) => keys,
+        Err(diesel::result::Error::NotFound) => return StatusCode::NOT_FOUND.into_response(),
+        Err(diesel::result::Error::RollbackTransaction) => {
+            return (StatusCode::CONFLICT, "document cannot be deleted").into_response();
+        }
+        Err(error) => {
+            tracing::error!(error = ?error, "Document deletion validation failed");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    drop(pooled);
+    let mut keys = vec![object_key];
+    if let Some(key) = analysis_key {
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    for key in &keys {
+        let mut connection = match state.pool.get().await {
+            Ok(connection) => connection,
+            Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        };
+        let referenced = source_documents::table
+            .filter(source_documents::id.ne(document_id))
+            .filter(
+                source_documents::object_key
+                    .eq(key)
+                    .or(source_documents::analysis_object_key.eq(Some(key.as_str()))),
+            )
+            .select(source_documents::id)
+            .first::<uuid::Uuid>(&mut *connection)
+            .await
+            .optional();
+        match referenced {
+            Ok(Some(_)) => continue,
+            Ok(None) => {}
+            Err(error) => {
+                tracing::error!(error = ?error, "Document object reference lookup failed");
+                return StatusCode::SERVICE_UNAVAILABLE.into_response();
+            }
+        }
+        drop(connection);
+        if let Err(error) = store.delete(key).await {
+            tracing::error!(error = ?error, "Document object deletion failed");
+            return StatusCode::BAD_GATEWAY.into_response();
+        }
+    }
+    let mut connection = match state.pool.get().await {
+        Ok(connection) => connection,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let deleted = (&mut *connection)
+        .transaction::<usize, diesel::result::Error, _>(async |conn| {
+            let metadata = source_documents::table
+                .filter(source_documents::id.eq(document_id))
+                .for_update()
+                .select(source_documents::metadata)
+                .first::<Value>(conn)
+                .await?;
+            if metadata.get("deletionPending") != Some(&Value::Bool(true)) {
+                return Err(diesel::result::Error::RollbackTransaction);
+            }
+            let has_evidence = diesel::select(diesel::dsl::exists(
+                evidence_links::table.filter(evidence_links::source_document_id.eq(document_id)),
+            ))
+            .get_result::<bool>(conn)
+            .await?;
+            let has_confirmation = diesel::select(diesel::dsl::exists(
+                source_confirmations::table
+                    .filter(source_confirmations::source_document_id.eq(document_id)),
+            ))
+            .get_result::<bool>(conn)
+            .await?;
+            let has_attachments = diesel::select(diesel::dsl::exists(
+                source_document_attachments::table.filter(
+                    source_document_attachments::parent_document_id
+                        .eq(document_id)
+                        .or(source_document_attachments::child_document_id.eq(document_id)),
+                ),
+            ))
+            .get_result::<bool>(conn)
+            .await?;
+            if has_evidence || has_confirmation || has_attachments {
+                return Err(diesel::result::Error::RollbackTransaction);
+            }
+            diesel::delete(source_documents::table.filter(source_documents::id.eq(document_id)))
+                .execute(conn)
+                .await
+        })
+        .await;
+    match deleted {
+        Ok(1) => StatusCode::NO_CONTENT.into_response(),
+        Err(diesel::result::Error::RollbackTransaction) => {
+            (StatusCode::CONFLICT, "document deletion is no longer allowed").into_response()
+        }
+        Err(diesel::result::Error::NotFound) => StatusCode::NO_CONTENT.into_response(),
+        Ok(_) => (StatusCode::CONFLICT, "document deletion is not pending").into_response(),
+        Err(error) => {
+            tracing::error!(error = ?error, "Document deletion failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
 fn decode_household_id(value: &str) -> Option<uuid::Uuid> {
     if let Ok(id) = uuid::Uuid::parse_str(value) {
         return Some(id);
@@ -1010,6 +1337,668 @@ async fn document_extraction(
         Err(error) => {
             tracing::error!(error = ?error, "Document extraction lookup failed");
             StatusCode::SERVICE_UNAVAILABLE.into_response()
+        }
+    }
+}
+
+async fn interact_with_document(
+    State(state): State<ApiState>,
+    Path(raw_id): Path<String>,
+    headers: HeaderMap,
+    Json(input): Json<Value>,
+) -> Response {
+    if !same_origin(&headers, &state.config) {
+        return (StatusCode::FORBIDDEN, "request origin rejected").into_response();
+    }
+    let Ok(document_id) = uuid::Uuid::parse_str(&raw_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let message = input.get("message").and_then(Value::as_str).unwrap_or_default();
+    let requested_model = input.get("model").and_then(Value::as_str).unwrap_or_default();
+    if message.trim().is_empty()
+        || message.len() > 8_000
+        || !matches!(requested_model, "" | "pro")
+    {
+        return (StatusCode::BAD_REQUEST, "invalid document interaction input").into_response();
+    }
+    let base_job_id = match input.get("baseJobId").and_then(Value::as_str) {
+        Some(value) => match uuid::Uuid::parse_str(value) {
+            Ok(id) => Some(id),
+            Err(_) => return (StatusCode::BAD_REQUEST, "invalid document interaction input").into_response(),
+        },
+        None => None,
+    };
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    use horse_postgres_common::schema::public::{
+        extraction_jobs, household_members, source_documents,
+    };
+    let mut pooled = match state.pool.get().await {
+        Ok(pooled) => pooled,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let household_id = source_documents::table
+        .inner_join(
+            household_members::table
+                .on(household_members::household_id.eq(source_documents::household_id)),
+        )
+        .filter(source_documents::id.eq(document_id))
+        .filter(household_members::member_id.eq(principal.member_id))
+        .select(source_documents::household_id)
+        .first::<uuid::Uuid>(&mut *pooled)
+        .await;
+    let household_id = match household_id {
+        Ok(id) => id,
+        Err(diesel::result::Error::NotFound) => return StatusCode::NOT_FOUND.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let latest_status = extraction_jobs::table
+        .filter(extraction_jobs::household_id.eq(household_id))
+        .filter(extraction_jobs::source_document_id.eq(document_id))
+        .order_by(extraction_jobs::version.desc())
+        .select(extraction_jobs::status)
+        .first::<String>(&mut *pooled)
+        .await;
+    match latest_status {
+        Ok(status) if status == "queued" || status == "running" => {
+            return (StatusCode::CONFLICT, "document extraction is already running").into_response();
+        }
+        Ok(_) => {}
+        Err(diesel::result::Error::NotFound) => {
+            return (StatusCode::CONFLICT, "document interaction requires an existing extraction").into_response();
+        }
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    }
+    let base_job_query = extraction_jobs::table
+        .filter(extraction_jobs::household_id.eq(household_id))
+        .filter(extraction_jobs::source_document_id.eq(document_id))
+        .filter(extraction_jobs::status.eq("succeeded"))
+        .into_boxed::<diesel::pg::Pg>();
+    let base_job_query = if let Some(id) = base_job_id {
+        base_job_query.filter(extraction_jobs::id.eq(id))
+    } else {
+        base_job_query
+    };
+    let base_job = base_job_query
+        .order_by(extraction_jobs::version.desc())
+        .select((
+            extraction_jobs::id,
+            extraction_jobs::model,
+            extraction_jobs::request,
+            extraction_jobs::result,
+        ))
+        .first::<(uuid::Uuid, String, Value, Option<Value>)>(&mut *pooled)
+        .await;
+    let (base_job_id, stored_model, base_request, extraction) = match base_job {
+        Ok((id, model, request, Some(extraction))) => (id, model, request, extraction),
+        Ok(_) | Err(diesel::result::Error::NotFound) => {
+            return (StatusCode::CONFLICT, "document interaction requires a successful extraction").into_response();
+        }
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let Some(receipt_or_statement) = extraction.get("receipt").or_else(|| extraction.get("statements")) else {
+        return (StatusCode::CONFLICT, "document interaction requires receipt or statement data").into_response();
+    };
+    if receipt_or_statement.is_null() || receipt_or_statement.as_array().is_some_and(Vec::is_empty) {
+        return (StatusCode::CONFLICT, "document interaction requires receipt or statement data").into_response();
+    }
+    let conversation = extraction
+        .get("conversation")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if conversation.len() > 38 {
+        return (StatusCode::CONFLICT, "document conversation reached its turn limit").into_response();
+    }
+    let conversation_id = extraction
+        .get("conversationId")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
+    let model = if requested_model == "pro" {
+        "pro"
+    } else {
+        base_request
+            .get("model")
+            .and_then(Value::as_str)
+            .filter(|value| *value == "pro")
+            .unwrap_or(if stored_model == "pro" { "pro" } else { "" })
+    };
+    drop(pooled);
+    let mut current_extraction = serde_json::Map::new();
+    for key in ["receipt", "statements", "issues"] {
+        if let Some(value) = extraction.get(key) {
+            current_extraction.insert(key.to_owned(), value.clone());
+        }
+    }
+    let mut request = serde_json::Map::new();
+    request.insert("purpose".to_owned(), Value::String("interactive".to_owned()));
+    request.insert("clarification".to_owned(), Value::String(message.to_owned()));
+    request.insert("baseJobId".to_owned(), Value::String(base_job_id.to_string()));
+    request.insert("conversationId".to_owned(), Value::String(conversation_id));
+    request.insert("conversation".to_owned(), Value::Array(conversation));
+    request.insert("currentExtraction".to_owned(), Value::Object(current_extraction));
+    if !model.is_empty() {
+        request.insert("model".to_owned(), Value::String(model.to_owned()));
+    }
+    let job = evidence_postgres::document_registration::enqueue_extraction_job(
+        &state.pool,
+        household_id,
+        document_id,
+        principal.member_id,
+        "gemini_developer_api",
+        model,
+        &format!("interaction:{}", uuid::Uuid::now_v7()),
+        Value::Object(request),
+    )
+    .await;
+    match job {
+        Ok(job_id) => (StatusCode::ACCEPTED, Json(json!({"jobId": job_id, "status": "queued"}))).into_response(),
+        Err(error) => {
+            tracing::error!(error = ?error, "Document interaction registration failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+async fn document_interaction_events(
+    State(state): State<ApiState>,
+    Path((raw_document_id, raw_job_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    let (Ok(document_id), Ok(job_id)) = (
+        uuid::Uuid::parse_str(&raw_document_id),
+        uuid::Uuid::parse_str(&raw_job_id),
+    ) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    use horse_postgres_common::schema::public::{
+        extraction_jobs, household_members, source_documents,
+    };
+    let mut connection = match state.pool.get().await {
+        Ok(connection) => connection,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let household_id = source_documents::table
+        .inner_join(
+            household_members::table
+                .on(household_members::household_id.eq(source_documents::household_id)),
+        )
+        .filter(source_documents::id.eq(document_id))
+        .filter(household_members::member_id.eq(principal.member_id))
+        .select(source_documents::household_id)
+        .first::<uuid::Uuid>(&mut *connection)
+        .await;
+    let household_id = match household_id {
+        Ok(id) => id,
+        Err(diesel::result::Error::NotFound) => return StatusCode::NOT_FOUND.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let job = extraction_jobs::table
+        .filter(extraction_jobs::id.eq(job_id))
+        .filter(extraction_jobs::household_id.eq(household_id))
+        .filter(extraction_jobs::source_document_id.eq(document_id))
+        .select((
+            extraction_jobs::status,
+            extraction_jobs::interaction_reply_preview,
+            extraction_jobs::request,
+        ))
+        .first::<(String, String, Value)>(&mut *connection)
+        .await;
+    let (status, _, request) = match job {
+        Ok(job) => job,
+        Err(diesel::result::Error::NotFound) => return StatusCode::NOT_FOUND.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    if request.get("purpose").and_then(Value::as_str) != Some("interactive")
+        || request
+            .get("clarification")
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+    {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let stream = stream::unfold(
+        (state.pool, household_id, document_id, job_id, None, false),
+        |(pool, household_id, document_id, job_id, previous, terminal)| async move {
+            if terminal {
+                return None;
+            }
+            let mut connection = pool.get().await.ok()?;
+            let current = extraction_jobs::table
+                .filter(extraction_jobs::id.eq(job_id))
+                .filter(extraction_jobs::household_id.eq(household_id))
+                .filter(extraction_jobs::source_document_id.eq(document_id))
+                .select((
+                    extraction_jobs::status,
+                    extraction_jobs::interaction_reply_preview,
+                ))
+                .first::<(String, String)>(&mut *connection)
+                .await
+                .ok()?;
+            drop(connection);
+            let is_terminal = current.0 != "queued" && current.0 != "running";
+            if previous.as_ref() == Some(&current) {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                return Some((
+                    Ok(Event::default().comment("keep-alive")),
+                    (pool, household_id, document_id, job_id, previous, is_terminal),
+                ));
+            }
+            let event = Event::default()
+                .json_data(json!({"status": current.0, "reply": if is_terminal { "" } else { &current.1 }}))
+                .unwrap_or_else(|_| Event::default().comment("event encoding failed"));
+            if !is_terminal {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+            Some((
+                Ok(event),
+                (pool, household_id, document_id, job_id, Some(current), is_terminal),
+            ))
+        },
+    );
+    let stream: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
+        Box::pin(stream);
+    Sse::new(stream)
+        .keep_alive(
+            axum::response::sse::KeepAlive::new()
+                .interval(std::time::Duration::from_secs(15)),
+        )
+        .into_response()
+}
+
+async fn read_purchase_evidence(
+    State(state): State<ApiState>,
+    Path(raw_purchase_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let Some(purchase_id) = decode_relay_uuid(&raw_purchase_id, "Purchase") else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    use horse_postgres_common::schema::public::{
+        evidence_links, household_members, purchases, source_documents,
+    };
+    let mut pooled = match state.pool.get().await {
+        Ok(pooled) => pooled,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let household_id = purchases::table
+        .inner_join(
+            household_members::table.on(household_members::household_id.eq(purchases::household_id)),
+        )
+        .filter(purchases::id.eq(purchase_id))
+        .filter(household_members::member_id.eq(principal.member_id))
+        .select(purchases::household_id)
+        .first::<uuid::Uuid>(&mut *pooled)
+        .await;
+    let household_id = match household_id {
+        Ok(id) => id,
+        Err(diesel::result::Error::NotFound) => return StatusCode::NOT_FOUND.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let rows = evidence_links::table
+        .inner_join(
+            source_documents::table.on(source_documents::id.eq(evidence_links::source_document_id)),
+        )
+        .filter(evidence_links::household_id.eq(household_id))
+        .filter(evidence_links::entity_kind.eq("purchase"))
+        .filter(evidence_links::entity_id.eq(purchase_id))
+        .order_by(evidence_links::created_at.asc())
+        .then_order_by(evidence_links::source_document_id.asc())
+        .then_order_by(evidence_links::item_id.asc())
+        .select((
+            source_documents::id,
+            evidence_links::item_id,
+            source_documents::source_kind,
+            source_documents::mime_type,
+            source_documents::sha256,
+            evidence_links::evidence_region,
+            evidence_links::observation,
+            evidence_links::created_at,
+        ))
+        .load::<(
+            uuid::Uuid,
+            Option<uuid::Uuid>,
+            String,
+            String,
+            String,
+            Option<Value>,
+            Value,
+            chrono::DateTime<chrono::Utc>,
+        )>(&mut *pooled)
+        .await;
+    match rows {
+        Ok(rows) => {
+            let evidence = rows
+                .into_iter()
+                .map(|(document_id, item_id, source_kind, mime_type, sha256, region, observation, created_at)| {
+                    let mut transform = json!([1,0,0,0,1,0,0,0,1]);
+                    if let Some(stored) = observation.get("transform") {
+                        transform = stored.clone();
+                    }
+                    json!({
+                        "documentId": document_id,
+                        "itemId": item_id.map(|id| encode_relay_uuid("PurchaseItem", id)),
+                        "sourceKind": source_kind,
+                        "mimeType": mime_type,
+                        "sha256": sha256,
+                        "region": region,
+                        "transform": transform,
+                        "observation": observation,
+                        "createdAt": created_at
+                    })
+                })
+                .collect::<Vec<_>>();
+            Json(json!({"evidence": evidence})).into_response()
+        }
+        Err(error) => {
+            tracing::error!(error = ?error, "Purchase evidence lookup failed");
+            StatusCode::SERVICE_UNAVAILABLE.into_response()
+        }
+    }
+}
+
+fn decode_relay_uuid(value: &str, expected_type: &str) -> Option<uuid::Uuid> {
+    if let Ok(id) = uuid::Uuid::parse_str(value) {
+        return Some(id);
+    }
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    let bytes = URL_SAFE_NO_PAD.decode(value).ok()?;
+    let separator = bytes.iter().position(|byte| *byte == b':')?;
+    let (type_name, payload) = bytes.split_at(separator);
+    if type_name != expected_type.as_bytes() || payload.len() != 17 || payload[0] != b':' {
+        return None;
+    }
+    uuid::Uuid::from_slice(&payload[1..]).ok()
+}
+
+fn encode_relay_uuid(type_name: &str, id: uuid::Uuid) -> String {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    let mut bytes = type_name.as_bytes().to_vec();
+    bytes.push(b':');
+    bytes.extend_from_slice(id.as_bytes());
+    URL_SAFE_NO_PAD.encode(bytes)
+}
+
+async fn confirm_document_evidence(
+    State(state): State<ApiState>,
+    Path(raw_document_id): Path<String>,
+    headers: HeaderMap,
+    Json(input): Json<Value>,
+) -> Response {
+    let Some(document_id) = uuid::Uuid::parse_str(&raw_document_id).ok() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let source = json!({
+        "documentId": document_id,
+        "sourceReference": input.get("sourceReference").cloned().unwrap_or_else(|| Value::String(String::new())),
+        "itemId": input.get("itemId"),
+        "observationJobId": input.get("observationJobId"),
+        "sourceItemIndex": input.get("sourceItemIndex")
+    });
+    let purchase_id = input
+        .get("purchaseId")
+        .and_then(Value::as_str)
+        .and_then(|value| decode_relay_uuid(value, "Purchase"));
+    let Some(purchase_id) = purchase_id else {
+        return (StatusCode::BAD_REQUEST, "invalid evidence confirmation").into_response();
+    };
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    confirm_purchase_sources(&state, purchase_id, principal.member_id, vec![source]).await
+}
+
+async fn link_purchase_evidence(
+    State(state): State<ApiState>,
+    Path(raw_purchase_id): Path<String>,
+    headers: HeaderMap,
+    Json(input): Json<Value>,
+) -> Response {
+    let Some(purchase_id) = decode_relay_uuid(&raw_purchase_id, "Purchase") else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some(sources) = input.get("sources").and_then(Value::as_array) else {
+        return (StatusCode::BAD_REQUEST, "invalid evidence sources").into_response();
+    };
+    if sources.is_empty() || sources.len() > 100 {
+        return (StatusCode::BAD_REQUEST, "invalid evidence sources").into_response();
+    }
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    confirm_purchase_sources(&state, purchase_id, principal.member_id, sources.clone()).await
+}
+
+async fn confirm_purchase_sources(
+    state: &ApiState,
+    purchase_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+    sources: Vec<Value>,
+) -> Response {
+    use horse_postgres_common::schema::public::{
+        evidence_links, extraction_jobs, household_events, household_members, purchases,
+        source_confirmations, source_documents, source_observations, purchase_items,
+    };
+    let mut pooled = match state.pool.get().await {
+        Ok(pooled) => pooled,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let result = (&mut *pooled)
+        .transaction::<i64, diesel::result::Error, _>(async |conn| {
+            let (household_id, revision) = purchases::table
+                .filter(purchases::id.eq(purchase_id))
+                .for_update()
+                .select((purchases::household_id, purchases::revision))
+                .first::<(uuid::Uuid, i64)>(conn)
+                .await?;
+            let member_exists = diesel::select(diesel::dsl::exists(
+                household_members::table
+                    .filter(household_members::household_id.eq(household_id))
+                    .filter(household_members::member_id.eq(member_id)),
+            ))
+            .get_result::<bool>(conn)
+            .await?;
+            if !member_exists {
+                return Err(diesel::result::Error::NotFound);
+            }
+            for source in &sources {
+                let document_id = source
+                    .get("documentId")
+                    .and_then(Value::as_str)
+                    .and_then(|value| uuid::Uuid::parse_str(value).ok())
+                    .ok_or(diesel::result::Error::NotFound)?;
+                let source_reference = source
+                    .get("sourceReference")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if source_reference.len() > 256 {
+                    return Err(diesel::result::Error::RollbackTransaction);
+                }
+                let source_household = source_documents::table
+                    .filter(source_documents::id.eq(document_id))
+                    .select(source_documents::household_id)
+                    .first::<uuid::Uuid>(conn)
+                    .await?;
+                if source_household != household_id {
+                    return Err(diesel::result::Error::NotFound);
+                }
+                let item_id = source
+                    .get("itemId")
+                    .and_then(Value::as_str)
+                    .map(|value| decode_relay_uuid(value, "PurchaseItem"))
+                    .transpose()
+                    .ok_or(diesel::result::Error::RollbackTransaction)?;
+                if let Some(item_id) = item_id {
+                    let exists = diesel::select(diesel::dsl::exists(
+                        purchase_items::table
+                            .filter(purchase_items::id.eq(item_id))
+                            .filter(purchase_items::purchase_id.eq(purchase_id))
+                            .filter(purchase_items::household_id.eq(household_id)),
+                    ))
+                    .get_result::<bool>(conn)
+                    .await?;
+                    if !exists {
+                        return Err(diesel::result::Error::NotFound);
+                    }
+                }
+                let observation_id = source_observations::table
+                    .filter(source_observations::household_id.eq(household_id))
+                    .filter(source_observations::source_document_id.eq(document_id))
+                    .filter(source_observations::source_reference.eq(source_reference))
+                    .order_by(source_observations::created_at.desc())
+                    .select(source_observations::id)
+                    .first::<uuid::Uuid>(conn)
+                    .await
+                    .optional()?;
+                let observation_job_id = source
+                    .get("observationJobId")
+                    .and_then(Value::as_str)
+                    .and_then(|value| uuid::Uuid::parse_str(value).ok());
+                let item_index = source
+                    .get("sourceItemIndex")
+                    .and_then(Value::as_u64)
+                    .and_then(|value| usize::try_from(value).ok());
+                if observation_job_id.is_some() != item_index.is_some() {
+                    return Err(diesel::result::Error::RollbackTransaction);
+                }
+                let mut observation = json!({});
+                let mut region = None;
+                if let (Some(job_id), Some(index)) = (observation_job_id, item_index) {
+                    let result = extraction_jobs::table
+                        .filter(extraction_jobs::id.eq(job_id))
+                        .filter(extraction_jobs::household_id.eq(household_id))
+                        .filter(extraction_jobs::source_document_id.eq(document_id))
+                        .filter(extraction_jobs::status.eq("succeeded"))
+                        .select(extraction_jobs::result)
+                        .first::<Option<Value>>(conn)
+                        .await?
+                        .ok_or(diesel::result::Error::NotFound)?;
+                    let item = result
+                        .pointer(&format!("/receipt/items/{index}"))
+                        .cloned()
+                        .ok_or(diesel::result::Error::RollbackTransaction)?;
+                    region = item.get("region").cloned();
+                    observation = json!({
+                        "jobId": job_id,
+                        "itemIndex": index,
+                        "item": item,
+                        "transform": result.get("transform"),
+                        "transformPage": result.get("transformPage")
+                    });
+                }
+                let active_confirmation = source_confirmations::table
+                    .filter(source_confirmations::household_id.eq(household_id))
+                    .filter(source_confirmations::source_document_id.eq(document_id))
+                    .filter(source_confirmations::source_reference.eq(source_reference))
+                    .filter(source_confirmations::status.eq("confirmed"))
+                    .select(source_confirmations::entity_id)
+                    .first::<uuid::Uuid>(conn)
+                    .await
+                    .optional()?;
+                if active_confirmation.is_some_and(|confirmed_purchase| confirmed_purchase != purchase_id) {
+                    return Err(diesel::result::Error::RollbackTransaction);
+                }
+                let confirmation_id = uuid::Uuid::now_v7();
+                diesel::insert_into(source_confirmations::table)
+                    .values((
+                        source_confirmations::id.eq(confirmation_id),
+                        source_confirmations::household_id.eq(household_id),
+                        source_confirmations::source_document_id.eq(document_id),
+                        source_confirmations::observation_id.eq(observation_id),
+                        source_confirmations::source_reference.eq(source_reference),
+                        source_confirmations::entity_kind.eq("purchase"),
+                        source_confirmations::entity_id.eq(purchase_id),
+                        source_confirmations::status.eq("confirmed"),
+                        source_confirmations::idempotency_key.eq(format!("http:{}", uuid::Uuid::now_v7())),
+                        source_confirmations::changed_by.eq(member_id),
+                        source_confirmations::changed_at.eq(chrono::Utc::now()),
+                    ))
+                    .on_conflict_do_nothing()
+                    .execute(conn)
+                    .await?;
+                diesel::insert_into(evidence_links::table)
+                    .values((
+                        evidence_links::id.eq(uuid::Uuid::now_v7()),
+                        evidence_links::household_id.eq(household_id),
+                        evidence_links::source_document_id.eq(document_id),
+                        evidence_links::observation_id.eq(observation_id),
+                        evidence_links::source_reference.eq(source_reference),
+                        evidence_links::entity_kind.eq("purchase"),
+                        evidence_links::entity_id.eq(purchase_id),
+                        evidence_links::item_id.eq(item_id),
+                        evidence_links::evidence_region.eq(region),
+                        evidence_links::observation.eq(observation),
+                        evidence_links::created_by.eq(member_id),
+                        evidence_links::created_at.eq(chrono::Utc::now()),
+                    ))
+                    .on_conflict_do_nothing()
+                    .execute(conn)
+                    .await?;
+            }
+            diesel::insert_into(household_events::table)
+                .values((
+                    household_events::household_id.eq(household_id),
+                    household_events::event_type.eq("evidence.group_linked"),
+                    household_events::entity_kind.eq("purchase"),
+                    household_events::entity_id.eq(purchase_id),
+                    household_events::revision.eq(revision),
+                    household_events::changed_fields.eq(vec![Some("evidence".to_owned())]),
+                    household_events::payload.eq(json!({"sourceCount": sources.len()})),
+                    household_events::actor_id.eq(member_id),
+                    household_events::created_at.eq(chrono::Utc::now()),
+                ))
+                .execute(conn)
+                .await?;
+            Ok(revision)
+        })
+        .await;
+    match result {
+        Ok(_) => Json(json!({"linked": true, "sourceCount": sources.len()})).into_response(),
+        Err(diesel::result::Error::NotFound) => StatusCode::NOT_FOUND.into_response(),
+        Err(diesel::result::Error::RollbackTransaction) => {
+            (StatusCode::CONFLICT, "evidence source conflicts with an existing link").into_response()
+        }
+        Err(error) => {
+            tracing::error!(error = ?error, "Purchase evidence confirmation failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
 }

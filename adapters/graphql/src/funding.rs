@@ -1,8 +1,10 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_application::funding_record::{
-    AccountingPeriodStatus, RecordFundingCommand, RecordFundingError, decide_record_funding,
+    RecordFundingCommand, RecordFundingError, decide_record_funding,
 };
+use bookkeeping_domain::{AccountingPeriod, YearMonth};
+use chrono::{Datelike, FixedOffset};
 use bookkeeping_postgres::{
     funding_command_context as postgres_funding_context,
     funding_command_result as postgres_funding_result, funding_record as postgres_funding,
@@ -130,7 +132,7 @@ pub async fn record_funding(
         },
     };
     let mut command = parsed.command;
-    command.period_status = command_context.period_status;
+    command.accounting_period = command_context.accounting_period;
     command.source_account = command_context.source_account;
     command.destination_account = command_context.destination_account;
     let _ = command_context.pool_kind;
@@ -212,6 +214,13 @@ fn parse_input(
         .occurred_at
         .parse_utc()
         .map_err(|_| bad_input_error())?;
+    let tokyo = FixedOffset::east_opt(9 * 60 * 60).ok_or_else(bad_input_error)?;
+    let local_date = occurred_at.with_timezone(&tokyo).date_naive();
+    let period = YearMonth::new(
+        u16::try_from(local_date.year()).map_err(|_| bad_input_error())?,
+        u8::try_from(local_date.month()).map_err(|_| bad_input_error())?,
+    )
+    .map_err(|_| bad_input_error())?;
     let fingerprint_payload = FundingRequestFingerprint {
         household_id: input.household_id.as_str(),
         member_id: input.member_id.as_str(),
@@ -231,7 +240,7 @@ fn parse_input(
             member_id: member_id.to_string(),
             pool_id: pool_id.to_string(),
             amount_yen: input.amount_yen.0,
-            period_status: AccountingPeriodStatus::Open,
+            accounting_period: AccountingPeriod::open(period, 1).map_err(|_| bad_input_error())?,
             source_account: None,
             destination_account: None,
         },

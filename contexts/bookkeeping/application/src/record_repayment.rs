@@ -1,5 +1,5 @@
 use crate::{AccountId, MemberId, PoolId, Side};
-use bookkeeping_domain::{PositiveYen, Yen};
+use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, PositiveYen, Yen};
 
 const MAX_REPAYMENT_YEN: i64 = 1_000_000_000_000;
 
@@ -48,8 +48,7 @@ pub struct RecordRepaymentCommand {
     pub from_member: MemberId,
     pub to_member: MemberId,
     pub amount: PositiveYen,
-    pub accounting_period: String,
-    pub accounting_period_open: bool,
+    pub accounting_period: AccountingPeriod,
     pub source: Option<RepaymentSource>,
     pub destination_account: Option<AccountId>,
     pub description: String,
@@ -59,7 +58,7 @@ pub struct RecordRepaymentCommand {
 pub struct RecordRepaymentDecision {
     pub loan_id: LoanId,
     pub amount: PositiveYen,
-    pub accounting_period: String,
+    pub accounting_period: AccountingPeriod,
     pub description: String,
     pub journal_lines: Vec<RepaymentJournalLine>,
     pub settlement_adjustments: Vec<RepaymentSettlementAdjustment>,
@@ -93,7 +92,6 @@ pub struct RepaymentEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepaymentError {
     InvalidLoanId,
-    InvalidAccountingPeriod,
     AccountingPeriodClosed,
     InvalidLoanParties,
     RepaymentDirectionMismatch,
@@ -107,10 +105,7 @@ pub enum RepaymentError {
 pub fn decide_record_repayment(
     command: RecordRepaymentCommand,
 ) -> Result<RecordRepaymentDecision, RepaymentError> {
-    if !valid_period(&command.accounting_period) {
-        return Err(RepaymentError::InvalidAccountingPeriod);
-    }
-    if !command.accounting_period_open {
+    if command.accounting_period.status() != AccountingPeriodStatus::Open {
         return Err(RepaymentError::AccountingPeriodClosed);
     }
     if command.loan.lender == command.loan.borrower {
@@ -273,17 +268,6 @@ fn push_journal_pair(
     Ok(())
 }
 
-fn valid_period(value: &str) -> bool {
-    let Some((year, month)) = value.split_once('-') else {
-        return false;
-    };
-    year.len() == 4
-        && year.bytes().all(|byte| byte.is_ascii_digit())
-        && month.len() == 2
-        && month.bytes().all(|byte| byte.is_ascii_digit())
-        && (1..=12).contains(&month.parse::<u8>().unwrap_or(0))
-}
-
 #[cfg(test)]
 mod tests {
     use bookkeeping_domain::PositiveYen;
@@ -308,8 +292,11 @@ mod tests {
             from_member: borrower,
             to_member: lender,
             amount: PositiveYen::new(400).unwrap(),
-            accounting_period: "2026-10".into(),
-            accounting_period_open: true,
+            accounting_period: AccountingPeriod::open(
+                bookkeeping_domain::YearMonth::new(2026, 10).unwrap(),
+                1,
+            )
+            .unwrap(),
             source: Some(RepaymentSource {
                 account_id: id(AccountId::new, "source-account"),
                 pool_id: PoolId::new("pool-1").unwrap(),
@@ -365,7 +352,11 @@ mod tests {
         );
 
         let mut closed_period = command(PoolKind::Personal);
-        closed_period.accounting_period_open = false;
+        closed_period.accounting_period = AccountingPeriod::closed(
+            bookkeeping_domain::YearMonth::new(2026, 10).unwrap(),
+            1,
+        )
+        .unwrap();
         assert_eq!(
             decide_record_repayment(closed_period),
             Err(RepaymentError::AccountingPeriodClosed)

@@ -1,4 +1,4 @@
-use bookkeeping_domain::PositiveYen;
+use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, PositiveYen};
 
 use crate::{AccountId, MemberId, Side};
 
@@ -28,7 +28,7 @@ pub struct RecordAccountIncomeCommand {
     pub account_kind: IncomeAccountKind,
     pub amount: PositiveYen,
     pub description: String,
-    pub accounting_period_open: bool,
+    pub accounting_period: AccountingPeriod,
     pub statement_source: Option<StatementIncomeSource>,
 }
 
@@ -55,6 +55,7 @@ pub struct RecordAccountIncomeDecision {
     pub account_kind: IncomeAccountKind,
     pub amount: PositiveYen,
     pub description: String,
+    pub accounting_period: AccountingPeriod,
     pub journal_lines: [AccountIncomeJournalLine; 2],
     pub changed_fields: [&'static str; 3],
     pub statement_source: Option<StatementIncomeSource>,
@@ -98,7 +99,7 @@ pub enum AccountIncomeError {
 pub fn decide_record_account_income(
     command: RecordAccountIncomeCommand,
 ) -> Result<RecordAccountIncomeDecision, AccountIncomeError> {
-    if !command.accounting_period_open {
+    if command.accounting_period.status() != AccountingPeriodStatus::Open {
         return Err(AccountIncomeError::AccountingPeriodClosed);
     }
     if command.amount.value() > 1_000_000_000_000 {
@@ -130,6 +131,7 @@ pub fn decide_record_account_income(
         account_kind: command.account_kind,
         amount: command.amount,
         description: command.description,
+        accounting_period: command.accounting_period,
         journal_lines: [
             AccountIncomeJournalLine {
                 line_no: 1,
@@ -194,7 +196,11 @@ mod tests {
             account_kind,
             amount: PositiveYen::new(500).unwrap(),
             description: "External income".to_owned(),
-            accounting_period_open: true,
+            accounting_period: AccountingPeriod::open(
+                bookkeeping_domain::YearMonth::new(2025, 1).unwrap(),
+                1,
+            )
+            .unwrap(),
             statement_source: None,
         }
     }

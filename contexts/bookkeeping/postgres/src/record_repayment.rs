@@ -13,6 +13,7 @@ use bookkeeping_application::{
         LinkStatementTransferCommand, StatementTransferObservation, decide_link_statement_transfer,
     },
 };
+use bookkeeping_domain::AccountingPeriodStatus;
 
 use crate::{PgPool, schema::public};
 
@@ -93,7 +94,15 @@ pub async fn persist_record_repayment(
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
     let loan_id = parse_uuid(decision.loan_id.as_str(), "loan_id")?;
-    let period_start = parse_period(&decision.accounting_period)?;
+    if decision.accounting_period.status() != AccountingPeriodStatus::Open {
+        return Err(RecordRepaymentPersistenceError::AccountingPeriodClosed);
+    }
+    let period_start = NaiveDate::from_ymd_opt(
+        i32::from(decision.accounting_period.year_month().year()),
+        u32::from(decision.accounting_period.year_month().month()),
+        1,
+    )
+    .ok_or(RecordRepaymentPersistenceError::InvalidPeriod)?;
     let tokyo_offset =
         FixedOffset::east_opt(9 * 60 * 60).ok_or(RecordRepaymentPersistenceError::InvalidPeriod)?;
     if input
@@ -127,9 +136,15 @@ pub async fn persist_record_repayment(
             use public::journals::dsl as journals;
             use public::ledger_entries::dsl as ledger;
 
+            ensure_open_period(
+                &mut *conn,
+                household_id,
+                period_start,
+                decision.accounting_period.revision(),
+            )
+            .await?;
             public::households::table
                 .filter(public::households::id.eq(household_id))
-                .for_update()
                 .select(public::households::id)
                 .first::<Uuid>(&mut *conn)
                 .await
@@ -189,7 +204,6 @@ pub async fn persist_record_repayment(
                 });
             }
 
-            ensure_open_period(&mut *conn, household_id, period_start).await?;
             let (lender_id, borrower_id) =
                 ensure_outstanding(&mut *conn, household_id, loan_id, &decision, amount).await?;
             validate_members_and_accounts(&mut *conn, household_id, actor_id, &decision).await?;
@@ -681,12 +695,14 @@ async fn ensure_open_period(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     period_start: NaiveDate,
+    expected_revision: u64,
 ) -> Result<(), RecordRepaymentPersistenceError> {
     diesel::insert_into(public::accounting_periods::table)
         .values((
             public::accounting_periods::household_id.eq(household_id),
             public::accounting_periods::period_start.eq(period_start),
             public::accounting_periods::status.eq("OPEN"),
+            public::accounting_periods::revision.eq(1_i64),
         ))
         .on_conflict((
             public::accounting_periods::household_id,
@@ -695,15 +711,19 @@ async fn ensure_open_period(
         .do_nothing()
         .execute(&mut *conn)
         .await?;
-    let status = public::accounting_periods::table
+    let period = public::accounting_periods::table
         .filter(public::accounting_periods::household_id.eq(household_id))
         .filter(public::accounting_periods::period_start.eq(period_start))
         .for_update()
-        .select(public::accounting_periods::status)
-        .first::<String>(conn)
+        .select((public::accounting_periods::status, public::accounting_periods::revision))
+        .first::<(String, i64)>(conn)
         .await
         .optional()?;
-    if status.as_deref() != Some("OPEN") {
+    let expected_revision = i64::try_from(expected_revision)
+        .map_err(|_| RecordRepaymentPersistenceError::InvalidDecision)?;
+    if period.as_ref().map(|(status, revision)| (status.as_str(), *revision))
+        != Some(("OPEN", expected_revision))
+    {
         return Err(RecordRepaymentPersistenceError::AccountingPeriodClosed);
     }
     Ok(())
@@ -823,28 +843,6 @@ async fn validate_members_and_accounts(
             .await?;
     }
     Ok(())
-}
-
-fn parse_period(value: &str) -> Result<NaiveDate, RecordRepaymentPersistenceError> {
-    let (year, month) = value
-        .split_once('-')
-        .ok_or(RecordRepaymentPersistenceError::InvalidPeriod)?;
-    if year.len() != 4
-        || month.len() != 2
-        || !year.bytes().all(|b| b.is_ascii_digit())
-        || !month.bytes().all(|b| b.is_ascii_digit())
-    {
-        return Err(RecordRepaymentPersistenceError::InvalidPeriod);
-    }
-    NaiveDate::from_ymd_opt(
-        year.parse()
-            .map_err(|_| RecordRepaymentPersistenceError::InvalidPeriod)?,
-        month
-            .parse()
-            .map_err(|_| RecordRepaymentPersistenceError::InvalidPeriod)?,
-        1,
-    )
-    .ok_or(RecordRepaymentPersistenceError::InvalidPeriod)
 }
 
 fn validate_decision(

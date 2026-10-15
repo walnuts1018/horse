@@ -1,4 +1,6 @@
 use bookkeeping_application::create_and_post_purchase as application;
+use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, YearMonth};
+use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
@@ -61,6 +63,68 @@ struct PurchaseCreateAndPostOperations<'a> {
 
 impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOperations<'_> {
     type Error = CreateAndPostPurchaseError;
+
+    async fn lock_accounting_period(
+        &mut self,
+        household_id: &str,
+        occurred_at: DateTime<Utc>,
+    ) -> Result<(), Self::Error> {
+        use public::accounting_periods::dsl as periods;
+
+        let household_id = parse_uuid(household_id, "household_id")?;
+        let tokyo = FixedOffset::east_opt(9 * 60 * 60).ok_or(
+            CreateAndPostPurchaseError::Post(PostPurchasePersistenceError::InvalidDecision),
+        )?;
+        let local_date = occurred_at.with_timezone(&tokyo).date_naive();
+        let period_start = local_date
+            .with_day(1)
+            .ok_or(CreateAndPostPurchaseError::Post(
+                PostPurchasePersistenceError::InvalidDecision,
+            ))?;
+        diesel::insert_into(periods::accounting_periods)
+            .values((
+                periods::household_id.eq(household_id),
+                periods::period_start.eq(period_start),
+                periods::status.eq("OPEN"),
+                periods::revision.eq(1_i64),
+            ))
+            .on_conflict((periods::household_id, periods::period_start))
+            .do_nothing()
+            .execute(&mut *self.conn)
+            .await
+            .map_err(CreateAndPostPurchaseError::Database)?;
+        let (status, revision) = periods::accounting_periods
+            .filter(periods::household_id.eq(household_id))
+            .filter(periods::period_start.eq(period_start))
+            .for_update()
+            .select((periods::status, periods::revision))
+            .first::<(String, i64)>(&mut *self.conn)
+            .await
+            .map_err(CreateAndPostPurchaseError::Database)?;
+        let year_month = YearMonth::new(
+            u16::try_from(local_date.year()).map_err(|_| {
+                CreateAndPostPurchaseError::Post(PostPurchasePersistenceError::InvalidDecision)
+            })?,
+            u8::try_from(local_date.month()).map_err(|_| {
+                CreateAndPostPurchaseError::Post(PostPurchasePersistenceError::InvalidDecision)
+            })?,
+        )
+        .map_err(|_| {
+            CreateAndPostPurchaseError::Post(PostPurchasePersistenceError::InvalidDecision)
+        })?;
+        let revision = u64::try_from(revision).map_err(|_| {
+            CreateAndPostPurchaseError::Post(PostPurchasePersistenceError::InvalidDecision)
+        })?;
+        match status.as_str() {
+            "OPEN" => AccountingPeriod::open(year_month, revision),
+            "CLOSED" => AccountingPeriod::closed(year_month, revision),
+            _ => Err(bookkeeping_domain::AccountingPeriodError::InvalidMonth),
+        }
+        .map_err(|_| {
+            CreateAndPostPurchaseError::Post(PostPurchasePersistenceError::InvalidDecision)
+        })?;
+        Ok(())
+    }
 
     async fn require_active_member(
         &mut self,

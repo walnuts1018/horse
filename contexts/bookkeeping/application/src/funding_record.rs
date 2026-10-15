@@ -1,8 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccountingPeriodStatus {
-    Open,
-    Closed,
-}
+use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FundingAccountKind {
@@ -34,7 +30,7 @@ pub struct RecordFundingCommand {
     pub member_id: String,
     pub pool_id: String,
     pub amount_yen: i64,
-    pub period_status: AccountingPeriodStatus,
+    pub accounting_period: AccountingPeriod,
     pub source_account: Option<FundingAccount>,
     pub destination_account: Option<FundingAccount>,
 }
@@ -68,6 +64,7 @@ pub struct RecordFundingDecision {
     pub member_id: String,
     pub pool_id: String,
     pub amount_yen: i64,
+    pub accounting_period: AccountingPeriod,
     pub source_account_id: Option<String>,
     pub destination_account_id: Option<String>,
     pub journal_lines: Vec<FundingJournalLine>,
@@ -95,7 +92,7 @@ pub fn decide_record_funding(
     if command.actor_id.is_empty() || command.member_id.is_empty() || command.pool_id.is_empty() {
         return Err(RecordFundingError::InvalidIdentifier);
     }
-    if command.period_status == AccountingPeriodStatus::Closed {
+    if command.accounting_period.status() == AccountingPeriodStatus::Closed {
         return Err(RecordFundingError::AccountingPeriodClosed);
     }
     for account in [
@@ -186,6 +183,7 @@ pub fn decide_record_funding(
         member_id: command.member_id,
         pool_id: command.pool_id,
         amount_yen: amount,
+        accounting_period: command.accounting_period,
         source_account_id: command.source_account.map(|account| account.id),
         destination_account_id: command.destination_account.map(|account| account.id),
         journal_lines,

@@ -1,4 +1,5 @@
 use bookkeeping_domain::PositiveYen;
+use chrono::DateTime;
 
 use crate::{
     AccountId, PostPurchaseCommand, PostPurchaseDecision, PostPurchaseError, PurchaseLifecycle,
@@ -122,6 +123,12 @@ pub enum CreateAndPostPurchaseError<E> {
 pub trait CreateAndPostPurchaseOperations {
     type Error;
 
+    async fn lock_accounting_period(
+        &mut self,
+        household_id: &str,
+        occurred_at: DateTime<chrono::Utc>,
+    ) -> Result<(), Self::Error>;
+
     async fn require_active_member(
         &mut self,
         household_id: &str,
@@ -165,6 +172,7 @@ pub async fn create_and_post_purchase<O: CreateAndPostPurchaseOperations>(
     operations: &mut O,
     command: CreateAndPostPurchaseCommand,
 ) -> Result<CreateAndPostPurchaseResult, CreateAndPostPurchaseError<O::Error>> {
+    let occurred_at = command.purchase.occurred_at.value();
     operations
         .require_active_member(&command.household_id, &command.actor_id)
         .await
@@ -196,6 +204,11 @@ pub async fn create_and_post_purchase<O: CreateAndPostPurchaseOperations>(
         .map_err(|_| CreateAndPostPurchaseError::AllocationContextMismatch)?;
     let decision =
         decide_create_purchase(purchase).map_err(CreateAndPostPurchaseError::CreateDecision)?;
+
+    operations
+        .lock_accounting_period(&command.household_id, occurred_at)
+        .await
+        .map_err(CreateAndPostPurchaseError::Operations)?;
 
     let created = operations
         .persist_create(

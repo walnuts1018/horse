@@ -52,7 +52,7 @@ run = "jactionlint"
 
 [tasks."evaluation:run"]
 description = "保存済みのAI評価データセットをオフライン評価"
-run = "go run ./cmd/evaluate --dataset ${EVALUATION_DATASET:-internal/evaluation/datasets/synthetic-v1.json}"
+run = "cargo run -p horse-evaluate -- --dataset ${EVALUATION_DATASET:-internal/evaluation/datasets/synthetic-v1.json}"
 
 [tasks."web:dev"]
 description = "フロントエンドの開発サーバー"

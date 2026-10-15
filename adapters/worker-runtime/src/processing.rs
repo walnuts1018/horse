@@ -340,6 +340,11 @@ pub async fn process(
         ));
     }
     let route = selected_route(config, &model);
+    let project = if route == "paid" {
+        &config.paid_project
+    } else {
+        &config.free_project
+    };
     let input = make_input(
         &document,
         &job.source_kind,
@@ -385,6 +390,26 @@ pub async fn process(
             selected_credentials(config, &candidate_model, candidate_route);
         if candidate_key.is_empty() {
             continue;
+        }
+        if candidate_route == "paid" {
+            let (input_price, output_price) = model_prices(&candidate_model, 0, Utc::now());
+            if input_price == 0.0 && output_price == 0.0 {
+                last_error = Some(Failure::new(
+                    ProcessErrorKind::Permanent,
+                    "unknown_model_price",
+                    "Selected Gemini Developer API model has no configured price",
+                    partial_result(
+                        &lines,
+                        &issues,
+                        Value::Null,
+                        "unknown_model_price",
+                        &candidate_model,
+                        candidate_route,
+                        candidate_project,
+                    ),
+                ));
+                break;
+            }
         }
         let reservation_id = if let Some(limit) = config
             .quota_limits
@@ -490,6 +515,22 @@ pub async fn process(
                     candidate_route,
                     candidate_project,
                 );
+                if failure.code == "rate_limited" {
+                    let now = Utc::now();
+                    let delay = failure.retry_after.unwrap_or_else(|| {
+                        Duration::from_millis(failure.retry_delay_ms(job.attempt_no, now) as u64)
+                    });
+                    if let Ok(delay) = chrono::Duration::from_std(delay) {
+                        let _ = gemini_quota::record_cooldown(
+                            pool,
+                            candidate_route,
+                            &candidate_model,
+                            delay,
+                            now,
+                        )
+                        .await;
+                    }
+                }
                 previous_code = failure.code.clone();
                 previous_model = candidate_model;
                 previous_kind = failure.kind;
@@ -534,13 +575,22 @@ pub async fn process(
         .checked_sub(Duration::from_secs(2))
         .unwrap_or_else(Instant::now);
     while let Some(event) = stream.next().await {
-        let event = event.map_err(|error| {
-            failure_with_transform(
-                map_gemini_error(error, &lines, &issues, &model, route, project),
-                transform,
-                transform_page,
-            )
-        })?;
+        let event = match event {
+            Ok(event) => event,
+            Err(error) => {
+                let failure = map_gemini_error(error, &lines, &issues, model, route, project);
+                if failure.code == "rate_limited" {
+                    let now = Utc::now();
+                    let delay = failure.retry_after.unwrap_or_else(|| {
+                        Duration::from_millis(failure.retry_delay_ms(job.attempt_no, now) as u64)
+                    });
+                    if let Ok(delay) = chrono::Duration::from_std(delay) {
+                        let _ = gemini_quota::record_cooldown(pool, route, model, delay, now).await;
+                    }
+                }
+                return Err(failure_with_transform(failure, transform, transform_page));
+            }
+        };
         if event.event_type == "error" {
             return Err(Failure::new(
                 ProcessErrorKind::Retryable,
@@ -1151,7 +1201,7 @@ fn selected_model(config: &ProcessConfig, job: &ClaimedExtractionJob, request: &
 
 fn selected_credentials<'a>(
     config: &'a ProcessConfig,
-    model: &str,
+    _model: &str,
     route: &'static str,
 ) -> (&'a str, &'a str, &'static str) {
     if route == "paid" {

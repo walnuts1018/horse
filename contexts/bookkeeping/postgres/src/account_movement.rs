@@ -504,7 +504,7 @@ async fn validate_record_statement_source(
         occurred_at_unix_micros: occurred_at.timestamp_micros(),
         amount,
         description: decision.description.clone(),
-        accounting_period_open: true,
+        accounting_period: decision.accounting_period.clone(),
         statement_source: Some(source.clone()),
     })
     .map_err(map_statement_workflow_error)?;

@@ -7,8 +7,9 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
 use bookkeeping_application::funding_record::{
-    AccountingPeriodStatus, PostingSide, RecordFundingDecision,
+    PostingSide, RecordFundingDecision,
 };
+use bookkeeping_domain::AccountingPeriodStatus;
 
 use crate::{PgPool, schema::public};
 
@@ -171,6 +172,17 @@ pub async fn persist_record_funding(
         .date_naive()
         .with_day(1)
         .ok_or(RecordFundingPersistenceError::InvalidDecision)?;
+    let decision_period_start = NaiveDate::from_ymd_opt(
+        i32::from(decision.accounting_period.year_month().year()),
+        u32::from(decision.accounting_period.year_month().month()),
+        1,
+    )
+    .ok_or(RecordFundingPersistenceError::InvalidDecision)?;
+    if period_start != decision_period_start
+        || decision.accounting_period.status() != AccountingPeriodStatus::Open
+    {
+        return Err(RecordFundingPersistenceError::InvalidDecision);
+    }
     let ledger_entry_id = Uuid::now_v7();
     let journal_id = Uuid::now_v7();
     let amount = decision.amount_yen;
@@ -193,9 +205,15 @@ pub async fn persist_record_funding(
             use public::idempotency_records::dsl as idem;
             use public::journals::dsl as journals;
 
+            ensure_open_period(
+                &mut *conn,
+                household_id,
+                period_start,
+                decision.accounting_period.revision(),
+            )
+            .await?;
             public::households::table
                 .filter(public::households::id.eq(household_id))
-                .for_update()
                 .select(public::households::id)
                 .first::<Uuid>(&mut *conn)
                 .await
@@ -267,10 +285,6 @@ pub async fn persist_record_funding(
                 .await
                 .optional()?
                 .ok_or(RecordFundingPersistenceError::PoolNotFound)?;
-            let period_status = ensure_open_period(&mut *conn, household_id, period_start).await?;
-            if period_status != AccountingPeriodStatus::Open {
-                return Err(RecordFundingPersistenceError::AccountingPeriodClosed);
-            }
             validate_account(
                 &mut *conn,
                 household_id,
@@ -424,13 +438,14 @@ async fn ensure_open_period(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     period_start: NaiveDate,
-) -> Result<AccountingPeriodStatus, RecordFundingPersistenceError> {
+    expected_revision: u64,
+) -> Result<(), RecordFundingPersistenceError> {
     diesel::insert_into(public::accounting_periods::table)
         .values((
             public::accounting_periods::household_id.eq(household_id),
             public::accounting_periods::period_start.eq(period_start),
             public::accounting_periods::status.eq("OPEN"),
-            public::accounting_periods::revision.eq(0_i64),
+            public::accounting_periods::revision.eq(1_i64),
         ))
         .on_conflict((
             public::accounting_periods::household_id,
@@ -439,18 +454,19 @@ async fn ensure_open_period(
         .do_nothing()
         .execute(&mut *conn)
         .await?;
-    let status = public::accounting_periods::table
+    let (status, revision) = public::accounting_periods::table
         .filter(public::accounting_periods::household_id.eq(household_id))
         .filter(public::accounting_periods::period_start.eq(period_start))
         .for_update()
-        .select(public::accounting_periods::status)
-        .first::<String>(conn)
+        .select((public::accounting_periods::status, public::accounting_periods::revision))
+        .first::<(String, i64)>(conn)
         .await?;
-    Ok(if status == "OPEN" {
-        AccountingPeriodStatus::Open
-    } else {
-        AccountingPeriodStatus::Closed
-    })
+    let expected_revision = i64::try_from(expected_revision)
+        .map_err(|_| RecordFundingPersistenceError::InvalidDecision)?;
+    if status != "OPEN" || revision != expected_revision {
+        return Err(RecordFundingPersistenceError::AccountingPeriodClosed);
+    }
+    Ok(())
 }
 
 async fn validate_account(

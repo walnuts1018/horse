@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "apps/api",
+    "apps/evaluate",
     "apps/worker",
     "contexts/bookkeeping/domain",
     "contexts/bookkeeping/application",

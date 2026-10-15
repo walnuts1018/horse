@@ -1,4 +1,4 @@
-use bookkeeping_domain::PositiveYen;
+use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, PositiveYen};
 
 use crate::{AccountId, MemberId, Side};
 
@@ -49,7 +49,7 @@ pub struct RecordAccountMovementCommand {
     pub occurred_at_unix_micros: i64,
     pub amount: PositiveYen,
     pub description: String,
-    pub accounting_period_open: bool,
+    pub accounting_period: AccountingPeriod,
     pub statement_source: Option<StatementMovementSource>,
 }
 
@@ -112,6 +112,7 @@ pub struct RecordAccountMovementDecision {
     pub occurred_at_unix_micros: i64,
     pub amount: PositiveYen,
     pub description: String,
+    pub accounting_period: AccountingPeriod,
     pub journal_lines: [AccountMovementJournalLine; 2],
     pub changed_fields: [&'static str; 5],
     pub statement_source: Option<StatementMovementSource>,
@@ -133,7 +134,7 @@ pub enum AccountMovementError {
 pub fn decide_record_account_movement(
     command: RecordAccountMovementCommand,
 ) -> Result<RecordAccountMovementDecision, AccountMovementError> {
-    if !command.accounting_period_open {
+    if command.accounting_period.status() != AccountingPeriodStatus::Open {
         return Err(AccountMovementError::AccountingPeriodClosed);
     }
     if command.amount.value() > 1_000_000_000_000 {
@@ -193,6 +194,7 @@ pub fn decide_record_account_movement(
         occurred_at_unix_micros: command.occurred_at_unix_micros,
         amount: command.amount,
         description,
+        accounting_period: command.accounting_period,
         journal_lines: [
             AccountMovementJournalLine {
                 line_no: 1,
@@ -330,7 +332,11 @@ mod tests {
             occurred_at_unix_micros: 1_791_128_400_000_000,
             amount: PositiveYen::new(500).unwrap(),
             description: "  transfer  ".to_owned(),
-            accounting_period_open: true,
+            accounting_period: AccountingPeriod::open(
+                bookkeeping_domain::YearMonth::new(2025, 1).unwrap(),
+                1,
+            )
+            .unwrap(),
             statement_source: None,
         }
     }

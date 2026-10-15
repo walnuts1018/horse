@@ -476,7 +476,7 @@ pub async fn record_account_movement(
         occurred_at_unix_micros: occurred_at.timestamp_micros(),
         amount,
         description: input.description.clone(),
-        accounting_period_open: facts.accounting_period_open,
+        accounting_period: facts.accounting_period.clone(),
         statement_source,
     };
     let decision = match decide_record_account_movement(command) {
@@ -642,7 +642,7 @@ pub async fn record_external_income(
         account_kind,
         amount,
         description,
-        accounting_period_open: facts.accounting_period_open,
+        accounting_period: facts.accounting_period,
         statement_source,
     }) {
         Ok(value) => value,

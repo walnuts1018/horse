@@ -1,4 +1,4 @@
-use bookkeeping_domain::{PoolId, PositiveYen, Yen};
+use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, PoolId, PositiveYen, Yen};
 
 use crate::{AccountId, MemberId};
 
@@ -19,12 +19,6 @@ impl TransferKind {
             Self::Gift => "GIFT",
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccountingPeriodStatus {
-    Open,
-    Closed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,7 +68,7 @@ pub struct TransferBase {
     pub to_member_id: MemberId,
     pub amount: PositiveYen,
     pub description: String,
-    pub period_status: AccountingPeriodStatus,
+    pub accounting_period: AccountingPeriod,
     pub payment_account: Option<TransferAccount>,
     pub destination_account: Option<TransferAccount>,
 }
@@ -175,7 +169,7 @@ pub fn decide_record_transfer(
     command: RecordTransferCommand,
 ) -> Result<RecordTransferDecision, RecordTransferError> {
     let base = command.base();
-    if base.period_status == AccountingPeriodStatus::Closed {
+    if base.accounting_period.status() == AccountingPeriodStatus::Closed {
         return Err(RecordTransferError::AccountingPeriodClosed);
     }
     if base.from_member_id == base.to_member_id {
@@ -393,7 +387,11 @@ mod tests {
             to_member_id: member("to"),
             amount: PositiveYen::new(80).unwrap(),
             description: "  rent  ".into(),
-            period_status: AccountingPeriodStatus::Open,
+            accounting_period: AccountingPeriod::open(
+                bookkeeping_domain::YearMonth::new(2026, 10).unwrap(),
+                1,
+            )
+            .unwrap(),
             payment_account: None,
             destination_account: None,
         }
@@ -484,7 +482,11 @@ mod tests {
     #[test]
     fn transfer_rejects_closed_period_invalid_repayment_and_same_accounts() {
         let mut closed = base();
-        closed.period_status = AccountingPeriodStatus::Closed;
+        closed.accounting_period = AccountingPeriod::closed(
+            bookkeeping_domain::YearMonth::new(2026, 10).unwrap(),
+            1,
+        )
+        .unwrap();
         assert_eq!(
             decide_record_transfer(RecordTransferCommand::Gift(closed)),
             Err(RecordTransferError::AccountingPeriodClosed)

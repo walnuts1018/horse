@@ -217,8 +217,7 @@ pub enum InteractionsInput {
 }
 
 /// Interactions APIの会話履歴step。
-#[derive(Serialize)]
-#[derive(Clone)]
+#[derive(Serialize, Clone)]
 pub struct HistoryStep {
     #[serde(rename = "type")]
     role: HistoryRole,

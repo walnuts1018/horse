@@ -3,9 +3,8 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-use bookkeeping_application::funding_record::{
-    AccountingPeriodStatus, FundingAccount, FundingAccountKind, FundingPoolKind,
-};
+use bookkeeping_application::funding_record::{FundingAccount, FundingAccountKind, FundingPoolKind};
+use bookkeeping_domain::{AccountingPeriod, YearMonth};
 
 use crate::{PgPool, schema::public};
 
@@ -30,7 +29,7 @@ impl From<diesel::result::Error> for FundingCommandContextError {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FundingCommandContext {
-    pub period_status: AccountingPeriodStatus,
+    pub accounting_period: AccountingPeriod,
     pub pool_kind: FundingPoolKind,
     pub source_account: Option<FundingAccount>,
     pub destination_account: Option<FundingAccount>,
@@ -77,23 +76,53 @@ pub async fn load_funding_command_context(
         .ok_or(FundingCommandContextError::PoolNotFound)
         .and_then(parse_pool_kind)?;
 
-    let period_status = periods::accounting_periods
+    let persisted_period = periods::accounting_periods
         .filter(periods::household_id.eq(household_id))
         .filter(periods::period_start.eq(period_start))
-        .select(periods::status)
-        .first::<String>(&mut *pooled)
+        .select((periods::status, periods::revision))
+        .first::<(String, i64)>(&mut *pooled)
         .await
         .optional()?
-        .map(parse_period_status)
-        .transpose()?
-        .unwrap_or(AccountingPeriodStatus::Open);
+        ;
+    let local_date = occurred_at.with_timezone(&tokyo_offset).date_naive();
+    let year_month = YearMonth::new(
+        u16::try_from(local_date.year()).map_err(|_| {
+            FundingCommandContextError::InvalidAccountingPeriodStatus(local_date.to_string())
+        })?,
+        u8::try_from(local_date.month()).map_err(|_| {
+            FundingCommandContextError::InvalidAccountingPeriodStatus(local_date.to_string())
+        })?,
+    )
+    .map_err(|_| {
+        FundingCommandContextError::InvalidAccountingPeriodStatus(local_date.to_string())
+    })?;
+    let accounting_period = match persisted_period {
+        None => AccountingPeriod::open(year_month, 1),
+        Some((status, revision)) => {
+            let revision = u64::try_from(revision).map_err(|_| {
+                FundingCommandContextError::InvalidAccountingPeriodStatus(revision.to_string())
+            })?;
+            match status.as_str() {
+                "OPEN" => AccountingPeriod::open(year_month, revision),
+                "CLOSED" => AccountingPeriod::closed(year_month, revision),
+                value => {
+                    return Err(FundingCommandContextError::InvalidAccountingPeriodStatus(
+                        value.to_owned(),
+                    ));
+                }
+            }
+        }
+    }
+    .map_err(|_| {
+        FundingCommandContextError::InvalidAccountingPeriodStatus(local_date.to_string())
+    })?;
 
     let source_account = load_account(&mut pooled, household_id, source_account_id).await?;
     let destination_account =
         load_account(&mut pooled, household_id, destination_account_id).await?;
 
     Ok(FundingCommandContext {
-        period_status,
+        accounting_period,
         pool_kind,
         source_account,
         destination_account,
@@ -163,18 +192,6 @@ async fn load_account(
         pool_kind,
         personal_owner_id: personal_owner_id.map(|id| id.to_string()),
     }))
-}
-
-fn parse_period_status(
-    value: String,
-) -> Result<AccountingPeriodStatus, FundingCommandContextError> {
-    match value.as_str() {
-        "OPEN" => Ok(AccountingPeriodStatus::Open),
-        "CLOSED" => Ok(AccountingPeriodStatus::Closed),
-        _ => Err(FundingCommandContextError::InvalidAccountingPeriodStatus(
-            value,
-        )),
-    }
 }
 
 fn parse_pool_kind(value: String) -> Result<FundingPoolKind, FundingCommandContextError> {

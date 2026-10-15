@@ -137,6 +137,15 @@ pub async fn persist_post_purchase_in_transaction(
     let ledger_entry_id = Uuid::new_v4();
     validate_decision(&decision, expected_revision)?;
 
+    let period_start = chrono::NaiveDate::from_ymd_opt(
+        i32::from(decision.period().year_month().year()),
+        u32::from(decision.period().year_month().month()),
+        1,
+    )
+    .ok_or(PostPurchasePersistenceError::InvalidDecision)?;
+    ensure_period_open(&mut *conn, household_id, period_start, decision.period().revision())
+        .await?;
+
     use public::household_members::dsl as members;
     use public::idempotency_records::dsl as idem;
     use public::journals::dsl as journals;
@@ -236,12 +245,14 @@ pub async fn persist_post_purchase_in_transaction(
         .await?;
     let tokyo =
         FixedOffset::east_opt(9 * 60 * 60).ok_or(PostPurchasePersistenceError::InvalidDecision)?;
-    let period_start = occurred_at
+    let occurred_period_start = occurred_at
         .with_timezone(&tokyo)
         .date_naive()
         .with_day(1)
         .ok_or(PostPurchasePersistenceError::InvalidDecision)?;
-    ensure_period_open(&mut *conn, household_id, period_start).await?;
+    if occurred_period_start != period_start {
+        return Err(PostPurchasePersistenceError::InvalidDecision);
+    }
     update_purchase(
         &mut *conn,
         household_id,
@@ -469,10 +480,11 @@ fn ledger_amount(decision: &PostPurchaseDecision) -> Result<i64, PostPurchasePer
     Ok(total)
 }
 
-async fn ensure_period_open(
+pub(crate) async fn ensure_period_open(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     period_start: chrono::NaiveDate,
+    expected_revision: u64,
 ) -> Result<(), PostPurchasePersistenceError> {
     use public::accounting_periods::dsl as periods;
     diesel::insert_into(periods::accounting_periods)
@@ -480,21 +492,25 @@ async fn ensure_period_open(
             periods::household_id.eq(household_id),
             periods::period_start.eq(period_start),
             periods::status.eq("OPEN"),
-            periods::revision.eq(0_i64),
+            periods::revision.eq(1_i64),
         ))
         .on_conflict((periods::household_id, periods::period_start))
         .do_nothing()
         .execute(&mut *conn)
         .await?;
-    let status = periods::accounting_periods
+    let period = periods::accounting_periods
         .filter(periods::household_id.eq(household_id))
         .filter(periods::period_start.eq(period_start))
         .for_update()
-        .select(periods::status)
-        .first::<String>(conn)
+        .select((periods::status, periods::revision))
+        .first::<(String, i64)>(conn)
         .await
         .optional()?;
-    if status.as_deref() != Some("OPEN") {
+    let expected_revision = i64::try_from(expected_revision)
+        .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("period revision"))?;
+    if period.as_ref().map(|(status, revision)| (status.as_str(), *revision))
+        != Some(("OPEN", expected_revision))
+    {
         return Err(PostPurchasePersistenceError::AccountingPeriodClosed);
     }
     Ok(())

@@ -204,7 +204,7 @@ pub async fn record_transfer(
         to_member_id: member_id(parsed.to_member_id)?,
         amount,
         description: parsed.description.clone(),
-        period_status: command_context.period_status,
+        accounting_period: command_context.accounting_period,
         payment_account: command_context.payment_account,
         destination_account: command_context.destination_account,
     };
@@ -313,7 +313,6 @@ pub async fn record_repayment(
         to_member: member_id(parsed.to_member_id)?,
         amount,
         accounting_period: command_context.accounting_period,
-        accounting_period_open: command_context.accounting_period_open,
         source: command_context.source,
         destination_account: command_context.destination_account,
         description: parsed.description.clone(),
