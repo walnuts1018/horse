@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use diesel::{
-    BoolExpressionMethods, ExpressionMethods, OptionalExtension, PgTextExpressionMethods, QueryDsl,
+    BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, TextExpressionMethods,
     result::Error as DieselError,
 };
 use diesel_async::RunQueryDsl;
@@ -281,7 +281,7 @@ async fn query_alias_matches(
     if let Some(exclude) = exclude_pattern {
         query = query.filter(diesel::dsl::not(a::normalized_alias.like(exclude)));
     }
-    query
+    let rows = query
         .order_by(a::normalized_alias.asc())
         .then_order_by(a::id.asc())
         .select((
@@ -690,18 +690,18 @@ pub async fn product_catalog(
     if let Some(cursor) = &after {
         query = query.filter(
             c::normalized_name
-                .gt(&cursor.sort_key)
+                .gt(cursor.sort_key.clone())
                 .or(c::normalized_name
-                    .eq(&cursor.sort_key)
+                    .eq(cursor.sort_key.clone())
                     .and(c::id.gt(cursor.id))),
         );
     }
     if let Some(cursor) = &before {
         query = query.filter(
             c::normalized_name
-                .lt(&cursor.sort_key)
+                .lt(cursor.sort_key.clone())
                 .or(c::normalized_name
-                    .eq(&cursor.sort_key)
+                    .eq(cursor.sort_key.clone())
                     .and(c::id.lt(cursor.id))),
         );
     }
@@ -944,7 +944,7 @@ pub async fn product_suggestions(
             .await?;
         variants.extend(
             rows.into_iter()
-                .map(|row| (row.id, VariantRecord::from(row))),
+                .map(|row| (row.0, VariantRecord::from(row))),
         );
     }
 
@@ -998,7 +998,7 @@ pub async fn product_suggestions(
                 .await?;
             variants.extend(
                 rows.into_iter()
-                    .map(|row| (row.id, VariantRecord::from(row))),
+                    .map(|row| (row.0, VariantRecord::from(row))),
             );
         }
     }
@@ -1029,7 +1029,7 @@ pub async fn product_suggestions(
             .await?;
         concepts.extend(
             rows.into_iter()
-                .map(|row| (row.id, ConceptRecord::from(row))),
+                .map(|row| (row.0, ConceptRecord::from(row))),
         );
     }
     let stats = load_purchase_stats(

@@ -1,7 +1,7 @@
 use catalog_workflows::category::{
-    Category, CategoryError, CategoryEvent, CreateCategoryCommand, SetCategoryArchivedCommand,
-    UpdateCategoryNameCommand, decide_create_category, decide_set_category_archived,
-    decide_update_category_name,
+    Category, CategoryError, CategoryEvent, CategoryName, CreateCategoryCommand,
+    SetCategoryArchivedCommand, UpdateCategoryNameCommand, decide_create_category,
+    decide_set_category_archived, decide_update_category_name,
 };
 use chrono::Utc;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
@@ -19,15 +19,19 @@ struct PersistedCategory {
     archived: bool,
 }
 
-impl From<PersistedCategory> for Category {
-    fn from(category: PersistedCategory) -> Self {
-        Self {
+impl TryFrom<PersistedCategory> for Category {
+    type Error = CategoryPersistenceError;
+
+    // DB復元値を無検証で信用せず、Smart Constructorを通して制約を再確認する。
+    fn try_from(category: PersistedCategory) -> Result<Self, Self::Error> {
+        CategoryName::new(&category.name).map_err(|_| CategoryPersistenceError::CorruptStoredData)?;
+        Ok(Self {
             id: category.id.to_string(),
             household_id: category.household_id.to_string(),
             parent_id: category.parent_id.map(|id| id.to_string()),
             name: category.name,
             archived: category.archived,
-        }
+        })
     }
 }
 
@@ -39,6 +43,8 @@ pub enum CategoryPersistenceError {
     InvalidWorkflow(CategoryError),
     HouseholdNotFound,
     CategoryNotFound,
+    // 保存済みデータがドメイン制約を満たさない場合。入力不良や競合とは区別する。
+    CorruptStoredData,
 }
 
 impl From<DieselError> for CategoryPersistenceError {
@@ -121,14 +127,13 @@ pub async fn persist_create_category(
                 .execute(&mut *conn)
                 .await?;
 
-            Ok(PersistedCategory {
+            Ok(Category::try_from(PersistedCategory {
                 id: category_id,
                 household_id,
                 parent_id,
                 name: decision.name.as_str().to_owned(),
                 archived: false,
-            }
-            .into())
+            })?)
         })
         .await
 }
@@ -194,14 +199,13 @@ pub async fn persist_update_category_name(
                     .await?;
             }
 
-            Ok(PersistedCategory {
+            Ok(Category::try_from(PersistedCategory {
                 id: category_id,
                 household_id: row.0,
                 parent_id: row.1,
                 name: decision.name.as_str().to_owned(),
                 archived: row.3,
-            }
-            .into())
+            })?)
         })
         .await
 }
@@ -267,14 +271,13 @@ pub async fn persist_set_category_archived(
                     .await?;
             }
 
-            Ok(PersistedCategory {
+            Ok(Category::try_from(PersistedCategory {
                 id: category_id,
                 household_id: row.0,
                 parent_id: row.1,
                 name: row.2,
                 archived: decision.archived,
-            }
-            .into())
+            })?)
         })
         .await
 }

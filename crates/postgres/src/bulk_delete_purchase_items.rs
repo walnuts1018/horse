@@ -494,7 +494,7 @@ async fn sync_posted_accounting(
     )
     .execute(&mut *conn)
     .await?;
-    for line in &decision.journal_lines {
+    for line in decision.journal_lines() {
         diesel::insert_into(public::journal_entries::table)
             .values((
                 public::journal_entries::dsl::household_id.eq(household_id),
@@ -539,7 +539,7 @@ async fn sync_posted_accounting(
     )
     .execute(&mut *conn)
     .await?;
-    for snapshot in &decision.member_burden_snapshots {
+    for snapshot in decision.member_burden_snapshots() {
         let item = parse_uuid(snapshot.item_id.as_str(), "item_id")?;
         let pool = parse_uuid(snapshot.pool_id.as_str(), "pool_id")?;
         let member = parse_uuid(snapshot.member_id.as_str(), "member_id")?;
@@ -579,7 +579,7 @@ async fn sync_posted_accounting(
         )
         .execute(&mut *conn)
         .await?;
-        for snapshot in &decision.payment_funding_snapshots {
+        for snapshot in decision.payment_funding_snapshots() {
             let account = parse_uuid(snapshot.account_id.as_str(), "account_id")?;
             let pool = parse_uuid(snapshot.pool_id.as_str(), "pool_id")?;
             let member = parse_uuid(snapshot.member_id.as_str(), "member_id")?;
@@ -631,7 +631,7 @@ async fn sync_posted_accounting(
         }
     }
     let amount = decision
-        .journal_lines
+        .journal_lines()
         .iter()
         .filter(|line| line.side == Side::Debit)
         .try_fold(0_i64, |total, line| total.checked_add(line.amount.value()))

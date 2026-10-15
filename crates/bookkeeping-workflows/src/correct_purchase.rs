@@ -1001,6 +1001,17 @@ mod tests {
     }
 
     #[test]
+    fn signed_delta_magnitude_covers_full_range() {
+        // magnitude()内のexpectが数学的に保証されることを境界値で固定する。
+        for delta in [1, -1, 1_000_000_000_000, -1_000_000_000_000] {
+            let parsed = SignedYenDelta::new(delta).unwrap();
+            assert_eq!(parsed.magnitude().value(), delta.abs());
+        }
+        assert!(SignedYenDelta::new(0).is_err());
+        assert!(SignedYenDelta::new(1_000_000_000_001).is_err());
+    }
+
+    #[test]
     fn refund_decision_preserves_amount_and_balances_the_journal() {
         let decision = decide_correct_purchase(command(-31)).unwrap();
 

@@ -237,7 +237,7 @@ fn user_error_code(
     match error {
         E::InvalidUuid(_) | E::InvalidWorkflow(_) => Some(MutationErrorCode::BadInput),
         E::HouseholdNotFound | E::CategoryNotFound => Some(MutationErrorCode::NotFound),
-        E::Pool(_) | E::Database(_) => None,
+        E::Pool(_) | E::Database(_) | E::CorruptStoredData => None,
     }
 }
 

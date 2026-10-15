@@ -965,7 +965,7 @@ pub(crate) async fn sync_posted_accounting(
     )
     .execute(&mut *conn)
     .await?;
-    for line in &decision.journal_lines {
+    for line in decision.journal_lines() {
         let line_no = i32::try_from(line.line_no).map_err(|_| {
             UpdatePurchaseItemPersistenceError::NumericOutOfRange("journal_line_no")
         })?;
@@ -1013,7 +1013,7 @@ pub(crate) async fn sync_posted_accounting(
     )
     .execute(&mut *conn)
     .await?;
-    for snapshot in &decision.member_burden_snapshots {
+    for snapshot in decision.member_burden_snapshots() {
         let item_id = parse_uuid(snapshot.item_id.as_str(), "item_id")?;
         let pool_id = parse_uuid(snapshot.pool_id.as_str(), "pool_id")?;
         let member_id = parse_uuid(snapshot.member_id.as_str(), "member_id")?;
@@ -1062,7 +1062,7 @@ pub(crate) async fn sync_posted_accounting(
         .await?;
     }
     for snapshot in decision
-        .payment_funding_snapshots
+        .payment_funding_snapshots()
         .iter()
         .filter(|_| payments_changed)
     {
@@ -1114,7 +1114,7 @@ pub(crate) async fn sync_posted_accounting(
             .await?;
     }
     let amount = decision
-        .journal_lines
+        .journal_lines()
         .iter()
         .filter(|line| line.side == bookkeeping_workflows::Side::Debit)
         .try_fold(0_i64, |sum, line| sum.checked_add(line.amount.value()))

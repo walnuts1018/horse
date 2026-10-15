@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
 use diesel::pg::Pg;
 use diesel::{
-    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension,
-    PgTextExpressionMethods, QueryDsl,
-    dsl::{count_star, exists, max, sum},
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
+    OptionalExtension, PgTextExpressionMethods, QueryDsl,
+    dsl::{exists, max},
     result::Error as DieselError,
 };
 use diesel_async::RunQueryDsl;
@@ -118,11 +118,11 @@ pub async fn purchases(
     }
     if let Some(include_evidence) = filter.has_evidence {
         let evidence_exists = exists(
-            evidence_links::table.filter(evidence_links::purchase_id.eq(purchases::id)),
+            evidence_links::table.filter(evidence_links::purchase_id.eq(purchases::id.nullable())),
         )
-        .or(exists(
-            source_confirmations::table.filter(source_confirmations::purchase_id.eq(purchases::id)),
-        ));
+        .or(exists(source_confirmations::table.filter(
+            source_confirmations::purchase_id.eq(purchases::id.nullable()),
+        )));
         query = if include_evidence {
             query.filter(evidence_exists)
         } else {
@@ -215,29 +215,35 @@ pub async fn purchases(
         let totals = purchase_items::table
             .inner_join(purchases::table.on(purchases::id.eq(purchase_items::purchase_id)))
             .filter(purchases::household_id.eq(filter.household_id))
-            .group_by(purchase_items::purchase_id)
-            .select((purchase_items::purchase_id, sum(purchase_items::amount_yen)))
-            .load::<(Uuid, Option<i64>)>(&mut conn)
+            .select((purchase_items::purchase_id, purchase_items::amount_yen))
+            .load::<(Uuid, i64)>(&mut conn)
             .await?;
-        let matching_ids = totals
+        let mut totals_by_purchase = std::collections::HashMap::<Uuid, i128>::new();
+        for (id, amount) in totals {
+            *totals_by_purchase.entry(id).or_default() += i128::from(amount);
+        }
+        let matching_ids = totals_by_purchase
             .into_iter()
             .filter_map(|(id, total)| {
-                total
-                    .filter(|total| {
-                        filter.minimum_amount.is_none_or(|min| *total >= min)
-                            && filter.maximum_amount.is_none_or(|max| *total <= max)
-                    })
-                    .map(|_| id)
+                (filter
+                    .minimum_amount
+                    .is_none_or(|min| total >= i128::from(min))
+                    && filter
+                        .maximum_amount
+                        .is_none_or(|max| total <= i128::from(max)))
+                .then_some(id)
             })
             .collect::<Vec<_>>();
         query = query.filter(purchases::id.eq_any(matching_ids));
     }
 
-    let total_count = query
-        .clone()
-        .select(count_star())
-        .first::<i64>(&mut conn)
-        .await?;
+    let matching_purchase_ids = query.select(purchases::id).load::<Uuid>(&mut conn).await?;
+    let total_count =
+        i64::try_from(matching_purchase_ids.len()).expect("PostgreSQL row count fits in i64");
+    let mut query = purchases::table
+        .filter(purchases::household_id.eq(filter.household_id))
+        .filter(purchases::id.eq_any(matching_purchase_ids))
+        .into_boxed::<Pg>();
     let sync_cursor = household_events::table
         .filter(household_events::household_id.eq(filter.household_id))
         .select(max(household_events::cursor))

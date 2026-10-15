@@ -202,37 +202,6 @@ pub enum QuantityUnit {
 
 この区別は、Evidence & Ingestion のモデリングでも重要になります。
 
-### P1-6. ExtractionJob が不正な状態を作れる
-
-該当：[bookkeeping-workflows/src/ingestion_job.rs](https://github.com/walnuts1018/horse/blob/a3603e2/crates/bookkeeping-workflows/src/ingestion_job.rs)
-
-現状の `ExtractionJobState` は、`status` と `lease_token: Option<String>`、`lease_expires_at_ms: Option<i64>` を独立した公開フィールドとして持っています。
-
-例えば `Running` なのに Lease が存在しない状態を構築できます。
-
-永続的な Job 状態は、次のような判別共用体へ変更したいです。
-
-```
-pub enum ExtractionJob {
-    Queued(QueuedJob),
-    Running(RunningJob),
-    Succeeded(SucceededJob),
-    Failed(FailedJob),
-    Cancelled(CancelledJob),
-}
-
-pub struct RunningJob {
-    lease: ValidLease,
-    attempt: AttemptNumber,
-}
-```
-
-こうすると、`finish_extraction_success` の入力に `RunningJob` を要求できます。状態に合わない操作の多くを型で排除できます。
-
-ただし、Lease がまだ有効であることや、別 Worker に奪われていないことは時間・DB 状態に依存するため、永続化時の条件付き更新も必要です。
-
-この点は DMMF 第7章 §7.3 の永続状態遷移と §7.9 の長時間処理の考え方に直接対応します。
-
 ## 4. ディレクトリ・crate 構成も再設計したい
 
 現在の Workspace は `bookkeeping-domain` と各 `*-workflows` が業務別になっている一方で、`postgres` と `graphql-api` が技術別の大きな共有モジュールになっています。

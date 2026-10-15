@@ -1,9 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use bookkeeping_domain::PositiveYen;
-use bookkeeping_domain::{AllocationShares, AllocationWeight, Yen};
+use bookkeeping_domain::{
+    AllocationShares, AllocationWeight, PoolId as WorkflowPoolId, PositiveYen, Yen,
+};
 use bookkeeping_workflows::{
-    AccountId, ItemId, PoolId as WorkflowPoolId, PurchaseId, PurchaseStatus, Side,
+    AccountId, ItemId, PurchaseId, PurchaseStatus, Side,
     correct_purchase::{
         AccountingPeriod, CorrectPurchaseDecision, CorrectionCommand, CorrectionFundingEffects,
         CorrectionFundingRule, CorrectionMemberBurdenSnapshot, CorrectionPaymentFundingSnapshot,
@@ -1099,7 +1100,7 @@ async fn load_statement_refund_entry(
         .first::<(Uuid, Option<serde_json::Value>)>(conn)
         .await
         .optional()?
-        .map(|(job_id, result)| (job_id, result.flatten()))
+        .map(|(job_id, result)| (job_id, result))
         .and_then(|(job_id, result)| result.map(|result| (job_id, result)))
         .ok_or(CorrectPurchasePersistenceError::StatementExtractionUnavailable)?;
     let statements = result

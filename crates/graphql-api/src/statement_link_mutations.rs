@@ -553,6 +553,7 @@ fn refund_persistence_error(
         E::HouseholdMismatch
         | E::MemberNotFound
         | E::CorrectionNotFound
+        | E::PurchaseNotFound
         | E::SourceDocumentNotFound => Ok(refund_error(MutationErrorCode::NotFound).into()),
         E::StatementAlreadyConfirmed => Ok(refund_error(MutationErrorCode::Conflict).into()),
         E::InvalidUuid(_)

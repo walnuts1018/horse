@@ -415,7 +415,7 @@ fn validate_decision(
         return Err(PostPurchasePersistenceError::InvalidDecision);
     }
     for event in decision.events() {
-        if event.entity_id != decision.purchase_id() || event.revision != decision.new_revision() {
+        if &event.entity_id != decision.purchase_id() || event.revision != decision.new_revision() {
             return Err(PostPurchasePersistenceError::InvalidDecision);
         }
     }

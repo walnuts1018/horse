@@ -88,7 +88,6 @@ pub async fn allocation_rules(
     let range_end = end.max(start).min(ordered_rows.len());
     let range_start = start.min(range_end);
     let selected = &ordered_rows[range_start..range_end];
-    let has_next_page = selected.len() > page_size;
     let has_extra_rows = selected.len() > page_size;
     let page_slice = if backward && has_extra_rows {
         &selected[selected.len() - page_size..]
