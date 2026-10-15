@@ -118,21 +118,7 @@ func syncPostedPurchaseAccounting(ctx context.Context, executor bob.Executor, pu
 	if err := accounting.InsertEntries(ctx, executor, journal.ID, entries); err != nil {
 		return err
 	}
-	ledgers, err := models.LedgerEntries.Query(sm.Where(psql.And(
-		models.LedgerEntries.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-		models.LedgerEntries.Columns.SourcePurchaseID.EQ(psql.Arg(purchaseUUID)),
-	))).All(ctx, executor)
-	if err != nil {
-		return err
-	}
-	for _, ledger := range ledgers {
-		if _, err := models.LedgerEntries.Update((&models.LedgerEntrySetter{
-			OccurredAt: &purchase.OccurredAt, Description: &purchase.Merchant, AmountYen: &total,
-		}).UpdateMod(), um.Where(models.LedgerEntries.Columns.ID.EQ(psql.Arg(ledger.ID)))).Exec(ctx, executor); err != nil {
-			return err
-		}
-	}
-	return nil
+	return updatePostedPurchaseLedgerEntries(ctx, executor, purchase, total)
 }
 
 func refreshPurchaseMemberBurden(ctx context.Context, executor bob.Executor, householdID, purchaseID gofrsuuid.UUID, allocations models.ItemAllocationSlice) error {
