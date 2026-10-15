@@ -307,6 +307,21 @@ pub mod public {
     }
 
     diesel::table! {
+        household_invitations (id) {
+            id -> Uuid,
+            household_id -> Uuid,
+            token_hash -> Bytea,
+            role -> Text,
+            expires_at -> Timestamptz,
+            created_by -> Uuid,
+            created_at -> Timestamptz,
+            revoked_at -> Nullable<Timestamptz>,
+            accepted_by -> Nullable<Uuid>,
+            accepted_at -> Nullable<Timestamptz>,
+        }
+    }
+
+    diesel::table! {
         households (id) {
             id -> Uuid,
             name -> Text,
@@ -827,6 +842,7 @@ pub mod public {
     diesel::joinable!(recurring_expenses -> households (household_id));
     diesel::joinable!(evidence_links -> households (household_id));
     diesel::joinable!(household_events -> households (household_id));
+    diesel::joinable!(household_invitations -> households (household_id));
     diesel::joinable!(household_members -> households (household_id));
     diesel::joinable!(household_members -> members (member_id));
     diesel::joinable!(idempotency_records -> households (household_id));
@@ -858,6 +874,7 @@ pub mod public {
         funding_obligations,
         funding_schedules,
         household_events,
+        household_invitations,
         household_members,
         households,
         idempotency_records,

@@ -12,6 +12,7 @@ pub mod create_household;
 pub mod create_pool;
 pub mod create_purchase;
 pub mod ingestion_job;
+pub mod household_invitation;
 pub mod household_membership;
 pub mod post_purchase;
 pub mod post_purchase_loader;
