@@ -52,9 +52,20 @@ type Metrics struct {
 }
 
 type SourceKindMetrics struct {
-	SourceKind string         `json:"sourceKind"`
-	Documents  int            `json:"documents"`
-	Models     []ModelMetrics `json:"models"`
+	SourceKind                   string         `json:"sourceKind"`
+	Documents                    int            `json:"documents"`
+	ExpectedItems                int            `json:"expectedItems"`
+	PredictedItems               int            `json:"predictedItems"`
+	MatchedItems                 int            `json:"matchedItems"`
+	ItemDetectionPrecision       float64        `json:"itemDetectionPrecision"`
+	ItemDetectionRecall          float64        `json:"itemDetectionRecall"`
+	PrintedAmountExactRate       float64        `json:"printedAmountExactRate"`
+	TaxConsistentRate            float64        `json:"taxConsistentRate"`
+	TaxConsistencyDocuments      int            `json:"taxConsistencyDocuments"`
+	ProductNormalizationAccuracy float64        `json:"productNormalizationAccuracy"`
+	EvidencePrecision            float64        `json:"evidencePrecision"`
+	DuplicatePrecision           float64        `json:"duplicatePrecision"`
+	Models                       []ModelMetrics `json:"models"`
 }
 
 type ModelMetrics struct {
@@ -68,6 +79,7 @@ type ModelMetrics struct {
 	ItemDetectionRecall          float64 `json:"itemDetectionRecall"`
 	PrintedAmountExactRate       float64 `json:"printedAmountExactRate"`
 	TaxConsistentRate            float64 `json:"taxConsistentRate"`
+	TaxConsistencyRuns           int     `json:"taxConsistencyRuns"`
 	ProductNormalizationAccuracy float64 `json:"productNormalizationAccuracy"`
 	EvidencePrecision            float64 `json:"evidencePrecision"`
 	PricedRuns                   int     `json:"pricedRuns"`
@@ -87,7 +99,17 @@ type modelAccumulator struct {
 	correctRegions    int
 	predictedRegions  int
 	taxConsistent     int
+	taxRuns           int
 	latencyMillis     int64
+}
+
+type sourceAccumulator struct {
+	quality          modelAccumulator
+	amounts          int
+	names            int
+	taxDocuments     int
+	duplicateActual  int
+	duplicateCorrect int
 }
 
 // Scoreは実行済みの抽出結果を固定された正解データと照合し、課金実績ではなく推定費用を集計する。
@@ -96,6 +118,7 @@ func Score(dataset Dataset) Metrics {
 	models := make(map[string]*modelAccumulator)
 	sourceKinds := make(map[string]map[string]*modelAccumulator)
 	sourceDocuments := make(map[string]int)
+	sourceQuality := make(map[string]*sourceAccumulator)
 	var correctAmounts, correctNames, amountComparisons, nameComparisons, predictedRegions, correctRegions, taxConsistent int
 	var correctionOperations int
 	for _, testCase := range dataset.Cases {
@@ -108,44 +131,81 @@ func Score(dataset Dataset) Metrics {
 			sourceKinds[sourceKind] = make(map[string]*modelAccumulator)
 		}
 		sourceDocuments[sourceKind]++
+		if sourceQuality[sourceKind] == nil {
+			sourceQuality[sourceKind] = &sourceAccumulator{}
+		}
 		expected := testCase.Expected.Items
 		actual := testCase.Actual.Items
+		if isStatementSource(sourceKind) {
+			expected = statementItems(testCase.Expected.Statements)
+			actual = statementItems(testCase.Actual.Statements)
+		}
 		metrics.ExpectedItems += len(expected)
 		metrics.PredictedItems += len(actual)
 		matches := matchItems(expected, actual, true, true)
 		metrics.MatchedItems += len(matches)
 		amountMatches := matchItems(expected, actual, true, false)
 		amountComparisons += len(amountMatches)
+		caseCorrectAmounts := 0
 		for actualIndex, expectedIndex := range amountMatches {
 			actualItem, expectedItem := actual[actualIndex], expected[expectedIndex]
 			if actualItem.PrintedAmount == expectedItem.PrintedAmount {
 				correctAmounts++
+				caseCorrectAmounts++
 			}
 		}
 		nameMatches := matchItems(expected, actual, false, true)
 		nameComparisons += len(nameMatches)
+		caseCorrectNames := 0
 		for actualIndex, expectedIndex := range nameMatches {
 			actualItem, expectedItem := actual[actualIndex], expected[expectedIndex]
 			if normalizeName(actualItem.Name) == normalizeName(expectedItem.Name) && normalizeName(expectedItem.Name) != "" {
 				correctNames++
+				caseCorrectNames++
 			}
 		}
+		caseCorrectRegions := 0
 		for actualIndex, expectedIndex := range matches {
 			actualItem, expectedItem := actual[actualIndex], expected[expectedIndex]
 			if actualItem.Region != nil {
 				if expectedItem.Region != nil && actualItem.Region.Page == expectedItem.Region.Page && regionIoU(*actualItem.Region, *expectedItem.Region) >= 0.5 {
 					correctRegions++
+					caseCorrectRegions++
 				}
 			}
 		}
+		casePredictedRegions := 0
 		for _, item := range actual {
 			if item.Region != nil {
 				predictedRegions++
+				casePredictedRegions++
 			}
 		}
-		if verification, err := ingestion.Verify(testCase.Actual); err == nil && verification.Balanced {
-			taxConsistent++
+		caseTaxConsistent := false
+		if !isStatementSource(sourceKind) {
+			sourceQuality[sourceKind].taxDocuments++
+			if verification, err := ingestion.Verify(testCase.Actual); err == nil && verification.Balanced {
+				taxConsistent++
+				caseTaxConsistent = true
+			}
 		}
+		quality := &sourceQuality[sourceKind].quality
+		quality.metrics.ExpectedItems += len(expected)
+		quality.metrics.PredictedItems += len(actual)
+		quality.metrics.MatchedItems += len(matches)
+		quality.amountComparisons += len(amountMatches)
+		quality.nameComparisons += len(nameMatches)
+		quality.correctAmounts += caseCorrectAmounts
+		quality.correctNames += caseCorrectNames
+		quality.predictedRegions += casePredictedRegions
+		quality.correctRegions += caseCorrectRegions
+		sourceQuality[sourceKind].amounts += len(amountMatches)
+		sourceQuality[sourceKind].names += len(nameMatches)
+		if caseTaxConsistent {
+			quality.taxConsistent++
+		}
+		sourceQuality[sourceKind].duplicateActual += duplicateCount(actual)
+		sourceQuality[sourceKind].duplicateCorrect += correctDuplicateCount(expected, actual)
 		metrics.PredictedDuplicateItems += duplicateCount(actual)
 		metrics.CorrectDuplicateItems += correctDuplicateCount(expected, actual)
 		if testCase.HumanCorrectionOperations != nil && *testCase.HumanCorrectionOperations >= 0 {
@@ -199,17 +259,17 @@ func Score(dataset Dataset) Metrics {
 			}
 			if model != nil && run.Receipt != nil {
 				model.metrics.ScoredRuns++
-				model.addReceipt(testCase.Expected, *run.Receipt)
+				model.addReceipt(testCase.Expected, *run.Receipt, sourceKind)
 				sourceModel := sourceKinds[sourceKind][run.Model]
 				sourceModel.metrics.ScoredRuns++
-				sourceModel.addReceipt(testCase.Expected, *run.Receipt)
+				sourceModel.addReceipt(testCase.Expected, *run.Receipt, sourceKind)
 			}
 		}
 	}
 	metrics.ItemDetectionPrecision = ratio(metrics.MatchedItems, metrics.PredictedItems)
 	metrics.ItemDetectionRecall = ratio(metrics.MatchedItems, metrics.ExpectedItems)
 	metrics.PrintedAmountExactRate = ratio(correctAmounts, amountComparisons)
-	metrics.TaxConsistentRate = ratio(taxConsistent, metrics.Documents)
+	metrics.TaxConsistentRate = ratio(taxConsistent, metrics.Documents-sourceStatementDocuments(dataset.Cases))
 	metrics.ProductNormalizationAccuracy = ratio(correctNames, nameComparisons)
 	metrics.EvidencePrecision = ratio(correctRegions, predictedRegions)
 	metrics.DuplicatePrecision = ratio(metrics.CorrectDuplicateItems, metrics.PredictedDuplicateItems)
@@ -226,7 +286,20 @@ func Score(dataset Dataset) Metrics {
 	}
 	slices.SortFunc(metrics.Models, func(a, b ModelMetrics) int { return cmp.Compare(a.Model, b.Model) })
 	for kind, kindModels := range sourceKinds {
-		entry := SourceKindMetrics{SourceKind: kind, Documents: sourceDocuments[kind], Models: make([]ModelMetrics, 0, len(kindModels))}
+		quality := sourceQuality[kind]
+		entry := SourceKindMetrics{
+			SourceKind: kind, Documents: sourceDocuments[kind], Models: make([]ModelMetrics, 0, len(kindModels)),
+			ExpectedItems: quality.quality.metrics.ExpectedItems, PredictedItems: quality.quality.metrics.PredictedItems,
+			MatchedItems:                 quality.quality.metrics.MatchedItems,
+			ItemDetectionPrecision:       ratio(quality.quality.metrics.MatchedItems, quality.quality.metrics.PredictedItems),
+			ItemDetectionRecall:          ratio(quality.quality.metrics.MatchedItems, quality.quality.metrics.ExpectedItems),
+			PrintedAmountExactRate:       ratio(quality.quality.correctAmounts, quality.amounts),
+			TaxConsistentRate:            ratio(quality.quality.taxConsistent, quality.taxDocuments),
+			TaxConsistencyDocuments:      quality.taxDocuments,
+			ProductNormalizationAccuracy: ratio(quality.quality.correctNames, quality.names),
+			EvidencePrecision:            ratio(quality.quality.correctRegions, quality.quality.predictedRegions),
+			DuplicatePrecision:           ratio(quality.duplicateCorrect, quality.duplicateActual),
+		}
 		for _, model := range kindModels {
 			entry.Models = append(entry.Models, model.finish())
 		}
@@ -237,38 +310,42 @@ func Score(dataset Dataset) Metrics {
 	return metrics
 }
 
-func (model *modelAccumulator) addReceipt(expected, actual ingestion.Receipt) {
-	model.metrics.ExpectedItems += len(expected.Items)
-	model.metrics.PredictedItems += len(actual.Items)
-	matches := matchItems(expected.Items, actual.Items, true, true)
+func (model *modelAccumulator) addReceipt(expected, actual ingestion.Receipt, sourceKind string) {
+	expectedItems, actualItems := evaluationItems(sourceKind, expected), evaluationItems(sourceKind, actual)
+	model.metrics.ExpectedItems += len(expectedItems)
+	model.metrics.PredictedItems += len(actualItems)
+	matches := matchItems(expectedItems, actualItems, true, true)
 	model.metrics.MatchedItems += len(matches)
-	amountMatches := matchItems(expected.Items, actual.Items, true, false)
+	amountMatches := matchItems(expectedItems, actualItems, true, false)
 	model.amountComparisons += len(amountMatches)
 	for actualIndex, expectedIndex := range amountMatches {
-		if actual.Items[actualIndex].PrintedAmount == expected.Items[expectedIndex].PrintedAmount {
+		if actualItems[actualIndex].PrintedAmount == expectedItems[expectedIndex].PrintedAmount {
 			model.correctAmounts++
 		}
 	}
-	nameMatches := matchItems(expected.Items, actual.Items, false, true)
+	nameMatches := matchItems(expectedItems, actualItems, false, true)
 	model.nameComparisons += len(nameMatches)
 	for actualIndex, expectedIndex := range nameMatches {
-		if normalizeName(actual.Items[actualIndex].Name) == normalizeName(expected.Items[expectedIndex].Name) && normalizeName(expected.Items[expectedIndex].Name) != "" {
+		if normalizeName(actualItems[actualIndex].Name) == normalizeName(expectedItems[expectedIndex].Name) && normalizeName(expectedItems[expectedIndex].Name) != "" {
 			model.correctNames++
 		}
 	}
 	for actualIndex, expectedIndex := range matches {
-		actualRegion, expectedRegion := actual.Items[actualIndex].Region, expected.Items[expectedIndex].Region
+		actualRegion, expectedRegion := actualItems[actualIndex].Region, expectedItems[expectedIndex].Region
 		if actualRegion != nil && expectedRegion != nil && actualRegion.Page == expectedRegion.Page && regionIoU(*actualRegion, *expectedRegion) >= 0.5 {
 			model.correctRegions++
 		}
 	}
-	for _, item := range actual.Items {
+	for _, item := range actualItems {
 		if item.Region != nil {
 			model.predictedRegions++
 		}
 	}
-	if verification, err := ingestion.Verify(actual); err == nil && verification.Balanced {
-		model.taxConsistent++
+	if !isStatementSource(sourceKind) {
+		model.taxRuns++
+		if verification, err := ingestion.Verify(actual); err == nil && verification.Balanced {
+			model.taxConsistent++
+		}
 	}
 }
 
@@ -277,7 +354,8 @@ func (model *modelAccumulator) finish() ModelMetrics {
 	metrics.ItemDetectionPrecision = ratio(metrics.MatchedItems, metrics.PredictedItems)
 	metrics.ItemDetectionRecall = ratio(metrics.MatchedItems, metrics.ExpectedItems)
 	metrics.PrintedAmountExactRate = ratio(model.correctAmounts, model.amountComparisons)
-	metrics.TaxConsistentRate = ratio(model.taxConsistent, metrics.ScoredRuns)
+	metrics.TaxConsistentRate = ratio(model.taxConsistent, model.taxRuns)
+	metrics.TaxConsistencyRuns = model.taxRuns
 	metrics.ProductNormalizationAccuracy = ratio(model.correctNames, model.nameComparisons)
 	metrics.EvidencePrecision = ratio(model.correctRegions, model.predictedRegions)
 	if metrics.PricedRuns > 0 {
@@ -287,6 +365,83 @@ func (model *modelAccumulator) finish() ModelMetrics {
 		metrics.AverageLatencyMillis = float64(model.latencyMillis) / float64(metrics.LatencyRuns)
 	}
 	return metrics
+}
+
+func evaluationItems(sourceKind string, receipt ingestion.Receipt) []ingestion.Item {
+	if !isStatementSource(sourceKind) {
+		return receipt.Items
+	}
+	return statementItems(receipt.Statements)
+}
+
+func statementItems(entries []ingestion.StatementEntry) []ingestion.Item {
+	items := make([]ingestion.Item, 0, len(entries))
+	for _, entry := range entries {
+		items = append(items, ingestion.Item{
+			PrintedName: entry.Merchant, Name: entry.Merchant, PrintedAmount: entry.Amount, Region: entry.Region,
+		})
+	}
+	return items
+}
+
+func isStatementSource(sourceKind string) bool {
+	switch sourceKind {
+	case "card", "bank", "card_statement", "bank_statement":
+		return true
+	default:
+		return false
+	}
+}
+
+func sourceStatementDocuments(cases []Case) int {
+	documents := 0
+	for _, testCase := range cases {
+		if isStatementSource(testCase.SourceKind) {
+			documents++
+		}
+	}
+	return documents
+}
+
+func correctAmountsForCase(expected, actual []ingestion.Item, matches map[int]int) int {
+	correct := 0
+	for actualIndex, expectedIndex := range matches {
+		if actual[actualIndex].PrintedAmount == expected[expectedIndex].PrintedAmount {
+			correct++
+		}
+	}
+	return correct
+}
+
+func correctNamesForCase(expected, actual []ingestion.Item, matches map[int]int) int {
+	correct := 0
+	for actualIndex, expectedIndex := range matches {
+		if normalizeName(actual[actualIndex].Name) == normalizeName(expected[expectedIndex].Name) && normalizeName(expected[expectedIndex].Name) != "" {
+			correct++
+		}
+	}
+	return correct
+}
+
+func regionsCount(items []ingestion.Item) int {
+	count := 0
+	for _, item := range items {
+		if item.Region != nil {
+			count++
+		}
+	}
+	return count
+}
+
+func matchingRegions(expected, actual []ingestion.Item, matches map[int]int) int {
+	correct := 0
+	for actualIndex, expectedIndex := range matches {
+		actualRegion, expectedRegion := actual[actualIndex].Region, expected[expectedIndex].Region
+		if actualRegion != nil && expectedRegion != nil && actualRegion.Page == expectedRegion.Page && regionIoU(*actualRegion, *expectedRegion) >= 0.5 {
+			correct++
+		}
+	}
+	return correct
 }
 
 type itemMatch struct {

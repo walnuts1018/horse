@@ -1,6 +1,10 @@
 package evaluation
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/walnuts1018/horse/internal/ingestion"
@@ -128,6 +132,39 @@ func TestScoreReportsAccuracyAndCostBySourceKindAndModel(t *testing.T) {
 	}
 	if receipt.Model != "shared-model" || receipt.PrintedAmountExactRate != 1 || receipt.EstimatedCostJPY != 2 || receipt.ScoredRuns != 1 {
 		t.Fatalf("unexpected receipt metrics: %+v", receipt)
+	}
+}
+
+func TestSyntheticDatasetScoresReceiptStatementsAndOrderEmailBySourceKind(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(filepath.Join("datasets", "synthetic-v1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dataset Dataset
+	if err := json.Unmarshal(data, &dataset); err != nil {
+		t.Fatal(err)
+	}
+	metrics := Score(dataset)
+	wantKinds := []string{"card_statement", "order_email", "receipt"}
+	gotKinds := make([]string, 0, len(metrics.SourceKinds))
+	for _, kind := range metrics.SourceKinds {
+		gotKinds = append(gotKinds, kind.SourceKind)
+		if kind.Documents != 1 || kind.ExpectedItems == 0 || kind.ItemDetectionRecall != 1 || kind.ItemDetectionPrecision != 1 || kind.PrintedAmountExactRate != 1 || kind.EvidencePrecision != 1 {
+			t.Fatalf("unexpected synthetic source-kind metrics for %s: %+v", kind.SourceKind, kind)
+		}
+		if len(kind.Models) != 0 {
+			t.Fatalf("synthetic case was incorrectly recorded as a model run: %+v", kind.Models)
+		}
+		if kind.SourceKind == "card_statement" && kind.TaxConsistencyDocuments != 0 {
+			t.Fatalf("statement case was included in receipt tax metrics: %+v", kind)
+		}
+	}
+	if !slices.Equal(gotKinds, wantKinds) {
+		t.Fatalf("unexpected source kinds: got %v, want %v", gotKinds, wantKinds)
+	}
+	if metrics.PricedRuns != 0 || metrics.UnpricedRuns != 0 || len(metrics.Models) != 0 {
+		t.Fatalf("synthetic fixture fabricated model-run results: %+v", metrics)
 	}
 }
 
