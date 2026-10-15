@@ -131,7 +131,7 @@ pub fn decide_close_period(
         return Err(ClosePeriodError::DuplicatePurchase);
     }
 
-    let purchase_closures = command
+    let mut purchase_closures = command
         .posted_purchases
         .into_iter()
         .map(|purchase| {
@@ -145,6 +145,7 @@ pub fn decide_close_period(
             })
         })
         .collect::<Result<Vec<_>, ClosePeriodError>>()?;
+    purchase_closures.sort_by(|left, right| left.purchase_id.cmp(&right.purchase_id));
 
     Ok(ClosePeriodDecision {
         period: command.period.clone(),

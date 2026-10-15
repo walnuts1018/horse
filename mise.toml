@@ -1,6 +1,7 @@
 [tools]
 go = "1.27.2"
 rust = "1.98.1"
+"cargo:diesel_cli" = { version = "2.3.14", default-features = false, features = ["postgres", "pq-sys/bundled"] }
 node = "24.21.0"
 pnpm = "11.28.2"
 golangci-lint = "2.14.0"
@@ -24,6 +25,14 @@ run = "cargo check --workspace"
 [tasks."rust:test"]
 description = "Rust workspaceのテスト"
 run = "cargo test --workspace"
+
+[tasks."rust:db:schema"]
+description = "Atlas schemaからDiesel schemaを生成"
+run = "diesel print-schema --database-url \"$RUST_DATABASE_URL\" --schema public > crates/postgres/src/schema.rs"
+
+[tasks."rust:db:schema:check"]
+description = "生成済みDiesel schemaとDBスキーマの差分確認"
+run = "diesel print-schema --database-url \"$RUST_DATABASE_URL\" --schema public | diff -u crates/postgres/src/schema.rs -"
 
 [tasks.lint]
 description = "Goの静的解析"
@@ -110,6 +119,10 @@ run = "go run ./cmd/worker"
 [tasks."hash:migrations"]
 description = "Atlasマイグレーションのチェックサム"
 run = "atlas migrate hash --dir file://migrations"
+
+[tasks."hash:migrations:rust"]
+description = "Rust用Atlasマイグレーションのチェックサム"
+run = "atlas migrate hash --dir file://rust-migrations"
 
 [tasks."db:migrate"]
 description = "PostgreSQLマイグレーション"

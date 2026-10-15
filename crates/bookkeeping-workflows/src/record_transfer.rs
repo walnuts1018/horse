@@ -136,6 +136,7 @@ pub enum RecordTransferError {
     RepaymentExceedsOutstanding,
     EmptyLoanId,
     AmountOverflow,
+    JournalLineCountOverflow,
 }
 
 pub fn decide_record_transfer(
@@ -288,7 +289,7 @@ fn build_journal_lines(
 }
 
 fn next_line_no(lines: &[JournalLine]) -> Result<u32, RecordTransferError> {
-    u32::try_from(lines.len() + 1).map_err(|_| RecordTransferError::AmountOverflow)
+    u32::try_from(lines.len() + 1).map_err(|_| RecordTransferError::JournalLineCountOverflow)
 }
 
 fn settlement_adjustments(command: &RecordTransferCommand) -> Vec<SettlementAdjustment> {
