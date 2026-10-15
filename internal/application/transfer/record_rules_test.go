@@ -116,6 +116,29 @@ func TestSettlementAdjustmentsByTransferKind(t *testing.T) {
 	}
 }
 
+func TestValidateRepaymentAmountEnforcesOutstandingBalance(t *testing.T) {
+	tests := []struct {
+		name            string
+		loanAmount      int64
+		repaid          int64
+		repaymentAmount int64
+		wantErr         bool
+	}{
+		{name: "partial repayment", loanAmount: 100, repaid: 20, repaymentAmount: 50},
+		{name: "exact outstanding balance", loanAmount: 100, repaid: 20, repaymentAmount: 80},
+		{name: "exceeds outstanding balance", loanAmount: 100, repaid: 20, repaymentAmount: 81, wantErr: true},
+		{name: "fully repaid loan", loanAmount: 100, repaid: 100, repaymentAmount: 1, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateRepaymentAmount(test.loanAmount, test.repaid, test.repaymentAmount)
+			if test.wantErr != errors.Is(err, ErrBadInput) {
+				t.Fatalf("error=%v, want ErrBadInput=%v", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func uuid(last byte) gofrsuuid.UUID {
 	var id gofrsuuid.UUID
 	id[15] = last

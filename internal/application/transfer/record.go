@@ -187,92 +187,28 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 
 	var loanID *gofrsuuid.UUID
 	if command.Kind == repaymentKind {
-		id, parseErr := parseID(*command.LoanID, "loan")
-		if parseErr != nil {
-			return Result{}, parseErr
-		}
-		loan, loanErr := models.Transfers.Query(sm.Where(psql.And(
-			models.Transfers.Columns.ID.EQ(psql.Arg(id)),
-			models.Transfers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-			models.Transfers.Columns.Kind.EQ(psql.Arg(loanKind)),
-		)), sm.ForUpdate()).One(ctx, executor)
-		if loanErr != nil {
-			return Result{}, ErrNotFound
-		}
-		if fromMemberID != loan.ToMemberID || toMemberID != loan.FromMemberID {
-			return Result{}, fmt.Errorf("%w: repayment direction does not match the loan", ErrBadInput)
-		}
-		repayments, repaymentErr := models.Transfers.Query(sm.Where(psql.And(
-			models.Transfers.Columns.LoanID.EQ(psql.Arg(id)),
-			models.Transfers.Columns.Kind.EQ(psql.Arg(repaymentKind)),
-		))).All(ctx, executor)
-		if repaymentErr != nil {
-			return Result{}, repaymentErr
-		}
-		var repaid int64
-		for _, repayment := range repayments {
-			var ok bool
-			repaid, ok = accounting.Add(repaid, repayment.AmountYen)
-			if !ok {
-				return Result{}, fmt.Errorf("%w: repayment total is too large", ErrBadInput)
-			}
-		}
-		if command.AmountYen > loan.AmountYen-repaid {
-			return Result{}, fmt.Errorf("%w: repayment exceeds the outstanding loan", ErrBadInput)
+		id, err := validateRepayment(ctx, executor, householdID, fromMemberID, toMemberID, command)
+		if err != nil {
+			return Result{}, err
 		}
 		loanID = &id
 	}
 
 	transferID, journalID, ledgerID := newUUID(), newUUID(), newUUID()
-	sourceKind := "TRANSFER"
-	occurredAt := command.OccurredAt.UTC()
-	if _, err := models.Journals.Insert(&models.JournalSetter{
-		ID: &journalID, HouseholdID: &householdID, SourceKind: &sourceKind, SourceID: &transferID,
-		IdempotencyKey: &command.IdempotencyKey, OccurredAt: &occurredAt, CreatedBy: &actorID,
-	}).Exec(ctx, executor); err != nil {
-		return Result{}, err
-	}
-	amount := command.AmountYen
-	fromMember, toMember := sql.Null[gofrsuuid.UUID]{V: fromMemberID, Valid: true}, sql.Null[gofrsuuid.UUID]{V: toMemberID, Valid: true}
-	journalLines, err := buildJournalLines(command.Kind, amount, fromMemberID, toMemberID, paymentPoolID, paymentAccountID, destinationAccountID)
-	if err != nil {
-		return Result{}, err
-	}
-	for _, entry := range journalLines {
-		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
-			JournalID: &journalID, LineNo: &entry.LineNo,
-			AccountID: nullableID(entry.AccountID), PoolID: nullableID(entry.PoolID), MemberID: nullableID(entry.MemberID),
-			DebitYen: &entry.DebitYen, CreditYen: &entry.CreditYen, Memo: &entry.Memo,
-		}).Exec(ctx, executor); err != nil {
-			return Result{}, err
-		}
-	}
-
 	description := strings.TrimSpace(command.Description)
 	if description == "" {
 		description = command.Kind
 	}
-	ledgerKind, transferKind := "TRANSFER", command.Kind
-	if _, err := models.LedgerEntries.Insert(&models.LedgerEntrySetter{
-		ID: &ledgerID, HouseholdID: &householdID, JournalID: &journalID, Kind: &ledgerKind,
-		OccurredAt: &occurredAt, Description: &description, AmountYen: &amount, FromMemberID: &fromMember, ToMemberID: &toMember,
-	}).Exec(ctx, executor); err != nil {
+	if err := recordTransferAccounting(ctx, executor, transferPosting{
+		command: command, householdID: householdID, actorID: actorID,
+		fromMemberID: fromMemberID, toMemberID: toMemberID,
+		paymentPoolID: paymentPoolID, paymentAccountID: paymentAccountID, destinationAccountID: destinationAccountID,
+		loanID: loanID, transferID: transferID, journalID: journalID, ledgerID: ledgerID, description: description,
+	}); err != nil {
 		return Result{}, err
 	}
-	loanValue, paymentAccountValue := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
-	if loanID != nil {
-		loanValue = sql.Null[gofrsuuid.UUID]{V: *loanID, Valid: true}
-	}
-	if paymentAccountID != nil {
-		paymentAccountValue = sql.Null[gofrsuuid.UUID]{V: *paymentAccountID, Valid: true}
-	}
-	if _, err := models.Transfers.Insert(&models.TransferSetter{
-		ID: &transferID, HouseholdID: &householdID, LedgerEntryID: &ledgerID,
-		FromMemberID: &fromMemberID, ToMemberID: &toMemberID, Kind: &transferKind,
-		AmountYen: &amount, Description: &description, LoanID: &loanValue, PaymentAccountID: &paymentAccountValue,
-	}).Exec(ctx, executor); err != nil {
-		return Result{}, err
-	}
+	transferKind := command.Kind
+	amount := command.AmountYen
 	if statementEvidence != nil {
 		if err := recordStatementTransferConfirmation(ctx, executor, householdID, actorID, transferID, statementEvidence.DocumentID, command.SourceReference); err != nil {
 			return Result{}, err
@@ -328,6 +264,113 @@ func replayTransfer(ctx context.Context, executor bob.Executor, householdID gofr
 		}
 	}
 	return Result{LedgerEntryID: existing.ResourceID.V.String()}, true, nil
+}
+
+func validateRepayment(ctx context.Context, executor bob.Executor, householdID, fromMemberID, toMemberID gofrsuuid.UUID, command Command) (gofrsuuid.UUID, error) {
+	loanID, err := parseID(*command.LoanID, "loan")
+	if err != nil {
+		return gofrsuuid.Nil, err
+	}
+	loan, err := models.Transfers.Query(sm.Where(psql.And(
+		models.Transfers.Columns.ID.EQ(psql.Arg(loanID)),
+		models.Transfers.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.Transfers.Columns.Kind.EQ(psql.Arg(loanKind)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if err != nil {
+		return gofrsuuid.Nil, ErrNotFound
+	}
+	if fromMemberID != loan.ToMemberID || toMemberID != loan.FromMemberID {
+		return gofrsuuid.Nil, fmt.Errorf("%w: repayment direction does not match the loan", ErrBadInput)
+	}
+	repayments, err := models.Transfers.Query(sm.Where(psql.And(
+		models.Transfers.Columns.LoanID.EQ(psql.Arg(loanID)),
+		models.Transfers.Columns.Kind.EQ(psql.Arg(repaymentKind)),
+	))).All(ctx, executor)
+	if err != nil {
+		return gofrsuuid.Nil, err
+	}
+	var repaid int64
+	for _, repayment := range repayments {
+		var ok bool
+		repaid, ok = accounting.Add(repaid, repayment.AmountYen)
+		if !ok {
+			return gofrsuuid.Nil, fmt.Errorf("%w: repayment total is too large", ErrBadInput)
+		}
+	}
+	if err := validateRepaymentAmount(loan.AmountYen, repaid, command.AmountYen); err != nil {
+		return gofrsuuid.Nil, err
+	}
+	return loanID, nil
+}
+
+func validateRepaymentAmount(loanAmount, repaid, repaymentAmount int64) error {
+	if repaymentAmount > loanAmount-repaid {
+		return fmt.Errorf("%w: repayment exceeds the outstanding loan", ErrBadInput)
+	}
+	return nil
+}
+
+type transferPosting struct {
+	command              Command
+	householdID          gofrsuuid.UUID
+	actorID              gofrsuuid.UUID
+	fromMemberID         gofrsuuid.UUID
+	toMemberID           gofrsuuid.UUID
+	paymentPoolID        *gofrsuuid.UUID
+	paymentAccountID     *gofrsuuid.UUID
+	destinationAccountID *gofrsuuid.UUID
+	loanID               *gofrsuuid.UUID
+	transferID           gofrsuuid.UUID
+	journalID            gofrsuuid.UUID
+	ledgerID             gofrsuuid.UUID
+	description          string
+}
+
+func recordTransferAccounting(ctx context.Context, executor bob.Executor, posting transferPosting) error {
+	command := posting.command
+	occurredAt := command.OccurredAt.UTC()
+	sourceKind, ledgerKind := "TRANSFER", "TRANSFER"
+	journalLines, err := buildJournalLines(command.Kind, command.AmountYen, posting.fromMemberID, posting.toMemberID, posting.paymentPoolID, posting.paymentAccountID, posting.destinationAccountID)
+	if err != nil {
+		return err
+	}
+	if _, err := models.Journals.Insert(&models.JournalSetter{
+		ID: &posting.journalID, HouseholdID: &posting.householdID, SourceKind: &sourceKind, SourceID: &posting.transferID,
+		IdempotencyKey: &command.IdempotencyKey, OccurredAt: &occurredAt, CreatedBy: &posting.actorID,
+	}).Exec(ctx, executor); err != nil {
+		return err
+	}
+	for _, entry := range journalLines {
+		if _, err := models.JournalEntries.Insert(&models.JournalEntrySetter{
+			JournalID: &posting.journalID, LineNo: &entry.LineNo,
+			AccountID: nullableID(entry.AccountID), PoolID: nullableID(entry.PoolID), MemberID: nullableID(entry.MemberID),
+			DebitYen: &entry.DebitYen, CreditYen: &entry.CreditYen, Memo: &entry.Memo,
+		}).Exec(ctx, executor); err != nil {
+			return err
+		}
+	}
+	amount := command.AmountYen
+	fromMember := sql.Null[gofrsuuid.UUID]{V: posting.fromMemberID, Valid: true}
+	toMember := sql.Null[gofrsuuid.UUID]{V: posting.toMemberID, Valid: true}
+	if _, err := models.LedgerEntries.Insert(&models.LedgerEntrySetter{
+		ID: &posting.ledgerID, HouseholdID: &posting.householdID, JournalID: &posting.journalID, Kind: &ledgerKind,
+		OccurredAt: &occurredAt, Description: &posting.description, AmountYen: &amount, FromMemberID: &fromMember, ToMemberID: &toMember,
+	}).Exec(ctx, executor); err != nil {
+		return err
+	}
+	loanValue, paymentAccountValue := sql.Null[gofrsuuid.UUID]{}, sql.Null[gofrsuuid.UUID]{}
+	if posting.loanID != nil {
+		loanValue = sql.Null[gofrsuuid.UUID]{V: *posting.loanID, Valid: true}
+	}
+	if posting.paymentAccountID != nil {
+		paymentAccountValue = sql.Null[gofrsuuid.UUID]{V: *posting.paymentAccountID, Valid: true}
+	}
+	_, err = models.Transfers.Insert(&models.TransferSetter{
+		ID: &posting.transferID, HouseholdID: &posting.householdID, LedgerEntryID: &posting.ledgerID,
+		FromMemberID: &posting.fromMemberID, ToMemberID: &posting.toMemberID, Kind: &command.Kind,
+		AmountYen: &amount, Description: &posting.description, LoanID: &loanValue, PaymentAccountID: &paymentAccountValue,
+	}).Exec(ctx, executor)
+	return err
 }
 
 func validKind(kind string) bool {
