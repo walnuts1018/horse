@@ -106,6 +106,8 @@ Member、Account、Category、Household、Pool Nodeの複数ID解決では、所
 
 さらに`SaveItemEdits()`では、各明細について`updateItem()`を呼び、その後に購入全体の`update()`を呼んでいます。
 
+`SaveItemEdits()`は`planSaveItemEdits()`でIDとコマンドを正規化し、明細のlock順序を決めた後、`applySaveItemEdits()`で既存のtransactionフローを実行するよう分けました。個別明細と購入の業務変更計画は引き続き`updateItem()`と`update()`がそれぞれ構築するため、計画構築と適用の完全な共通化は未完了です。既存の複数明細を一括保存するDB統合テストは通過しています。
+
 この構造には2つの問題があります。
 
 第一に、同じルールを複数箇所で保守する必要があること。 通常更新だけ修正して一括更新への反映を忘れる、といった不一致が起こりやすくなります。

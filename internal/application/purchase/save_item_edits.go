@@ -28,39 +28,78 @@ type SaveItemEditsResult struct {
 	Items []BulkUpdatedItem
 }
 
-func (s *Service) SaveItemEdits(ctx context.Context, command SaveItemEditsCommand) (SaveItemEditsResult, error) {
+type saveItemEditsPlan struct {
+	actorID        gofrsuuid.UUID
+	purchaseID     gofrsuuid.UUID
+	items          []UpdateItemCommand
+	itemIDs        []gofrsuuid.UUID
+	itemLockOrder  []gofrsuuid.UUID
+	purchaseUpdate *UpdateCommand
+}
+
+func planSaveItemEdits(command SaveItemEditsCommand) (saveItemEditsPlan, error) {
 	if (len(command.Items) == 0 && command.PurchaseUpdate == nil) || len(command.Items) > 200 {
-		return SaveItemEditsResult{}, fmt.Errorf("%w: save requires a purchase patch or up to two hundred item patches", ErrBadInput)
+		return saveItemEditsPlan{}, fmt.Errorf("%w: save requires a purchase patch or up to two hundred item patches", ErrBadInput)
 	}
 	actorID, err := parseUUID(command.ActorID, "actor")
 	if err != nil {
-		return SaveItemEditsResult{}, err
+		return saveItemEditsPlan{}, err
 	}
 	purchaseID, err := parseUUID(command.PurchaseID, "purchase")
 	if err != nil {
-		return SaveItemEditsResult{}, err
+		return saveItemEditsPlan{}, err
 	}
 	itemIDs := make([]gofrsuuid.UUID, len(command.Items))
 	seen := make(map[gofrsuuid.UUID]struct{}, len(command.Items))
 	for index, item := range command.Items {
 		itemID, parseErr := parseUUID(item.ItemID, "item")
 		if parseErr != nil {
-			return SaveItemEditsResult{}, ErrNotFound
+			return saveItemEditsPlan{}, ErrNotFound
 		}
 		if _, exists := seen[itemID]; exists {
-			return SaveItemEditsResult{}, fmt.Errorf("%w: duplicate item target", ErrBadInput)
+			return saveItemEditsPlan{}, fmt.Errorf("%w: duplicate item target", ErrBadInput)
 		}
 		seen[itemID] = struct{}{}
 		itemIDs[index] = itemID
 	}
+	items := slices.Clone(command.Items)
+	for index := range items {
+		items[index].ItemID = itemIDs[index].String()
+		items[index].ActorID = actorID.String()
+	}
+	var purchaseUpdate *UpdateCommand
+	if command.PurchaseUpdate != nil {
+		update := *command.PurchaseUpdate
+		update.ActorID = actorID.String()
+		update.PurchaseID = purchaseID.String()
+		purchaseUpdate = &update
+	}
+	itemLockOrder := slices.Clone(itemIDs)
+	slices.SortFunc(itemLockOrder, func(left, right gofrsuuid.UUID) int {
+		return strings.Compare(left.String(), right.String())
+	})
+	return saveItemEditsPlan{
+		actorID: actorID, purchaseID: purchaseID, items: items, itemIDs: itemIDs,
+		itemLockOrder: itemLockOrder, purchaseUpdate: purchaseUpdate,
+	}, nil
+}
 
+func (s *Service) SaveItemEdits(ctx context.Context, command SaveItemEditsCommand) (SaveItemEditsResult, error) {
+	plan, err := planSaveItemEdits(command)
+	if err != nil {
+		return SaveItemEditsResult{}, err
+	}
+	return s.applySaveItemEdits(ctx, plan)
+}
+
+func (s *Service) applySaveItemEdits(ctx context.Context, plan saveItemEditsPlan) (SaveItemEditsResult, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return SaveItemEditsResult{}, err
 	}
 	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
-	observedPurchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(ctx, executor)
+	observedPurchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(plan.purchaseID)))).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SaveItemEditsResult{}, ErrNotFound
 	}
@@ -68,15 +107,15 @@ func (s *Service) SaveItemEdits(ctx context.Context, command SaveItemEditsComman
 		return SaveItemEditsResult{}, err
 	}
 	householdID := observedPurchase.HouseholdID
-	if err := requirePurchaseMember(ctx, executor, householdID, actorID); err != nil {
+	if err := requirePurchaseMember(ctx, executor, householdID, plan.actorID); err != nil {
 		return SaveItemEditsResult{}, err
 	}
 	if observedPurchase.Status != draftStatus && observedPurchase.Status != postedStatus {
 		return SaveItemEditsResult{}, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
 	}
 	targetOccurredAt := observedPurchase.OccurredAt
-	if command.PurchaseUpdate != nil && command.PurchaseUpdate.OccurredAt != nil {
-		targetOccurredAt = *command.PurchaseUpdate.OccurredAt
+	if plan.purchaseUpdate != nil && plan.purchaseUpdate.OccurredAt != nil {
+		targetOccurredAt = *plan.purchaseUpdate.OccurredAt
 	}
 	if err := lockPurchaseAccountingPeriods(ctx, executor, householdID,
 		accounting.PeriodFor(observedPurchase.OccurredAt), accounting.PeriodFor(targetOccurredAt)); err != nil {
@@ -85,7 +124,7 @@ func (s *Service) SaveItemEdits(ctx context.Context, command SaveItemEditsComman
 	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForShare()).One(ctx, executor); err != nil {
 		return SaveItemEditsResult{}, err
 	}
-	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID))), sm.ForUpdate()).One(ctx, executor)
+	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(plan.purchaseID))), sm.ForUpdate()).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SaveItemEditsResult{}, ErrNotFound
 	}
@@ -98,14 +137,10 @@ func (s *Service) SaveItemEdits(ctx context.Context, command SaveItemEditsComman
 	if purchase.Status != draftStatus && purchase.Status != postedStatus {
 		return SaveItemEditsResult{}, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
 	}
-	lockOrder := slices.Clone(itemIDs)
-	slices.SortFunc(lockOrder, func(left, right gofrsuuid.UUID) int {
-		return strings.Compare(left.String(), right.String())
-	})
-	for _, itemID := range lockOrder {
+	for _, itemID := range plan.itemLockOrder {
 		item, queryErr := models.PurchaseItems.Query(sm.Where(psql.And(
 			models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemID)),
-			models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseID)),
+			models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(plan.purchaseID)),
 		)), sm.ForUpdate()).One(ctx, executor)
 		if errors.Is(queryErr, sql.ErrNoRows) {
 			return SaveItemEditsResult{}, ErrNotFound
@@ -118,28 +153,23 @@ func (s *Service) SaveItemEdits(ctx context.Context, command SaveItemEditsComman
 		}
 	}
 
-	result := SaveItemEditsResult{Items: make([]BulkUpdatedItem, 0, len(command.Items))}
+	result := SaveItemEditsResult{Items: make([]BulkUpdatedItem, 0, len(plan.items))}
 	accountingChanged := false
-	for index, item := range command.Items {
-		item.ItemID = itemIDs[index].String()
-		item.ActorID = actorID.String()
+	for index, item := range plan.items {
 		updated, err := s.updateItem(ctx, item, tx, true, &accountingChanged)
 		if err != nil {
 			return SaveItemEditsResult{}, err
 		}
-		result.Items = append(result.Items, BulkUpdatedItem{ID: itemIDs[index].String(), PurchaseID: updated.PurchaseID})
+		result.Items = append(result.Items, BulkUpdatedItem{ID: plan.itemIDs[index].String(), PurchaseID: updated.PurchaseID})
 	}
-	if command.PurchaseUpdate != nil {
-		purchaseUpdate := *command.PurchaseUpdate
-		purchaseUpdate.ActorID = actorID.String()
-		purchaseUpdate.PurchaseID = purchaseID.String()
-		if _, err := s.update(ctx, purchaseUpdate, tx, true, &accountingChanged); err != nil {
+	if plan.purchaseUpdate != nil {
+		if _, err := s.update(ctx, *plan.purchaseUpdate, tx, true, &accountingChanged); err != nil {
 			return SaveItemEditsResult{}, err
 		}
 	}
-	merchantChanged := command.PurchaseUpdate != nil && slices.Contains(command.PurchaseUpdate.ChangedFields, updateFieldMerchant)
+	merchantChanged := plan.purchaseUpdate != nil && slices.Contains(plan.purchaseUpdate.ChangedFields, updateFieldMerchant)
 	if purchase.Status == postedStatus && (accountingChanged || merchantChanged) {
-		purchase, err = models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(ctx, executor)
+		purchase, err = models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(plan.purchaseID)))).One(ctx, executor)
 		if err != nil {
 			return SaveItemEditsResult{}, err
 		}
@@ -148,7 +178,7 @@ func (s *Service) SaveItemEdits(ctx context.Context, command SaveItemEditsComman
 				return SaveItemEditsResult{}, err
 			}
 		} else {
-			total, err := purchaseItemsTotal(ctx, executor, purchaseID)
+			total, err := purchaseItemsTotal(ctx, executor, plan.purchaseID)
 			if err != nil {
 				return SaveItemEditsResult{}, err
 			}

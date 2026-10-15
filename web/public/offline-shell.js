@@ -153,6 +153,7 @@ async function start() {
     }
 
     let currentDraft = structuredClone(draft);
+    let hasUnsavedChanges = false;
     const itemList = document.querySelector("#draft-items");
     const status = document.querySelector("#offline-status");
     const readEditedItems = () =>
@@ -190,6 +191,7 @@ async function start() {
     document.querySelector("#offline-message").textContent = "";
 
     document.querySelector("#add-item").addEventListener("click", () => {
+      hasUnsavedChanges = true;
       currentDraft.items = readEditedItems();
       currentDraft.items.push({
         key: crypto.randomUUID(),
@@ -203,6 +205,7 @@ async function start() {
     itemList.addEventListener("click", (event) => {
       const button = event.target.closest("[data-remove-item]");
       if (!button) return;
+      hasUnsavedChanges = true;
       currentDraft.items = readEditedItems();
       currentDraft.items.splice(Number(button.dataset.removeItem), 1);
       renderItems();
@@ -232,10 +235,22 @@ async function start() {
           writeDatabase.close();
         }
         currentDraft = nextDraft;
+        hasUnsavedChanges = false;
         status.textContent = "保存しました";
       } catch {
         status.textContent = "保存できませんでした";
       }
+    });
+    form.addEventListener("input", () => {
+      hasUnsavedChanges = true;
+    });
+    form.addEventListener("change", () => {
+      hasUnsavedChanges = true;
+    });
+    window.addEventListener("beforeunload", (event) => {
+      if (!hasUnsavedChanges) return;
+      event.preventDefault();
+      event.returnValue = "";
     });
   } catch {
     showMessage("下書きを開けません", "オンラインで再読み込みしてください。");
