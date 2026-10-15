@@ -46,7 +46,8 @@ impl ProcessConfig {
             .unwrap_or_else(|_| "false".to_owned())
             .parse::<bool>()
             .map_err(|_| "GEMINI_ENABLED must be a boolean".to_owned())?;
-        let quota_limits = parse_quota_limits(&env::var("GEMINI_QUOTA_LIMITS").unwrap_or_default())?;
+        let quota_limits =
+            parse_quota_limits(&env::var("GEMINI_QUOTA_LIMITS").unwrap_or_default())?;
         let usd_jpy_rate = env::var("USDJPY_RATE")
             .or_else(|_| env::var("GEMINI_USDJPY_RATE"))
             .ok()

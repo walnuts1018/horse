@@ -7,6 +7,7 @@ pub mod bulk_update_items;
 pub mod bulk_update_purchases;
 pub mod close_period;
 pub mod correct_purchase;
+pub mod correct_purchase_workflow;
 pub mod create_account;
 pub mod create_and_post_purchase;
 pub mod create_pool;

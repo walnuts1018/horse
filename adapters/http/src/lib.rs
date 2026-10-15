@@ -279,7 +279,10 @@ async fn callback(
                 OidcError::AuthenticationFailed | OidcError::SessionExpired => {
                     StatusCode::UNAUTHORIZED
                 }
-                OidcError::TransientProvider(_) => StatusCode::BAD_GATEWAY,
+                OidcError::TransientProvider(_) => {
+                    tracing::error!(error = ?error, "OIDC callback provider request failed");
+                    StatusCode::BAD_GATEWAY
+                }
                 OidcError::IncompleteConfiguration(_) => StatusCode::SERVICE_UNAVAILABLE,
                 OidcError::Provider(_) | OidcError::Database(_) | OidcError::Pool(_) => {
                     tracing::error!(error = ?error, "OIDC callback failed");
