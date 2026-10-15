@@ -499,106 +499,6 @@ impl MailboxConfig {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use chrono::{DateTime, Utc};
-    use diesel::{ExpressionMethods, QueryDsl};
-    use diesel_async::RunQueryDsl;
-
-    use super::{acquire_mailbox_lease, release_mailbox_lease};
-    use horse_postgres_common::{connect, schema::public::mailbox_cursors::dsl as cursors};
-
-    #[tokio::test]
-    async fn forwarding_cursor_lease_is_exclusive_and_reacquirable() {
-        let Ok(database_url) = std::env::var("HORSE_TEST_DATABASE_URL") else {
-            eprintln!("HORSE_TEST_DATABASE_URL is unset; skipping the PostgreSQL lease check");
-            return;
-        };
-        let pool = connect(database_url)
-            .await
-            .expect("test database connection should succeed");
-        let mut connection = pool
-            .get()
-            .await
-            .expect("test database connection should be available");
-        let saved_cursor = cursors::mailbox_cursors
-            .filter(cursors::mailbox.eq("forwarding"))
-            .select((
-                cursors::uid_validity,
-                cursors::uid,
-                cursors::lease_token,
-                cursors::lease_expires_at,
-                cursors::updated_at,
-            ))
-            .first::<(
-                i64,
-                i64,
-                Option<uuid::Uuid>,
-                Option<DateTime<Utc>>,
-                DateTime<Utc>,
-            )>(&mut *connection)
-            .await
-            .expect("forwarding cursor should exist after migrations");
-        diesel::update(cursors::mailbox_cursors.filter(cursors::mailbox.eq("forwarding")))
-            .set((
-                cursors::uid_validity.eq(0_i64),
-                cursors::uid.eq(0_i64),
-                cursors::lease_token.eq(None::<uuid::Uuid>),
-                cursors::lease_expires_at.eq(None::<DateTime<Utc>>),
-                cursors::updated_at.eq(Utc::now()),
-            ))
-            .execute(&mut *connection)
-            .await
-            .expect("forwarding cursor should be reset for the concurrency check");
-        drop(connection);
-
-        let check = async {
-            let (first, second) =
-                tokio::join!(acquire_mailbox_lease(&pool), acquire_mailbox_lease(&pool));
-            let owned_token = match (first, second) {
-                (Ok(Some(lease)), Ok(None)) | (Ok(None), Ok(Some(lease))) => Some(lease.token),
-                (Ok(Some(first)), Ok(Some(second))) => {
-                    release_mailbox_lease(&pool, first.token).await;
-                    release_mailbox_lease(&pool, second.token).await;
-                    None
-                }
-                _ => None,
-            };
-            let Some(owned_token) = owned_token else {
-                return false;
-            };
-            release_mailbox_lease(&pool, owned_token).await;
-            let Ok(Some(reacquired)) = acquire_mailbox_lease(&pool).await else {
-                return false;
-            };
-            release_mailbox_lease(&pool, reacquired.token).await;
-            true
-        }
-        .await;
-
-        let mut connection = pool
-            .get()
-            .await
-            .expect("test database connection should be available for restoration");
-        diesel::update(cursors::mailbox_cursors.filter(cursors::mailbox.eq("forwarding")))
-            .set((
-                cursors::uid_validity.eq(saved_cursor.0),
-                cursors::uid.eq(saved_cursor.1),
-                cursors::lease_token.eq(saved_cursor.2),
-                cursors::lease_expires_at.eq(saved_cursor.3),
-                cursors::updated_at.eq(saved_cursor.4),
-            ))
-            .execute(&mut *connection)
-            .await
-            .expect("forwarding cursor state should be restored");
-
-        assert!(
-            check,
-            "concurrent lease acquisition must have exactly one owner and permit reacquisition after release"
-        );
-    }
-}
-
 pub async fn poll(
     config: &MailboxConfig,
     cursor: MailboxCursor,
@@ -878,4 +778,104 @@ fn parse_positive_limit(name: &str) -> Option<usize> {
         .parse::<usize>()
         .ok()
         .filter(|value| *value > 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{DateTime, Utc};
+    use diesel::{ExpressionMethods, QueryDsl};
+    use diesel_async::RunQueryDsl;
+
+    use super::{acquire_mailbox_lease, release_mailbox_lease};
+    use horse_postgres_common::{connect, schema::public::mailbox_cursors::dsl as cursors};
+
+    #[tokio::test]
+    async fn forwarding_cursor_lease_is_exclusive_and_reacquirable() {
+        let Ok(database_url) = std::env::var("HORSE_TEST_DATABASE_URL") else {
+            eprintln!("HORSE_TEST_DATABASE_URL is unset; skipping the PostgreSQL lease check");
+            return;
+        };
+        let pool = connect(database_url)
+            .await
+            .expect("test database connection should succeed");
+        let mut connection = pool
+            .get()
+            .await
+            .expect("test database connection should be available");
+        let saved_cursor = cursors::mailbox_cursors
+            .filter(cursors::mailbox.eq("forwarding"))
+            .select((
+                cursors::uid_validity,
+                cursors::uid,
+                cursors::lease_token,
+                cursors::lease_expires_at,
+                cursors::updated_at,
+            ))
+            .first::<(
+                i64,
+                i64,
+                Option<uuid::Uuid>,
+                Option<DateTime<Utc>>,
+                DateTime<Utc>,
+            )>(&mut *connection)
+            .await
+            .expect("forwarding cursor should exist after migrations");
+        diesel::update(cursors::mailbox_cursors.filter(cursors::mailbox.eq("forwarding")))
+            .set((
+                cursors::uid_validity.eq(0_i64),
+                cursors::uid.eq(0_i64),
+                cursors::lease_token.eq(None::<uuid::Uuid>),
+                cursors::lease_expires_at.eq(None::<DateTime<Utc>>),
+                cursors::updated_at.eq(Utc::now()),
+            ))
+            .execute(&mut *connection)
+            .await
+            .expect("forwarding cursor should be reset for the concurrency check");
+        drop(connection);
+
+        let check = async {
+            let (first, second) =
+                tokio::join!(acquire_mailbox_lease(&pool), acquire_mailbox_lease(&pool));
+            let owned_token = match (first, second) {
+                (Ok(Some(lease)), Ok(None)) | (Ok(None), Ok(Some(lease))) => Some(lease.token),
+                (Ok(Some(first)), Ok(Some(second))) => {
+                    release_mailbox_lease(&pool, first.token).await;
+                    release_mailbox_lease(&pool, second.token).await;
+                    None
+                }
+                _ => None,
+            };
+            let Some(owned_token) = owned_token else {
+                return false;
+            };
+            release_mailbox_lease(&pool, owned_token).await;
+            let Ok(Some(reacquired)) = acquire_mailbox_lease(&pool).await else {
+                return false;
+            };
+            release_mailbox_lease(&pool, reacquired.token).await;
+            true
+        }
+        .await;
+
+        let mut connection = pool
+            .get()
+            .await
+            .expect("test database connection should be available for restoration");
+        diesel::update(cursors::mailbox_cursors.filter(cursors::mailbox.eq("forwarding")))
+            .set((
+                cursors::uid_validity.eq(saved_cursor.0),
+                cursors::uid.eq(saved_cursor.1),
+                cursors::lease_token.eq(saved_cursor.2),
+                cursors::lease_expires_at.eq(saved_cursor.3),
+                cursors::updated_at.eq(saved_cursor.4),
+            ))
+            .execute(&mut *connection)
+            .await
+            .expect("forwarding cursor state should be restored");
+
+        assert!(
+            check,
+            "concurrent lease acquisition must have exactly one owner and permit reacquisition after release"
+        );
+    }
 }
