@@ -4,10 +4,24 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	uuid "github.com/gofrs/uuid/v5"
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
+
+func TestSubscriptionPollIntervalBacksOffWhenIdle(t *testing.T) {
+	interval := subscriptionHubPollInterval
+	for _, want := range []time.Duration{2 * time.Second, 4 * time.Second, subscriptionHubMaxIdlePollInterval, subscriptionHubMaxIdlePollInterval} {
+		interval = nextSubscriptionPollInterval(interval, false)
+		if interval != want {
+			t.Fatalf("idle poll interval = %s; want %s", interval, want)
+		}
+	}
+	if got := nextSubscriptionPollInterval(interval, true); got != subscriptionHubPollInterval {
+		t.Fatalf("active poll interval = %s; want %s", got, subscriptionHubPollInterval)
+	}
+}
 
 func TestSubscriptionHubSharesMinimumCursorAndFansOutChanges(t *testing.T) {
 	hub := newSubscriptionHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)))

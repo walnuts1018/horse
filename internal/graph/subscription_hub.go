@@ -19,6 +19,7 @@ import (
 
 const (
 	subscriptionHubPollInterval            = time.Second
+	subscriptionHubMaxIdlePollInterval     = 5 * time.Second
 	subscriptionHubMaxRetryInterval        = 30 * time.Second
 	subscriptionAuthorizationCheckInterval = 30 * time.Second
 )
@@ -126,9 +127,10 @@ func (h *subscriptionHub) stopPollerWhenIdleLocked() {
 
 func (h *subscriptionHub) run(ctx context.Context) {
 	retryInterval := subscriptionHubPollInterval
+	idlePollInterval := subscriptionHubPollInterval
 	failed := false
 	for {
-		err := h.poll(ctx)
+		active, err := h.poll(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -148,10 +150,22 @@ func (h *subscriptionHub) run(ctx context.Context) {
 			failed = false
 		}
 		retryInterval = subscriptionHubPollInterval
-		if !waitForSubscriptionPoll(ctx, subscriptionHubPollInterval) {
+		if active {
+			idlePollInterval = subscriptionHubPollInterval
+		} else {
+			idlePollInterval = nextSubscriptionPollInterval(idlePollInterval, false)
+		}
+		if !waitForSubscriptionPoll(ctx, idlePollInterval) {
 			return
 		}
 	}
+}
+
+func nextSubscriptionPollInterval(current time.Duration, active bool) time.Duration {
+	if active {
+		return subscriptionHubPollInterval
+	}
+	return min(current*2, subscriptionHubMaxIdlePollInterval)
 }
 
 func waitForSubscriptionPoll(ctx context.Context, interval time.Duration) bool {
@@ -165,19 +179,24 @@ func waitForSubscriptionPoll(ctx context.Context, interval time.Duration) bool {
 	}
 }
 
-func (h *subscriptionHub) poll(ctx context.Context) error {
+func (h *subscriptionHub) poll(ctx context.Context) (bool, error) {
 	purchaseCursors, draftCursors := h.subscriptionCursors()
+	active := false
 	if len(purchaseCursors) > 0 {
-		if err := h.pollPurchases(ctx, purchaseCursors); err != nil {
-			return err
+		found, err := h.pollPurchases(ctx, purchaseCursors)
+		if err != nil {
+			return false, err
 		}
+		active = active || found
 	}
 	if len(draftCursors) > 0 {
-		if err := h.pollDrafts(ctx, draftCursors); err != nil {
-			return err
+		found, err := h.pollDrafts(ctx, draftCursors)
+		if err != nil {
+			return false, err
 		}
+		active = active || found
 	}
-	return nil
+	return active, nil
 }
 
 func (h *subscriptionHub) subscriptionCursors() ([]purchaseSubscriptionCursor, []sharedDraftSubscriptionCursor) {
@@ -208,7 +227,7 @@ func (h *subscriptionHub) subscriptionCursors() ([]purchaseSubscriptionCursor, [
 	return purchaseCursors, draftCursors
 }
 
-func (h *subscriptionHub) pollPurchases(ctx context.Context, cursors []purchaseSubscriptionCursor) error {
+func (h *subscriptionHub) pollPurchases(ctx context.Context, cursors []purchaseSubscriptionCursor) (bool, error) {
 	conditions := make([]bob.Expression, 0, len(cursors))
 	for _, cursor := range cursors {
 		conditions = append(conditions, psql.And(
@@ -222,7 +241,7 @@ func (h *subscriptionHub) pollPurchases(ctx context.Context, cursors []purchaseS
 		sm.Limit(100),
 	).All(ctx, bobpgx.NewPool(h.db))
 	if err != nil {
-		return err
+		return false, err
 	}
 	blocked := make(map[uint64]bool)
 	for _, event := range events {
@@ -241,11 +260,11 @@ func (h *subscriptionHub) pollPurchases(ctx context.Context, cursors []purchaseS
 			continue
 		}
 		if err != nil {
-			return err
+			return false, err
 		}
 		h.publishPurchaseChange(event.HouseholdID, event.Cursor, change, blocked)
 	}
-	return nil
+	return len(events) > 0, nil
 }
 
 func (h *subscriptionHub) blockFullPurchaseWatches(householdID uuid.UUID, cursor int64, blocked map[uint64]bool) {
@@ -298,7 +317,7 @@ func (h *subscriptionHub) advancePurchaseCursors(householdID uuid.UUID, cursor i
 	}
 }
 
-func (h *subscriptionHub) pollDrafts(ctx context.Context, cursors []sharedDraftSubscriptionCursor) error {
+func (h *subscriptionHub) pollDrafts(ctx context.Context, cursors []sharedDraftSubscriptionCursor) (bool, error) {
 	conditions := make([]bob.Expression, 0, len(cursors))
 	for _, cursor := range cursors {
 		conditions = append(conditions, psql.And(
@@ -310,13 +329,13 @@ func (h *subscriptionHub) pollDrafts(ctx context.Context, cursors []sharedDraftS
 		sm.Where(psql.Or(conditions...)),
 	).All(ctx, bobpgx.NewPool(h.db))
 	if err != nil {
-		return err
+		return false, err
 	}
 	blocked := make(map[uint64]bool)
 	for _, draft := range drafts {
 		h.publishDraftChange(draft.ID, draft.Revision, blocked)
 	}
-	return nil
+	return len(drafts) > 0, nil
 }
 
 func (h *subscriptionHub) publishDraftChange(draftID uuid.UUID, revision int64, blocked map[uint64]bool) {
