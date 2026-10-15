@@ -1939,7 +1939,7 @@ dependencies = [
  "diesel-async",
  "horse-postgres",
  "openidconnect",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "subtle",
  "url",
  "uuid",
@@ -1973,7 +1973,7 @@ dependencies = [
  "household-workflows",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "tracing",
  "uuid",
 ]
@@ -2008,7 +2008,7 @@ dependencies = [
  "household-workflows",
  "policy-workflows",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "uuid",
 ]
 
@@ -2043,7 +2043,7 @@ dependencies = [
  "reqwest 0.13.5",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.1",
  "tokio",
  "tracing",
 ]
