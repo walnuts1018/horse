@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bookkeeping_workflows::{
-    MemberFundingBasis, MemberId, MemberWeight, PurchaseStatus, SettlementPolicy, Side,
+    MemberFundingBasis, MemberId, MemberWeight, PostingTarget, PurchaseStatus, SettlementPolicy, Side,
     bulk_delete_items::{
         BulkDeleteItemCommand, BulkDeleteItemState, BulkDeleteItemTarget, BulkDeleteItemsError,
         BulkDeletePurchaseState, decide_bulk_delete_items,
@@ -495,39 +495,35 @@ async fn sync_posted_accounting(
     .execute(&mut *conn)
     .await?;
     for line in decision.journal_lines() {
+        let (account_id, pool_id) = match line.target() {
+            PostingTarget::Account(id) => (Some(parse_uuid(id.as_str(), "account_id")?), None),
+            PostingTarget::Pool(id) => (None, Some(parse_uuid(id.as_str(), "pool_id")?)),
+        };
         diesel::insert_into(public::journal_entries::table)
             .values((
                 public::journal_entries::dsl::household_id.eq(household_id),
                 public::journal_entries::dsl::journal_id.eq(journal_id),
-                public::journal_entries::dsl::line_no.eq(i32::try_from(line.line_no).map_err(
+                public::journal_entries::dsl::line_no.eq(i32::try_from(line.line_no()).map_err(
                     |_| {
                         BulkDeletePurchaseItemsPersistenceError::NumericOutOfRange(
                             "journal_line_no",
                         )
                     },
                 )?),
-                public::journal_entries::dsl::account_id.eq(line
-                    .account_id
-                    .as_ref()
-                    .map(|id| parse_uuid(id.as_str(), "account_id"))
-                    .transpose()?),
-                public::journal_entries::dsl::pool_id.eq(line
-                    .pool_id
-                    .as_ref()
-                    .map(|id| parse_uuid(id.as_str(), "pool_id"))
-                    .transpose()?),
+                public::journal_entries::dsl::account_id.eq(account_id),
+                public::journal_entries::dsl::pool_id.eq(pool_id),
                 public::journal_entries::dsl::member_id.eq::<Option<Uuid>>(None),
-                public::journal_entries::dsl::debit_yen.eq(if line.side == Side::Debit {
-                    line.amount.value()
+                public::journal_entries::dsl::debit_yen.eq(if line.side() == Side::Debit {
+                    line.amount().value()
                 } else {
                     0
                 }),
-                public::journal_entries::dsl::credit_yen.eq(if line.side == Side::Credit {
-                    line.amount.value()
+                public::journal_entries::dsl::credit_yen.eq(if line.side() == Side::Credit {
+                    line.amount().value()
                 } else {
                     0
                 }),
-                public::journal_entries::dsl::memo.eq(line.memo),
+                public::journal_entries::dsl::memo.eq(line.memo()),
             ))
             .execute(&mut *conn)
             .await?;
@@ -633,8 +629,8 @@ async fn sync_posted_accounting(
     let amount = decision
         .journal_lines()
         .iter()
-        .filter(|line| line.side == Side::Debit)
-        .try_fold(0_i64, |total, line| total.checked_add(line.amount.value()))
+        .filter(|line| line.side() == Side::Debit)
+        .try_fold(0_i64, |total, line| total.checked_add(line.amount().value()))
         .ok_or(BulkDeletePurchaseItemsPersistenceError::NumericOutOfRange(
             "ledger_amount",
         ))?;

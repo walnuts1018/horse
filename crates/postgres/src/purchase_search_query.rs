@@ -188,8 +188,8 @@ pub async fn purchases(
             if let Some(pattern) = &search {
                 items = items.filter(
                     purchases::merchant
-                        .ilike(pattern)
-                        .or(purchase_items::name.ilike(pattern)),
+                        .ilike(pattern.clone())
+                        .or(purchase_items::name.ilike(pattern.clone())),
                 );
             }
         }
@@ -203,10 +203,10 @@ pub async fn purchases(
     if let Some(pattern) = &search {
         if !item_target {
             query = query.filter(
-                purchases::merchant.ilike(pattern).or(exists(
+                purchases::merchant.ilike(pattern.clone()).or(exists(
                     purchase_items::table
                         .filter(purchase_items::purchase_id.eq(purchases::id))
-                        .filter(purchase_items::name.ilike(pattern)),
+                        .filter(purchase_items::name.ilike(pattern.clone())),
                 )),
             );
         }

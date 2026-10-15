@@ -6,7 +6,7 @@ use bookkeeping_workflows::update_purchase_item::{
     decide_update_purchase_item,
 };
 use bookkeeping_workflows::{
-    MemberFundingBasis, MemberId, MemberWeight, PurchaseStatus, SettlementPolicy,
+    MemberFundingBasis, MemberId, MemberWeight, PostingTarget, PurchaseStatus, SettlementPolicy,
     decide_post_purchase,
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
@@ -966,41 +966,37 @@ pub(crate) async fn sync_posted_accounting(
     .execute(&mut *conn)
     .await?;
     for line in decision.journal_lines() {
-        let line_no = i32::try_from(line.line_no).map_err(|_| {
+        let line_no = i32::try_from(line.line_no()).map_err(|_| {
             UpdatePurchaseItemPersistenceError::NumericOutOfRange("journal_line_no")
         })?;
-        let amount = line.amount.value();
+        let amount = line.amount().value();
+        let (account_id, pool_id) = match line.target() {
+            PostingTarget::Account(id) => (Some(parse_uuid(id.as_str(), "account_id")?), None),
+            PostingTarget::Pool(id) => (None, Some(parse_uuid(id.as_str(), "pool_id")?)),
+        };
         diesel::insert_into(public::journal_entries::table)
             .values((
                 public::journal_entries::household_id.eq(household_id),
                 public::journal_entries::journal_id.eq(journal_id),
                 public::journal_entries::line_no.eq(line_no),
-                public::journal_entries::account_id.eq(line
-                    .account_id
-                    .as_ref()
-                    .map(|id| parse_uuid(id.as_str(), "account_id"))
-                    .transpose()?),
-                public::journal_entries::pool_id.eq(line
-                    .pool_id
-                    .as_ref()
-                    .map(|id| parse_uuid(id.as_str(), "pool_id"))
-                    .transpose()?),
+                public::journal_entries::account_id.eq(account_id),
+                public::journal_entries::pool_id.eq(pool_id),
                 public::journal_entries::member_id.eq::<Option<Uuid>>(None),
                 public::journal_entries::debit_yen.eq(
-                    if line.side == bookkeeping_workflows::Side::Debit {
+                    if line.side() == bookkeeping_workflows::Side::Debit {
                         amount
                     } else {
                         0
                     },
                 ),
                 public::journal_entries::credit_yen.eq(
-                    if line.side == bookkeeping_workflows::Side::Credit {
+                    if line.side() == bookkeeping_workflows::Side::Credit {
                         amount
                     } else {
                         0
                     },
                 ),
-                public::journal_entries::memo.eq(line.memo),
+                public::journal_entries::memo.eq(line.memo()),
             ))
             .execute(&mut *conn)
             .await?;
@@ -1116,8 +1112,8 @@ pub(crate) async fn sync_posted_accounting(
     let amount = decision
         .journal_lines()
         .iter()
-        .filter(|line| line.side == bookkeeping_workflows::Side::Debit)
-        .try_fold(0_i64, |sum, line| sum.checked_add(line.amount.value()))
+        .filter(|line| line.side() == bookkeeping_workflows::Side::Debit)
+        .try_fold(0_i64, |sum, line| sum.checked_add(line.amount().value()))
         .ok_or(UpdatePurchaseItemPersistenceError::NumericOutOfRange(
             "ledger_amount",
         ))?;

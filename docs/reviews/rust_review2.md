@@ -399,7 +399,7 @@ Load / Decide / Persist の責任・型・原子性を統一
 
 状態遷移を型として再構成
 
-Purchase・AccountingPeriod・ExtractionJob・Transfer の不正な組み合わせを排除
+Purchase と AccountingPeriod の状態軸を分け、不正な状態の組み合わせを排除
 
 04
 
@@ -442,6 +442,6 @@ GraphQL・DB・非同期配送で別々の公開契約を定義
 
 ただし、DMMF にできるだけ厳密に従うという目標であれば、現状の `*-workflows` にある業務型を本当のドメインモデルへ再編し、Workflow を単なる `decide_*` 関数の集合から、明示的に合成された業務操作へ引き上げることが最大の改善だと思います。
 
-具体的には、`Purchase`、`Journal`、`AccountingPeriod`、`Transfer`、`ExtractionJob` のモデルをまず完成させ、それらが有効な状態・遷移しか持たないようにする。そのうえで DB と GraphQL を境界へ置く、という順序が最も理想に近いです。
+具体的には、`Purchase`、`Journal`、`AccountingPeriod` のモデルを完成させ、それらが有効な状態・遷移しか持たないようにする。そのうえで DB と GraphQL を境界へ置く、という順序が最も理想に近いです。
 
 Diesel、async-graphql、Tokio、Rust Workspace といった現在の技術選択そのものを変える必要性は、DMMF からは見いだせません。変更すべき中心はライブラリではなく、ドメインの型、責務の配置、Workflow の合成、そして境界の契約です。

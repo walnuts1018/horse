@@ -1104,7 +1104,6 @@ async fn load_statement_refund_entry(
         .and_then(|(job_id, result)| result.map(|result| (job_id, result)))
         .ok_or(CorrectPurchasePersistenceError::StatementExtractionUnavailable)?;
     let statements = result
-        .1
         .get("statements")
         .and_then(serde_json::Value::as_array)
         .ok_or(CorrectPurchasePersistenceError::StatementExtractionUnavailable)?;
@@ -1128,7 +1127,7 @@ async fn load_statement_refund_entry(
         return Ok(LoadedStatementRefund {
             observation: statement_observation(statement, source_reference)?,
             evidence: serde_json::json!({
-                "jobId": result.0,
+                "jobId": job_id,
                 "statement": statement,
                 "sourceHash": source_kind.1,
             }),

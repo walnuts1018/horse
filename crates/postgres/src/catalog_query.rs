@@ -615,15 +615,15 @@ pub async fn tags(
     if let Some(cursor) = after {
         query = query.filter(
             t::name
-                .gt(&cursor.sort_key)
-                .or(t::name.eq(&cursor.sort_key).and(t::id.gt(cursor.id))),
+                .gt(cursor.sort_key.clone())
+                .or(t::name.eq(cursor.sort_key).and(t::id.gt(cursor.id))),
         );
     }
     if let Some(cursor) = before {
         query = query.filter(
             t::name
-                .lt(&cursor.sort_key)
-                .or(t::name.eq(&cursor.sort_key).and(t::id.lt(cursor.id))),
+                .lt(cursor.sort_key.clone())
+                .or(t::name.eq(cursor.sort_key).and(t::id.lt(cursor.id))),
         );
     }
     let query = if backward {
