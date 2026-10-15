@@ -427,7 +427,7 @@ pub async fn household_invitations(
     })
 }
 
-fn map_household(value: postgres_household::HouseholdReadModel) -> Result<Household> {
+pub(crate) fn map_household(value: postgres_household::HouseholdReadModel) -> Result<Household> {
     use crate::member_pool::{
         MemberProjection, MemberRole, PoolFundingShareProjection, PoolKind, PoolProjection,
         SharedPoolSettlementPolicy,
@@ -554,6 +554,21 @@ fn map_household(value: postgres_household::HouseholdReadModel) -> Result<Househ
         created_at: value.created_at.into(),
         updated_at: value.updated_at.into(),
     })
+}
+
+pub(crate) async fn load_household_graphql(
+    pool: &PgPool,
+    actor_id: Uuid,
+    household_id: Uuid,
+) -> Result<Household> {
+    postgres_household::load_household(pool, actor_id, household_id)
+        .await
+        .map_err(|error| {
+            create_household_error_code(&error)
+                .map(|code| async_graphql::Error::new(error_message(code)))
+                .unwrap_or_else(|| crate::internal_error(error))
+        })
+        .and_then(map_household)
 }
 
 fn map_invitation(

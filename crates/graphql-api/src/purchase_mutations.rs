@@ -504,6 +504,24 @@ pub async fn create_and_post_purchase(
     .await
     {
         Ok(value) => value,
+        Err(purchase_create_and_post::CreateAndPostPurchaseError::Create(error)) => {
+            return match create_user_error(&error) {
+                Some(error) => Ok(error.into()),
+                None => Err(crate::internal_error(error)),
+            };
+        }
+        Err(purchase_create_and_post::CreateAndPostPurchaseError::Load(error)) => {
+            return match post_load_user_error(&error) {
+                Some(error) => Ok(error.into()),
+                None => Err(crate::internal_error(error)),
+            };
+        }
+        Err(purchase_create_and_post::CreateAndPostPurchaseError::Post(error)) => {
+            return match post_user_error(&error) {
+                Some(error) => Ok(error.into()),
+                None => Err(crate::internal_error(error)),
+            };
+        }
         Err(error) => return Err(crate::internal_error(error)),
     };
     Ok(CreateAndPostPurchaseSuccess {
@@ -542,6 +560,27 @@ pub async fn post_purchase(
         Err(error) => return Err(crate::internal_error(error)),
     }
     let fingerprint = post_fingerprint(&purchase_id.to_string(), input.expected_revision)?;
+    match postgres_post::find_idempotent_post_purchase(
+        ctx.data::<PgPool>()?,
+        household_id,
+        &input.idempotency_key,
+        fingerprint,
+    )
+    .await
+    {
+        Ok(Some(value)) => {
+            return Ok(PostPurchaseSuccess {
+                result: purchase_result(ctx.data::<PgPool>()?, household_id, &value.purchase_id)
+                    .await?,
+            }
+            .into());
+        }
+        Ok(None) => {}
+        Err(error) => match post_user_error(&error) {
+            Some(error) => return Ok(error.into()),
+            None => return Err(crate::internal_error(error)),
+        },
+    }
     let mut conn = ctx
         .data::<PgPool>()?
         .get()

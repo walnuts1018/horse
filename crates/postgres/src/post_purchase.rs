@@ -84,7 +84,11 @@ pub async fn find_idempotent_post_purchase(
         .filter(idem::household_id.eq(household_id))
         .filter(idem::operation.eq(OPERATION))
         .filter(idem::key.eq(idempotency_key))
-        .select((idem::request_fingerprint, idem::resource_kind, idem::resource_id))
+        .select((
+            idem::request_fingerprint,
+            idem::resource_kind,
+            idem::resource_id,
+        ))
         .first::<(Vec<u8>, String, Uuid)>(&mut *conn)
         .await
         .optional()?;

@@ -30,6 +30,16 @@ pub struct PurchaseCommandResult {
 }
 
 #[derive(Debug, Clone)]
+pub struct PurchaseEditContext {
+    pub revision: i64,
+    pub status: String,
+    pub occurred_at: DateTime<Utc>,
+    pub date_precision: String,
+    pub merchant: String,
+    pub field_revisions: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
 pub struct PurchaseItemCommandResult {
     pub id: Uuid,
     pub name: String,
@@ -347,7 +357,7 @@ pub async fn load_purchase_command_result(
         created_at: base.6,
         updated_at: base.7,
         has_evidence,
-        source_kinds: evidence_rows,
+        source_kinds,
         total_yen,
         correction_amount_yen,
         correction_count: i64::try_from(correction_rows.len())
@@ -371,6 +381,92 @@ pub async fn load_purchase_household_id(
     purchases::purchases
         .filter(purchases::id.eq(purchase_id))
         .select(purchases::household_id)
+        .first::<Uuid>(&mut *conn)
+        .await
+        .optional()
+        .map_err(PurchaseCommandResultError::Database)
+}
+
+pub async fn load_purchase_edit_context(
+    pool: &PgPool,
+    household_id: Uuid,
+    purchase_id: Uuid,
+) -> Result<Option<PurchaseEditContext>, PurchaseCommandResultError> {
+    use public::purchases::dsl as purchases;
+
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| PurchaseCommandResultError::Pool(error.to_string()))?;
+    purchases::purchases
+        .filter(purchases::household_id.eq(household_id))
+        .filter(purchases::id.eq(purchase_id))
+        .select((
+            purchases::revision,
+            purchases::status,
+            purchases::occurred_at,
+            purchases::date_precision,
+            purchases::merchant,
+            purchases::field_revisions,
+        ))
+        .first::<(
+            i64,
+            String,
+            DateTime<Utc>,
+            String,
+            String,
+            serde_json::Value,
+        )>(&mut *conn)
+        .await
+        .optional()
+        .map(|row| {
+            row.map(
+                |(revision, status, occurred_at, date_precision, merchant, field_revisions)| {
+                    PurchaseEditContext {
+                        revision,
+                        status,
+                        occurred_at,
+                        date_precision,
+                        merchant,
+                        field_revisions,
+                    }
+                },
+            )
+        })
+        .map_err(PurchaseCommandResultError::Database)
+}
+
+pub async fn load_purchase_item_household_ids(
+    pool: &PgPool,
+    item_ids: &[Uuid],
+) -> Result<Vec<(Uuid, Uuid)>, PurchaseCommandResultError> {
+    use public::purchase_items::dsl as items;
+
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| PurchaseCommandResultError::Pool(error.to_string()))?;
+    items::purchase_items
+        .filter(items::id.eq_any(item_ids))
+        .select((items::id, items::household_id))
+        .load::<(Uuid, Uuid)>(&mut *conn)
+        .await
+        .map_err(PurchaseCommandResultError::Database)
+}
+
+pub async fn load_purchase_item_household_id(
+    pool: &PgPool,
+    item_id: Uuid,
+) -> Result<Option<Uuid>, PurchaseCommandResultError> {
+    use public::purchase_items::dsl as items;
+
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| PurchaseCommandResultError::Pool(error.to_string()))?;
+    items::purchase_items
+        .filter(items::id.eq(item_id))
+        .select(items::household_id)
         .first::<Uuid>(&mut *conn)
         .await
         .optional()

@@ -116,6 +116,8 @@ pub enum Node {
     ProductConcept(crate::catalog_mutations::ProductConcept),
     ProductVariant(crate::catalog_mutations::ProductVariant),
     ProductAlias(crate::catalog_mutations::ProductAlias),
+    Budget(crate::policy_mutations::BudgetObject),
+    RecurringExpense(crate::policy_mutations::RecurringExpenseObject),
     Purchase(crate::purchase_mutations::PurchaseObject),
     PurchaseItem(crate::purchase_mutations::PurchaseItem),
     PurchaseCorrection(crate::purchase_mutations::PurchaseCorrection),

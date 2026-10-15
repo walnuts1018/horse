@@ -19,7 +19,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::{Actor, DateTime, Long, MutationErrorCode, internal_error};
+use crate::{DateTime, Long, MutationErrorCode, internal_error};
 
 #[derive(Clone, Copy, Debug, Enum, Eq, PartialEq)]
 pub enum TransferInputKind {
@@ -168,6 +168,29 @@ pub async fn record_transfer(
             Err(error) => return Err(internal_error(error)),
         }
     }
+    let replay_input = postgres_transfer::FindRecordTransferReplay {
+        household_id: parsed.household_id.to_string(),
+        actor_id: actor.0.to_string(),
+        from_member_id: parsed.from_member_id.to_string(),
+        to_member_id: parsed.to_member_id.to_string(),
+        idempotency_key: parsed.idempotency_key.clone(),
+        request_fingerprint: parsed.fingerprint,
+        source_document_id: parsed.source_document_id.map(|id| id.to_string()),
+        source_reference: parsed.source_reference.clone(),
+        source_account_id: parsed.source_account_id.map(|id| id.to_string()),
+    };
+    let replay =
+        match postgres_transfer::find_record_transfer_replay(ctx.data::<PgPool>()?, &replay_input)
+            .await
+        {
+            Ok(value) => value,
+            Err(error) => return transfer_persistence_error(error),
+        };
+    if let Some(ledger_entry_id) = replay {
+        let entry =
+            load_ledger_entry(ctx.data::<PgPool>()?, parsed.household_id, &ledger_entry_id).await?;
+        return Ok(RecordTransferSuccess { result: entry }.into());
+    }
     let command_context = match postgres_context::load_transfer_command_context(
         ctx.data::<PgPool>()?,
         parsed.household_id,
@@ -235,7 +258,7 @@ pub async fn record_repayment(
     input: RecordRepaymentInput,
 ) -> Result<RecordRepaymentResult> {
     let actor = crate::actor(ctx)?;
-    let parsed = match parse_repayment_input(actor, input) {
+    let parsed = match parse_repayment_input(input) {
         Ok(value) => value,
         Err(error) => return Ok(error.into()),
     };
@@ -245,6 +268,31 @@ pub async fn record_repayment(
             Ok(false) => return Ok(not_found_repayment_error().into()),
             Err(error) => return Err(internal_error(error)),
         }
+    }
+    let replay_input = postgres_repayment::FindRecordRepaymentReplay {
+        household_id: parsed.household_id.to_string(),
+        actor_id: actor.0.to_string(),
+        from_member_id: parsed.from_member_id.to_string(),
+        to_member_id: parsed.to_member_id.to_string(),
+        idempotency_key: parsed.idempotency_key.clone(),
+        request_fingerprint: parsed.fingerprint,
+        source_document_id: parsed.source_document_id.map(|id| id.to_string()),
+        source_reference: parsed.source_reference.clone(),
+        source_account_id: parsed.source_account_id.map(|id| id.to_string()),
+    };
+    let replay = match postgres_repayment::find_record_repayment_replay(
+        ctx.data::<PgPool>()?,
+        &replay_input,
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(error) => return repayment_persistence_error(error),
+    };
+    if let Some(ledger_entry_id) = replay {
+        let entry =
+            load_ledger_entry(ctx.data::<PgPool>()?, parsed.household_id, &ledger_entry_id).await?;
+        return Ok(RecordRepaymentSuccess { result: entry }.into());
     }
     let command_context = match postgres_context::load_repayment_command_context(
         ctx.data::<PgPool>()?,
@@ -414,7 +462,6 @@ fn parse_transfer_input(
 }
 
 fn parse_repayment_input(
-    _actor: Actor,
     input: RecordRepaymentInput,
 ) -> std::result::Result<ParsedRepaymentInput, RecordRepaymentUserError> {
     let household_id =
@@ -630,9 +677,7 @@ fn transfer_persistence_error(
         | E::LoanNotFound
         | E::SourceDocumentNotFound
         | E::StatementReferenceNotFound => Ok(not_found_transfer_error().into()),
-        E::StatementAlreadyConfirmed => {
-            Ok(conflict_transfer_error().into())
-        }
+        E::StatementAlreadyConfirmed => Ok(conflict_transfer_error().into()),
         E::InvalidUuid(_)
         | E::InvalidIdempotencyKey
         | E::NumericOutOfRange(_)
@@ -656,9 +701,11 @@ fn repayment_persistence_error(
     match error {
         E::IdempotencyConflict | E::AccountingPeriodClosed => Ok(conflict_repayment_error().into()),
         E::StatementAlreadyConfirmed => Ok(conflict_repayment_error().into()),
-        E::LoanNotFound | E::SourceDocumentNotFound | E::StatementReferenceNotFound => {
-            Ok(not_found_repayment_error().into())
-        }
+        E::HouseholdNotFound
+        | E::LoanNotFound
+        | E::MemberNotFound
+        | E::SourceDocumentNotFound
+        | E::StatementReferenceNotFound => Ok(not_found_repayment_error().into()),
         E::InvalidUuid(_)
         | E::InvalidPeriod
         | E::InvalidIdempotencyKey

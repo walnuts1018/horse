@@ -9,19 +9,26 @@ use uuid::Uuid;
 
 pub mod account_balances;
 pub mod account_creation;
+pub mod account_history;
+pub mod allocation_rule_query;
 pub mod account_mutations;
 pub mod card_last4;
 pub mod catalog_mutations;
 pub mod category;
+pub mod catalog_queries;
 pub mod funding;
 pub mod financial_mutations;
 pub mod household_lifecycle;
 pub mod household_membership;
+pub mod household_query;
 pub mod ledger_entry;
 pub mod member_pool;
 pub mod pagination;
 pub mod policy_mutations;
+pub mod pool_mutations;
+pub mod purchase_edit_mutations;
 pub mod purchase_mutations;
+pub mod viewer_query;
 pub mod scalars;
 pub use scalars::{DateTime, Long};
 
@@ -49,12 +56,136 @@ pub struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
+    async fn viewer(&self, ctx: &Context<'_>) -> Result<viewer_query::Viewer> {
+        viewer_query::graphql_viewer(ctx).await
+    }
+
+    async fn tags(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        #[graphql(default = false)] include_archived: bool,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<catalog_queries::TagConnection> {
+        catalog_queries::graphql_tags(
+            ctx,
+            household_id,
+            include_archived,
+            after,
+            before,
+            first,
+            last,
+        )
+        .await
+    }
+
+    async fn allocation_rules(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<allocation_rule_query::AllocationRuleConnection> {
+        allocation_rule_query::graphql_allocation_rules(
+            ctx,
+            household_id,
+            after,
+            before,
+            first,
+            last,
+        )
+        .await
+    }
+
+    async fn product_suggestions(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        query: String,
+        merchant: Option<String>,
+        #[graphql(default = 8)] first: i32,
+    ) -> Result<Vec<catalog_queries::ProductSuggestion>> {
+        catalog_queries::graphql_product_suggestions(
+            ctx,
+            household_id,
+            query,
+            merchant,
+            first,
+        )
+        .await
+    }
+
+    async fn product_catalog(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<catalog_queries::ProductConceptConnection> {
+        catalog_queries::graphql_product_catalog(
+            ctx,
+            household_id,
+            after,
+            before,
+            first,
+            last,
+        )
+        .await
+    }
+
     async fn account_balances(
         &self,
         ctx: &Context<'_>,
         household_id: ID,
     ) -> Result<Vec<account_balances::AccountBalance>> {
         account_balances::resolve_account_balances(ctx, household_id).await
+    }
+
+    async fn account_movements(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<account_history::AccountMovementConnection> {
+        account_history::graphql_account_movements(
+            ctx,
+            household_id,
+            after,
+            before,
+            first,
+            last,
+        )
+        .await
+    }
+
+    async fn account_incomes(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<account_history::AccountIncomeConnection> {
+        account_history::graphql_account_incomes(
+            ctx,
+            household_id,
+            after,
+            before,
+            first,
+            last,
+        )
+        .await
     }
 
     async fn household_mail_forwarding(
@@ -114,6 +245,41 @@ impl QueryRoot {
             last,
         )
         .await
+    }
+
+    async fn household_invitations(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<household_lifecycle::HouseholdInvitationConnection> {
+        household_lifecycle::household_invitations(
+            ctx,
+            household_id,
+            after,
+            before,
+            first,
+            last,
+        )
+        .await
+    }
+
+    async fn households(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Vec<household_lifecycle::Household>> {
+        household_query::graphql_households(ctx).await
+    }
+
+    async fn household(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+    ) -> Result<Option<household_lifecycle::Household>> {
+        household_query::graphql_household(ctx, id).await
     }
 }
 
@@ -380,6 +546,150 @@ impl MutationRoot {
     ) -> Result<policy_mutations::MatchRecurringExpenseResult> {
         policy_mutations::match_recurring_expense(ctx, input).await
     }
+
+    async fn create_household(
+        &self,
+        ctx: &Context<'_>,
+        input: household_lifecycle::CreateHouseholdInput,
+    ) -> Result<household_lifecycle::CreateHouseholdResult> {
+        household_lifecycle::create_household(ctx, input).await
+    }
+
+    async fn create_household_invitation(
+        &self,
+        ctx: &Context<'_>,
+        input: household_lifecycle::CreateHouseholdInvitationInput,
+    ) -> Result<household_lifecycle::CreateHouseholdInvitationResult> {
+        household_lifecycle::create_household_invitation(ctx, input).await
+    }
+
+    async fn accept_household_invitation(
+        &self,
+        ctx: &Context<'_>,
+        input: household_lifecycle::AcceptHouseholdInvitationInput,
+    ) -> Result<household_lifecycle::AcceptHouseholdInvitationResult> {
+        household_lifecycle::accept_household_invitation(ctx, input).await
+    }
+
+    async fn revoke_household_invitation(
+        &self,
+        ctx: &Context<'_>,
+        input: household_lifecycle::RevokeHouseholdInvitationInput,
+    ) -> Result<household_lifecycle::RevokeHouseholdInvitationResult> {
+        household_lifecycle::revoke_household_invitation(ctx, input).await
+    }
+
+    async fn record_transfer(
+        &self,
+        ctx: &Context<'_>,
+        input: financial_mutations::RecordTransferInput,
+    ) -> Result<financial_mutations::RecordTransferResult> {
+        financial_mutations::record_transfer(ctx, input).await
+    }
+
+    async fn record_repayment(
+        &self,
+        ctx: &Context<'_>,
+        input: financial_mutations::RecordRepaymentInput,
+    ) -> Result<financial_mutations::RecordRepaymentResult> {
+        financial_mutations::record_repayment(ctx, input).await
+    }
+
+    async fn create_purchase(
+        &self,
+        ctx: &Context<'_>,
+        input: purchase_mutations::CreatePurchaseInput,
+    ) -> Result<purchase_mutations::CreatePurchaseResult> {
+        purchase_mutations::create_purchase(ctx, input).await
+    }
+
+    async fn create_and_post_purchase(
+        &self,
+        ctx: &Context<'_>,
+        input: purchase_mutations::CreatePurchaseInput,
+    ) -> Result<purchase_mutations::CreateAndPostPurchaseResult> {
+        purchase_mutations::create_and_post_purchase(ctx, input).await
+    }
+
+    async fn post_purchase(
+        &self,
+        ctx: &Context<'_>,
+        input: purchase_mutations::PostPurchaseInput,
+    ) -> Result<purchase_mutations::PostPurchaseResult> {
+        purchase_mutations::post_purchase(ctx, input).await
+    }
+
+    async fn update_purchase(
+        &self,
+        ctx: &Context<'_>,
+        input: purchase_edit_mutations::UpdatePurchaseInput,
+    ) -> Result<purchase_edit_mutations::UpdatePurchaseResult> {
+        purchase_edit_mutations::update_purchase(ctx, input).await
+    }
+
+    async fn update_purchase_item(
+        &self,
+        ctx: &Context<'_>,
+        input: purchase_edit_mutations::UpdatePurchaseItemInput,
+    ) -> Result<purchase_edit_mutations::UpdatePurchaseItemResult> {
+        purchase_edit_mutations::update_purchase_item(ctx, input).await
+    }
+
+    async fn bulk_update_purchase_items(
+        &self,
+        ctx: &Context<'_>,
+        input: purchase_edit_mutations::BulkUpdatePurchaseItemsInput,
+    ) -> Result<purchase_edit_mutations::BulkUpdatePurchaseItemsResult> {
+        purchase_edit_mutations::bulk_update_purchase_items(ctx, input).await
+    }
+
+    async fn bulk_delete_purchase_items(
+        &self,
+        ctx: &Context<'_>,
+        input: purchase_edit_mutations::BulkDeletePurchaseItemsInput,
+    ) -> Result<purchase_edit_mutations::BulkDeletePurchaseItemsResult> {
+        purchase_edit_mutations::bulk_delete_purchase_items(ctx, input).await
+    }
+
+    async fn create_pool(
+        &self,
+        ctx: &Context<'_>,
+        input: pool_mutations::CreatePoolInput,
+    ) -> Result<pool_mutations::CreatePoolResult> {
+        pool_mutations::create_pool(ctx, input).await
+    }
+
+    async fn set_pool_funding_rule(
+        &self,
+        ctx: &Context<'_>,
+        input: pool_mutations::SetPoolFundingRuleInput,
+    ) -> Result<pool_mutations::SetPoolFundingRuleResult> {
+        pool_mutations::set_pool_funding_rule(ctx, input).await
+    }
+
+    async fn set_default_allocation(
+        &self,
+        ctx: &Context<'_>,
+        input: pool_mutations::SetDefaultAllocationInput,
+    ) -> Result<pool_mutations::SetDefaultAllocationResult> {
+        pool_mutations::set_default_allocation(ctx, input).await
+    }
+
+    async fn set_allocation_rule(
+        &self,
+        ctx: &Context<'_>,
+        input: pool_mutations::SetAllocationRuleInput,
+    ) -> Result<pool_mutations::SetAllocationRuleResult> {
+        pool_mutations::set_allocation_rule(ctx, input).await
+    }
+
+    async fn set_funding_schedule(
+        &self,
+        ctx: &Context<'_>,
+        input: pool_mutations::SetFundingScheduleInput,
+    ) -> Result<pool_mutations::SetFundingScheduleResult> {
+        pool_mutations::set_funding_schedule(ctx, input).await
+    }
 }
 
 async fn issue_or_rotate(
@@ -558,6 +868,24 @@ pub enum MutationError {
     UpdateRecurringExpenseUserError(policy_mutations::UpdateRecurringExpenseUserError),
     ArchiveRecurringExpenseUserError(policy_mutations::ArchiveRecurringExpenseUserError),
     MatchRecurringExpenseUserError(policy_mutations::MatchRecurringExpenseUserError),
+    CreateHouseholdUserError(household_lifecycle::CreateHouseholdUserError),
+    CreateHouseholdInvitationUserError(household_lifecycle::CreateHouseholdInvitationUserError),
+    AcceptHouseholdInvitationUserError(household_lifecycle::AcceptHouseholdInvitationUserError),
+    RevokeHouseholdInvitationUserError(household_lifecycle::RevokeHouseholdInvitationUserError),
+    RecordTransferUserError(financial_mutations::RecordTransferUserError),
+    RecordRepaymentUserError(financial_mutations::RecordRepaymentUserError),
+    CreatePurchaseUserError(purchase_mutations::CreatePurchaseUserError),
+    CreateAndPostPurchaseUserError(purchase_mutations::CreateAndPostPurchaseUserError),
+    PostPurchaseUserError(purchase_mutations::PostPurchaseUserError),
+    UpdatePurchaseUserError(purchase_edit_mutations::UpdatePurchaseUserError),
+    UpdatePurchaseItemUserError(purchase_edit_mutations::UpdatePurchaseItemUserError),
+    BulkUpdatePurchaseItemsUserError(purchase_edit_mutations::BulkUpdatePurchaseItemsUserError),
+    BulkDeletePurchaseItemsUserError(purchase_edit_mutations::BulkDeletePurchaseItemsUserError),
+    CreatePoolUserError(pool_mutations::CreatePoolUserError),
+    SetPoolFundingRuleUserError(pool_mutations::SetPoolFundingRuleUserError),
+    SetDefaultAllocationUserError(pool_mutations::SetDefaultAllocationUserError),
+    SetAllocationRuleUserError(pool_mutations::SetAllocationRuleUserError),
+    SetFundingScheduleUserError(pool_mutations::SetFundingScheduleUserError),
 }
 
 #[derive(Clone, Debug, SimpleObject)]

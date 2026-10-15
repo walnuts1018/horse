@@ -30,6 +30,19 @@ pub struct PersistRecordTransfer {
     pub source_account_id: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct FindRecordTransferReplay {
+    pub household_id: String,
+    pub actor_id: String,
+    pub from_member_id: String,
+    pub to_member_id: String,
+    pub idempotency_key: String,
+    pub request_fingerprint: [u8; 32],
+    pub source_document_id: Option<String>,
+    pub source_reference: Option<String>,
+    pub source_account_id: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedTransfer {
     pub transfer_id: String,
@@ -325,24 +338,6 @@ pub async fn persist_record_transfer(
                 ))
                 .execute(&mut *conn)
                 .await?;
-            for adjustment in &decision.settlement_adjustments {
-                diesel::insert_into(public::settlement_adjustments::table)
-                    .values((
-                        public::settlement_adjustments::id.eq(Uuid::new_v4()),
-                        public::settlement_adjustments::household_id.eq(household_id),
-                        public::settlement_adjustments::period_start.eq(period_start),
-                        public::settlement_adjustments::member_id.eq(parse_uuid(
-                            adjustment.member_id.as_str(),
-                            "adjustment member_id",
-                        )?),
-                        public::settlement_adjustments::source_kind.eq(decision.kind.as_str()),
-                        public::settlement_adjustments::source_id.eq(transfer_id),
-                        public::settlement_adjustments::amount_yen.eq(adjustment.amount_yen),
-                        public::settlement_adjustments::created_at.eq(now),
-                    ))
-                    .execute(&mut *conn)
-                    .await?;
-            }
             diesel::insert_into(ledger::ledger_entries)
                 .values((
                     ledger::id.eq(ledger_entry_id),
@@ -366,6 +361,24 @@ pub async fn persist_record_transfer(
                     statement,
                 )
                 .await?;
+            }
+            for adjustment in &decision.settlement_adjustments {
+                diesel::insert_into(public::settlement_adjustments::table)
+                    .values((
+                        public::settlement_adjustments::id.eq(Uuid::new_v4()),
+                        public::settlement_adjustments::household_id.eq(household_id),
+                        public::settlement_adjustments::period_start.eq(period_start),
+                        public::settlement_adjustments::member_id.eq(parse_uuid(
+                            adjustment.member_id.as_str(),
+                            "adjustment member_id",
+                        )?),
+                        public::settlement_adjustments::source_kind.eq(decision.kind.as_str()),
+                        public::settlement_adjustments::source_id.eq(transfer_id),
+                        public::settlement_adjustments::amount_yen.eq(adjustment.amount_yen),
+                        public::settlement_adjustments::created_at.eq(now),
+                    ))
+                    .execute(&mut *conn)
+                    .await?;
             }
             diesel::insert_into(public::household_events::table)
                 .values((
@@ -395,6 +408,83 @@ pub async fn persist_record_transfer(
             })
         })
         .await
+}
+
+pub async fn find_record_transfer_replay(
+    pool: &PgPool,
+    input: &FindRecordTransferReplay,
+) -> Result<Option<String>, RecordTransferPersistenceError> {
+    let household_id = parse_uuid(&input.household_id, "household_id")?;
+    let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
+    let from_member_id = parse_uuid(&input.from_member_id, "from_member_id")?;
+    let to_member_id = parse_uuid(&input.to_member_id, "to_member_id")?;
+    validate_statement_input(
+        &PersistRecordTransfer {
+            household_id: input.household_id.clone(),
+            actor_id: input.actor_id.clone(),
+            occurred_at: Utc::now(),
+            idempotency_key: input.idempotency_key.clone(),
+            request_fingerprint: input.request_fingerprint,
+            source_document_id: input.source_document_id.clone(),
+            source_reference: input.source_reference.clone(),
+            source_account_id: input.source_account_id.clone(),
+        },
+        TransferKind::Loan,
+    )?;
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| RecordTransferPersistenceError::Pool(error.to_string()))?;
+    validate_active_members(
+        &mut conn,
+        household_id,
+        actor_id,
+        from_member_id,
+        to_member_id,
+    )
+    .await?;
+    let existing = public::idempotency_records::table
+        .filter(public::idempotency_records::household_id.eq(household_id))
+        .filter(public::idempotency_records::operation.eq(OPERATION))
+        .filter(public::idempotency_records::key.eq(&input.idempotency_key))
+        .select((
+            public::idempotency_records::request_fingerprint,
+            public::idempotency_records::resource_kind,
+            public::idempotency_records::resource_id,
+        ))
+        .first::<(Vec<u8>, String, Uuid)>(&mut *conn)
+        .await
+        .optional()?;
+    let Some((fingerprint, resource_kind, resource_id)) = existing else {
+        return Ok(None);
+    };
+    if fingerprint.as_slice() != input.request_fingerprint || resource_kind != "ledger_entry" {
+        return Err(RecordTransferPersistenceError::IdempotencyConflict);
+    }
+    let transfer_id = public::ledger_entries::table
+        .filter(public::ledger_entries::household_id.eq(household_id))
+        .filter(public::ledger_entries::id.eq(resource_id))
+        .filter(public::ledger_entries::source_kind.eq("transfer"))
+        .select(public::ledger_entries::source_id)
+        .first::<Uuid>(&mut *conn)
+        .await?;
+    validate_statement_replay(
+        &mut conn,
+        household_id,
+        transfer_id,
+        &PersistRecordTransfer {
+            household_id: input.household_id.clone(),
+            actor_id: input.actor_id.clone(),
+            occurred_at: Utc::now(),
+            idempotency_key: input.idempotency_key.clone(),
+            request_fingerprint: input.request_fingerprint,
+            source_document_id: input.source_document_id.clone(),
+            source_reference: input.source_reference.clone(),
+            source_account_id: input.source_account_id.clone(),
+        },
+    )
+    .await?;
+    Ok(Some(resource_id.to_string()))
 }
 
 struct StatementConfirmation {

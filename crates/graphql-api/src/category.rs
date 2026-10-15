@@ -30,10 +30,10 @@ pub struct SetCategoryArchivedInput {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct Category {
-    id: ID,
-    name: String,
-    parent_id: Option<ID>,
-    archived: bool,
+    pub(crate) id: ID,
+    pub(crate) name: String,
+    pub(crate) parent_id: Option<ID>,
+    pub(crate) archived: bool,
 }
 
 #[derive(Clone, Debug, SimpleObject)]

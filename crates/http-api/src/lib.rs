@@ -9,7 +9,7 @@ use axum::{
 use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
 use horse_auth::{AuthService, Cookie, OidcError, resolve_cookie, revoke_cookie};
-use horse_graphql_api::{Actor, Schema as GraphqlSchema};
+use horse_graphql_api::{Actor, Schema as GraphqlSchema, viewer_query::ViewerIdentity};
 use horse_postgres::{PgPool, schema::public::households};
 use serde_json::json;
 use url::Url;
@@ -98,7 +98,13 @@ async fn graphql(State(state): State<ApiState>, request: Request<Body>) -> Respo
     };
     let response = GraphqlSchema::execute(
         &state.graphql_schema,
-        request.data(Actor(principal.member_id)),
+        request
+            .data(Actor(principal.member_id))
+            .data(ViewerIdentity {
+                member_id: principal.member_id,
+                subject: principal.subject,
+                display_name: principal.display_name,
+            }),
     )
     .await;
     Json(response).into_response()

@@ -20,6 +20,10 @@ impl YearMonth {
     pub fn from_naive_date(value: NaiveDate) -> Self {
         Self(value.format("%Y-%m").to_string())
     }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 #[Scalar(name = "YearMonth")]

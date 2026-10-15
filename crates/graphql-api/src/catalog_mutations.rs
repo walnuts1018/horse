@@ -71,40 +71,180 @@ pub struct Tag {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct ProductConcept {
-    id: ID,
-    household_id: ID,
-    name: String,
-    normalized_name: String,
-    category_id: Option<ID>,
-    archived: bool,
-    revision: i32,
-    variants: Vec<ProductVariant>,
+    pub(crate) id: ID,
+    pub(crate) household_id: ID,
+    pub(crate) name: String,
+    pub(crate) normalized_name: String,
+    pub(crate) category_id: Option<ID>,
+    pub(crate) archived: bool,
+    pub(crate) revision: i32,
+    pub(crate) variants: Vec<ProductVariant>,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct ProductVariant {
-    id: ID,
-    household_id: ID,
-    concept_id: ID,
-    name: String,
-    normalized_name: String,
-    brand: Option<String>,
-    package_size: Option<String>,
-    barcode: Option<String>,
-    archived: bool,
-    revision: i32,
-    aliases: Vec<ProductAlias>,
+    pub(crate) id: ID,
+    pub(crate) household_id: ID,
+    pub(crate) concept_id: ID,
+    pub(crate) name: String,
+    pub(crate) normalized_name: String,
+    pub(crate) brand: Option<String>,
+    pub(crate) package_size: Option<String>,
+    pub(crate) barcode: Option<String>,
+    pub(crate) archived: bool,
+    pub(crate) revision: i32,
+    pub(crate) aliases: Vec<ProductAlias>,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct ProductAlias {
-    id: ID,
-    household_id: ID,
-    variant_id: ID,
-    merchant_key: String,
-    alias: String,
-    normalized_alias: String,
-    revision: i32,
+    pub(crate) id: ID,
+    pub(crate) household_id: ID,
+    pub(crate) variant_id: ID,
+    pub(crate) merchant_key: String,
+    pub(crate) alias: String,
+    pub(crate) normalized_alias: String,
+    pub(crate) revision: i32,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+#[graphql(name = "MerchantAllocationRuleTarget")]
+pub struct MerchantAllocationRuleTarget {
+    name: String,
+}
+
+impl MerchantAllocationRuleTarget {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self { name: name.into() }
+    }
+}
+
+#[derive(Clone, Debug, async_graphql::Interface)]
+#[graphql(field(name = "name", ty = "&String"))]
+pub enum AllocationRuleTarget {
+    MerchantAllocationRuleTarget(MerchantAllocationRuleTarget),
+    Category(crate::category::Category),
+    ProductConcept(ProductConcept),
+    ProductVariant(ProductVariant),
+}
+
+impl AllocationRuleTarget {
+    pub fn merchant(name: impl Into<String>) -> Self {
+        Self::MerchantAllocationRuleTarget(MerchantAllocationRuleTarget::new(name))
+    }
+
+    pub fn category(value: crate::category::Category) -> Self {
+        Self::Category(value)
+    }
+
+    pub fn product_concept(value: ProductConcept) -> Self {
+        Self::ProductConcept(value)
+    }
+
+    pub fn product_variant(value: ProductVariant) -> Self {
+        Self::ProductVariant(value)
+    }
+}
+
+pub fn allocation_rule_target_from_projection(
+    value: horse_postgres::pool_mutations::AllocationRuleTargetProjection,
+) -> Result<AllocationRuleTarget> {
+    use horse_postgres::pool_mutations::AllocationRuleTargetProjection as Projection;
+
+    match value {
+        Projection::Merchant { name } => Ok(AllocationRuleTarget::merchant(name)),
+        Projection::Category {
+            id,
+            parent_id,
+            name,
+            archived,
+            ..
+        } => Ok(AllocationRuleTarget::category(crate::category::Category {
+            id: encode_node_id("Category", &id.to_string()).map_err(crate::internal_error)?,
+            name,
+            parent_id: parent_id
+                .map(|id| {
+                    encode_node_id("Category", &id.to_string()).map_err(crate::internal_error)
+                })
+                .transpose()?,
+            archived,
+        })),
+        Projection::ProductConcept(value) => {
+            let revision = graphql_revision(value.revision, "product concept")?;
+            let variants = value
+                .variants
+                .into_iter()
+                .map(map_projected_product_variant)
+                .collect::<Result<Vec<_>>>()?;
+            Ok(AllocationRuleTarget::product_concept(ProductConcept {
+                id: encode_node_id("ProductConcept", &value.id.to_string())
+                    .map_err(crate::internal_error)?,
+                household_id: encode_node_id("Household", &value.household_id.to_string())
+                    .map_err(crate::internal_error)?,
+                name: value.name,
+                normalized_name: value.normalized_name,
+                category_id: value
+                    .category_id
+                    .map(|id| {
+                        encode_node_id("Category", &id.to_string()).map_err(crate::internal_error)
+                    })
+                    .transpose()?,
+                archived: value.archived,
+                revision,
+                variants,
+            }))
+        }
+        Projection::ProductVariant(value) => Ok(AllocationRuleTarget::product_variant(
+            map_projected_product_variant(value)?,
+        )),
+    }
+}
+
+fn map_projected_product_variant(
+    value: horse_postgres::pool_mutations::ProductVariantProjection,
+) -> Result<ProductVariant> {
+    Ok(ProductVariant {
+        id: encode_node_id("ProductVariant", &value.id.to_string())
+            .map_err(crate::internal_error)?,
+        household_id: encode_node_id("Household", &value.household_id.to_string())
+            .map_err(crate::internal_error)?,
+        concept_id: encode_node_id("ProductConcept", &value.concept_id.to_string())
+            .map_err(crate::internal_error)?,
+        name: value.name,
+        normalized_name: value.normalized_name,
+        brand: nonempty(value.brand),
+        package_size: nonempty(value.package_size),
+        barcode: value.barcode,
+        archived: value.archived,
+        revision: graphql_revision(value.revision, "product variant")?,
+        aliases: value
+            .aliases
+            .into_iter()
+            .map(|alias| {
+                Ok(ProductAlias {
+                    id: encode_node_id("ProductAlias", &alias.id.to_string())
+                        .map_err(crate::internal_error)?,
+                    household_id: encode_node_id("Household", &alias.household_id.to_string())
+                        .map_err(crate::internal_error)?,
+                    variant_id: encode_node_id("ProductVariant", &alias.variant_id.to_string())
+                        .map_err(crate::internal_error)?,
+                    merchant_key: alias.merchant_key,
+                    alias: alias.alias,
+                    normalized_alias: alias.normalized_alias,
+                    revision: graphql_revision(alias.revision, "product alias")?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+fn graphql_revision(value: i64, field: &str) -> Result<i32> {
+    i32::try_from(value)
+        .map_err(|_| crate::internal_error(format!("{field} revision exceeds GraphQL Int")))
+}
+
+fn nonempty(value: String) -> Option<String> {
+    (!value.is_empty()).then_some(value)
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -469,7 +609,7 @@ fn decode_node_id(value: &ID, expected_kind: &str) -> std::result::Result<Uuid, 
     Ok(id)
 }
 
-fn encode_node_id(kind: &str, raw_id: &str) -> std::result::Result<ID, ()> {
+pub(crate) fn encode_node_id(kind: &str, raw_id: &str) -> std::result::Result<ID, ()> {
     let id = Uuid::parse_str(raw_id).map_err(|_| ())?;
     if id.is_nil() {
         return Err(());

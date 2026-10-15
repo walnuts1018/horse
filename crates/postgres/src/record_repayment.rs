@@ -30,6 +30,19 @@ pub struct PersistRecordRepayment {
     pub source_account_id: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct FindRecordRepaymentReplay {
+    pub household_id: String,
+    pub actor_id: String,
+    pub from_member_id: String,
+    pub to_member_id: String,
+    pub idempotency_key: String,
+    pub request_fingerprint: [u8; 32],
+    pub source_document_id: Option<String>,
+    pub source_reference: Option<String>,
+    pub source_account_id: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedRepayment {
     pub transfer_id: String,
@@ -47,6 +60,7 @@ pub enum RecordRepaymentPersistenceError {
     IdempotencyConflict,
     NumericOutOfRange(&'static str),
     AccountingPeriodClosed,
+    HouseholdNotFound,
     LoanNotFound,
     MemberNotFound,
     LoanDirectionMismatch,
@@ -120,7 +134,7 @@ pub async fn persist_record_repayment(
                 .first::<Uuid>(&mut *conn)
                 .await
                 .optional()?
-                .ok_or(RecordRepaymentPersistenceError::LoanNotFound)?;
+                .ok_or(RecordRepaymentPersistenceError::HouseholdNotFound)?;
             validate_active_members(&mut *conn, household_id, actor_id, &decision).await?;
             let inserted = diesel::insert_into(idem::idempotency_records)
                 .values((
@@ -258,25 +272,6 @@ pub async fn persist_record_repayment(
                 ))
                 .execute(&mut *conn)
                 .await?;
-            for adjustment in &decision.settlement_adjustments {
-                let adjustment_id = Uuid::new_v4();
-                diesel::insert_into(public::settlement_adjustments::table)
-                    .values((
-                        public::settlement_adjustments::id.eq(adjustment_id),
-                        public::settlement_adjustments::household_id.eq(household_id),
-                        public::settlement_adjustments::period_start.eq(period_start),
-                        public::settlement_adjustments::member_id.eq(parse_uuid(
-                            adjustment.member_id.as_str(),
-                            "adjustment member_id",
-                        )?),
-                        public::settlement_adjustments::source_kind.eq("REPAYMENT"),
-                        public::settlement_adjustments::source_id.eq(transfer_id),
-                        public::settlement_adjustments::amount_yen.eq(adjustment.amount_yen),
-                        public::settlement_adjustments::created_at.eq(now),
-                    ))
-                    .execute(&mut *conn)
-                    .await?;
-            }
             diesel::insert_into(ledger::ledger_entries)
                 .values((
                     ledger::id.eq(ledger_entry_id),
@@ -300,6 +295,24 @@ pub async fn persist_record_repayment(
                     statement,
                 )
                 .await?;
+            }
+            for adjustment in &decision.settlement_adjustments {
+                diesel::insert_into(public::settlement_adjustments::table)
+                    .values((
+                        public::settlement_adjustments::id.eq(Uuid::new_v4()),
+                        public::settlement_adjustments::household_id.eq(household_id),
+                        public::settlement_adjustments::period_start.eq(period_start),
+                        public::settlement_adjustments::member_id.eq(parse_uuid(
+                            adjustment.member_id.as_str(),
+                            "adjustment member_id",
+                        )?),
+                        public::settlement_adjustments::source_kind.eq("REPAYMENT"),
+                        public::settlement_adjustments::source_id.eq(transfer_id),
+                        public::settlement_adjustments::amount_yen.eq(adjustment.amount_yen),
+                        public::settlement_adjustments::created_at.eq(now),
+                    ))
+                    .execute(&mut *conn)
+                    .await?;
             }
             diesel::insert_into(public::household_events::table)
                 .values((
@@ -328,9 +341,120 @@ pub async fn persist_record_repayment(
         .await
 }
 
+pub async fn find_record_repayment_replay(
+    pool: &PgPool,
+    input: &FindRecordRepaymentReplay,
+) -> Result<Option<String>, RecordRepaymentPersistenceError> {
+    let household_id = parse_uuid(&input.household_id, "household_id")?;
+    let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
+    let from_member_id = parse_uuid(&input.from_member_id, "from_member_id")?;
+    let to_member_id = parse_uuid(&input.to_member_id, "to_member_id")?;
+    if input.idempotency_key.is_empty() || input.idempotency_key.len() > 200 {
+        return Err(RecordRepaymentPersistenceError::InvalidIdempotencyKey);
+    }
+    validate_statement_input(&PersistRecordRepayment {
+        household_id: input.household_id.clone(),
+        actor_id: input.actor_id.clone(),
+        occurred_at: Utc::now(),
+        idempotency_key: input.idempotency_key.clone(),
+        request_fingerprint: input.request_fingerprint,
+        source_document_id: input.source_document_id.clone(),
+        source_reference: input.source_reference.clone(),
+        source_account_id: input.source_account_id.clone(),
+    })?;
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| RecordRepaymentPersistenceError::Pool(error.to_string()))?;
+    for member_id in [actor_id, from_member_id, to_member_id] {
+        public::household_members::table
+            .filter(public::household_members::household_id.eq(household_id))
+            .filter(public::household_members::member_id.eq(member_id))
+            .filter(public::household_members::left_at.is_null())
+            .select(public::household_members::member_id)
+            .first::<Uuid>(&mut *conn)
+            .await
+            .optional()?
+            .ok_or(RecordRepaymentPersistenceError::MemberNotFound)?;
+    }
+    let existing = public::idempotency_records::table
+        .filter(public::idempotency_records::household_id.eq(household_id))
+        .filter(public::idempotency_records::operation.eq(OPERATION))
+        .filter(public::idempotency_records::key.eq(&input.idempotency_key))
+        .select((
+            public::idempotency_records::request_fingerprint,
+            public::idempotency_records::resource_kind,
+            public::idempotency_records::resource_id,
+        ))
+        .first::<(Vec<u8>, String, Uuid)>(&mut *conn)
+        .await
+        .optional()?;
+    let Some((fingerprint, resource_kind, resource_id)) = existing else {
+        return Ok(None);
+    };
+    if fingerprint.as_slice() != input.request_fingerprint || resource_kind != "ledger_entry" {
+        return Err(RecordRepaymentPersistenceError::IdempotencyConflict);
+    }
+    let transfer_id = public::ledger_entries::table
+        .filter(public::ledger_entries::household_id.eq(household_id))
+        .filter(public::ledger_entries::id.eq(resource_id))
+        .filter(public::ledger_entries::source_kind.eq("transfer"))
+        .select(public::ledger_entries::source_id)
+        .first::<Uuid>(&mut *conn)
+        .await?;
+    let replay_input = PersistRecordRepayment {
+        household_id: input.household_id.clone(),
+        actor_id: input.actor_id.clone(),
+        occurred_at: Utc::now(),
+        idempotency_key: input.idempotency_key.clone(),
+        request_fingerprint: input.request_fingerprint,
+        source_document_id: input.source_document_id.clone(),
+        source_reference: input.source_reference.clone(),
+        source_account_id: input.source_account_id.clone(),
+    };
+    validate_statement_replay(&mut conn, household_id, transfer_id, &replay_input).await?;
+    Ok(Some(resource_id.to_string()))
+}
+
 struct StatementConfirmation {
     source_document_id: Uuid,
     source_reference: String,
+}
+
+async fn validate_active_members(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    actor_id: Uuid,
+    decision: &RecordRepaymentDecision,
+) -> Result<(), RecordRepaymentPersistenceError> {
+    let lender = decision
+        .journal_lines
+        .as_slice()
+        .first()
+        .and_then(|line| line.member_id.as_ref())
+        .map(|id| parse_uuid(id.as_str(), "lender_id"))
+        .transpose()?
+        .ok_or(RecordRepaymentPersistenceError::InvalidDecision)?;
+    let borrower = decision
+        .journal_lines
+        .as_slice()
+        .get(1)
+        .and_then(|line| line.member_id.as_ref())
+        .map(|id| parse_uuid(id.as_str(), "borrower_id"))
+        .transpose()?
+        .ok_or(RecordRepaymentPersistenceError::InvalidDecision)?;
+    for member_id in [actor_id, borrower, lender] {
+        public::household_members::table
+            .filter(public::household_members::household_id.eq(household_id))
+            .filter(public::household_members::member_id.eq(member_id))
+            .filter(public::household_members::left_at.is_null())
+            .select(public::household_members::member_id)
+            .first::<Uuid>(conn)
+            .await
+            .optional()?
+            .ok_or(RecordRepaymentPersistenceError::MemberNotFound)?;
+    }
+    Ok(())
 }
 
 fn validate_statement_input(
