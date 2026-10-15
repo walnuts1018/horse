@@ -25,6 +25,7 @@ const SYSTEM_INSTRUCTION: &str = "You review a user's extraction of an untrusted
 
 #[derive(Clone)]
 pub struct ProcessConfig {
+    gemini_enabled: bool,
     free_api_key: String,
     paid_api_key: String,
     free_project: String,
@@ -40,7 +41,12 @@ pub struct ProcessConfig {
 }
 
 impl ProcessConfig {
-    pub fn from_env() -> Self {
+    pub fn from_env() -> Result<Self, String> {
+        let gemini_enabled = env::var("GEMINI_ENABLED")
+            .unwrap_or_else(|_| "false".to_owned())
+            .parse::<bool>()
+            .map_err(|_| "GEMINI_ENABLED must be a boolean".to_owned())?;
+        let quota_limits = parse_quota_limits(&env::var("GEMINI_QUOTA_LIMITS").unwrap_or_default())?;
         let usd_jpy_rate = env::var("USDJPY_RATE")
             .or_else(|_| env::var("GEMINI_USDJPY_RATE"))
             .ok()
@@ -54,7 +60,8 @@ impl ProcessConfig {
                 "application_default".to_owned()
             }
         });
-        Self {
+        Ok(Self {
+            gemini_enabled,
             free_api_key: env::var("GEMINI_FREE_API_KEY").unwrap_or_default(),
             paid_api_key: env::var("GEMINI_PAID_API_KEY").unwrap_or_default(),
             free_project: env::var("GEMINI_FREE_PROJECT_ID").unwrap_or_default(),
@@ -69,9 +76,13 @@ impl ProcessConfig {
             usd_jpy_rate_source,
             usd_jpy_rate_as_of: env::var("USDJPY_RATE_AS_OF")
                 .unwrap_or_else(|_| "unspecified".to_owned()),
-            quota_limits: parse_quota_limits(&env::var("GEMINI_QUOTA_LIMITS").unwrap_or_default()),
+            quota_limits,
             ocr_url: env::var("OCR_URL").unwrap_or_default(),
-        }
+        })
+    }
+
+    pub fn gemini_enabled(&self) -> bool {
+        self.gemini_enabled
     }
 }
 
@@ -1489,35 +1500,48 @@ fn model_candidates(
     candidates
 }
 
-fn parse_quota_limits(raw: &str) -> HashMap<(String, String), QuotaLimit> {
+fn parse_quota_limits(raw: &str) -> Result<HashMap<(String, String), QuotaLimit>, String> {
     let mut limits = HashMap::new();
-    for entry in raw.split(';').filter(|entry| !entry.trim().is_empty()) {
+    if raw.trim().is_empty() {
+        return Ok(limits);
+    }
+    for entry in raw.split(';') {
         let Some((selector, values)) = entry.trim().split_once('=') else {
-            continue;
+            return Err("quota entry must use route/model=rpm/tpm/rpd".to_owned());
         };
         let Some((route, model)) = selector.split_once('/') else {
-            continue;
+            return Err("quota entry has an invalid route or model".to_owned());
         };
-        if !matches!(route, "free" | "paid") || model.is_empty() {
-            continue;
+        if !matches!(route, "free" | "paid") || model.is_empty() || model.contains('/') {
+            return Err("quota entry has an invalid route or model".to_owned());
         }
         let parsed = values
             .split('/')
             .map(str::parse::<i64>)
             .collect::<Result<Vec<_>, _>>();
-        let Ok(parsed) = parsed else { continue };
-        if parsed.len() == 3 && parsed.iter().all(|value| *value > 0) {
-            limits.insert(
-                (route.to_owned(), model.to_owned()),
-                QuotaLimit {
-                    requests_per_minute: parsed[0],
-                    input_tokens_minute: parsed[1],
-                    requests_per_day: parsed[2],
-                },
-            );
+        let Ok(parsed) = parsed else {
+            return Err("quota values must be positive integers".to_owned());
+        };
+        if parsed.len() != 3 {
+            return Err("quota entry must specify rpm, tpm, and rpd".to_owned());
         }
+        if parsed.iter().any(|value| *value <= 0) {
+            return Err("quota values must be positive integers".to_owned());
+        }
+        let key = (route.to_owned(), model.to_owned());
+        if limits.contains_key(&key) {
+            return Err("quota entry is duplicated".to_owned());
+        }
+        limits.insert(
+            key,
+            QuotaLimit {
+                requests_per_minute: parsed[0],
+                input_tokens_minute: parsed[1],
+                requests_per_day: parsed[2],
+            },
+        );
     }
-    limits
+    Ok(limits)
 }
 
 fn apply_cost_snapshot(

@@ -7,6 +7,7 @@ use bookkeeping_application::funding_record::{
     FundingAccount, FundingAccountKind, FundingPoolKind,
 };
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
+pub use bookkeeping_application::funding_record::FundingCommandContext;
 
 use crate::{PgPool, schema::public};
 
@@ -27,14 +28,6 @@ impl From<diesel::result::Error> for FundingCommandContextError {
     fn from(error: diesel::result::Error) -> Self {
         Self::Database(error)
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FundingCommandContext {
-    pub accounting_period: AccountingPeriod,
-    pub pool_kind: FundingPoolKind,
-    pub source_account: Option<FundingAccount>,
-    pub destination_account: Option<FundingAccount>,
 }
 
 pub async fn load_funding_command_context(

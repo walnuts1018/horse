@@ -7,6 +7,7 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
 use bookkeeping_application::funding_record::{PostingSide, RecordFundingDecision};
+use bookkeeping_application::funding_record as application;
 use bookkeeping_domain::AccountingPeriodStatus;
 
 use crate::{PgPool, schema::public};
@@ -124,6 +125,114 @@ pub enum RecordFundingPersistenceError {
 impl From<DieselError> for RecordFundingPersistenceError {
     fn from(error: DieselError) -> Self {
         Self::Database(error)
+    }
+}
+
+#[derive(Debug)]
+pub enum RecordFundingWorkflowAdapterError {
+    Context(crate::funding_command_context::FundingCommandContextError),
+    Persistence(RecordFundingPersistenceError),
+}
+
+pub async fn record_funding_workflow(
+    pool: &PgPool,
+    command: application::RecordFundingWorkflowCommand,
+) -> Result<application::RecordedFunding, application::RecordFundingWorkflowError<RecordFundingWorkflowAdapterError>> {
+    let mut operations = PgRecordFundingOperations { pool };
+    application::record_funding(&mut operations, command).await
+}
+
+struct PgRecordFundingOperations<'a> {
+    pool: &'a PgPool,
+}
+
+impl application::RecordFundingOperations for PgRecordFundingOperations<'_> {
+    type Error = RecordFundingWorkflowAdapterError;
+
+    async fn replay(
+        &mut self,
+        command: &application::RecordFundingWorkflowCommand,
+    ) -> Result<Option<application::RecordedFunding>, Self::Error> {
+        let member_id = parse_uuid(&command.record.member_id, "member_id")
+            .map_err(RecordFundingWorkflowAdapterError::Persistence)?;
+        let pool_id = parse_uuid(&command.record.pool_id, "pool_id")
+            .map_err(RecordFundingWorkflowAdapterError::Persistence)?;
+        replay_record_funding(
+            self.pool,
+            &PersistRecordFunding {
+                household_id: command.household_id.clone(),
+                actor_id: command.record.actor_id.clone(),
+                occurred_at: command.occurred_at,
+                idempotency_key: command.idempotency_key.clone(),
+                request_fingerprint: command.request_fingerprint,
+            },
+            member_id,
+            pool_id,
+        )
+        .await
+        .map_err(RecordFundingWorkflowAdapterError::Persistence)
+        .map(|result| {
+            result.map(|value| application::RecordedFunding {
+                journal_id: value.journal_id,
+                ledger_entry_id: value.ledger_entry_id,
+            })
+        })
+    }
+
+    async fn load(
+        &mut self,
+        command: &application::RecordFundingWorkflowCommand,
+    ) -> Result<application::FundingCommandContext, Self::Error> {
+        let household_id = parse_uuid(&command.household_id, "household_id")
+            .map_err(RecordFundingWorkflowAdapterError::Persistence)?;
+        let pool_id = parse_uuid(&command.record.pool_id, "pool_id")
+            .map_err(RecordFundingWorkflowAdapterError::Persistence)?;
+        let source_account_id = command
+            .source_account_id
+            .as_deref()
+            .map(|id| parse_uuid(id, "source_account_id"))
+            .transpose()
+            .map_err(RecordFundingWorkflowAdapterError::Persistence)?;
+        let destination_account_id = command
+            .destination_account_id
+            .as_deref()
+            .map(|id| parse_uuid(id, "destination_account_id"))
+            .transpose()
+            .map_err(RecordFundingWorkflowAdapterError::Persistence)?;
+        crate::funding_command_context::load_funding_command_context(
+            self.pool,
+            household_id,
+            pool_id,
+            source_account_id,
+            destination_account_id,
+            command.occurred_at,
+        )
+        .await
+        .map_err(RecordFundingWorkflowAdapterError::Context)
+    }
+
+    async fn persist(
+        &mut self,
+        command: &application::RecordFundingWorkflowCommand,
+        decision: RecordFundingDecision,
+    ) -> Result<application::RecordedFunding, Self::Error> {
+        persist_record_funding(
+            self.pool,
+            PersistRecordFunding {
+                household_id: command.household_id.clone(),
+                actor_id: command.record.actor_id.clone(),
+                occurred_at: command.occurred_at,
+                idempotency_key: command.idempotency_key.clone(),
+                request_fingerprint: command.request_fingerprint,
+            },
+            decision,
+        )
+        .await
+        .map(|value| application::RecordedFunding {
+            journal_id: value.journal_id,
+            ledger_entry_id: value.ledger_entry_id,
+        })
+        .map_err(RecordFundingWorkflowAdapterError::Persistence)
     }
 }
 

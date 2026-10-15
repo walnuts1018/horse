@@ -41,7 +41,7 @@ impl Worker {
         Ok(Self {
             pool,
             store,
-            config: ProcessConfig::from_env(),
+            config: ProcessConfig::from_env().map_err(std::io::Error::other)?,
             mailbox,
         })
     }
@@ -68,6 +68,17 @@ impl Worker {
         loop {
             if *shutdown.borrow() {
                 break;
+            }
+            if !self.config.gemini_enabled() {
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(1)) => {},
+                    changed = shutdown.changed() => {
+                        if changed.is_err() || *shutdown.borrow() {
+                            break;
+                        }
+                    }
+                }
+                continue;
             }
             let now = Utc::now();
             if let Err(error) = recover_expired_extraction_jobs(&self.pool, now).await {
