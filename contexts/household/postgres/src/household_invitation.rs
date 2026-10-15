@@ -249,65 +249,102 @@ pub async fn create_invitation(
     token_hash: [u8; 32],
     now_value: DateTime<Utc>,
 ) -> Result<CreatedInvitationDto, HouseholdInvitationError> {
-    let household_id = parse_uuid(&command.household_id, "household_id")?;
-    let actor_id = parse_uuid(&command.actor_id, "actor_id")?;
-    let invitation_id = parse_uuid(&command.invitation_id, "invitation_id")?;
+    parse_uuid(&command.household_id, "household_id")?;
+    parse_uuid(&command.actor_id, "actor_id")?;
+    parse_uuid(&command.invitation_id, "invitation_id")?;
     let mut pooled = pool
         .get()
         .await
         .map_err(|error| HouseholdInvitationError::Pool(error.to_string()))?;
     (&mut *pooled)
         .transaction::<CreatedInvitationDto, HouseholdInvitationError, _>(async |conn| {
-            use public::{
-                household_invitations as invitations, household_members as members, households,
-            };
-            households::table
-                .filter(households::id.eq(household_id))
-                .for_update()
-                .select(households::id)
-                .first::<Uuid>(&mut *conn)
-                .await
-                .optional()?
-                .ok_or(HouseholdInvitationError::HouseholdNotFound)?;
-            let actor_role = members::table
-                .filter(members::household_id.eq(household_id))
-                .filter(members::member_id.eq(actor_id))
-                .filter(members::left_at.is_null())
-                .select(members::role)
-                .first::<String>(&mut *conn)
-                .await
-                .optional()?;
-            let decision = decide_create_invitation(command, actor_role.as_deref(), now_value)
-                .map_err(map_workflow_error)?;
-            let created = diesel::insert_into(invitations::table)
-                .values((
-                    invitations::id.eq(invitation_id),
-                    invitations::household_id.eq(household_id),
-                    invitations::token_hash.eq(token_hash.to_vec()),
-                    invitations::expires_at.eq(decision.expires_at),
-                    invitations::created_by.eq(actor_id),
-                ))
-                .returning((invitations::created_at, invitations::expires_at))
-                .get_result::<(DateTime<Utc>, DateTime<Utc>)>(&mut *conn)
-                .await?;
-            record_change(
+            let mut operations = PostgresCreateInvitationOperations {
                 conn,
-                household_id,
-                invitation_id,
-                actor_id,
-                "invitation",
-                "household.invitation.created",
-                vec![Some("invitations".to_owned())],
-            )
-            .await?;
-            Ok(CreatedInvitationDto {
-                id: invitation_id.to_string(),
                 token,
-                created_at: created.0,
-                expires_at: created.1,
-            })
+                token_hash,
+            };
+            household_application::invitation::create_invitation(
+                &mut operations,
+                command,
+                now_value,
+            )
+            .await
         })
         .await
+}
+
+struct PostgresCreateInvitationOperations<'a> {
+    conn: &'a mut crate::AsyncPgConnection,
+    token: String,
+    token_hash: [u8; 32],
+}
+
+impl CreateInvitationOperations for PostgresCreateInvitationOperations<'_> {
+    type Error = HouseholdInvitationError;
+    type Output = CreatedInvitationDto;
+
+    async fn load_actor_role(
+        &mut self,
+        household_id: &str,
+        actor_id: &str,
+    ) -> Result<Option<String>, Self::Error> {
+        use public::{household_members as members, households};
+        let household_id = parse_uuid(household_id, "household_id")?;
+        let actor_id = parse_uuid(actor_id, "actor_id")?;
+        households::table
+            .filter(households::id.eq(household_id))
+            .for_update()
+            .select(households::id)
+            .first::<Uuid>(&mut *self.conn)
+            .await
+            .optional()?
+            .ok_or(HouseholdInvitationError::HouseholdNotFound)?;
+        Ok(members::table
+            .filter(members::household_id.eq(household_id))
+            .filter(members::member_id.eq(actor_id))
+            .filter(members::left_at.is_null())
+            .select(members::role)
+            .first::<String>(&mut *self.conn)
+            .await
+            .optional()?)
+    }
+
+    async fn persist(
+        &mut self,
+        decision: CreateInvitationDecision,
+    ) -> Result<Self::Output, Self::Error> {
+        use public::household_invitations as invitations;
+        let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
+        let household_id = parse_uuid(&decision.household_id, "household_id")?;
+        let invitation_id = parse_uuid(&decision.invitation_id, "invitation_id")?;
+        let created = diesel::insert_into(invitations::table)
+            .values((
+                invitations::id.eq(invitation_id),
+                invitations::household_id.eq(household_id),
+                invitations::token_hash.eq(self.token_hash.to_vec()),
+                invitations::expires_at.eq(decision.expires_at),
+                invitations::created_by.eq(actor_id),
+            ))
+            .returning((invitations::created_at, invitations::expires_at))
+            .get_result::<(DateTime<Utc>, DateTime<Utc>)>(&mut *self.conn)
+            .await?;
+        record_change(
+            self.conn,
+            household_id,
+            invitation_id,
+            actor_id,
+            "invitation",
+            "household.invitation.created",
+            vec![Some("invitations".to_owned())],
+        )
+        .await?;
+        Ok(CreatedInvitationDto {
+            id: invitation_id.to_string(),
+            token: self.token.clone(),
+            created_at: created.0,
+            expires_at: created.1,
+        })
+    }
 }
 
 pub async fn accept_invitation(

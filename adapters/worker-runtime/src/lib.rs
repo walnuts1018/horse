@@ -80,15 +80,18 @@ impl Worker {
     }
 
     async fn process_one(&self, job: ClaimedExtractionJob) {
+        let success_job = job.clone();
+        let failure_job = job.clone();
+        let pool = &self.pool;
+        let previous_result = job.previous_result.clone();
         let outcome = execute_extraction_job(
-            &job,
-            |job| process(&self.pool, &self.store, &self.config, job),
-            |job, mut result| async move {
-                append_previous_runs(&mut result, job.previous_result.as_ref());
-                record_extraction_success(&self.pool, job, result, Utc::now()).await
+            process(&self.pool, &self.store, &self.config, &job),
+            |mut result| async move {
+                append_previous_runs(&mut result, previous_result.as_ref());
+                record_extraction_success(pool, &success_job, result, Utc::now()).await
             },
-            |job, failure| async move {
-                let retry_delay_ms = failure.retry_delay_ms(job.attempt_no, Utc::now());
+            |failure| async move {
+                let retry_delay_ms = failure.retry_delay_ms(failure_job.attempt_no, Utc::now());
                 let kind = match failure.kind {
                     ProcessErrorKind::Retryable => {
                         evidence_application::ingestion_job::ExtractionFailureKind::Retryable
@@ -101,10 +104,10 @@ impl Worker {
                     }
                 };
                 record_extraction_failure(
-                    &self.pool,
-                    &job.id,
-                    job.attempt_no,
-                    &job.lease_token,
+                    pool,
+                    &failure_job.id,
+                    failure_job.attempt_no,
+                    &failure_job.lease_token,
                     kind,
                     &failure.code,
                     failure.safe_message,
