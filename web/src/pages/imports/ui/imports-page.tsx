@@ -37,6 +37,7 @@ import { ImportDocumentReview } from "./import-document-review";
 const noCompletedReceipts = new Set<string>();
 
 export function ImportsPage({
+  memberId,
   household,
   captureRequested,
   onCaptureHandled,
@@ -46,6 +47,7 @@ export function ImportsPage({
   onAdded,
   onUnsavedChanges,
 }: {
+  memberId: string;
   household: Household;
   captureRequested: boolean;
   onCaptureHandled: () => void;
@@ -116,7 +118,7 @@ export function ImportsPage({
     clearReceiptDraft,
     refreshDocuments,
     loadOlderDocuments,
-  } = useImportDocuments(household.id, documentFilters, setMessage);
+  } = useImportDocuments(memberId, household.id, documentFilters, setMessage);
   const [pending, setPending] = useState(false);
   const selectedDocumentID = useRef(selected);
   useEffect(() => {

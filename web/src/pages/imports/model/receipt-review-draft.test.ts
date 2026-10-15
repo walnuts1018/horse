@@ -62,6 +62,7 @@ describe("reconcileReceiptReviewDraft", () => {
       },
     };
     const draft: ImportReceiptDraft = {
+      memberId: "member-1",
       householdId: "household-1",
       documentId: latest.id,
       baseResult: draftResult(baseResult),
@@ -96,6 +97,7 @@ describe("reconcileReceiptReviewDraft", () => {
       result: { receipt: { items: [item("パン", 100, 110), item("牛乳", 200, 220)] } },
     };
     const reconciled = reconcileReceiptReviewDraft(latest, {
+      memberId: "member-1",
       householdId: "household-1",
       documentId: latest.id,
       baseResult: draftResult(baseResult),
@@ -119,6 +121,7 @@ describe("reconcileReceiptReviewDraft", () => {
       result: { receipt: { items: [item("ヨーグルト", 201, 220)] } },
     };
     const reconciled = reconcileReceiptReviewDraft(latest, {
+      memberId: "member-1",
       householdId: "household-1",
       documentId: latest.id,
       baseResult: draftResult(baseResult),
@@ -140,6 +143,7 @@ describe("reconcileReceiptReviewDraft", () => {
     };
 
     const reconciled = reconcileReceiptReviewDraft(latest, {
+      memberId: "member-1",
       householdId: "household-1",
       documentId: latest.id,
       baseResult: draftResult(baseResult),
@@ -167,6 +171,7 @@ describe("reconcileReceiptReviewDraft", () => {
     };
 
     const reconciled = reconcileReceiptReviewDraft(latest, {
+      memberId: "member-1",
       householdId: "household-1",
       documentId: latest.id,
       baseResult: draftResult(baseResult),
@@ -189,6 +194,7 @@ describe("reconcileReceiptReviewDraft", () => {
     };
 
     const reconciled = reconcileReceiptReviewDraft(latest, {
+      memberId: "member-1",
       householdId: "household-1",
       documentId: latest.id,
       baseResult: draftResult(baseResult),

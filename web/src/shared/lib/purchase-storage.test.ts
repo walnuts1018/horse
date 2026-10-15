@@ -301,8 +301,9 @@ describe("purchase outbox storage", () => {
 describe("import receipt draft storage", () => {
   beforeEach(deleteDatabase);
 
-  it("家庭と原本ごとに編集差分を保存し、削除できる", async () => {
+  it("メンバー、家庭、原本ごとに編集差分を保存し、対象だけ削除できる", async () => {
     const draft = {
+      memberId: "member-a",
       householdId: "household-1",
       documentId: "document-1",
       baseResult: { receipt: { merchant: "AI店舗" } },
@@ -326,12 +327,37 @@ describe("import receipt draft storage", () => {
       },
     };
     await saveImportReceiptDraft(draft);
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(databaseName);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const transaction = database.transaction("import-receipt-drafts-v1", "readwrite");
+    transaction.objectStore("import-receipt-drafts-v1").put({
+      storageKey: JSON.stringify(["household-1", "legacy-document"]),
+      householdId: "household-1",
+      documentId: "legacy-document",
+      baseResult: { receipt: { merchant: "旧下書き" } },
+      editedResult: { receipt: { merchant: "旧下書き" } },
+    });
+    await new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+    database.close();
 
-    expect(await loadImportReceiptDraft("household-1", "document-1")).toEqual(draft);
-    expect(await loadImportReceiptDraft("household-2", "document-1")).toBeUndefined();
-    expect(await loadImportReceiptDraft("household-1", "document-2")).toBeUndefined();
+    expect(await loadImportReceiptDraft("member-a", "household-1", "document-1")).toEqual(draft);
+    expect(await loadImportReceiptDraft("member-b", "household-1", "document-1")).toBeUndefined();
+    expect(await loadImportReceiptDraft("member-a", "household-2", "document-1")).toBeUndefined();
+    expect(await loadImportReceiptDraft("member-a", "household-1", "document-2")).toBeUndefined();
+    expect(
+      await loadImportReceiptDraft("member-a", "household-1", "legacy-document"),
+    ).toBeUndefined();
 
-    await deleteImportReceiptDraft("household-1", "document-1");
-    expect(await loadImportReceiptDraft("household-1", "document-1")).toBeUndefined();
+    await deleteImportReceiptDraft("member-b", "household-1", "document-1");
+    expect(await loadImportReceiptDraft("member-a", "household-1", "document-1")).toEqual(draft);
+    await deleteImportReceiptDraft("member-a", "household-1", "document-1");
+    expect(await loadImportReceiptDraft("member-a", "household-1", "document-1")).toBeUndefined();
   });
 });

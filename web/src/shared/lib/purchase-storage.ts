@@ -48,6 +48,7 @@ export type PurchaseOutboxEntry = {
 };
 
 export type ImportReceiptDraft = {
+  memberId: string;
   householdId: string;
   documentId: string;
   baseResult: Record<string, unknown>;
@@ -123,8 +124,9 @@ const databaseReloadEvent = "horse:database-reload-required";
 const leaseMilliseconds = 30_000;
 const databaseVersion = 4;
 
-function importReceiptDraftStorageKey(householdId: string, documentId: string) {
-  return JSON.stringify([householdId, documentId]);
+function importReceiptDraftStorageKey(memberId: string, householdId: string, documentId: string) {
+  if (!memberId) throw new Error("ログイン中のメンバーを確認できません");
+  return JSON.stringify([memberId, householdId, documentId]);
 }
 
 function draftStorageKey(memberId: string, householdId: string) {
@@ -345,13 +347,18 @@ export function deletePurchaseDraft(memberId: string, householdId: string) {
   });
 }
 
-export async function loadImportReceiptDraft(householdId: string, documentId: string) {
+export async function loadImportReceiptDraft(
+  memberId: string,
+  householdId: string,
+  documentId: string,
+) {
   const value: unknown = await readValue(
     importReceiptDraftsStore,
-    importReceiptDraftStorageKey(householdId, documentId),
+    importReceiptDraftStorageKey(memberId, householdId, documentId),
   );
   if (
     !isRecord(value) ||
+    value.memberId !== memberId ||
     value.householdId !== householdId ||
     value.documentId !== documentId ||
     !isRecord(value.baseResult) ||
@@ -359,6 +366,7 @@ export async function loadImportReceiptDraft(householdId: string, documentId: st
   )
     return undefined;
   return {
+    memberId,
     householdId,
     documentId,
     baseResult: value.baseResult,
@@ -441,14 +449,18 @@ function isImportReceiptConfirmationState(value: unknown): value is ImportReceip
 export function saveImportReceiptDraft(draft: ImportReceiptDraft) {
   return writeValue(importReceiptDraftsStore, {
     ...draft,
-    storageKey: importReceiptDraftStorageKey(draft.householdId, draft.documentId),
+    storageKey: importReceiptDraftStorageKey(draft.memberId, draft.householdId, draft.documentId),
   });
 }
 
-export function deleteImportReceiptDraft(householdId: string, documentId: string) {
+export function deleteImportReceiptDraft(
+  memberId: string,
+  householdId: string,
+  documentId: string,
+) {
   return deleteValue(
     importReceiptDraftsStore,
-    importReceiptDraftStorageKey(householdId, documentId),
+    importReceiptDraftStorageKey(memberId, householdId, documentId),
   );
 }
 

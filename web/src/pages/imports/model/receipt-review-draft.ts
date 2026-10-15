@@ -595,6 +595,7 @@ function isDocumentResult(value: unknown): value is NonNullable<DocumentReview["
 }
 
 export function createImportReceiptDraft(
+  memberId: string,
   householdId: string,
   documentId: string,
   baseResult: DocumentReview["result"],
@@ -603,6 +604,7 @@ export function createImportReceiptDraft(
 ): ImportReceiptDraft | undefined {
   if (!baseResult || !editedResult) return undefined;
   return {
+    memberId,
     householdId,
     documentId,
     baseResult,

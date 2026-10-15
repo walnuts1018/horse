@@ -28,11 +28,18 @@ function HouseholdImports() {
       }),
     [navigate],
   );
-  const { household, navigateToPage, refreshHousehold, reportUnsavedChanges, showNotice } =
-    useHouseholdRouteContext();
-  if (!household) return null;
+  const {
+    household,
+    viewerId,
+    navigateToPage,
+    refreshHousehold,
+    reportUnsavedChanges,
+    showNotice,
+  } = useHouseholdRouteContext();
+  if (!household || !viewerId) return null;
   return (
     <ImportsPage
+      memberId={viewerId}
       household={household}
       captureRequested={search.capture === "1"}
       onCaptureHandled={handleCaptureHandled}
