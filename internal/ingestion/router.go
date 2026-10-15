@@ -91,6 +91,31 @@ type GeminiRouteOptions struct {
 	FreeOnly         bool
 }
 
+func (r GeminiRouter) inputTokenReservation(route, model string) func(context.Context, int64) (func(context.Context, int64) error, error) {
+	if r.RateControl == nil {
+		return nil
+	}
+	limits, ok := r.QuotaLimits[GeminiQuotaKey{ProjectRoute: route, Model: model}]
+	if !ok {
+		return nil
+	}
+	return func(ctx context.Context, inputTokens int64) (func(context.Context, int64) error, error) {
+		reservationID, retryAfter, err := r.RateControl.Reserve(ctx, route, model, inputTokens, limits)
+		if err != nil {
+			if errors.Is(err, errGeminiQuotaRequestTooLarge) {
+				return nil, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "input_exceeds_quota"}
+			}
+			return nil, err
+		}
+		if reservationID == "" {
+			return nil, &GeminiAPIError{Kind: GeminiFailureQuota, Code: "quota_reservation_deferred", RetryAfter: retryAfter}
+		}
+		return func(ctx context.Context, actualInputTokens int64) error {
+			return r.RateControl.Settle(ctx, reservationID, actualInputTokens)
+		}, nil
+	}
+}
+
 func (r GeminiRouter) selectedOptions(selection, sourceKind, mimeType, purpose string, attempt int) (GeminiRouteOptions, error) {
 	options := GeminiRouteOptions{
 		Purpose: purpose,
@@ -141,7 +166,15 @@ type geminiCandidate struct {
 	condition geminiCandidateCondition
 }
 
-func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document Document, hints []HistoryHint, options GeminiRouteOptions) (Receipt, []ExtractionRun, error) {
+type geminiExecutionPlan struct {
+	model       string
+	thinking    string
+	tier        string
+	emailSource bool
+	candidates  []geminiCandidate
+}
+
+func (r GeminiRouter) executionPlan(sourceKind string, document Document, options GeminiRouteOptions) (geminiExecutionPlan, error) {
 	model := options.Model
 	if model == "" {
 		model = r.modelForSource(sourceKind, document.MIMEType)
@@ -155,12 +188,13 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 		var err error
 		tier, err = defaultServiceTier(options.Purpose)
 		if err != nil {
-			return Receipt{}, nil, err
+			return geminiExecutionPlan{}, err
 		}
 	}
 	if err := validateRouteOptions(model, thinking, tier); err != nil {
-		return Receipt{}, nil, err
+		return geminiExecutionPlan{}, err
 	}
+
 	preferred := options.ProjectPreferred
 	if options.PaidOnly {
 		preferred = ProjectPaid
@@ -169,11 +203,12 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 		preferred = ProjectFree
 	}
 	if preferred != ProjectFree && preferred != ProjectPaid {
-		return Receipt{}, nil, errors.New("invalid Gemini project route")
+		return geminiExecutionPlan{}, errors.New("invalid Gemini project route")
 	}
 	if options.PaidOnly && options.FreeOnly {
-		return Receipt{}, nil, errors.New("conflicting Gemini project route options")
+		return geminiExecutionPlan{}, errors.New("conflicting Gemini project route options")
 	}
+
 	free := r.Free
 	free.ProjectRoute = ProjectFree
 	paid := r.Paid
@@ -192,9 +227,17 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 	if options.ExactModel && len(candidates) > 1 {
 		candidates = candidates[:1]
 	}
+	return geminiExecutionPlan{model: model, thinking: thinking, tier: tier, emailSource: emailSource, candidates: candidates}, nil
+}
+
+func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document Document, hints []HistoryHint, options GeminiRouteOptions) (Receipt, []ExtractionRun, error) {
+	plan, err := r.executionPlan(sourceKind, document, options)
+	if err != nil {
+		return Receipt{}, nil, err
+	}
 	runs := make([]ExtractionRun, 0, 2)
 	var state geminiRouteState
-	for index, candidate := range candidates {
+	for index, candidate := range plan.candidates {
 		if !candidate.shouldRun(state) {
 			continue
 		}
@@ -202,7 +245,7 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 		if client.APIKey == "" {
 			continue
 		}
-		receipt, run, err := r.extractWithClient(ctx, client, candidate.model, thinking, tier, sourceKind, document, hints, options)
+		receipt, run, err := r.extractWithClient(ctx, client, candidate.model, plan.thinking, plan.tier, sourceKind, document, hints, options)
 		if run.Model != "" {
 			runs = append(runs, run)
 		}
@@ -210,10 +253,10 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 			runs[len(runs)-1].Receipt = &receipt
 			return receipt, runs, nil
 		}
-		nextState := state.afterFailure(err, emailSource && candidate.model == r.flashModel() && candidate.client.ProjectRoute == ProjectFree)
-		nextCandidate := nextGeminiCandidate(candidates, index+1, nextState)
+		nextState := state.afterFailure(err, plan.emailSource && candidate.model == r.flashModel() && candidate.client.ProjectRoute == ProjectFree)
+		nextCandidate := nextGeminiCandidate(plan.candidates, index+1, nextState)
 		if nextCandidate < 0 || client.ProjectRoute != ProjectFree || options.FreeOnly {
-			if emailSource && candidate.model == r.flashModel() {
+			if plan.emailSource && candidate.model == r.flashModel() {
 				if apiErr, ok := errors.AsType[*GeminiAPIError](err); ok && apiErr.Kind == GeminiFailureQuota && len(runs) > 0 {
 					runs[len(runs)-1].Reason = "free_flash_quota_retry"
 				}
@@ -224,7 +267,7 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 			return Receipt{}, runs, ctxErr
 		}
 		if len(runs) > 0 {
-			runs[len(runs)-1].Reason = geminiFallbackReason(emailSource, model, r.flashModel(), candidate, candidates[nextCandidate], err)
+			runs[len(runs)-1].Reason = geminiFallbackReason(plan.emailSource, plan.model, r.flashModel(), candidate, plan.candidates[nextCandidate], err)
 		}
 		state = nextState
 	}
@@ -277,25 +320,7 @@ func (r GeminiRouter) Interact(ctx context.Context, selection, sourceKind string
 	requestOptions := GeminiRequestOptions{
 		ThinkingLevel: thinking, ServiceTier: tier, Reason: "user_clarification", SourceKind: sourceKind,
 	}
-	if r.RateControl != nil {
-		if limits, ok := r.QuotaLimits[GeminiQuotaKey{ProjectRoute: route, Model: model}]; ok {
-			requestOptions.ReserveInputTokens = func(ctx context.Context, inputTokens int64) (func(context.Context, int64) error, error) {
-				reservationID, retryAfter, reserveErr := r.RateControl.Reserve(ctx, route, model, inputTokens, limits)
-				if reserveErr != nil {
-					if errors.Is(reserveErr, errGeminiQuotaRequestTooLarge) {
-						return nil, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "input_exceeds_quota"}
-					}
-					return nil, reserveErr
-				}
-				if reservationID == "" {
-					return nil, &GeminiAPIError{Kind: GeminiFailureQuota, Code: "quota_reservation_deferred", RetryAfter: retryAfter}
-				}
-				return func(ctx context.Context, actualInputTokens int64) error {
-					return r.RateControl.Settle(ctx, reservationID, actualInputTokens)
-				}, nil
-			}
-		}
-	}
+	requestOptions.ReserveInputTokens = r.inputTokenReservation(route, model)
 	started := time.Now()
 	receipt, reply, usage, err := client.Interact(ctx, document, sourceKind, currentExtraction, history, clarification, requestOptions)
 	run := ExtractionRun{
@@ -449,25 +474,7 @@ func (r GeminiRouter) extractWithClient(ctx context.Context, client Gemini, mode
 		}
 	}
 	requestOptions := GeminiRequestOptions{ThinkingLevel: thinking, ServiceTier: routeTier, Guidance: options.Guidance, Reason: options.Reason, SourceKind: sourceKind}
-	if r.RateControl != nil {
-		if limits, ok := r.QuotaLimits[GeminiQuotaKey{ProjectRoute: client.ProjectRoute, Model: model}]; ok {
-			requestOptions.ReserveInputTokens = func(ctx context.Context, inputTokens int64) (func(context.Context, int64) error, error) {
-				reservationID, retryAfter, reserveErr := r.RateControl.Reserve(ctx, client.ProjectRoute, model, inputTokens, limits)
-				if reserveErr != nil {
-					if errors.Is(reserveErr, errGeminiQuotaRequestTooLarge) {
-						return nil, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "input_exceeds_quota"}
-					}
-					return nil, reserveErr
-				}
-				if reservationID == "" {
-					return nil, &GeminiAPIError{Kind: GeminiFailureQuota, Code: "quota_reservation_deferred", RetryAfter: retryAfter}
-				}
-				return func(ctx context.Context, actualInputTokens int64) error {
-					return r.RateControl.Settle(ctx, reservationID, actualInputTokens)
-				}, nil
-			}
-		}
-	}
+	requestOptions.ReserveInputTokens = r.inputTokenReservation(client.ProjectRoute, model)
 	receipt, run, err := client.ExtractRun(ctx, document, hints, requestOptions)
 	if r.RateControl != nil {
 		apiErr, ok := errors.AsType[*GeminiAPIError](err)
