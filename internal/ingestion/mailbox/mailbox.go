@@ -97,6 +97,9 @@ func New(config Config) (*Poller, error) {
 	if config.MaxBatchBytes < 1 || config.MaxBatchBytes > defaultMaxBatchBytes {
 		return nil, errors.New("mailbox batch size limit is invalid")
 	}
+	if config.MaxBatchBytes < config.MaxMessageBytes {
+		return nil, errors.New("mailbox batch size limit must be at least the message size limit")
+	}
 	if config.Timeout == 0 {
 		config.Timeout = defaultTimeout
 	}

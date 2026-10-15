@@ -271,6 +271,23 @@ func TestNewRejectsUnboundedFetchLimits(t *testing.T) {
 	}
 }
 
+func TestNewRejectsBatchLimitBelowMessageLimit(t *testing.T) {
+	t.Parallel()
+	_, err := New(Config{
+		Address:            "imap.example.test:993",
+		Mailbox:            testMailboxName,
+		Username:           testMailboxUser,
+		Password:           testMailboxSecret,
+		RecipientBase:      testRecipientBase,
+		MaxMessageBytes:    1024,
+		MaxBatchBytes:      1023,
+		MaxMessagesPerPoll: 1,
+	})
+	if err == nil {
+		t.Fatal("New() accepted a batch size smaller than the maximum accepted message size")
+	}
+}
+
 func TestNewSetsExplicitTLSServerName(t *testing.T) {
 	t.Parallel()
 	poller, err := New(Config{

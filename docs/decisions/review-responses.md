@@ -4,6 +4,10 @@
 
 ## 2026年10月15日
 
+### メール取り込みのバッチ容量
+
+設定時に`MaxBatchBytes`が`MaxMessageBytes`以上であることを検証し、受理できる最大サイズのメールが新しいバッチに収まるようにしました。`MaxBatchBytes`が小さい設定を拒否するテストと`go test ./internal/ingestion/mailbox -count=1`が成功したため、該当レビュー項目を削除しました。
+
 ### Gemini APIのquota取得
 
 Gemini APIの公式rate limits資料は、projectごとに変動する有効quotaをAI Studioで確認するよう案内し、quota取得用の公開APIを記載していません。Horseは画面を解析してquotaを取得せず、運用者が確認した値を`GEMINI_QUOTA_LIMITS`へ設定します。共有RPM・TPM・RPD予約と429後のcooldownはPostgreSQLで制御します。この項目は、公式に利用できる取得APIがないため対応対象から外します。[Gemini APIのrate limits](https://ai.google.dev/gemini-api/docs/rate-limits)
