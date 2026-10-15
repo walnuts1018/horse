@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bookkeeping_application::{
-    AccountId, FundingBasisError, ItemId, MemberFundingBasis, MemberId, MemberWeight, Payment,
-    PaymentFundingBasis, PoolAllocation, PostPurchaseCommand, PurchaseDraft, PurchaseId,
-    PurchaseItem, PurchaseStatus, SettlementPolicy,
+    AccountId, AccountingPeriod, AccountingPeriodStatus, DraftPurchase, FundingBasisError, ItemId,
+    MemberFundingBasis, MemberId, MemberWeight, Payment, PaymentFundingBasis, PoolAllocation,
+    PostPurchaseCommand, PurchaseId, PurchaseItem, SettlementPolicy, YearMonth,
 };
 use bookkeeping_domain::{PoolId, PositiveYen, Yen};
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
@@ -22,7 +22,6 @@ pub enum PostPurchaseLoadError {
     InvalidAmount(&'static str),
     InvalidEnum { field: &'static str, value: String },
     MissingPurchase,
-    MissingAccountingPeriod,
     MissingRow(&'static str),
     HouseholdMismatch(&'static str),
     MissingAccountPool,
@@ -73,6 +72,82 @@ pub async fn load_post_purchase_command(
     let household_id = parse_uuid(household_id, "household_id")?;
     let purchase_id = parse_uuid(purchase_id, "purchase_id")?;
 
+    let period_hint = purchases::purchases
+        .filter(purchases::id.eq(purchase_id))
+        .select((purchases::household_id, purchases::occurred_at))
+        .first::<(Uuid, DateTime<Utc>)>(conn)
+        .await
+        .optional()?
+        .ok_or(PostPurchaseLoadError::MissingPurchase)?;
+    if period_hint.0 != household_id {
+        return Err(PostPurchaseLoadError::HouseholdMismatch("purchase"));
+    }
+    let tokyo = FixedOffset::east_opt(9 * 60 * 60).ok_or(PostPurchaseLoadError::InvalidEnum {
+        field: "accounting timezone",
+        value: "+09:00".to_owned(),
+    })?;
+    let occurred_at = period_hint.1.with_timezone(&tokyo);
+    let period_start = NaiveDate::from_ymd_opt(occurred_at.year(), occurred_at.month(), 1).ok_or(
+        PostPurchaseLoadError::InvalidEnum {
+            field: "purchases.occurred_at",
+            value: occurred_at.to_string(),
+        },
+    )?;
+    diesel::insert_into(periods::accounting_periods)
+        .values((
+            periods::household_id.eq(household_id),
+            periods::period_start.eq(period_start),
+            periods::status.eq("OPEN"),
+            periods::revision.eq(1_i64),
+        ))
+        .on_conflict((periods::household_id, periods::period_start))
+        .do_nothing()
+        .execute(&mut *conn)
+        .await?;
+    let (period_status, period_revision) = periods::accounting_periods
+        .filter(periods::household_id.eq(household_id))
+        .filter(periods::period_start.eq(period_start))
+        .for_update()
+        .select((periods::status, periods::revision))
+        .first::<(String, i64)>(conn)
+        .await
+        ?;
+    let period_status = match period_status.as_str() {
+        "OPEN" => AccountingPeriodStatus::Open,
+        "CLOSED" => AccountingPeriodStatus::Closed,
+        value => {
+            return Err(PostPurchaseLoadError::InvalidEnum {
+                field: "accounting_periods.status",
+                value: value.to_owned(),
+            });
+        }
+    };
+    let period_revision = u64::try_from(period_revision)
+        .map_err(|_| PostPurchaseLoadError::NumericOutOfRange("accounting_period.revision"))?;
+    let year_month = YearMonth::new(
+        u16::try_from(period_start.year())
+            .map_err(|_| PostPurchaseLoadError::InvalidEnum {
+                field: "accounting_period.year",
+                value: period_start.year().to_string(),
+            })?,
+        u8::try_from(period_start.month()).map_err(|_| PostPurchaseLoadError::InvalidEnum {
+            field: "accounting_period.month",
+            value: period_start.month().to_string(),
+        })?,
+    )
+    .map_err(|_| PostPurchaseLoadError::InvalidEnum {
+        field: "accounting_period.period_start",
+        value: period_start.to_string(),
+    })?;
+    let period = match period_status {
+        AccountingPeriodStatus::Open => AccountingPeriod::open(year_month, period_revision),
+        AccountingPeriodStatus::Closed => AccountingPeriod::closed(year_month, period_revision),
+    }
+    .map_err(|_| PostPurchaseLoadError::InvalidEnum {
+        field: "accounting_period.revision",
+        value: period_revision.to_string(),
+    })?;
+
     let purchase = purchases::purchases
         .filter(purchases::id.eq(purchase_id))
         .for_update()
@@ -87,55 +162,19 @@ pub async fn load_post_purchase_command(
         .await
         .optional()?
         .ok_or(PostPurchaseLoadError::MissingPurchase)?;
-    if purchase.0 != household_id {
+    if purchase.0 != household_id || purchase.1 != period_hint.1 {
         return Err(PostPurchaseLoadError::HouseholdMismatch("purchase"));
     }
     let revision = u64::try_from(purchase.3)
         .map_err(|_| PostPurchaseLoadError::NumericOutOfRange("purchase.revision"))?;
-    let status = match purchase.2.as_str() {
-        "DRAFT" => PurchaseStatus::Draft,
-        "POSTED" => PurchaseStatus::Posted,
-        "CLOSED" => PurchaseStatus::Other,
-        value => {
-            return Err(PostPurchaseLoadError::InvalidEnum {
-                field: "purchases.status",
-                value: value.to_owned(),
-            });
-        }
-    };
+    if purchase.2 != "DRAFT" {
+        return Err(PostPurchaseLoadError::InvalidEnum {
+            field: "purchases.status",
+            value: purchase.2,
+        });
+    }
     let draft_id = PurchaseId::new(purchase_id.to_string())
         .map_err(|_| PostPurchaseLoadError::InvalidIdentifier("purchase_id"))?;
-    let occurred_at = purchase.1;
-    let tokyo = FixedOffset::east_opt(9 * 60 * 60).ok_or(PostPurchaseLoadError::InvalidEnum {
-        field: "accounting timezone",
-        value: "+09:00".to_owned(),
-    })?;
-    let occurred_at = occurred_at.with_timezone(&tokyo);
-    let period_start = NaiveDate::from_ymd_opt(occurred_at.year(), occurred_at.month(), 1).ok_or(
-        PostPurchaseLoadError::InvalidEnum {
-            field: "purchases.occurred_at",
-            value: occurred_at.to_string(),
-        },
-    )?;
-    let period_status = periods::accounting_periods
-        .filter(periods::household_id.eq(household_id))
-        .filter(periods::period_start.eq(period_start))
-        .for_update()
-        .select(periods::status)
-        .first::<String>(conn)
-        .await
-        .optional()?
-        .ok_or(PostPurchaseLoadError::MissingAccountingPeriod)?;
-    let accounting_period_open = match period_status.as_str() {
-        "OPEN" => true,
-        "CLOSED" => false,
-        value => {
-            return Err(PostPurchaseLoadError::InvalidEnum {
-                field: "accounting_periods.status",
-                value: value.to_owned(),
-            });
-        }
-    };
 
     let item_rows = items::purchase_items
         .filter(items::purchase_id.eq(purchase_id))
@@ -447,17 +486,16 @@ pub async fn load_post_purchase_command(
 
     Ok(LoadedPostPurchaseCommand {
         command: PostPurchaseCommand {
-            draft: PurchaseDraft {
+            draft: DraftPurchase {
                 id: draft_id,
                 revision,
-                status,
+                total,
+                items: purchase_items,
+                allocations,
+                payments: payment_values,
             },
             expected_revision,
-            accounting_period_open,
-            total,
-            items: purchase_items,
-            allocations,
-            payments: payment_values,
+            period,
         },
         resolved_payments,
     })

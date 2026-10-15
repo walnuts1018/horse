@@ -8,6 +8,7 @@ axum = "0.8.9"
 horse-auth = { path = "../../adapters/identity" }
 horse-graphql-api = { path = "../../adapters/graphql" }
 horse-http-api = { path = "../../adapters/http" }
+horse-object-storage = { path = "../../adapters/object-storage" }
 horse-postgres-common = { path = "../../platform/postgres-common" }
 tokio = { version = "1.53.3", features = ["macros", "net", "rt-multi-thread", "signal"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

@@ -1,8 +1,9 @@
-use std::{env, error::Error, net::SocketAddr};
+use std::{env, error::Error, net::SocketAddr, sync::Arc};
 
 use horse_auth::{AuthConfig, AuthService};
 use horse_graphql_api::{Config as GraphqlConfig, schema};
 use horse_http_api::{Config, router};
+use horse_object_storage::ObjectStore;
 use horse_postgres_common::connect;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
@@ -47,6 +48,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             local_part_prefix,
         },
     );
+    let object_store = match ObjectStore::from_env().await {
+        Ok(store) => Some(Arc::new(store)),
+        Err(error) => {
+            tracing::warn!(error = %error, "Object storage is unavailable; document HTTP routes are disabled");
+            None
+        }
+    };
     let listener = TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], port))).await?;
     axum::serve(
         listener,
@@ -56,6 +64,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 public_origin,
                 frontend_origin,
                 auth,
+                object_store,
             },
             graphql_schema,
         ),

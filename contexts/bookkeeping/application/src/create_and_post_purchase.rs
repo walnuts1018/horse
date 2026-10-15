@@ -1,7 +1,7 @@
 use bookkeeping_domain::PositiveYen;
 
 use crate::{
-    AccountId, PostPurchaseCommand, PostPurchaseDecision, PostPurchaseError, PurchaseStatus,
+    AccountId, PostPurchaseCommand, PostPurchaseDecision, PostPurchaseError, PurchaseLifecycle,
     create_purchase::{
         AllocationRuleVersion, CreatePurchaseAllocation, CreatePurchaseCommand,
         CreatePurchaseDecision, CreatePurchaseError, decide_create_purchase,
@@ -70,7 +70,7 @@ pub struct CreatedPurchase {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatedPurchaseState {
     pub revision: u64,
-    pub status: PurchaseStatus,
+    pub lifecycle: PurchaseLifecycle,
     pub merchant: String,
 }
 
@@ -215,7 +215,7 @@ pub async fn create_and_post_purchase<O: CreateAndPostPurchaseOperations>(
         .await
         .map_err(CreateAndPostPurchaseError::Operations)?
         .ok_or(CreateAndPostPurchaseError::CreatedPurchaseMissing)?;
-    if state.status != PurchaseStatus::Draft {
+    if state.lifecycle != PurchaseLifecycle::Draft {
         return Ok(CreateAndPostPurchaseResult {
             purchase_id: created.purchase_id,
             created: created.created,

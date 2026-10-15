@@ -1,9 +1,11 @@
 mod email;
+mod mailbox;
 mod object_store;
 mod processing;
 mod statement_csv;
 
 pub use email::EmailAttachment;
+pub use mailbox::MailboxConfig;
 
 pub fn parse_email_attachments(data: &[u8]) -> Result<Vec<EmailAttachment>, &'static str> {
     email::parse_email(data).map(|email| email.attachments)

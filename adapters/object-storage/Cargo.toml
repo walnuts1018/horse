@@ -1,0 +1,16 @@
+[package]
+name = "horse-object-storage"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aes-gcm = { workspace = true }
+aws-config = { workspace = true }
+aws-credential-types = { workspace = true }
+aws-sdk-s3 = { workspace = true }
+base64 = { workspace = true }
+hmac = { workspace = true }
+hex = { workspace = true }
+reqwest = { workspace = true }
+sha2 = { workspace = true }
+uuid = { workspace = true }

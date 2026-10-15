@@ -1,18 +1,24 @@
 mod allocation;
 mod journal;
 mod money;
+mod period;
 mod purchase;
 mod settlement;
 
 pub use allocation::{
     Allocation, AllocationError, AllocationShares, AllocationWeight, PoolId, PoolIdError, allocate,
 };
-pub use journal::{
-    BalancedJournal, JournalEntry, JournalError, JournalSide, LedgerAccountId, LedgerAccountIdError,
-};
+pub use journal::{BalancedJournal, JournalError};
 pub use money::{MAX_YEN, MoneyError, PositiveYen, Yen};
+pub use period::{
+    AccountingPeriod, AccountingPeriodError, AccountingPeriodStatus,
+    AccountingPeriodTransitionError, YearMonth,
+};
 pub use purchase::{
-    Decision, DraftPurchase, PostedPurchase, Purchase, PurchaseError, PurchaseEvent, PurchaseId,
-    PurchaseIdError, decide_post_purchase,
+    AccountId, DraftPurchase, FundingBasisError, IdentifierError, ItemId, JournalLine,
+    MemberBurdenSnapshot, MemberFundingBasis, MemberId, MemberWeight, Payment,
+    PaymentFundingBasis, PaymentFundingSnapshot, PoolAllocation, PostPurchaseCommand,
+    PostPurchaseDecision, PostPurchaseError, PostingTarget, Purchase, PurchaseEvent, PurchaseId,
+    PurchaseItem, PurchaseLifecycle, SettlementPolicy, Side, decide_post_purchase,
 };
 pub use settlement::{SettlementAmounts, SettlementError, SettlementInput, calculate_settlement};

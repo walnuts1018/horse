@@ -1,20 +1,21 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bookkeeping_application::{
-    AccountId, ItemId, PurchaseId, PurchaseStatus, Side,
+    AccountId, ItemId, PurchaseId, PurchaseLifecycle, Side,
     correct_purchase::{
-        AccountingPeriod, CorrectPurchaseDecision, CorrectionCommand, CorrectionFundingEffects,
+        CorrectPurchaseDecision, CorrectionCommand, CorrectionFundingEffects,
         CorrectionFundingRule, CorrectionMemberBurdenSnapshot, CorrectionPaymentFundingSnapshot,
         CorrectionPurchaseBurdenSnapshot, CorrectionPurchasePayment,
         CorrectionSettlementAdjustment, CorrectionSettlementPolicy, CorrectionTarget,
         LinkStatementRefundCorrectionCommand, LinkStatementRefundCorrectionError,
-        OriginalPeriodStatus, SignedYenDelta, StatementRefundObservation,
+        SignedYenDelta, StatementRefundObservation,
         calculate_correction_funding_effects, decide_correct_purchase,
         decide_link_statement_refund_correction,
     },
 };
 use bookkeeping_domain::{
-    AllocationShares, AllocationWeight, PoolId as WorkflowPoolId, PositiveYen, Yen,
+    AccountingPeriod, AccountingPeriodStatus, AllocationShares, AllocationWeight,
+    PoolId as WorkflowPoolId, PositiveYen, YearMonth, Yen,
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
@@ -145,6 +146,125 @@ pub async fn correct_purchase(
                 purchases,
             };
 
+            let (occurred_at_hint, status_hint, legacy_payment_account_id) = purchases::table
+                .filter(purchases::household_id.eq(household_id))
+                .filter(purchases::id.eq(purchase_id))
+                .select((
+                    purchases::occurred_at,
+                    purchases::status,
+                    purchases::payment_account_id,
+                ))
+                .first::<(DateTime<Utc>, String, Option<Uuid>)>(conn)
+                .await
+                .optional()?
+                .ok_or(CorrectPurchasePersistenceError::PurchaseNotFound)?;
+            let japan_offset = FixedOffset::east_opt(9 * 60 * 60)
+                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
+            let original_period = occurred_at_hint
+                .with_timezone(&japan_offset)
+                .date_naive()
+                .with_day(1)
+                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
+            let original_status_hint = accounting_periods::table
+                .filter(accounting_periods::household_id.eq(household_id))
+                .filter(accounting_periods::period_start.eq(original_period))
+                .select(accounting_periods::status)
+                .first::<String>(conn)
+                .await
+                .optional()?;
+            let original_status_hint = match original_status_hint.as_deref() {
+                None | Some("OPEN") => AccountingPeriodStatus::Open,
+                Some("CLOSED") => AccountingPeriodStatus::Closed,
+                _ => return Err(CorrectPurchasePersistenceError::InvalidDecision),
+            };
+            let effective_period = if original_status_hint == AccountingPeriodStatus::Closed {
+                Utc::now()
+                    .with_timezone(&japan_offset)
+                    .date_naive()
+                    .with_day(1)
+                    .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?
+            } else {
+                original_period
+            };
+            let mut period_dates = if original_period <= effective_period {
+                vec![original_period, effective_period]
+            } else {
+                vec![effective_period, original_period]
+            };
+            period_dates.dedup();
+            for period_start in &period_dates {
+                diesel::insert_into(accounting_periods::table)
+                    .values((
+                        accounting_periods::household_id.eq(household_id),
+                        accounting_periods::period_start.eq(period_start),
+                        accounting_periods::status.eq("OPEN"),
+                        accounting_periods::revision.eq(1_i64),
+                    ))
+                    .on_conflict((
+                        accounting_periods::household_id,
+                        accounting_periods::period_start,
+                    ))
+                    .do_nothing()
+                    .execute(&mut *conn)
+                    .await?;
+            }
+            let locked_periods = accounting_periods::table
+                .filter(accounting_periods::household_id.eq(household_id))
+                .filter(accounting_periods::period_start.eq_any(&period_dates))
+                .order(accounting_periods::period_start.asc())
+                .for_update()
+                .select((
+                    accounting_periods::period_start,
+                    accounting_periods::status,
+                    accounting_periods::revision,
+                ))
+                .load::<(NaiveDate, String, i64)>(conn)
+                .await
+                ?;
+            if locked_periods.len() != period_dates.len() {
+                return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed);
+            }
+            let original_status = locked_periods
+                .iter()
+                .find(|(date, _, _)| *date == original_period)
+                .map(|(_, status, _)| status.as_str());
+            let effective_status = locked_periods
+                .iter()
+                .find(|(date, _, _)| *date == effective_period)
+                .map(|(_, status, _)| status.as_str());
+            if original_status != Some(match original_status_hint {
+                AccountingPeriodStatus::Open => "OPEN",
+                AccountingPeriodStatus::Closed => "CLOSED",
+            }) {
+                return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed);
+            }
+            match (original_status, effective_status) {
+                (Some("OPEN"), Some("OPEN")) if original_period == effective_period => {}
+                (Some("CLOSED"), Some("OPEN")) if original_period != effective_period => {}
+                _ => return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed),
+            }
+            let period_model = |date: NaiveDate| {
+                locked_periods
+                    .iter()
+                    .find(|(period_start, _, _)| *period_start == date)
+                    .and_then(|(_, status, revision)| {
+                        let year_month = YearMonth::new(
+                            u16::try_from(date.year()).ok()?,
+                            u8::try_from(date.month()).ok()?,
+                        )
+                        .ok()?;
+                        let revision = u64::try_from(*revision).ok()?;
+                        match status.as_str() {
+                            "OPEN" => AccountingPeriod::open(year_month, revision).ok(),
+                            "CLOSED" => AccountingPeriod::closed(year_month, revision).ok(),
+                            _ => None,
+                        }
+                    })
+            };
+            let original_period_model = period_model(original_period)
+                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
+            let effective_period_model = period_model(effective_period)
+                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
             let (occurred_at, status, legacy_payment_account_id) = purchases::table
                 .filter(purchases::household_id.eq(household_id))
                 .filter(purchases::id.eq(purchase_id))
@@ -158,49 +278,15 @@ pub async fn correct_purchase(
                 .await
                 .optional()?
                 .ok_or(CorrectPurchasePersistenceError::PurchaseNotFound)?;
+            if occurred_at != occurred_at_hint || status != status_hint {
+                return Err(CorrectPurchasePersistenceError::InvalidDecision);
+            }
             validate_actor_membership(conn, household_id, actor_id).await?;
             if let Some(replay) =
                 find_correct_purchase_replay(conn, household_id, &persist_input).await?
             {
                 return Ok(replay);
             }
-            let japan_offset = FixedOffset::east_opt(9 * 60 * 60)
-                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
-            let original_period = occurred_at
-                .with_timezone(&japan_offset)
-                .date_naive()
-                .with_day(1)
-                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
-            let original_period_status = accounting_periods::table
-                .filter(accounting_periods::household_id.eq(household_id))
-                .filter(accounting_periods::period_start.eq(original_period))
-                .for_update()
-                .select(accounting_periods::status)
-                .first::<String>(conn)
-                .await
-                .optional()?;
-            let original_period_status = match original_period_status.as_deref() {
-                None | Some("OPEN") => OriginalPeriodStatus::Open,
-                Some("CLOSED") => OriginalPeriodStatus::Closed,
-                _ => OriginalPeriodStatus::Invalid,
-            };
-            let effective_period = if original_period_status == OriginalPeriodStatus::Closed {
-                Utc::now()
-                    .with_timezone(&japan_offset)
-                    .date_naive()
-                    .with_day(1)
-                    .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?
-            } else {
-                original_period
-            };
-            let effective_period_open = accounting_periods::table
-                .filter(accounting_periods::household_id.eq(household_id))
-                .filter(accounting_periods::period_start.eq(effective_period))
-                .select(accounting_periods::status)
-                .first::<String>(conn)
-                .await
-                .optional()?
-                .is_none_or(|value| value == "OPEN");
             let item_rows = purchase_items::table
                 .filter(purchase_items::household_id.eq(household_id))
                 .filter(purchase_items::purchase_id.eq(purchase_id))
@@ -422,10 +508,10 @@ pub async fn correct_purchase(
             let command = CorrectionCommand {
                 purchase_id: PurchaseId::new(purchase_id.to_string())
                     .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
-                purchase_status: match status.as_str() {
-                    "DRAFT" => PurchaseStatus::Draft,
-                    "POSTED" => PurchaseStatus::Posted,
-                    _ => PurchaseStatus::Other,
+                purchase_lifecycle: match status.as_str() {
+                    "DRAFT" => PurchaseLifecycle::Draft,
+                    "POSTED" | "CLOSED" => PurchaseLifecycle::Posted,
+                    _ => return Err(CorrectPurchasePersistenceError::InvalidDecision),
                 },
                 target: match item_id {
                     Some(id) => CorrectionTarget::Item(
@@ -436,14 +522,8 @@ pub async fn correct_purchase(
                 },
                 amount_delta: delta,
                 reason: request.reason.clone(),
-                original_period: AccountingPeriod::new(original_period.format("%Y-%m").to_string())
-                    .map_err(|_| CorrectPurchasePersistenceError::InvalidPeriod)?,
-                original_period_status,
-                effective_period: AccountingPeriod::new(
-                    effective_period.format("%Y-%m").to_string(),
-                )
-                .map_err(|_| CorrectPurchasePersistenceError::InvalidPeriod)?,
-                effective_period_open,
+                original_period: original_period_model.clone(),
+                effective_period: effective_period_model,
                 purchase_refundable: Yen::new(purchase_refundable)
                     .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
                 item_refundable: item_balance,
@@ -753,7 +833,8 @@ async fn persist_correct_purchase_in_transaction(
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
     let purchase_id = parse_uuid(decision.purchase_id.as_str(), "purchase_id")?;
-    let effective_period = parse_period(decision.effective_period.as_str())?;
+    let original_period = parse_period(&decision.original_period.as_string())?;
+    let effective_period = parse_period(&decision.effective_period.as_string())?;
     validate_decision(&decision)?;
 
     let correction_id = Uuid::new_v4();
@@ -766,6 +847,59 @@ async fn persist_correct_purchase_in_transaction(
     use public::ledger_entries::dsl as ledger;
     use public::purchases::dsl as purchases;
 
+    let period_dates = if original_period <= effective_period {
+        vec![original_period, effective_period]
+    } else {
+        vec![effective_period, original_period]
+    };
+    for period_start in &period_dates {
+        diesel::insert_into(periods::accounting_periods)
+            .values((
+                periods::household_id.eq(household_id),
+                periods::period_start.eq(period_start),
+                periods::status.eq("OPEN"),
+                periods::revision.eq(1_i64),
+            ))
+            .on_conflict((periods::household_id, periods::period_start))
+            .do_nothing()
+            .execute(&mut *conn)
+            .await?;
+    }
+    let locked_periods = periods::accounting_periods
+        .filter(periods::household_id.eq(household_id))
+        .filter(periods::period_start.eq_any(&period_dates))
+        .order(periods::period_start.asc())
+        .for_update()
+        .select((periods::period_start, periods::status, periods::revision))
+        .load::<(NaiveDate, String, i64)>(&mut *conn)
+        .await?;
+    if locked_periods.len() != period_dates.len() {
+        return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed);
+    }
+    let original_row = locked_periods
+        .iter()
+        .find(|(date, _, _)| *date == original_period)
+        .ok_or(CorrectPurchasePersistenceError::AccountingPeriodClosed)?;
+    let effective_row = locked_periods
+        .iter()
+        .find(|(date, _, _)| *date == effective_period)
+        .ok_or(CorrectPurchasePersistenceError::AccountingPeriodClosed)?;
+    let expected_original_status = match decision.original_period.status() {
+        AccountingPeriodStatus::Open => "OPEN",
+        AccountingPeriodStatus::Closed => "CLOSED",
+    };
+    let expected_effective_status = match decision.effective_period.status() {
+        AccountingPeriodStatus::Open => "OPEN",
+        AccountingPeriodStatus::Closed => "CLOSED",
+    };
+    if original_row.1 != expected_original_status
+        || effective_row.1 != expected_effective_status
+        || u64::try_from(original_row.2).ok() != Some(decision.original_period.revision())
+        || u64::try_from(effective_row.2).ok() != Some(decision.effective_period.revision())
+        || effective_row.1 != "OPEN"
+    {
+        return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed);
+    }
     let purchase = purchases::purchases
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::id.eq(purchase_id))
@@ -773,15 +907,18 @@ async fn persist_correct_purchase_in_transaction(
         .select((purchases::occurred_at, purchases::status))
         .first::<(DateTime<Utc>, String)>(&mut *conn)
         .await?;
-    validate_actor_membership(&mut *conn, household_id, actor_id).await?;
     let japan_offset =
         FixedOffset::east_opt(9 * 60 * 60).ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
-    let original_period = purchase
+    let purchase_period = purchase
         .0
         .with_timezone(&japan_offset)
         .date_naive()
         .with_day(1)
         .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
+    if purchase_period != original_period {
+        return Err(CorrectPurchasePersistenceError::InvalidPeriod);
+    }
+    validate_actor_membership(&mut *conn, household_id, actor_id).await?;
     let inserted = diesel::insert_into(idem::idempotency_records)
         .values((
             idem::household_id.eq(household_id),
@@ -829,51 +966,6 @@ async fn persist_correct_purchase_in_transaction(
     }
     if purchase.1 == "DRAFT" {
         return Err(CorrectPurchasePersistenceError::PurchaseNotPosted);
-    }
-
-    let period_dates = if original_period == effective_period {
-        vec![original_period]
-    } else if original_period < effective_period {
-        vec![original_period, effective_period]
-    } else {
-        vec![effective_period, original_period]
-    };
-    for period_start in &period_dates {
-        diesel::insert_into(periods::accounting_periods)
-            .values((
-                periods::household_id.eq(household_id),
-                periods::period_start.eq(period_start),
-                periods::status.eq("OPEN"),
-                periods::revision.eq(0_i64),
-            ))
-            .on_conflict((periods::household_id, periods::period_start))
-            .do_nothing()
-            .execute(&mut *conn)
-            .await?;
-    }
-    let locked_periods = periods::accounting_periods
-        .filter(periods::household_id.eq(household_id))
-        .filter(periods::period_start.eq_any(&period_dates))
-        .order(periods::period_start.asc())
-        .for_update()
-        .select((periods::period_start, periods::status))
-        .load::<(NaiveDate, String)>(&mut *conn)
-        .await?;
-    if locked_periods.len() != period_dates.len() {
-        return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed);
-    }
-    let original_status = locked_periods
-        .iter()
-        .find(|(date, _)| *date == original_period)
-        .map(|(_, status)| status.as_str());
-    let effective_status = locked_periods
-        .iter()
-        .find(|(date, _)| *date == effective_period)
-        .map(|(_, status)| status.as_str());
-    match (original_status, effective_status) {
-        (Some("OPEN"), Some("OPEN")) if original_period == effective_period => {}
-        (Some("CLOSED"), Some("OPEN")) if original_period != effective_period => {}
-        _ => return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed),
     }
 
     validate_references(&mut *conn, household_id, actor_id, purchase_id, &decision).await?;

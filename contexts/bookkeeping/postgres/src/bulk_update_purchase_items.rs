@@ -612,7 +612,6 @@ async fn sync_posted_accounting(
         _ => BulkUpdatePurchaseItemsPersistenceError::InvalidDecision,
     })?;
     let mut command = loaded.command;
-    command.draft.status = bookkeeping_application::PurchaseStatus::Draft;
     command.expected_revision = command.draft.revision;
     use public::purchase_member_burdens::dsl as burdens;
     let old_burdens = burdens::purchase_member_burdens
@@ -642,7 +641,7 @@ async fn sync_posted_accounting(
         .into_iter()
         .map(|(key, rows)| Ok((key, funding_basis(rows)?)))
         .collect::<Result<BTreeMap<_, _>, BulkUpdatePurchaseItemsPersistenceError>>()?;
-    for allocation in &mut command.allocations {
+    for allocation in &mut command.draft.allocations {
         let key = (
             parse_uuid(allocation.item_id.as_str(), "item_id")?,
             parse_uuid(allocation.pool_id.as_str(), "pool_id")?,
@@ -676,7 +675,7 @@ async fn sync_posted_accounting(
         .into_iter()
         .map(|(key, rows)| Ok((key, funding_basis(rows)?)))
         .collect::<Result<BTreeMap<_, _>, BulkUpdatePurchaseItemsPersistenceError>>()?;
-    for payment in &mut command.payments {
+    for payment in &mut command.draft.payments {
         let account_id = parse_uuid(payment.account_id.as_str(), "account_id")?;
         let pool_id = parse_uuid(payment.funding.pool_id.as_str(), "pool_id")?;
         if let Some(basis) = payment_bases.get(&(account_id, pool_id)).or_else(|| {

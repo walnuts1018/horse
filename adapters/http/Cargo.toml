@@ -4,16 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-axum = "0.8.9"
+axum = { version = "0.8.9", features = ["multipart"] }
 async-graphql = { version = "7", features = ["chrono"] }
 async-graphql-axum = "7"
 chrono = { workspace = true }
 diesel = { workspace = true, features = ["32-column-tables"] }
 diesel-async = { workspace = true }
 horse-auth = { path = "../identity" }
+evidence-application = { path = "../../contexts/evidence/application" }
+evidence-postgres = { path = "../../contexts/evidence/postgres" }
+futures-util = { workspace = true }
 horse-graphql-api = { path = "../graphql" }
+horse-object-storage = { path = "../object-storage" }
 horse-postgres-common = { path = "../../platform/postgres-common" }
 serde_json = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
 url = "2"

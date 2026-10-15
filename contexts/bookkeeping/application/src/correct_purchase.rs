@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, HashSet};
 
 use bookkeeping_domain::{
-    AllocationShares, AllocationWeight, PoolId as AllocationPoolId, PositiveYen, Yen, allocate,
+    AccountingPeriod, AccountingPeriodStatus, AllocationShares, AllocationWeight,
+    PoolId as AllocationPoolId, PositiveYen, PurchaseLifecycle, Yen, allocate,
 };
 
-use crate::{AccountId, ItemId, PoolId, PurchaseId, PurchaseStatus, Side};
+use crate::{AccountId, ItemId, PoolId, PurchaseId, Side};
 
 const MAX_CORRECTION_YEN: i64 = 1_000_000_000_000;
 
@@ -34,30 +35,6 @@ pub enum CorrectionTarget {
     Item(ItemId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OriginalPeriodStatus {
-    Open,
-    Closed,
-    Invalid,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountingPeriod(String);
-
-impl AccountingPeriod {
-    pub fn new(value: impl Into<String>) -> Result<Self, CorrectPurchaseError> {
-        let value = value.into();
-        if !valid_period(&value) {
-            return Err(CorrectPurchaseError::InvalidAccountingPeriod);
-        }
-        Ok(Self(value))
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorrectionPayment {
     pub account_id: AccountId,
@@ -67,14 +44,12 @@ pub struct CorrectionPayment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorrectionCommand {
     pub purchase_id: PurchaseId,
-    pub purchase_status: PurchaseStatus,
+    pub purchase_lifecycle: PurchaseLifecycle,
     pub target: CorrectionTarget,
     pub amount_delta: SignedYenDelta,
     pub reason: String,
     pub original_period: AccountingPeriod,
-    pub original_period_status: OriginalPeriodStatus,
     pub effective_period: AccountingPeriod,
-    pub effective_period_open: bool,
     pub purchase_refundable: Yen,
     pub item_refundable: Option<Yen>,
     pub saved_allocations: AllocationShares,
@@ -88,6 +63,7 @@ pub struct CorrectPurchaseDecision {
     pub target: CorrectionTarget,
     pub amount_delta: SignedYenDelta,
     pub reason: String,
+    pub original_period: AccountingPeriod,
     pub effective_period: AccountingPeriod,
     pub allocations: Vec<CorrectionAllocation>,
     pub journal_lines: Vec<CorrectionJournalLine>,
@@ -192,8 +168,6 @@ pub struct CorrectionFundingEffects {
 pub enum CorrectPurchaseError {
     InvalidAmountDelta,
     BlankReason,
-    InvalidAccountingPeriod,
-    InvalidOriginalPeriodState,
     EffectivePeriodMismatch,
     PurchaseNotPosted,
     AccountingPeriodClosed,
@@ -291,27 +265,23 @@ pub fn decide_correct_purchase(
     if command.reason.trim().is_empty() {
         return Err(CorrectPurchaseError::BlankReason);
     }
-    if !valid_period(command.original_period.as_str())
-        || !valid_period(command.effective_period.as_str())
-    {
-        return Err(CorrectPurchaseError::InvalidAccountingPeriod);
-    }
-    match command.original_period_status {
-        OriginalPeriodStatus::Open if command.effective_period != command.original_period => {
+    match command.original_period.status() {
+        AccountingPeriodStatus::Open
+            if command.effective_period.year_month() != command.original_period.year_month() =>
+        {
             return Err(CorrectPurchaseError::EffectivePeriodMismatch);
         }
-        OriginalPeriodStatus::Closed if command.effective_period == command.original_period => {
+        AccountingPeriodStatus::Closed
+            if command.effective_period.year_month() == command.original_period.year_month() =>
+        {
             return Err(CorrectPurchaseError::EffectivePeriodMismatch);
         }
-        OriginalPeriodStatus::Invalid => {
-            return Err(CorrectPurchaseError::InvalidOriginalPeriodState);
-        }
-        OriginalPeriodStatus::Open | OriginalPeriodStatus::Closed => {}
+        AccountingPeriodStatus::Open | AccountingPeriodStatus::Closed => {}
     }
-    if command.purchase_status == PurchaseStatus::Draft {
+    if command.purchase_lifecycle == PurchaseLifecycle::Draft {
         return Err(CorrectPurchaseError::PurchaseNotPosted);
     }
-    if !command.effective_period_open {
+    if command.effective_period.status() != AccountingPeriodStatus::Open {
         return Err(CorrectPurchaseError::AccountingPeriodClosed);
     }
 
@@ -413,6 +383,7 @@ pub fn decide_correct_purchase(
         target: command.target,
         amount_delta: command.amount_delta,
         reason: command.reason,
+        original_period: command.original_period,
         effective_period: command.effective_period,
         allocations,
         journal_lines,
@@ -917,17 +888,6 @@ fn checked_add_to(
     Ok(())
 }
 
-fn valid_period(value: &str) -> bool {
-    let Some((year, month)) = value.split_once('-') else {
-        return false;
-    };
-    year.len() == 4
-        && year.bytes().all(|byte| byte.is_ascii_digit())
-        && month.len() == 2
-        && month.bytes().all(|byte| byte.is_ascii_digit())
-        && (1..=12).contains(&month.parse::<u8>().unwrap_or(0))
-}
-
 fn same_allocation_weights(left: &AllocationShares, right: &AllocationShares) -> bool {
     if left.weights().len() != right.weights().len() {
         return false;
@@ -965,7 +925,7 @@ fn next_line_no(current_count: usize) -> Result<u32, CorrectPurchaseError> {
 
 #[cfg(test)]
 mod tests {
-    use bookkeeping_domain::{AllocationWeight, PoolId};
+    use bookkeeping_domain::{AllocationWeight, PoolId, YearMonth};
 
     use super::*;
 
@@ -981,17 +941,23 @@ mod tests {
         .unwrap()
     }
 
+    fn period(month: &str, status: AccountingPeriodStatus) -> AccountingPeriod {
+        let month = YearMonth::parse(month).unwrap();
+        match status {
+            AccountingPeriodStatus::Open => AccountingPeriod::open(month, 1).unwrap(),
+            AccountingPeriodStatus::Closed => AccountingPeriod::closed(month, 2).unwrap(),
+        }
+    }
+
     fn command(delta: i64) -> CorrectionCommand {
         CorrectionCommand {
             purchase_id: id(PurchaseId::new, "purchase-1"),
-            purchase_status: PurchaseStatus::Posted,
+            purchase_lifecycle: PurchaseLifecycle::Posted,
             target: CorrectionTarget::Item(id(ItemId::new, "item-1")),
             amount_delta: SignedYenDelta::new(delta).unwrap(),
             reason: "refund".into(),
-            original_period: AccountingPeriod::new("2026-10").unwrap(),
-            original_period_status: OriginalPeriodStatus::Open,
-            effective_period: AccountingPeriod::new("2026-10").unwrap(),
-            effective_period_open: true,
+            original_period: period("2026-10", AccountingPeriodStatus::Open),
+            effective_period: period("2026-10", AccountingPeriodStatus::Open),
             purchase_refundable: Yen::new(100).unwrap(),
             item_refundable: Some(Yen::new(80).unwrap()),
             saved_allocations: shares(),
@@ -1127,21 +1093,21 @@ mod tests {
     #[test]
     fn correction_requires_posted_purchase_open_period_and_matching_payment_total() {
         let mut draft = command(50);
-        draft.purchase_status = PurchaseStatus::Draft;
+        draft.purchase_lifecycle = PurchaseLifecycle::Draft;
         assert_eq!(
             decide_correct_purchase(draft),
             Err(CorrectPurchaseError::PurchaseNotPosted)
         );
 
         let mut closed = command(50);
-        closed.effective_period_open = false;
+        closed.effective_period = period("2026-10", AccountingPeriodStatus::Closed);
         assert_eq!(
             decide_correct_purchase(closed),
             Err(CorrectPurchaseError::AccountingPeriodClosed)
         );
 
         let mut mismatched_period = command(50);
-        mismatched_period.original_period_status = OriginalPeriodStatus::Closed;
+        mismatched_period.original_period = period("2026-10", AccountingPeriodStatus::Closed);
         assert_eq!(
             decide_correct_purchase(mismatched_period),
             Err(CorrectPurchaseError::EffectivePeriodMismatch)

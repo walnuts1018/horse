@@ -190,7 +190,7 @@ impl GeminiDeveloperApi {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct CreateInteractionRequest<'a> {
     model: &'a str,
     input: InteractionsInput,
@@ -218,6 +218,7 @@ pub enum InteractionsInput {
 
 /// Interactions APIの会話履歴step。
 #[derive(Serialize)]
+#[derive(Clone)]
 pub struct HistoryStep {
     #[serde(rename = "type")]
     role: HistoryRole,
@@ -251,6 +252,7 @@ enum HistoryRole {
 /// Interactions APIへ送信するテキスト、画像、またはPDF。
 ///
 /// メディアはインラインbase64として送信するため、任意URIや外部ファイル取得を許可しない。
+#[derive(Clone)]
 pub enum InputContent {
     Text(String),
     Image { bytes: Vec<u8>, mime_type: String },

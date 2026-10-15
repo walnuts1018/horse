@@ -199,15 +199,18 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
                         CreatePurchasePersistenceError::NumericOutOfRange("purchase.revision"),
                     )
                 })?;
-                let status = match status.as_str() {
-                    "DRAFT" => bookkeeping_application::PurchaseStatus::Draft,
-                    "POSTED" => bookkeeping_application::PurchaseStatus::Posted,
-                    "CLOSED" => bookkeeping_application::PurchaseStatus::Closed,
-                    _ => bookkeeping_application::PurchaseStatus::Other,
+                let lifecycle = match status.as_str() {
+                    "DRAFT" => bookkeeping_application::PurchaseLifecycle::Draft,
+                    "POSTED" | "CLOSED" => bookkeeping_application::PurchaseLifecycle::Posted,
+                    _ => {
+                        return Err(CreateAndPostPurchaseError::Create(
+                            CreatePurchasePersistenceError::InvalidDecision,
+                        ));
+                    }
                 };
                 Ok(application::CreatedPurchaseState {
                     revision,
-                    status,
+                    lifecycle,
                     merchant,
                 })
             })

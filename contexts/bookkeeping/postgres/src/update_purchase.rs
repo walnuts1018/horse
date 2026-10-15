@@ -4,7 +4,7 @@ use bookkeeping_application::update_purchase::{
     UpdatePurchaseDecision, UpdatePurchaseDraft, UpdatePurchaseError, decide_update_purchase,
 };
 use bookkeeping_application::{
-    MemberFundingBasis, MemberId, MemberWeight, PostingTarget, PurchaseStatus, SettlementPolicy,
+    MemberFundingBasis, MemberId, MemberWeight, PostingTarget, SettlementPolicy,
     decide_post_purchase,
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
@@ -502,16 +502,15 @@ async fn sync_posted_purchase_accounting(
         _ => UpdatePurchasePersistenceError::InvalidDecision(UpdatePurchaseError::Conflict),
     })?;
     let mut command = loaded.command;
-    command.draft.status = PurchaseStatus::Draft;
     command.expected_revision = command.draft.revision;
-    for allocation in &mut command.allocations {
+    for allocation in &mut command.draft.allocations {
         let item_id = parse_uuid(allocation.item_id.as_str(), "allocation_item_id")?;
         let pool_id = parse_uuid(allocation.pool_id.as_str(), "allocation_pool_id")?;
         if let Some(basis) = burden_bases.get(&(item_id, pool_id)) {
             allocation.funding = basis.clone();
         }
     }
-    for payment in &mut command.payments {
+    for payment in &mut command.draft.payments {
         let account_id = parse_uuid(payment.account_id.as_str(), "payment_account_id")?;
         let pool_id = parse_uuid(payment.funding.pool_id.as_str(), "payment_pool_id")?;
         let basis = payment_bases.get(&(account_id, pool_id)).or_else(|| {

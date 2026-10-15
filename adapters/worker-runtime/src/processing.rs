@@ -3,6 +3,7 @@ use std::{collections::HashMap, env, time::Instant};
 use chrono::{DateTime, Datelike, Duration as ChronoDuration, NaiveDate, Utc};
 use evidence_application::ingestion_job::ExtractionFailureKind;
 use evidence_postgres::ingestion_job::{ClaimedExtractionJob, save_interaction_reply_preview};
+use evidence_postgres::gemini_quota::{self, QuotaLimit};
 use futures_util::StreamExt;
 use horse_gemini_developer_api::{
     Error as GeminiError, GeminiDeveloperApi, InputContent, InteractionsInput,
@@ -31,11 +32,28 @@ pub struct ProcessConfig {
     flash_model: String,
     lite_model: String,
     pro_model: String,
+    usd_jpy_rate: f64,
+    usd_jpy_rate_source: String,
+    usd_jpy_rate_as_of: String,
+    quota_limits: HashMap<(String, String), QuotaLimit>,
     ocr_url: String,
 }
 
 impl ProcessConfig {
     pub fn from_env() -> Self {
+        let usd_jpy_rate = env::var("USDJPY_RATE")
+            .or_else(|_| env::var("GEMINI_USDJPY_RATE"))
+            .ok()
+            .and_then(|value| value.parse::<f64>().ok())
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .unwrap_or(158.535);
+        let usd_jpy_rate_source = env::var("USDJPY_RATE_SOURCE").unwrap_or_else(|_| {
+            if env::var("USDJPY_RATE").is_ok() || env::var("GEMINI_USDJPY_RATE").is_ok() {
+                "operator_config".to_owned()
+            } else {
+                "application_default".to_owned()
+            }
+        });
         Self {
             free_api_key: env::var("GEMINI_FREE_API_KEY").unwrap_or_default(),
             paid_api_key: env::var("GEMINI_PAID_API_KEY").unwrap_or_default(),
@@ -47,6 +65,11 @@ impl ProcessConfig {
                 .unwrap_or_else(|_| "gemini-3.5-flash-lite".to_owned()),
             pro_model: env::var("GEMINI_PRO_MODEL")
                 .unwrap_or_else(|_| "gemini-3.1-pro-preview".to_owned()),
+            usd_jpy_rate,
+            usd_jpy_rate_source,
+            usd_jpy_rate_as_of: env::var("USDJPY_RATE_AS_OF")
+                .unwrap_or_else(|_| "unspecified".to_owned()),
+            quota_limits: parse_quota_limits(&env::var("GEMINI_QUOTA_LIMITS").unwrap_or_default()),
             ocr_url: env::var("OCR_URL").unwrap_or_default(),
         }
     }
@@ -316,43 +339,7 @@ pub async fn process(
             transform_page,
         ));
     }
-    let (api_key, project, route) = selected_credentials(config, &model);
-    if api_key.is_empty() {
-        return Err(failure_with_transform(
-            Failure::new(
-                ProcessErrorKind::Permanent,
-                "not_configured",
-                "Gemini Developer API is not configured",
-                partial_result(
-                    &lines,
-                    &issues,
-                    Value::Null,
-                    "not_configured",
-                    &model,
-                    route,
-                    project,
-                ),
-            ),
-            transform,
-            transform_page,
-        ));
-    }
-    let client = GeminiDeveloperApi::new(api_key).map_err(|_| {
-        Failure::new(
-            ProcessErrorKind::Permanent,
-            "invalid_configuration",
-            "Gemini Developer API configuration is invalid",
-            partial_result(
-                &lines,
-                &issues,
-                Value::Null,
-                "invalid_configuration",
-                &model,
-                route,
-                project,
-            ),
-        )
-    })?;
+    let route = selected_route(config, &model);
     let input = make_input(
         &document,
         &job.source_kind,
@@ -370,18 +357,126 @@ pub async fn process(
             partial_result(&lines, &issues, Value::Null, code, &model, route, project),
         )
     })?;
-    let schema = extraction_schema(&job.source_kind, is_csv_statement);
     let started = Instant::now();
-    let mut stream = client
-        .create_stream_with_schema(&model, input, SYSTEM_INSTRUCTION, schema, "low", 16_384)
-        .await
-        .map_err(|error| {
-            failure_with_transform(
-                map_gemini_error(error, &lines, &issues, &model, route, project),
-                transform,
-                transform_page,
+    let candidates = model_candidates(config, &job.source_kind, &model, route);
+    let mut selected = None;
+    let mut last_error = None;
+    let mut previous_code = String::new();
+    let mut previous_model = String::new();
+    let mut previous_kind = ProcessErrorKind::Permanent;
+    for (candidate_model, candidate_route, candidate_reason, condition) in candidates {
+        let should_run = match condition {
+            "always" => true,
+            "after_temporary" => previous_kind == ProcessErrorKind::Retryable && previous_code != "rate_limited",
+            "after_quota" => previous_model == config.lite_model && previous_code == "rate_limited",
+            "after_flash_temporary" => previous_model == config.flash_model && previous_kind == ProcessErrorKind::Retryable && previous_code != "rate_limited",
+            _ => false,
+        };
+        if !should_run {
+            continue;
+        }
+        let (candidate_key, candidate_project, candidate_route) =
+            selected_credentials(config, &candidate_model, candidate_route);
+        if candidate_key.is_empty() {
+            continue;
+        }
+        let reservation_id = if let Some(limit) = config
+            .quota_limits
+            .get(&(candidate_route.to_owned(), candidate_model.clone()))
+        {
+            let estimate = i64::try_from((document.data.len() / 4).max(256)).unwrap_or(i64::MAX);
+            match gemini_quota::reserve(
+                pool,
+                candidate_route,
+                &candidate_model,
+                estimate,
+                *limit,
+                Utc::now(),
+            )
+            .await
+            {
+                Ok(Ok(id)) => Some(id),
+                Ok(Err(delay)) => {
+                    let mut failure = Failure::new(
+                        ProcessErrorKind::Retryable,
+                        "quota_reservation_deferred",
+                        "Gemini Developer API quota is temporarily unavailable",
+                        partial_result(&lines, &issues, Value::Null, "rate_limited", &candidate_model, candidate_route, candidate_project),
+                    );
+                    failure.retry_after = delay.to_std().ok();
+                    last_error = Some(failure);
+                    break;
+                }
+                Err(gemini_quota::QuotaError::InputTooLarge) => {
+                    last_error = Some(Failure::new(
+                        ProcessErrorKind::Permanent,
+                        "input_exceeds_quota",
+                        "Extraction input exceeds the configured token quota",
+                        partial_result(&lines, &issues, Value::Null, "input_exceeds_quota", &candidate_model, candidate_route, candidate_project),
+                    ));
+                    break;
+                }
+                Err(_) => {
+                    last_error = Some(Failure::new(
+                        ProcessErrorKind::Retryable,
+                        "quota_reservation_failed",
+                        "Gemini Developer API quota reservation failed",
+                        empty_partial(),
+                    ));
+                    break;
+                }
+            }
+        } else {
+            None
+        };
+        let candidate_client = GeminiDeveloperApi::new(candidate_key).map_err(|_| {
+            Failure::new(
+                ProcessErrorKind::Permanent,
+                "invalid_configuration",
+                "Gemini Developer API configuration is invalid",
+                empty_partial(),
             )
         })?;
+        match candidate_client
+            .create_stream_with_schema(
+                &candidate_model,
+                input.clone(),
+                SYSTEM_INSTRUCTION,
+                extraction_schema(&job.source_kind, is_csv_statement),
+                "low",
+                16_384,
+            )
+            .await
+        {
+            Ok(stream) => {
+                selected = Some((stream, candidate_model, candidate_route, candidate_project, candidate_reason, reservation_id));
+                break;
+            }
+            Err(error) => {
+                let failure = map_gemini_error(error, &lines, &issues, &candidate_model, candidate_route, candidate_project);
+                previous_code = failure.code.clone();
+                previous_model = candidate_model;
+                previous_kind = failure.kind;
+                last_error = Some(failure);
+                if previous_kind != ProcessErrorKind::Retryable && previous_kind != ProcessErrorKind::SpendCap {
+                    break;
+                }
+            }
+        }
+    }
+    let Some((mut stream, selected_model, selected_route, selected_project, route_reason, reservation_id)) = selected else {
+        return Err(failure_with_transform(
+            last_error.unwrap_or_else(|| Failure::new(
+                ProcessErrorKind::Permanent,
+                "not_configured",
+                "Gemini Developer API is not configured",
+                empty_partial(),
+            )),
+            transform,
+            transform_page,
+        ));
+    };
+    let (model, route, project) = (selected_model.as_str(), selected_route, selected_project);
     let mut output = String::new();
     let mut input_tokens = 0_i64;
     let mut output_tokens = 0_i64;
@@ -512,6 +607,16 @@ pub async fn process(
                 started.elapsed().as_millis() as i64,
             ),
         ));
+    }
+    if let Some(reservation_id) = reservation_id {
+        gemini_quota::settle(pool, reservation_id, input_tokens, Utc::now())
+            .await
+            .map_err(|_| Failure::new(
+                ProcessErrorKind::Retryable,
+                "quota_settlement_failed",
+                "Gemini Developer API usage could not be recorded",
+                empty_partial(),
+            ))?;
     }
     let parsed = parse_json_output(&output).ok_or_else(|| {
         Failure::new(
@@ -652,7 +757,7 @@ pub async fn process(
             }
         }
     }
-    let run = extraction_run(
+    let mut run = extraction_run(
         &model,
         route,
         project,
@@ -662,6 +767,10 @@ pub async fn process(
         &receipt,
         !clarification.is_empty(),
     );
+    if let Some(object) = run.as_object_mut() {
+        object.insert("reason".to_owned(), json!(route_reason));
+        apply_cost_snapshot(object, config, model, route, input_tokens, output_tokens, Utc::now());
+    }
     if is_statement {
         let warnings = receipt
             .get("warnings")
@@ -974,27 +1083,129 @@ fn selected_model(config: &ProcessConfig, job: &ClaimedExtractionJob, request: &
         .or_else(|| (!job.model.is_empty()).then_some(job.model.as_str()));
     match requested {
         Some("pro") => config.pro_model.clone(),
+        Some("free") => default_source_model(config, job),
         Some("flash") => config.flash_model.clone(),
         Some("flash-lite") => config.lite_model.clone(),
         Some(model) => model.to_owned(),
-        None if job.source_kind == "email" || job.mime_type == "message/rfc822" => {
-            config.lite_model.clone()
-        }
-        None => config.flash_model.clone(),
+        None => default_source_model(config, job),
     }
 }
 
 fn selected_credentials<'a>(
     config: &'a ProcessConfig,
     model: &str,
+    route: &'static str,
 ) -> (&'a str, &'a str, &'static str) {
-    let is_paid_model = model.contains("pro") || model.contains("argon");
-    if is_paid_model {
+    if route == "paid" {
         (&config.paid_api_key, &config.paid_project, "paid")
-    } else if !config.free_api_key.is_empty() {
-        (&config.free_api_key, &config.free_project, "free")
     } else {
         (&config.free_api_key, &config.free_project, "free")
+    }
+}
+
+fn default_source_model(config: &ProcessConfig, job: &ClaimedExtractionJob) -> String {
+    if job.source_kind == "email" || job.mime_type == "message/rfc822" {
+        config.lite_model.clone()
+    } else {
+        config.flash_model.clone()
+    }
+}
+
+fn selected_route(config: &ProcessConfig, model: &str) -> &'static str {
+    if model == config.pro_model || model == "gemini-3.1-pro-preview" || model == "gemini-4-argon" {
+        "paid"
+    } else {
+        "free"
+    }
+}
+
+fn model_candidates(
+    config: &ProcessConfig,
+    source_kind: &str,
+    model: &str,
+    route: &'static str,
+) -> Vec<(String, &'static str, &'static str, &'static str)> {
+    let is_email_lite = (source_kind == "email") && model == config.lite_model;
+    let mut candidates = vec![(model.to_owned(), route, "initial_extraction", "always")];
+    if route == "paid" {
+        return candidates;
+    }
+    if is_email_lite {
+        candidates.push((model.to_owned(), "paid", "free_temporary_fallback", "after_temporary"));
+        candidates.push((config.flash_model.clone(), "free", "free_quota_model_fallback", "after_quota"));
+        candidates.push((config.flash_model.clone(), "paid", "free_temporary_fallback", "after_flash_temporary"));
+    } else {
+        candidates.push((model.to_owned(), "paid", "free_temporary_fallback", "after_temporary"));
+    }
+    candidates
+}
+
+fn parse_quota_limits(raw: &str) -> HashMap<(String, String), QuotaLimit> {
+    let mut limits = HashMap::new();
+    for entry in raw.split(';').filter(|entry| !entry.trim().is_empty()) {
+        let Some((selector, values)) = entry.trim().split_once('=') else { continue };
+        let Some((route, model)) = selector.split_once('/') else { continue };
+        if !matches!(route, "free" | "paid") || model.is_empty() { continue; }
+        let parsed = values.split('/').map(str::parse::<i64>).collect::<Result<Vec<_>, _>>();
+        let Ok(parsed) = parsed else { continue };
+        if parsed.len() == 3 && parsed.iter().all(|value| *value > 0) {
+            limits.insert((route.to_owned(), model.to_owned()), QuotaLimit {
+                requests_per_minute: parsed[0],
+                input_tokens_minute: parsed[1],
+                requests_per_day: parsed[2],
+            });
+        }
+    }
+    limits
+}
+
+fn apply_cost_snapshot(
+    run: &mut serde_json::Map<String, Value>,
+    config: &ProcessConfig,
+    model: &str,
+    route: &str,
+    input_tokens: i64,
+    output_tokens: i64,
+    priced_at: DateTime<Utc>,
+) {
+    let (mut input_price, mut output_price) = model_prices(model, input_tokens, priced_at);
+    let price_status = if route == "free" {
+        "free_tier"
+    } else if input_price == 0.0 && output_price == 0.0 {
+        "unknown_model_price"
+    } else {
+        "estimated_paid"
+    };
+    if model == "gemini-3.1-pro-preview" && input_tokens > 200_000 {
+        (input_price, output_price) = (4.0, 18.0);
+    }
+    let cost = if route == "paid" && input_price > 0.0 && config.usd_jpy_rate > 0.0 {
+        (input_tokens as f64 * input_price + output_tokens as f64 * output_price) * config.usd_jpy_rate / 1_000_000.0
+    } else { 0.0 };
+    let status = if route == "paid" && price_status == "estimated_paid" && config.usd_jpy_rate <= 0.0 {
+        "missing_exchange_rate"
+    } else { price_status };
+    run.insert("estimatedCostJPY".to_owned(), json!(cost));
+    run.insert("priceEstimateStatus".to_owned(), json!(status));
+    run.insert("inputUsdPerMillionTokens".to_owned(), json!(input_price));
+    run.insert("outputUsdPerMillionTokens".to_owned(), json!(output_price));
+    run.insert("usdJpyRate".to_owned(), json!(config.usd_jpy_rate));
+    run.insert("usdJpyRateSource".to_owned(), json!(config.usd_jpy_rate_source));
+    run.insert("usdJpyRateAsOf".to_owned(), json!(config.usd_jpy_rate_as_of));
+    run.insert("pricedAt".to_owned(), json!(priced_at));
+}
+
+fn model_prices(model: &str, input_tokens: i64, at: DateTime<Utc>) -> (f64, f64) {
+    match model {
+        "gemini-4-argon" if at < DateTime::parse_from_rfc3339("2026-12-01T00:00:00Z").unwrap().to_utc() => (2.0, 10.0),
+        "gemini-4-argon" => (4.0, 20.0),
+        "gemini-3.8-flash" | "gemini-3.6-flash" if at < DateTime::parse_from_rfc3339("2027-01-01T00:00:00Z").unwrap().to_utc() => (0.75, 3.75),
+        "gemini-3.8-flash" | "gemini-3.6-flash" => (1.5, 7.5),
+        "gemini-3.5-flash-lite" => (0.3, 2.5),
+        "gemini-3.1-flash-lite" => (0.25, 1.5),
+        "gemini-3.1-pro-preview" if input_tokens > 200_000 => (4.0, 18.0),
+        "gemini-3.1-pro-preview" => (2.0, 12.0),
+        _ => (0.0, 0.0),
     }
 }
 
