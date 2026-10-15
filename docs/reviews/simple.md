@@ -28,43 +28,9 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 - [purchase/correction.go — Correct()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/correction.go#L250-L606)
 - [purchase/update_operations.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/update_operations.go)
 
-`updateItem()`には、以下のような異なる作業が集まっています。
+通常更新と一括更新は`itemChangePlan`を共有し、配賦の再計算と`ItemAllocations`の更新を必要な変更に限るようになりました。明細更新では支払調整を計算し、支払行の置換とposted仕訳同期の要否を`purchaseItemAccountingPlan`へ集約しています。`f106383`では`updateItem()`の入力検証、更新対象の取得とロック、計画構築をそれぞれヘルパーへ分離しました。商品学習の設定解釈や履歴記録も`item_product_learning.go`にあります。
 
-入力フィールドの検証から始まり、購入の取得、世帯所属の検証、会計期間のロック、リビジョン競合判定、商品規格とカテゴリの検証、商品名の学習、配賦ルールの解決、支払額の調整、DB更新、商品修正履歴の登録、配賦の再登録、監査イベント記録、会計仕訳の同期まで続きます。
-
-これはファイルを分割するだけでは解決しません。「何を変更するかの決定」と「どの順序でDBに反映するか」を分離するべきです。
-
-目標とする流れは、例えば次の形です。
-
-```
-func (s *Service) UpdateItem(
-    ctx context.Context,
-    cmd UpdateItemCommand,
-) (UpdateResult, error) {
-    // 1. 更新対象と関連データを取得する
-    // 2. 入力から変更内容を確定する
-    // 3. 変更内容を検証し、更新計画を作る
-    // 4. 更新計画をトランザクション内で適用する
-}
-```
-
-実際にはこの順序だけでは不十分で、競合検出とロックの整合性を維持する必要があります。そのため、中心に置きたいのは更新前の状態とコマンドから導出する、明示的な変更計画です。
-
-```
-type ItemChanges struct {
-    Item         ItemPatch
-    Allocation   *AllocationChange
-    Payment      *PaymentChange
-    Product      *ProductLearningChange
-    NeedsRepost  bool
-}
-```
-
-このような型を用意すれば、例えば商品名だけを変更するときに、配賦や支払情報を変更する必要があるのかがコード上で明確になります。
-
-通常更新と一括更新は`itemChangePlan`を共有し、配賦の再計算と`ItemAllocations`の更新を必要な変更に限るようになりました。明細更新では支払調整の計算を純粋関数にし、支払行の置換とposted仕訳同期の要否を`purchaseItemAccountingPlan`へ集約しました。トランザクション内の適用も別関数に分けています。一方、購入全体の`update()`と`BulkUpdate()`には共通計画がなく、入力検証、権限確認、ロック、商品学習、監査イベントも同じユースケースに含まれています。更新全体の計画化と適用処理の分離は引き続き改善候補です。
-
-`updateItem()`では商品学習の設定解釈、バリアント名の変更、店舗別別名の登録、商品修正履歴の記録を`item_product_learning.go`へ分離しました。購入明細の更新トランザクション内で従来と同じ順に実行し、通常の明細更新と商品学習の副作用を読み分けやすくしています。更新全体の入力検証、権限確認、ロック、配賦・支払計画、監査イベント、仕訳同期は引き続き`updateItem()`に残っています。
+一方、`buildPurchaseItemUpdatePlan()`は商品バリアントや支払情報などをDBから取得しながら計画を構築します。`updateItem()`は計画後の商品学習、明細・配賦・支払の更新、購入revisionの更新、監査イベント記録、仕訳同期をトランザクション内で順に調整します。読み込みを伴う計画構築と適用順序の責務をどこまで分けるかは、競合検出とロック順序を保った上で検討できます。
 
 ### 2. GraphQLの巨大な一括組み立て処理を見直す
 
@@ -100,19 +66,15 @@ Member、Account、Category、Household、Pool Nodeの複数ID解決では、所
 
 ここは特に改善効果が大きそうです。
 
-購入全体の通常更新と一括更新では、入力フィールド検証に加えて、リビジョン競合判定、更新値の適用、支払額の検証、購入行の更新が重複していました。これらは共通の`purchaseUpdatePlan`と適用ヘルパーへ集約しました。
+購入全体の通常更新と一括更新では、リビジョン競合判定と更新値の適用を`purchaseUpdatePlan`と`applyPurchaseUpdatePlan()`に集約しました。入力フィールドと支払額の検証も共通ヘルパーを使いますが、各ユースケースが対象を読み込み、検証、ロック、適用、仕訳同期、監査イベント記録を調整します。
 
-明細更新では`updateItem()`と`updateBulkItem()`が`itemChangePlan`を共有し、リビジョンと配賦計算の一部を共通化しました。購入全体の通常更新と一括更新も`purchaseUpdatePlan`を共有し、フィールドリビジョンの競合判定、更新値の適用、支払額の検証、支払行と購入行の更新を共通化しました。ロック取得、一括更新の事前検証と適用順、通常更新と一括更新で異なる仕訳同期、監査イベントの記録順は各ユースケースに残しています。
+明細更新では`updateItem()`と`updateBulkItem()`が`itemChangePlan`を共有し、リビジョンと配賦計算の一部を共通化しました。購入全体の通常更新と一括更新も`purchaseUpdatePlan`と`applyPurchaseUpdatePlan()`を共有し、フィールドリビジョンの競合判定と購入行・支払行の更新を共通化しました。入力検証、支払額の検証、ロック取得、一括更新の事前検証と適用順、仕訳同期、監査イベント記録の調整は各ユースケースに残っています。
 
 さらに`SaveItemEdits()`では、各明細について`updateItem()`を呼び、その後に購入全体の`update()`を呼んでいます。
 
 `SaveItemEdits()`は`planSaveItemEdits()`でIDとコマンドを正規化し、明細のlock順序を決めた後、`applySaveItemEdits()`で既存のtransactionフローを実行するよう分けました。個別明細と購入の業務変更計画は引き続き`updateItem()`と`update()`がそれぞれ構築するため、計画構築と適用の完全な共通化は未完了です。既存の複数明細を一括保存するDB統合テストは通過しています。
 
-この構造には2つの問題があります。
-
-第一に、同じルールを複数箇所で保守する必要があること。 通常更新だけ修正して一括更新への反映を忘れる、といった不一致が起こりやすくなります。
-
-推奨するのは、単一更新と一括更新を別々の業務実装にするのではなく、以下の構造へ統合することです。
+残る設計課題は、共有済みの計画・適用処理と各ユースケースに残る事前検証、ロック、イベント、仕訳同期の責務境界です。通常更新と一括更新では対象件数や適用順、仕訳同期の条件が異なるため、共通化する業務ルールとユースケース固有の調整を明確にした上で、重複や意図しない差異を見直す必要があります。単一更新と一括更新の流れは、例えば次の構造で整理できます。
 
 Create / Update / BulkUpdate / SaveItemEdits
 
