@@ -3,10 +3,16 @@ use async_graphql::{
     Schema as GraphqlSchema, SimpleObject, Union,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use chrono::{DateTime, Utc};
 use horse_postgres::{PgPool, mail_forwarding as postgres_mail_forwarding};
 use household_workflows::mail_forwarding;
 use uuid::Uuid;
+
+pub mod account_balances;
+pub mod account_mutations;
+pub mod category;
+pub mod funding;
+pub mod scalars;
+pub use scalars::{DateTime, Long};
 
 pub type Schema = GraphqlSchema<QueryRoot, MutationRoot, EmptySubscription>;
 
@@ -32,6 +38,14 @@ pub struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
+    async fn account_balances(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+    ) -> Result<Vec<account_balances::AccountBalance>> {
+        account_balances::resolve_account_balances(ctx, household_id).await
+    }
+
     async fn household_mail_forwarding(
         &self,
         ctx: &Context<'_>,
@@ -127,6 +141,46 @@ impl MutationRoot {
             },
         }
     }
+
+    async fn create_category(
+        &self,
+        ctx: &Context<'_>,
+        input: category::CreateCategoryInput,
+    ) -> Result<category::CreateCategoryResult> {
+        category::create_category(ctx, input).await
+    }
+
+    async fn update_category_name(
+        &self,
+        ctx: &Context<'_>,
+        input: category::UpdateCategoryNameInput,
+    ) -> Result<category::UpdateCategoryNameResult> {
+        category::update_category_name(ctx, input).await
+    }
+
+    async fn set_category_archived(
+        &self,
+        ctx: &Context<'_>,
+        input: category::SetCategoryArchivedInput,
+    ) -> Result<category::SetCategoryArchivedResult> {
+        category::set_category_archived(ctx, input).await
+    }
+
+    async fn record_account_movement(
+        &self,
+        ctx: &Context<'_>,
+        input: account_mutations::RecordAccountMovementInput,
+    ) -> Result<account_mutations::RecordAccountMovementResult> {
+        account_mutations::graphql_record_account_movement(ctx, input).await
+    }
+
+    async fn record_external_income(
+        &self,
+        ctx: &Context<'_>,
+        input: account_mutations::RecordExternalIncomeInput,
+    ) -> Result<account_mutations::RecordExternalIncomeResult> {
+        account_mutations::graphql_record_external_income(ctx, input).await
+    }
 }
 
 async fn issue_or_rotate(
@@ -162,20 +216,20 @@ async fn issue_or_rotate(
         .map(|address| HouseholdMailForwardingAddress {
             address: address.address,
             status: HouseholdMailForwardingStatus {
-                created_at: address.created_at,
+                created_at: address.created_at.into(),
                 active: true,
             },
         })
         .map_err(|error| mutation_user_error(&error).unwrap_or_else(bad_input_error))
 }
 
-fn actor(ctx: &Context<'_>) -> Result<Actor> {
+pub(crate) fn actor(ctx: &Context<'_>) -> Result<Actor> {
     ctx.data::<Actor>()
         .copied()
         .map_err(|_| Error::new("authentication required"))
 }
 
-fn decode_household_id(id: &ID) -> Result<Uuid> {
+pub(crate) fn decode_household_id(id: &ID) -> Result<Uuid> {
     let bytes = URL_SAFE_NO_PAD
         .decode(id.as_str())
         .map_err(|_| Error::new("invalid Household node ID"))?;
@@ -220,21 +274,21 @@ fn bad_input_error() -> HouseholdMailForwardingUserError {
     }
 }
 
-fn internal_error(error: impl std::fmt::Debug) -> Error {
-    tracing::error!(error = ?error, "household mail forwarding GraphQL operation failed");
+pub(crate) fn internal_error(error: impl std::fmt::Debug) -> Error {
+    tracing::error!(error = ?error, "GraphQL operation failed");
     Error::new("internal server error")
 }
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct HouseholdMailForwardingStatus {
-    created_at: DateTime<Utc>,
+    created_at: DateTime,
     active: bool,
 }
 
 impl From<mail_forwarding::Status> for HouseholdMailForwardingStatus {
     fn from(value: mail_forwarding::Status) -> Self {
         Self {
-            created_at: value.created_at,
+            created_at: value.created_at.into(),
             active: value.active,
         }
     }
@@ -281,6 +335,11 @@ impl HouseholdMailForwardingUserError {
 )]
 pub enum MutationError {
     HouseholdMailForwardingUserError(HouseholdMailForwardingUserError),
+    CreateCategoryUserError(category::CreateCategoryUserError),
+    UpdateCategoryNameUserError(category::UpdateCategoryNameUserError),
+    SetCategoryArchivedUserError(category::SetCategoryArchivedUserError),
+    RecordAccountMovementUserError(account_mutations::RecordAccountMovementUserError),
+    RecordExternalIncomeUserError(account_mutations::RecordExternalIncomeUserError),
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -315,4 +374,3 @@ pub enum RevokeHouseholdMailForwardingResult {
     Success(RevokeHouseholdMailForwardingSuccess),
     UserError(HouseholdMailForwardingUserError),
 }
-

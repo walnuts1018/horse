@@ -41,21 +41,41 @@ impl Worker {
         })
     }
 
-    pub async fn run(self) -> Result<(), Box<dyn Error + Send + Sync>> {
+    pub async fn run(
+        &self,
+        mut shutdown: tokio::sync::watch::Receiver<bool>,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
         loop {
+            if *shutdown.borrow() {
+                break;
+            }
             let now = Utc::now();
             if let Err(error) = recover_expired_extraction_jobs(&self.pool, now).await {
                 tracing::error!(error = ?error, "recover expired extraction jobs failed");
             }
             match claim_next_extraction_job(&self.pool, now).await {
                 Ok(Some(job)) => self.process_one(job).await,
-                Ok(None) => tokio::time::sleep(Duration::from_secs(1)).await,
+                Ok(None) => {
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(1)) => {},
+                        changed = shutdown.changed() => {
+                            if changed.is_err() || *shutdown.borrow() {
+                                break;
+                            }
+                        }
+                    }
+                }
                 Err(error) => {
                     tracing::error!(error = ?error, "claim extraction job failed");
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             }
         }
+        Ok(())
+    }
+
+    pub async fn is_ready(&self) -> bool {
+        self.pool.get().await.is_ok()
     }
 
     async fn process_one(&self, job: ClaimedExtractionJob) {

@@ -6,8 +6,16 @@ edition = "2024"
 [dependencies]
 async-graphql = { version = "7", features = ["chrono"] }
 base64 = "0.22"
+bookkeeping-domain = { path = "../bookkeeping-domain" }
+bookkeeping-workflows = { path = "../bookkeeping-workflows" }
 chrono = { version = "0.4", features = ["serde"] }
+catalog-workflows = { path = "../catalog-workflows" }
+diesel = { workspace = true }
+diesel-async = { workspace = true }
 horse-postgres = { path = "../postgres" }
 household-workflows = { path = "../household-workflows" }
+serde_json = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
 uuid = { version = "1", features = ["std"] }
 tracing = "0.1"

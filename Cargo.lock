@@ -1945,9 +1945,17 @@ version = "0.1.0"
 dependencies = [
  "async-graphql",
  "base64 0.22.1",
+ "bookkeeping-domain",
+ "bookkeeping-workflows",
+ "catalog-workflows",
  "chrono",
+ "diesel",
+ "diesel-async",
  "horse-postgres",
  "household-workflows",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "tracing",
  "uuid",
 ]
@@ -1988,6 +1996,7 @@ dependencies = [
 name = "horse-worker"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "horse-worker-runtime",
  "tokio",
  "tracing-subscriber",

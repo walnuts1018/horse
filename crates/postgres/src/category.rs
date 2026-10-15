@@ -80,6 +80,7 @@ pub async fn persist_create_category(
                 .await
                 .optional()?
                 .ok_or(CategoryPersistenceError::HouseholdNotFound)?;
+            require_member(conn, household_id, actor_id).await?;
 
             if let Some(parent_id) = parent_id {
                 categories::categories
