@@ -28,7 +28,10 @@ func StartPostgres(ctx context.Context) (string, func(context.Context) error, er
 		postgres.WithDatabase(postgresDatabase),
 		postgres.WithUsername(postgresUser),
 		postgres.WithPassword(postgresPassword),
-		testcontainers.WithWaitStrategy(wait.ForListeningPort("5432/tcp").WithStartupTimeout(time.Minute)),
+		testcontainers.WithWaitStrategy(wait.ForAll(
+			wait.ForLog("database system is ready to accept connections").WithStartupTimeout(time.Minute),
+			wait.ForListeningPort("5432/tcp").WithStartupTimeout(time.Minute),
+		)),
 	)
 	if err != nil {
 		return "", nil, fmt.Errorf("start PostgreSQL test container: %w", err)
