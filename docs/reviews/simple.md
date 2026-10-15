@@ -54,22 +54,9 @@ Member、Account、Category、Household、Pool Nodeの複数ID解決では、所
 
 目指すのは「すべてを先読みする巨大なローダー」でも「フィールドごとに1件ずつSQLを実行する構造」でもなく、GraphQLで要求されたデータだけを、親子関係に応じた適切な単位で一括取得する構造です。
 
-## 4. 通常更新・一括更新・まとめて保存の責務境界
+## 4. 購入更新のtransaction責務
 
-優先度：最高 / 改善効果：非常に大きい
-
-関連ファイル：
-
-- [purchase/update.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/update.go)
-- [purchase/bulk_update.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/bulk_update.go)
-- [purchase/bulk_update_items.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/bulk_update_items.go)
-- [purchase/save_item_edits.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/save_item_edits.go)
-
-明細更新では`updateItem()`と`updateBulkItem()`が`itemChangePlan`を共有し、リビジョンと配賦計算の一部を共通化しました。購入全体の通常更新と一括更新も`purchaseUpdatePlan`と`applyPurchaseUpdatePlan()`を共有し、フィールドリビジョンの競合判定と購入行・支払行の更新を共通化しました。購入更新後の台帳行同期も`updatePostedPurchaseLedgerEntries()`へ分離しました。入力フィールドと支払額の検証には共通ヘルパーを使い、仕訳同期と監査イベント記録は各ユースケースが調整します。
-
-`SaveItemEdits()`は購入と明細を一度取得し、ID順にロックした明細状態を各更新へ渡します。明細ごとの再取得と再ロックはなく、`planAndApplyPurchaseItemUpdate()`で計画構築と適用を共有します。`BulkUpdateItems()`は対象明細と購入をBobの一括取得で読み込み、会計期間、購入、明細の順にロックします。複数の購入と明細はID昇順でロックし、ロック後にrevisionと所属を検証します。イベントと結果は入力順に保ちます。逆順の明細IDを渡したintegration testで、入力順の結果とrevision更新を確認しています。購入全体の通常更新は`Update()`がtransactionを開始・commitし、transaction内の適用処理は`updateInTransaction()`が担います。`SaveItemEdits()`は自身のtransactionを所有し、明示した`purchaseUpdateOptions`で購入更新後の台帳同期を保留して明細更新と合わせて実行します。
-
-残る設計課題は、Create、CreateAndPost、Update、BulkUpdate、BulkUpdateItems、SaveItemEditsのtransaction所有者とcommit単位をどう統一するかです。CreateとCreateAndPostは作成処理を共有しますが、別のtransactionを所有します。Updateは`Update()`がtransactionを所有し、`SaveItemEdits()`は購入・明細の更新をまとめるtransactionを所有します。BulkUpdateとBulkUpdateItemsも各操作の全対象を一つのtransactionで更新します。共通化するtransaction実行責務とユースケース固有の処理範囲を明確にし、すべての更新経路で原子性を保つ方法の整理が残っています。
+Create、CreateAndPost、Update、BulkUpdate、BulkUpdateItems、SaveItemEditsではtransactionの所有者とcommit単位が各ユースケースに分かれています。transaction開始・rollback・commitの共通責務をどこまで集約し、ユースケース固有の原子性を保つかが未解決です。
 
 ## 5. 小さな自前ユーティリティも整理する
 
