@@ -5,6 +5,7 @@ use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId, PositiveYen
 pub mod account_income;
 pub mod account_card_last4;
 pub mod account_movement;
+pub mod bulk_delete_items;
 pub mod close_period;
 pub mod correct_purchase;
 pub mod create_account;
