@@ -146,10 +146,7 @@ impl<'a> PostgresMembershipOperations<'a> {
                 if affected != 1 {
                     return Err(HouseholdMembershipError::MemberNotFound);
                 }
-                (
-                    "household.member.removed",
-                    vec![Some("members".to_owned())],
-                )
+                ("household.member.removed", vec![Some("members".to_owned())])
             }
             MembershipChange::TransferOwner {
                 new_owner_was_owner,
@@ -205,10 +202,7 @@ impl LeaveHouseholdOperations for PostgresMembershipOperations<'_> {
         PostgresMembershipOperations::load_facts(self, household_id, actor_id, target_id).await
     }
 
-    async fn persist(
-        &mut self,
-        decision: MembershipChangeDecision,
-    ) -> Result<String, Self::Error> {
+    async fn persist(&mut self, decision: MembershipChangeDecision) -> Result<String, Self::Error> {
         PostgresMembershipOperations::persist(self, decision).await
     }
 }
@@ -225,10 +219,7 @@ impl RemoveHouseholdMemberOperations for PostgresMembershipOperations<'_> {
         PostgresMembershipOperations::load_facts(self, household_id, actor_id, target_id).await
     }
 
-    async fn persist(
-        &mut self,
-        decision: MembershipChangeDecision,
-    ) -> Result<String, Self::Error> {
+    async fn persist(&mut self, decision: MembershipChangeDecision) -> Result<String, Self::Error> {
         PostgresMembershipOperations::persist(self, decision).await
     }
 }
@@ -245,10 +236,7 @@ impl TransferHouseholdOwnerOperations for PostgresMembershipOperations<'_> {
         PostgresMembershipOperations::load_facts(self, household_id, actor_id, target_id).await
     }
 
-    async fn persist(
-        &mut self,
-        decision: MembershipChangeDecision,
-    ) -> Result<String, Self::Error> {
+    async fn persist(&mut self, decision: MembershipChangeDecision) -> Result<String, Self::Error> {
         PostgresMembershipOperations::persist(self, decision).await
     }
 }
@@ -264,14 +252,10 @@ pub async fn leave_household(
     (&mut *pooled)
         .transaction::<PersistedMembershipChange, HouseholdMembershipError, _>(async |conn| {
             let mut operations = PostgresMembershipOperations::new(conn);
-            let household_id = household_application::membership::leave_household(
-                &mut operations,
-                command,
-            )
-            .await?;
-            Ok(PersistedMembershipChange {
-                household_id,
-            })
+            let household_id =
+                household_application::membership::leave_household(&mut operations, command)
+                    .await?;
+            Ok(PersistedMembershipChange { household_id })
         })
         .await
 }
@@ -292,9 +276,7 @@ pub async fn remove_household_member(
                 command,
             )
             .await?;
-            Ok(PersistedMembershipChange {
-                household_id,
-            })
+            Ok(PersistedMembershipChange { household_id })
         })
         .await
 }
@@ -310,14 +292,9 @@ pub async fn transfer_owner(
     (&mut *pooled)
         .transaction::<PersistedMembershipChange, HouseholdMembershipError, _>(async |conn| {
             let mut operations = PostgresMembershipOperations::new(conn);
-            let household_id = household_application::membership::transfer_owner(
-                &mut operations,
-                command,
-            )
-            .await?;
-            Ok(PersistedMembershipChange {
-                household_id,
-            })
+            let household_id =
+                household_application::membership::transfer_owner(&mut operations, command).await?;
+            Ok(PersistedMembershipChange { household_id })
         })
         .await
 }

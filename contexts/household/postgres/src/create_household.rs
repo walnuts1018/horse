@@ -325,11 +325,8 @@ pub async fn persist_create_household(
     command: CreateHouseholdCommand,
 ) -> Result<PersistedHousehold, CreateHouseholdPersistenceError> {
     let mut operations = PostgresCreateHouseholdOperations { pool };
-    let household_id = household_application::create_household::create_household(
-        &mut operations,
-        command,
-    )
-    .await?;
+    let household_id =
+        household_application::create_household::create_household(&mut operations, command).await?;
     Ok(PersistedHousehold { household_id })
 }
 
@@ -420,10 +417,7 @@ struct PostgresCreateHouseholdOperations<'a> {
 impl CreateHouseholdOperations for PostgresCreateHouseholdOperations<'_> {
     type Error = CreateHouseholdPersistenceError;
 
-    async fn persist(
-        &mut self,
-        decision: CreateHouseholdDecision,
-    ) -> Result<String, Self::Error> {
+    async fn persist(&mut self, decision: CreateHouseholdDecision) -> Result<String, Self::Error> {
         persist_create_household_decision(self.pool, decision).await
     }
 }

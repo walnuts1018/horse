@@ -515,99 +515,147 @@ pub async fn revoke_invitation(
     command: RevokeInvitationCommand,
     now_value: DateTime<Utc>,
 ) -> Result<InvitationStateDto, HouseholdInvitationError> {
-    let household_id = parse_uuid(&command.household_id, "household_id")?;
-    let actor_id = parse_uuid(&command.actor_id, "actor_id")?;
-    let invitation_id = parse_uuid(&command.invitation_id, "invitation_id")?;
+    parse_uuid(&command.household_id, "household_id")?;
+    parse_uuid(&command.actor_id, "actor_id")?;
+    parse_uuid(&command.invitation_id, "invitation_id")?;
     let mut pooled = pool
         .get()
         .await
         .map_err(|error| HouseholdInvitationError::Pool(error.to_string()))?;
     (&mut *pooled)
         .transaction::<InvitationStateDto, HouseholdInvitationError, _>(async |conn| {
-            use public::{
-                household_invitations as invitations, household_members as members, households,
-            };
-            households::table
-                .filter(households::id.eq(household_id))
-                .for_update()
-                .select(households::id)
-                .first::<Uuid>(&mut *conn)
-                .await
-                .optional()?
-                .ok_or(HouseholdInvitationError::HouseholdNotFound)?;
-            let actor_role = members::table
-                .filter(members::household_id.eq(household_id))
-                .filter(members::member_id.eq(actor_id))
-                .filter(members::left_at.is_null())
-                .for_share()
-                .select(members::role)
-                .first::<String>(&mut *conn)
-                .await
-                .optional()?;
-            let row = invitations::table
-                .filter(invitations::household_id.eq(household_id))
-                .filter(invitations::id.eq(invitation_id))
-                .for_update()
-                .select((
-                    invitations::created_at,
-                    invitations::expires_at,
-                    invitations::accepted_at,
-                    invitations::revoked_at,
-                ))
-                .first::<(
-                    DateTime<Utc>,
-                    DateTime<Utc>,
-                    Option<DateTime<Utc>>,
-                    Option<DateTime<Utc>>,
-                )>(&mut *conn)
-                .await
-                .optional()?
-                .ok_or(HouseholdInvitationError::InvitationNotFound)?;
-            let decision = decide_revoke_invitation(
+            let mut operations = PostgresRevokeInvitationOperations { conn, row: None };
+            household_application::invitation::revoke_invitation(
+                &mut operations,
                 command,
-                actor_role.as_deref(),
-                row.2.is_some(),
-                row.3.is_some(),
+                now_value,
             )
-            .map_err(map_workflow_error)?;
-            if !decision.already_revoked {
-                diesel::update(invitations::table.filter(invitations::id.eq(invitation_id)))
-                    .set(invitations::revoked_at.eq(Some(now_value)))
-                    .execute(&mut *conn)
-                    .await?;
-                record_change(
-                    conn,
-                    household_id,
-                    invitation_id,
-                    actor_id,
-                    "invitation",
-                    "household.invitation.revoked",
-                    vec![Some("invitations".to_owned())],
-                )
-                .await?;
-            } else {
-                households::table
-                    .filter(households::id.eq(household_id))
-                    .select(households::id)
-                    .first::<Uuid>(&mut *conn)
-                    .await
-                    .optional()?
-                    .ok_or(HouseholdInvitationError::HouseholdNotFound)?;
-            }
-            Ok(InvitationStateDto {
-                id: invitation_id.to_string(),
-                household_id: household_id.to_string(),
-                created_at: row.0,
-                expires_at: row.1,
-                accepted_at: row.2,
-                revoked_at: if decision.already_revoked {
-                    row.3
-                } else {
-                    Some(now_value)
-                },
-            })
+            .await
         })
         .await
+}
+
+struct PostgresRevokeInvitationOperations<'a> {
+    conn: &'a mut crate::AsyncPgConnection,
+    row: Option<(
+        DateTime<Utc>,
+        DateTime<Utc>,
+        Option<DateTime<Utc>>,
+        Option<DateTime<Utc>>,
+    )>,
+}
+
+impl RevokeInvitationOperations for PostgresRevokeInvitationOperations<'_> {
+    type Error = HouseholdInvitationError;
+    type Output = InvitationStateDto;
+
+    async fn load_household(&mut self, household_id: &str) -> Result<(), Self::Error> {
+        use public::households;
+        let household_id = parse_uuid(household_id, "household_id")?;
+        households::table
+            .filter(households::id.eq(household_id))
+            .for_update()
+            .select(households::id)
+            .first::<Uuid>(&mut *self.conn)
+            .await
+            .optional()?
+            .ok_or(HouseholdInvitationError::HouseholdNotFound)?;
+        Ok(())
+    }
+
+    async fn load_actor_role(
+        &mut self,
+        household_id: &str,
+        actor_id: &str,
+    ) -> Result<Option<String>, Self::Error> {
+        use public::household_members as members;
+        let household_id = parse_uuid(household_id, "household_id")?;
+        let actor_id = parse_uuid(actor_id, "actor_id")?;
+        Ok(members::table
+            .filter(members::household_id.eq(household_id))
+            .filter(members::member_id.eq(actor_id))
+            .filter(members::left_at.is_null())
+            .for_share()
+            .select(members::role)
+            .first::<String>(&mut *self.conn)
+            .await
+            .optional()?)
+    }
+
+    async fn load_invitation(
+        &mut self,
+        household_id: &str,
+        invitation_id: &str,
+    ) -> Result<(DateTime<Utc>, DateTime<Utc>, bool, bool), Self::Error> {
+        use public::household_invitations as invitations;
+        let household_id = parse_uuid(household_id, "household_id")?;
+        let invitation_id = parse_uuid(invitation_id, "invitation_id")?;
+        let row = invitations::table
+            .filter(invitations::household_id.eq(household_id))
+            .filter(invitations::id.eq(invitation_id))
+            .for_update()
+            .select((
+                invitations::created_at,
+                invitations::expires_at,
+                invitations::accepted_at,
+                invitations::revoked_at,
+            ))
+            .first::<(
+                DateTime<Utc>,
+                DateTime<Utc>,
+                Option<DateTime<Utc>>,
+                Option<DateTime<Utc>>,
+            )>(&mut *self.conn)
+            .await
+            .optional()?
+            .ok_or(HouseholdInvitationError::InvitationNotFound)?;
+        let facts = (row.0, row.1, row.2.is_some(), row.3.is_some());
+        self.row = Some(row);
+        Ok(facts)
+    }
+
+    async fn persist(
+        &mut self,
+        decision: RevokeInvitationDecision,
+        now_value: DateTime<Utc>,
+    ) -> Result<Self::Output, Self::Error> {
+        use public::household_invitations as invitations;
+        let household_id = parse_uuid(&decision.household_id, "household_id")?;
+        let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
+        let invitation_id = parse_uuid(&decision.invitation_id, "invitation_id")?;
+        let row = self
+            .row
+            .take()
+            .ok_or(HouseholdInvitationError::InvitationNotFound)?;
+        if !decision.already_revoked {
+            diesel::update(invitations::table.filter(invitations::id.eq(invitation_id)))
+                .set(invitations::revoked_at.eq(Some(now_value)))
+                .execute(&mut *self.conn)
+                .await?;
+            record_change(
+                self.conn,
+                household_id,
+                invitation_id,
+                actor_id,
+                "invitation",
+                "household.invitation.revoked",
+                vec![Some("invitations".to_owned())],
+            )
+            .await?;
+        }
+        Ok(InvitationStateDto {
+            id: invitation_id.to_string(),
+            household_id: household_id.to_string(),
+            created_at: row.0,
+            expires_at: row.1,
+            accepted_at: row.2,
+            revoked_at: if decision.already_revoked {
+                row.3
+            } else {
+                Some(now_value)
+            },
+        })
+    }
 }
 
 async fn record_change(
@@ -647,6 +695,7 @@ async fn record_change(
 fn map_workflow_error(error: InvitationError) -> HouseholdInvitationError {
     match error {
         InvitationError::Forbidden => HouseholdInvitationError::MemberNotFound,
+        InvitationError::NotFound => HouseholdInvitationError::InvitationNotFound,
         InvitationError::Expired
         | InvitationError::Revoked
         | InvitationError::AlreadyAccepted

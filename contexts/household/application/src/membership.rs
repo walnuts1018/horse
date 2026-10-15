@@ -59,18 +59,20 @@ pub trait LeaveHouseholdOperations {
         actor_id: &str,
         target_id: &str,
     ) -> Result<MembershipFacts, Self::Error>;
-    async fn persist(
-        &mut self,
-        decision: MembershipChangeDecision,
-    ) -> Result<String, Self::Error>;
+    async fn persist(&mut self, decision: MembershipChangeDecision) -> Result<String, Self::Error>;
 }
 
 pub async fn leave_household<O: LeaveHouseholdOperations>(
     operations: &mut O,
     command: LeaveHouseholdCommand,
 ) -> Result<String, O::Error> {
+    validate_identifiers(&command.member_id, &command.household_id, None)?;
     let facts = operations
-        .load_facts(&command.household_id, &command.member_id, &command.member_id)
+        .load_facts(
+            &command.household_id,
+            &command.member_id,
+            &command.member_id,
+        )
         .await?;
     let decision = decide_leave_household(
         command,
@@ -90,16 +92,18 @@ pub trait RemoveHouseholdMemberOperations {
         actor_id: &str,
         target_id: &str,
     ) -> Result<MembershipFacts, Self::Error>;
-    async fn persist(
-        &mut self,
-        decision: MembershipChangeDecision,
-    ) -> Result<String, Self::Error>;
+    async fn persist(&mut self, decision: MembershipChangeDecision) -> Result<String, Self::Error>;
 }
 
 pub async fn remove_household_member<O: RemoveHouseholdMemberOperations>(
     operations: &mut O,
     command: RemoveHouseholdMemberCommand,
 ) -> Result<String, O::Error> {
+    validate_identifiers(
+        &command.actor_id,
+        &command.household_id,
+        Some(&command.member_id),
+    )?;
     let facts = operations
         .load_facts(&command.household_id, &command.actor_id, &command.member_id)
         .await?;
@@ -122,18 +126,24 @@ pub trait TransferHouseholdOwnerOperations {
         actor_id: &str,
         target_id: &str,
     ) -> Result<MembershipFacts, Self::Error>;
-    async fn persist(
-        &mut self,
-        decision: MembershipChangeDecision,
-    ) -> Result<String, Self::Error>;
+    async fn persist(&mut self, decision: MembershipChangeDecision) -> Result<String, Self::Error>;
 }
 
 pub async fn transfer_owner<O: TransferHouseholdOwnerOperations>(
     operations: &mut O,
     command: TransferOwnerCommand,
 ) -> Result<String, O::Error> {
+    validate_identifiers(
+        &command.actor_id,
+        &command.household_id,
+        Some(&command.new_owner_id),
+    )?;
     let facts = operations
-        .load_facts(&command.household_id, &command.actor_id, &command.new_owner_id)
+        .load_facts(
+            &command.household_id,
+            &command.actor_id,
+            &command.new_owner_id,
+        )
         .await?;
     let decision = decide_transfer_owner(
         command,
@@ -141,6 +151,17 @@ pub async fn transfer_owner<O: TransferHouseholdOwnerOperations>(
         facts.target_role.as_deref(),
     )?;
     operations.persist(decision).await
+}
+
+fn validate_identifiers<E: From<MembershipError>>(
+    actor_id: &str,
+    household_id: &str,
+    target_id: Option<&str>,
+) -> Result<(), E> {
+    if actor_id.is_empty() || household_id.is_empty() || target_id.is_some_and(str::is_empty) {
+        return Err(MembershipError::InvalidIdentifier.into());
+    }
+    Ok(())
 }
 
 pub fn decide_leave_household(

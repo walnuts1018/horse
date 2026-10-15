@@ -715,9 +715,10 @@ fn invitation_error_code(
             | WorkflowError::AlreadyAccepted
             | WorkflowError::AlreadyMember,
         ) => Some(MutationErrorCode::Conflict),
-        Error::HouseholdNotFound | Error::InvitationNotFound | Error::MemberNotFound => {
-            Some(MutationErrorCode::NotFound)
-        }
+        Error::Workflow(WorkflowError::NotFound)
+        | Error::HouseholdNotFound
+        | Error::InvitationNotFound
+        | Error::MemberNotFound => Some(MutationErrorCode::NotFound),
         Error::Conflict => Some(MutationErrorCode::Conflict),
         Error::InvalidCursor | Error::InvalidPagination => Some(MutationErrorCode::BadInput),
         Error::Pool(_) | Error::Database(_) => None,

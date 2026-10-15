@@ -108,8 +108,10 @@ pub trait CreateInvitationOperations {
         household_id: &str,
         actor_id: &str,
     ) -> Result<Option<String>, Self::Error>;
-    async fn persist(&mut self, decision: CreateInvitationDecision)
-    -> Result<Self::Output, Self::Error>;
+    async fn persist(
+        &mut self,
+        decision: CreateInvitationDecision,
+    ) -> Result<Self::Output, Self::Error>;
 }
 
 pub async fn create_invitation<O: CreateInvitationOperations>(
