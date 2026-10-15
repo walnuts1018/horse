@@ -118,6 +118,8 @@ pub enum Node {
     ProductAlias(crate::catalog_mutations::ProductAlias),
     Budget(crate::policy_mutations::BudgetObject),
     RecurringExpense(crate::policy_mutations::RecurringExpenseObject),
+    AllocationRule(crate::pool_mutations::AllocationRuleObject),
+    FundingSchedule(crate::pool_mutations::FundingScheduleObject),
     Purchase(crate::purchase_mutations::PurchaseObject),
     PurchaseItem(crate::purchase_mutations::PurchaseItem),
     PurchaseCorrection(crate::purchase_mutations::PurchaseCorrection),
@@ -131,6 +133,8 @@ pub enum Node {
     RepaymentTransferLedgerEntry(RepaymentTransferLedgerEntry),
     GiftTransferLedgerEntry(GiftTransferLedgerEntry),
     LoanBalance(LoanBalance),
+    OpenSettlement(crate::settlement_mutations::OpenSettlement),
+    ClosedSettlement(crate::settlement_mutations::ClosedSettlement),
 }
 
 #[derive(Clone, Debug, Interface)]

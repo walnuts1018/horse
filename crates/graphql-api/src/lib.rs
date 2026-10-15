@@ -21,13 +21,20 @@ pub mod financial_mutations;
 pub mod household_lifecycle;
 pub mod household_membership;
 pub mod household_query;
+pub mod home_summary_query;
 pub mod ledger_entry;
 pub mod member_pool;
+pub mod monthly_spending_query;
 pub mod pagination;
 pub mod policy_mutations;
 pub mod pool_mutations;
 pub mod purchase_edit_mutations;
+pub mod purchase_defaults_query;
+pub mod purchase_correction_query;
 pub mod purchase_mutations;
+pub mod settlement_mutations;
+pub mod shared_purchase_draft;
+pub mod funding_schedule_query;
 pub mod viewer_query;
 pub mod scalars;
 pub use scalars::{DateTime, Long};
@@ -132,6 +139,69 @@ impl QueryRoot {
         catalog_queries::graphql_product_catalog(
             ctx,
             household_id,
+            after,
+            before,
+            first,
+            last,
+        )
+        .await
+    }
+
+    async fn settlement(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        period: policy_mutations::YearMonth,
+    ) -> Result<settlement_mutations::Settlement> {
+        settlement_mutations::settlement(ctx, household_id, period).await
+    }
+
+    async fn loan_balances(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<settlement_mutations::LoanBalanceConnection> {
+        settlement_mutations::loan_balances(ctx, household_id, after, before, first, last).await
+    }
+
+    async fn monthly_category_spending(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        from: policy_mutations::YearMonth,
+        to: policy_mutations::YearMonth,
+    ) -> Result<Vec<monthly_spending_query::MonthlyCategorySpending>> {
+        monthly_spending_query::graphql_monthly_category_spending(ctx, household_id, from, to).await
+    }
+
+    async fn monthly_member_spending(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        from: policy_mutations::YearMonth,
+        to: policy_mutations::YearMonth,
+    ) -> Result<monthly_spending_query::MonthlyMemberSpendingReport> {
+        monthly_spending_query::graphql_monthly_member_spending(ctx, household_id, from, to).await
+    }
+
+    async fn funding_schedules(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        active: Option<bool>,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<funding_schedule_query::FundingScheduleConnection> {
+        funding_schedule_query::graphql_funding_schedules(
+            ctx,
+            household_id,
+            active,
             after,
             before,
             first,
@@ -280,6 +350,41 @@ impl QueryRoot {
         id: ID,
     ) -> Result<Option<household_lifecycle::Household>> {
         household_query::graphql_household(ctx, id).await
+    }
+
+    async fn home_summary(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+    ) -> Result<home_summary_query::HomeSummary> {
+        home_summary_query::graphql_home_summary(ctx, household_id).await
+    }
+
+    async fn purchase_defaults(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+    ) -> Result<Vec<purchase_defaults_query::PurchaseDefault>> {
+        purchase_defaults_query::graphql_purchase_defaults(ctx, household_id).await
+    }
+
+    async fn purchase_corrections(
+        &self,
+        ctx: &Context<'_>,
+        purchase_id: ID,
+        first: Option<i32>,
+        after: Option<String>,
+    ) -> Result<purchase_mutations::PurchaseCorrectionConnection> {
+        purchase_correction_query::graphql_purchase_corrections(ctx, purchase_id, first, after)
+            .await
+    }
+
+    async fn shared_purchase_draft(
+        &self,
+        ctx: &Context<'_>,
+        id: ID,
+    ) -> Result<Option<shared_purchase_draft::SharedPurchaseDraft>> {
+        shared_purchase_draft::shared_purchase_draft(ctx, id).await
     }
 }
 
@@ -690,6 +795,30 @@ impl MutationRoot {
     ) -> Result<pool_mutations::SetFundingScheduleResult> {
         pool_mutations::set_funding_schedule(ctx, input).await
     }
+
+    async fn close_period(
+        &self,
+        ctx: &Context<'_>,
+        input: settlement_mutations::ClosePeriodInput,
+    ) -> Result<settlement_mutations::ClosePeriodResult> {
+        settlement_mutations::close_period(ctx, input).await
+    }
+
+    async fn create_shared_purchase_draft(
+        &self,
+        ctx: &Context<'_>,
+        input: shared_purchase_draft::CreateSharedPurchaseDraftInput,
+    ) -> Result<shared_purchase_draft::CreateSharedPurchaseDraftResult> {
+        shared_purchase_draft::create_shared_purchase_draft(ctx, input).await
+    }
+
+    async fn update_shared_purchase_draft(
+        &self,
+        ctx: &Context<'_>,
+        input: shared_purchase_draft::UpdateSharedPurchaseDraftInput,
+    ) -> Result<shared_purchase_draft::UpdateSharedPurchaseDraftResult> {
+        shared_purchase_draft::update_shared_purchase_draft(ctx, input).await
+    }
 }
 
 async fn issue_or_rotate(
@@ -886,6 +1015,9 @@ pub enum MutationError {
     SetDefaultAllocationUserError(pool_mutations::SetDefaultAllocationUserError),
     SetAllocationRuleUserError(pool_mutations::SetAllocationRuleUserError),
     SetFundingScheduleUserError(pool_mutations::SetFundingScheduleUserError),
+    ClosePeriodUserError(settlement_mutations::ClosePeriodUserError),
+    SharedPurchaseDraftUserError(shared_purchase_draft::SharedPurchaseDraftUserError),
+    UpdateSharedPurchaseDraftConflict(shared_purchase_draft::UpdateSharedPurchaseDraftConflict),
 }
 
 #[derive(Clone, Debug, SimpleObject)]

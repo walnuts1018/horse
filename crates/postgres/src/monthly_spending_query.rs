@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
-use diesel::{BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl};
+use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
@@ -61,32 +61,70 @@ pub async fn monthly_category_spending(
         .map_err(|error| MonthlySpendingQueryError::Pool(error.to_string()))?;
     require_member(&mut conn, actor_id, household_id).await?;
 
-    use public::{categories, purchase_items, purchase_corrections, purchases};
+    use public::{categories, purchase_corrections, purchase_items, purchases};
     let items = purchase_items::table
         .inner_join(purchases::table.on(purchases::id.eq(purchase_items::purchase_id)))
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
         .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
-        .select((purchases::occurred_at, purchase_items::category_id, purchase_items::amount_yen))
+        .select((
+            purchases::occurred_at,
+            purchase_items::category_id,
+            purchase_items::amount_yen,
+        ))
         .load::<PurchaseFact>(&mut conn)
         .await?;
     let corrections = purchase_corrections::table
         .inner_join(purchases::table.on(purchases::id.eq(purchase_corrections::purchase_id)))
-        .left_join(purchase_items::table.on(purchase_items::id.nullable().eq(purchase_corrections::item_id)))
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
         .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
-        .select((purchases::occurred_at, purchase_items::category_id, purchase_corrections::amount_delta_yen))
-        .load::<PurchaseFact>(&mut conn)
+        .select((
+            purchases::occurred_at,
+            purchase_corrections::item_id,
+            purchase_corrections::amount_delta_yen,
+        ))
+        .load::<(DateTime<Utc>, Option<Uuid>, i64)>(&mut conn)
         .await?;
 
+    let corrected_item_ids = corrections
+        .iter()
+        .filter_map(|(_, item_id, _)| *item_id)
+        .collect::<BTreeSet<_>>();
+    let corrected_categories = if corrected_item_ids.is_empty() {
+        BTreeMap::new()
+    } else {
+        purchase_items::table
+            .filter(purchase_items::household_id.eq(household_id))
+            .filter(purchase_items::id.eq_any(corrected_item_ids))
+            .select((purchase_items::id, purchase_items::category_id))
+            .load::<(Uuid, Option<Uuid>)>(&mut conn)
+            .await?
+            .into_iter()
+            .collect::<BTreeMap<_, _>>()
+    };
     let mut totals = BTreeMap::<(String, Option<Uuid>), i64>::new();
-    for (occurred_at, category_id, amount) in items.into_iter().chain(corrections) {
-        add_amount(&mut totals, (period_string(occurred_at), category_id), amount)?;
+    for (occurred_at, category_id, amount) in items {
+        add_amount(
+            &mut totals,
+            (period_string(occurred_at), category_id),
+            amount,
+        )?;
     }
-    let category_ids = totals.keys().filter_map(|(_, id)| *id).collect::<BTreeSet<_>>();
+    for (occurred_at, item_id, amount) in corrections {
+        let category_id = item_id.and_then(|id| corrected_categories.get(&id).copied().flatten());
+        add_amount(
+            &mut totals,
+            (period_string(occurred_at), category_id),
+            amount,
+        )?;
+    }
+    let category_ids = totals
+        .keys()
+        .filter_map(|(_, id)| *id)
+        .collect::<BTreeSet<_>>();
     let names = if category_ids.is_empty() {
         BTreeMap::new()
     } else {
@@ -101,12 +139,14 @@ pub async fn monthly_category_spending(
     };
     Ok(totals
         .into_iter()
-        .map(|((period, category_id), amount_yen)| MonthlyCategorySpendingProjection {
-            period,
-            category_name: category_id.and_then(|id| names.get(&id).cloned()),
-            category_id,
-            amount_yen,
-        })
+        .map(
+            |((period, category_id), amount_yen)| MonthlyCategorySpendingProjection {
+                period,
+                category_name: category_id.and_then(|id| names.get(&id).cloned()),
+                category_id,
+                amount_yen,
+            },
+        )
         .collect())
 }
 
@@ -124,7 +164,9 @@ pub async fn monthly_member_spending(
         .map_err(|error| MonthlySpendingQueryError::Pool(error.to_string()))?;
     require_member(&mut conn, actor_id, household_id).await?;
 
-    use public::{correction_member_burdens, purchase_member_burdens, purchase_corrections, purchases};
+    use public::{
+        correction_member_burdens, purchase_corrections, purchase_member_burdens, purchases,
+    };
     let burdens = purchase_member_burdens::table
         .inner_join(purchases::table.on(purchases::id.eq(purchase_member_burdens::purchase_id)))
         .filter(purchases::household_id.eq(household_id))
@@ -132,18 +174,29 @@ pub async fn monthly_member_spending(
         .filter(purchases::occurred_at.lt(end))
         .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
         .filter(purchase_member_burdens::household_id.eq(household_id))
-        .select((purchases::occurred_at, purchase_member_burdens::member_id, purchase_member_burdens::amount_yen))
+        .select((
+            purchases::occurred_at,
+            purchase_member_burdens::member_id,
+            purchase_member_burdens::amount_yen,
+        ))
         .load::<MemberFact>(&mut conn)
         .await?;
     let correction_burdens = correction_member_burdens::table
-        .inner_join(purchase_corrections::table.on(purchase_corrections::id.eq(correction_member_burdens::correction_id)))
+        .inner_join(
+            purchase_corrections::table
+                .on(purchase_corrections::id.eq(correction_member_burdens::correction_id)),
+        )
         .inner_join(purchases::table.on(purchases::id.eq(purchase_corrections::purchase_id)))
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
         .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
         .filter(correction_member_burdens::household_id.eq(household_id))
-        .select((purchases::occurred_at, correction_member_burdens::member_id, correction_member_burdens::amount_delta_yen))
+        .select((
+            purchases::occurred_at,
+            correction_member_burdens::member_id,
+            correction_member_burdens::amount_delta_yen,
+        ))
         .load::<MemberFact>(&mut conn)
         .await?;
 
@@ -156,10 +209,16 @@ pub async fn monthly_member_spending(
         BTreeMap::new()
     } else {
         public::household_members::table
-            .inner_join(public::members::table.on(public::members::id.eq(public::household_members::member_id)))
+            .inner_join(
+                public::members::table
+                    .on(public::members::id.eq(public::household_members::member_id)),
+            )
             .filter(public::household_members::household_id.eq(household_id))
             .filter(public::household_members::member_id.eq_any(member_ids))
-            .select((public::household_members::member_id, public::members::display_name))
+            .select((
+                public::household_members::member_id,
+                public::members::display_name,
+            ))
             .load::<(Uuid, String)>(&mut conn)
             .await?
             .into_iter()
@@ -168,16 +227,22 @@ pub async fn monthly_member_spending(
     let items = totals
         .into_iter()
         .filter_map(|((period, member_id), amount_yen)| {
-            names.get(&member_id).map(|member_name| MonthlyMemberSpendingProjection {
-                period,
-                member_id,
-                member_name: member_name.clone(),
-                amount_yen,
-            })
+            names
+                .get(&member_id)
+                .map(|member_name| MonthlyMemberSpendingProjection {
+                    period,
+                    member_id,
+                    member_name: member_name.clone(),
+                    amount_yen,
+                })
         })
         .collect();
-    let has_unattributed_purchases = unattributed_purchases(&mut conn, household_id, start, end).await?;
-    Ok(MonthlyMemberSpendingReportProjection { items, has_unattributed_purchases })
+    let has_unattributed_purchases =
+        unattributed_purchases(&mut conn, household_id, start, end).await?;
+    Ok(MonthlyMemberSpendingReportProjection {
+        items,
+        has_unattributed_purchases,
+    })
 }
 
 async fn unattributed_purchases(
@@ -186,14 +251,22 @@ async fn unattributed_purchases(
     start: DateTime<Utc>,
     end: DateTime<Utc>,
 ) -> Result<bool, MonthlySpendingQueryError> {
-    use public::{correction_member_burdens, purchase_allocations, purchase_corrections, purchase_member_burdens, purchases};
+    use public::{
+        correction_member_burdens, purchase_allocations, purchase_corrections,
+        purchase_member_burdens, purchases,
+    };
     let allocations = purchase_allocations::table
         .inner_join(purchases::table.on(purchases::id.eq(purchase_allocations::purchase_id)))
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
         .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
-        .select((purchase_allocations::purchase_id, purchase_allocations::item_id, purchase_allocations::pool_id, purchase_allocations::amount_yen))
+        .select((
+            purchase_allocations::purchase_id,
+            purchase_allocations::item_id,
+            purchase_allocations::pool_id,
+            purchase_allocations::amount_yen,
+        ))
         .load::<(Uuid, Uuid, Uuid, i64)>(conn)
         .await?;
     let burdens = purchase_member_burdens::table
@@ -203,7 +276,12 @@ async fn unattributed_purchases(
         .filter(purchases::occurred_at.lt(end))
         .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
         .filter(purchase_member_burdens::household_id.eq(household_id))
-        .select((purchase_member_burdens::purchase_id, purchase_member_burdens::item_id, purchase_member_burdens::pool_id, purchase_member_burdens::amount_yen))
+        .select((
+            purchase_member_burdens::purchase_id,
+            purchase_member_burdens::item_id,
+            purchase_member_burdens::pool_id,
+            purchase_member_burdens::amount_yen,
+        ))
         .load::<(Uuid, Uuid, Uuid, i64)>(conn)
         .await?;
     let mut allocation_totals = BTreeMap::<(Uuid, Uuid, Uuid), i64>::new();
@@ -214,7 +292,9 @@ async fn unattributed_purchases(
     for (purchase, item, pool, amount) in burdens {
         add_amount(&mut burden_totals, (purchase, item, pool), amount)?;
     }
-    if allocation_totals.iter().any(|(key, amount)| *amount != 0 && burden_totals.get(key).copied().unwrap_or(0) != *amount) {
+    if allocation_totals.iter().any(|(key, amount)| {
+        *amount != 0 && burden_totals.get(key).copied().unwrap_or(0) != *amount
+    }) {
         return Ok(true);
     }
 
@@ -224,7 +304,10 @@ async fn unattributed_purchases(
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
         .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
-        .select((purchase_corrections::id, purchase_corrections::amount_delta_yen))
+        .select((
+            purchase_corrections::id,
+            purchase_corrections::amount_delta_yen,
+        ))
         .load::<(Uuid, i64)>(conn)
         .await?;
     let correction_ids = corrections.iter().map(|(id, _)| *id).collect::<Vec<_>>();
@@ -234,14 +317,19 @@ async fn unattributed_purchases(
     let correction_burden_rows = correction_member_burdens::table
         .filter(correction_member_burdens::household_id.eq(household_id))
         .filter(correction_member_burdens::correction_id.eq_any(correction_ids))
-        .select((correction_member_burdens::correction_id, correction_member_burdens::amount_delta_yen))
+        .select((
+            correction_member_burdens::correction_id,
+            correction_member_burdens::amount_delta_yen,
+        ))
         .load::<(Uuid, i64)>(conn)
         .await?;
     let mut correction_totals = BTreeMap::<Uuid, i64>::new();
     for (id, amount) in correction_burden_rows {
         add_amount(&mut correction_totals, id, amount)?;
     }
-    Ok(corrections.into_iter().any(|(id, amount)| correction_totals.get(&id).copied().unwrap_or(0) != amount))
+    Ok(corrections
+        .into_iter()
+        .any(|(id, amount)| correction_totals.get(&id).copied().unwrap_or(0) != amount))
 }
 
 async fn require_member(
@@ -265,7 +353,10 @@ async fn require_member(
     }
 }
 
-fn period_range(from: &str, to: &str) -> Result<(DateTime<Utc>, DateTime<Utc>), MonthlySpendingQueryError> {
+fn period_range(
+    from: &str,
+    to: &str,
+) -> Result<(DateTime<Utc>, DateTime<Utc>), MonthlySpendingQueryError> {
     let start_date = NaiveDate::parse_from_str(&format!("{from}-01"), "%Y-%m-%d")
         .map_err(|_| MonthlySpendingQueryError::InvalidPeriod)?;
     let to_date = NaiveDate::parse_from_str(&format!("{to}-01"), "%Y-%m-%d")
@@ -276,10 +367,27 @@ fn period_range(from: &str, to: &str) -> Result<(DateTime<Utc>, DateTime<Utc>), 
     if to_date < start_date || to_date > upper_bound {
         return Err(MonthlySpendingQueryError::InvalidPeriod);
     }
-    let next_month = to_date.checked_add_months(chrono::Months::new(1)).ok_or(MonthlySpendingQueryError::InvalidPeriod)?;
-    let tokyo = FixedOffset::east_opt(9 * 60 * 60).ok_or(MonthlySpendingQueryError::InvalidPeriod)?;
-    let start = tokyo.from_local_datetime(&start_date.and_hms_opt(0, 0, 0).ok_or(MonthlySpendingQueryError::InvalidPeriod)?).single().ok_or(MonthlySpendingQueryError::InvalidPeriod)?;
-    let end = tokyo.from_local_datetime(&next_month.and_hms_opt(0, 0, 0).ok_or(MonthlySpendingQueryError::InvalidPeriod)?).single().ok_or(MonthlySpendingQueryError::InvalidPeriod)?;
+    let next_month = to_date
+        .checked_add_months(chrono::Months::new(1))
+        .ok_or(MonthlySpendingQueryError::InvalidPeriod)?;
+    let tokyo =
+        FixedOffset::east_opt(9 * 60 * 60).ok_or(MonthlySpendingQueryError::InvalidPeriod)?;
+    let start = tokyo
+        .from_local_datetime(
+            &start_date
+                .and_hms_opt(0, 0, 0)
+                .ok_or(MonthlySpendingQueryError::InvalidPeriod)?,
+        )
+        .single()
+        .ok_or(MonthlySpendingQueryError::InvalidPeriod)?;
+    let end = tokyo
+        .from_local_datetime(
+            &next_month
+                .and_hms_opt(0, 0, 0)
+                .ok_or(MonthlySpendingQueryError::InvalidPeriod)?,
+        )
+        .single()
+        .ok_or(MonthlySpendingQueryError::InvalidPeriod)?;
     Ok((start.with_timezone(&Utc), end.with_timezone(&Utc)))
 }
 
@@ -289,8 +397,14 @@ fn period_string(value: DateTime<Utc>) -> String {
     format!("{:04}-{:02}", local.year(), local.month())
 }
 
-fn add_amount<K: Ord>(totals: &mut BTreeMap<K, i64>, key: K, amount: i64) -> Result<(), MonthlySpendingQueryError> {
+fn add_amount<K: Ord>(
+    totals: &mut BTreeMap<K, i64>,
+    key: K,
+    amount: i64,
+) -> Result<(), MonthlySpendingQueryError> {
     let total = totals.entry(key).or_default();
-    *total = total.checked_add(amount).ok_or(MonthlySpendingQueryError::AmountOutOfRange)?;
+    *total = total
+        .checked_add(amount)
+        .ok_or(MonthlySpendingQueryError::AmountOutOfRange)?;
     Ok(())
 }

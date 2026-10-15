@@ -245,76 +245,92 @@ impl PurchaseObject {
         first: Option<i32>,
         after: Option<String>,
     ) -> Result<PurchaseCorrectionConnection> {
-        let pool = ctx.data::<PgPool>()?;
-        let projection = horse_postgres::purchase_corrections::load_purchase_corrections(
-            pool,
+        purchase_corrections_connection(
+            ctx.data::<PgPool>()?,
             self.household_uuid,
             self.purchase_uuid,
             first,
             after.as_deref(),
         )
         .await
-        .map_err(correction_error)?;
-        let mut edges = Vec::with_capacity(projection.edges.len());
-        for correction in projection.edges {
-            let payments = correction
-                .payment_allocations
-                .into_iter()
-                .map(|payment| {
-                    let kind = account_kind(&payment.account_kind)?;
-                    Ok(PurchasePayment {
-                        payment_account_id: encode_node_id("Account", payment.account_id),
-                        account: AccountObject {
-                            id: encode_node_id("Account", payment.account_id),
-                            name: payment.account_name,
-                            kind,
-                            card_last4: payment.account_card_last4,
-                            pool_id: payment.account_pool_id.map(|id| encode_node_id("Pool", id)),
-                        },
-                        amount_yen: Long(payment.amount_yen),
-                    })
-                })
-                .collect::<Result<Vec<_>>>()?;
-            let id = encode_node_id("PurchaseCorrection", correction.id);
-            let settlement_month =
-                crate::policy_mutations::YearMonth::from_naive_date(correction.settlement_month);
-            let occurred_at: DateTime = correction.occurred_at.into();
-            let node = match correction.item_id {
-                Some(item_id) => PurchaseCorrection::Item(PurchaseItemCorrection {
-                    id,
-                    item_id: encode_node_id("PurchaseItem", item_id),
-                    amount_delta_yen: Long(correction.amount_delta_yen),
-                    reason: correction.reason,
-                    occurred_at,
-                    settlement_month,
-                    payment_allocations: payments,
-                }),
-                None => PurchaseCorrection::Wide(PurchaseWideCorrection {
-                    id,
-                    amount_delta_yen: Long(correction.amount_delta_yen),
-                    reason: correction.reason,
-                    occurred_at,
-                    settlement_month,
-                    payment_allocations: payments,
-                }),
-            };
-            let cursor = horse_postgres::purchase_corrections::encode_cursor(&correction);
-            edges.push(PurchaseCorrectionEdge { cursor, node });
-        }
-        let total_count = i32::try_from(projection.total_count).map_err(crate::internal_error)?;
-        let start_cursor = edges.first().map(|edge| edge.cursor.clone());
-        let end_cursor = edges.last().map(|edge| edge.cursor.clone());
-        Ok(PurchaseCorrectionConnection {
-            edges,
-            page_info: crate::pagination::PageInfo {
-                has_next_page: projection.has_next_page,
-                has_previous_page: projection.has_previous_page,
-                start_cursor,
-                end_cursor,
-            },
-            total_count,
-        })
     }
+}
+
+pub(crate) async fn purchase_corrections_connection(
+    pool: &PgPool,
+    household_id: Uuid,
+    purchase_id: Uuid,
+    first: Option<i32>,
+    after: Option<&str>,
+) -> Result<PurchaseCorrectionConnection> {
+    let projection = horse_postgres::purchase_corrections::load_purchase_corrections(
+        pool,
+        household_id,
+        purchase_id,
+        first,
+        after,
+    )
+    .await
+    .map_err(correction_error)?;
+    let mut edges = Vec::with_capacity(projection.edges.len());
+    for correction in projection.edges {
+        let payments = correction
+            .payment_allocations
+            .into_iter()
+            .map(|payment| {
+                let kind = account_kind(&payment.account_kind)?;
+                Ok(PurchasePayment {
+                    payment_account_id: encode_node_id("Account", payment.account_id),
+                    account: AccountObject {
+                        id: encode_node_id("Account", payment.account_id),
+                        name: payment.account_name,
+                        kind,
+                        card_last4: payment.account_card_last4,
+                        pool_id: payment.account_pool_id.map(|id| encode_node_id("Pool", id)),
+                    },
+                    amount_yen: Long(payment.amount_yen),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let id = encode_node_id("PurchaseCorrection", correction.id);
+        let settlement_month =
+            crate::policy_mutations::YearMonth::from_naive_date(correction.settlement_month);
+        let occurred_at: DateTime = correction.occurred_at.into();
+        let node = match correction.item_id {
+            Some(item_id) => PurchaseCorrection::Item(PurchaseItemCorrection {
+                id,
+                item_id: encode_node_id("PurchaseItem", item_id),
+                amount_delta_yen: Long(correction.amount_delta_yen),
+                reason: correction.reason,
+                occurred_at,
+                settlement_month,
+                payment_allocations: payments,
+            }),
+            None => PurchaseCorrection::Wide(PurchaseWideCorrection {
+                id,
+                amount_delta_yen: Long(correction.amount_delta_yen),
+                reason: correction.reason,
+                occurred_at,
+                settlement_month,
+                payment_allocations: payments,
+            }),
+        };
+        let cursor = horse_postgres::purchase_corrections::encode_cursor(&correction);
+        edges.push(PurchaseCorrectionEdge { cursor, node });
+    }
+    let total_count = i32::try_from(projection.total_count).map_err(crate::internal_error)?;
+    let start_cursor = edges.first().map(|edge| edge.cursor.clone());
+    let end_cursor = edges.last().map(|edge| edge.cursor.clone());
+    Ok(PurchaseCorrectionConnection {
+        edges,
+        page_info: crate::pagination::PageInfo {
+            has_next_page: projection.has_next_page,
+            has_previous_page: projection.has_previous_page,
+            start_cursor,
+            end_cursor,
+        },
+        total_count,
+    })
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -962,6 +978,11 @@ fn decode_node_id(
         return Err(bad_input());
     }
     Ok(id)
+}
+
+pub(crate) fn decode_purchase_id(value: &ID) -> Result<Uuid> {
+    decode_node_id(value, "Purchase")
+        .map_err(|_| async_graphql::Error::new("invalid Purchase node ID"))
 }
 
 fn encode_node_id(kind: &str, id: Uuid) -> ID {

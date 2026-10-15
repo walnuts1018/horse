@@ -1,15 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bookkeeping_domain::PositiveYen;
+use bookkeeping_domain::{AllocationShares, AllocationWeight, Yen};
 use bookkeeping_workflows::{
-    Side,
+    AccountId, ItemId, PoolId as WorkflowPoolId, PurchaseId, PurchaseStatus, Side,
     correct_purchase::{
-        CorrectPurchaseDecision, CorrectionFundingEffects, CorrectionFundingRule,
-        CorrectionMemberBurdenSnapshot, CorrectionPaymentFundingSnapshot,
+        CorrectPurchaseDecision, CorrectionCommand, CorrectionFundingEffects,
+        CorrectionFundingRule, CorrectionMemberBurdenSnapshot, CorrectionPaymentFundingSnapshot,
         CorrectionPurchaseBurdenSnapshot, CorrectionPurchasePayment,
         CorrectionSettlementAdjustment, CorrectionSettlementPolicy, CorrectionTarget,
         LinkStatementRefundCorrectionCommand, LinkStatementRefundCorrectionError,
-        StatementRefundObservation, calculate_correction_funding_effects,
+        OriginalPeriodStatus, SignedYenDelta, StatementRefundObservation,
+        calculate_correction_funding_effects, decide_correct_purchase,
         decide_link_statement_refund_correction,
     },
 };
@@ -26,9 +28,32 @@ const OPERATION: &str = "correct_purchase";
 const SOURCE_KIND: &str = "CORRECTION";
 
 #[derive(Debug, Clone)]
+pub struct CorrectPurchaseRequest {
+    pub household_id: String,
+    pub actor_id: String,
+    pub purchase_id: String,
+    pub item_id: Option<String>,
+    pub amount_delta_yen: Option<i64>,
+    pub reason: String,
+    pub allocations: Vec<(String, i64)>,
+    pub payments: Vec<(String, i64)>,
+    pub idempotency_key: String,
+    pub request_fingerprint: [u8; 32],
+    pub source_document_id: Option<String>,
+    pub source_reference: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct CorrectPurchaseRequestError {
+    pub code: &'static str,
+    pub persistence: Option<CorrectPurchasePersistenceError>,
+}
+
+#[derive(Debug, Clone)]
 pub struct PersistCorrectPurchase {
     pub household_id: String,
     pub actor_id: String,
+    pub operation: &'static str,
     pub idempotency_key: String,
     pub request_fingerprint: [u8; 32],
 }
@@ -78,6 +103,267 @@ impl From<DieselError> for CorrectPurchasePersistenceError {
     fn from(error: DieselError) -> Self {
         Self::Database(error)
     }
+}
+
+pub async fn correct_purchase(
+    pool: &PgPool,
+    request: CorrectPurchaseRequest,
+) -> Result<PersistedCorrectPurchase, CorrectPurchasePersistenceError> {
+    let household_id = parse_uuid(&request.household_id, "household_id")?;
+    let purchase_id = parse_uuid(&request.purchase_id, "purchase_id")?;
+    let actor_id = parse_uuid(&request.actor_id, "actor_id")?;
+    let item_id = request
+        .item_id
+        .as_deref()
+        .map(|id| parse_uuid(id, "item_id"))
+        .transpose()?;
+    if request.idempotency_key.is_empty() || request.idempotency_key.len() > 200 {
+        return Err(CorrectPurchasePersistenceError::InvalidIdempotencyKey);
+    }
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| CorrectPurchasePersistenceError::Pool(error.to_string()))?;
+    let result = (&mut *conn)
+        .transaction::<CorrectPurchaseDecision, CorrectPurchasePersistenceError, _>(async |conn| {
+            use public::{
+                accounting_periods, purchase_allocations, purchase_corrections, purchase_items,
+                purchases,
+            };
+
+            let (occurred_at, status) = purchases::table
+                .filter(purchases::household_id.eq(household_id))
+                .filter(purchases::id.eq(purchase_id))
+                .for_update()
+                .select((purchases::occurred_at, purchases::status))
+                .first::<(DateTime<Utc>, String)>(conn)
+                .await?;
+            validate_actor_membership(conn, household_id, actor_id).await?;
+            let japan_offset = FixedOffset::east_opt(9 * 60 * 60)
+                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
+            let original_period = occurred_at
+                .with_timezone(&japan_offset)
+                .date_naive()
+                .with_day(1)
+                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
+            let original_period_status = accounting_periods::table
+                .filter(accounting_periods::household_id.eq(household_id))
+                .filter(accounting_periods::period_start.eq(original_period))
+                .for_update()
+                .select(accounting_periods::status)
+                .first::<String>(conn)
+                .await
+                .optional()?;
+            let original_period_status = match original_period_status.as_deref() {
+                None | Some("OPEN") => OriginalPeriodStatus::Open,
+                Some("CLOSED") => OriginalPeriodStatus::Closed,
+                _ => OriginalPeriodStatus::Invalid,
+            };
+            let effective_period = if original_period_status == OriginalPeriodStatus::Closed {
+                Utc::now()
+                    .with_timezone(&japan_offset)
+                    .date_naive()
+                    .with_day(1)
+                    .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?
+            } else {
+                original_period
+            };
+            let effective_period_open = accounting_periods::table
+                .filter(accounting_periods::household_id.eq(household_id))
+                .filter(accounting_periods::period_start.eq(effective_period))
+                .select(accounting_periods::status)
+                .first::<String>(conn)
+                .await
+                .optional()?
+                .is_none_or(|value| value == "OPEN");
+            let item_rows = purchase_items::table
+                .filter(purchase_items::household_id.eq(household_id))
+                .filter(purchase_items::purchase_id.eq(purchase_id))
+                .select((purchase_items::id, purchase_items::amount_yen))
+                .load::<(Uuid, i64)>(conn)
+                .await?;
+            let mut purchase_refundable = 0_i64;
+            let mut item_refundable = BTreeMap::new();
+            for (id, amount) in item_rows {
+                purchase_refundable = purchase_refundable
+                    .checked_add(amount)
+                    .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+                item_refundable.insert(id, amount);
+            }
+            for (delta, correction_item_id) in purchase_corrections::table
+                .filter(purchase_corrections::household_id.eq(household_id))
+                .filter(purchase_corrections::purchase_id.eq(purchase_id))
+                .select((
+                    purchase_corrections::amount_delta_yen,
+                    purchase_corrections::item_id,
+                ))
+                .load::<(i64, Option<Uuid>)>(conn)
+                .await?
+            {
+                purchase_refundable = purchase_refundable
+                    .checked_add(delta)
+                    .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+                if let Some(id) = correction_item_id {
+                    let balance = item_refundable
+                        .get_mut(&id)
+                        .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+                    *balance = balance
+                        .checked_add(delta)
+                        .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+                }
+            }
+            let allocation_rows = if let Some(item_id) = item_id {
+                purchase_allocations::table
+                    .filter(purchase_allocations::household_id.eq(household_id))
+                    .filter(purchase_allocations::purchase_id.eq(purchase_id))
+                    .filter(purchase_allocations::item_id.eq(item_id))
+                    .select((
+                        purchase_allocations::pool_id,
+                        purchase_allocations::weight,
+                        purchase_allocations::amount_yen,
+                    ))
+                    .load::<(Uuid, i64, i64)>(conn)
+                    .await?
+            } else {
+                purchase_allocations::table
+                    .filter(purchase_allocations::household_id.eq(household_id))
+                    .filter(purchase_allocations::purchase_id.eq(purchase_id))
+                    .select((
+                        purchase_allocations::pool_id,
+                        purchase_allocations::weight,
+                        purchase_allocations::amount_yen,
+                    ))
+                    .load::<(Uuid, i64, i64)>(conn)
+                    .await?
+            };
+            let mut allocation_weights = BTreeMap::<Uuid, i64>::new();
+            for (pool_id, weight, amount) in allocation_rows {
+                let value = if item_id.is_some() { weight } else { amount };
+                let total = allocation_weights.entry(pool_id).or_default();
+                *total = total
+                    .checked_add(value)
+                    .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+            }
+            let saved_allocations = AllocationShares::new(
+                allocation_weights
+                    .into_iter()
+                    .filter(|(_, weight)| *weight > 0)
+                    .map(|(pool_id, weight)| {
+                        let pool_id = WorkflowPoolId::new(pool_id.to_string())
+                            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+                        let weight = u64::try_from(weight)
+                            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+                        AllocationWeight::new(pool_id, weight)
+                            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            )
+            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+            let requested_allocations = if request.allocations.is_empty() {
+                None
+            } else {
+                Some(
+                    AllocationShares::new(
+                        request
+                            .allocations
+                            .iter()
+                            .map(|(pool_id, weight)| {
+                                let id = WorkflowPoolId::new(pool_id.clone()).map_err(|_| {
+                                    CorrectPurchasePersistenceError::InvalidDecision
+                                })?;
+                                let weight = u64::try_from(*weight).map_err(|_| {
+                                    CorrectPurchasePersistenceError::InvalidDecision
+                                })?;
+                                AllocationWeight::new(id, weight)
+                                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
+                    )
+                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
+                )
+            };
+            let mut amount_delta = request.amount_delta_yen;
+            if let Some(document_id) = &request.source_document_id {
+                let document_id = parse_uuid(document_id, "source_document_id")?;
+                let reference = request.source_reference.as_deref().unwrap_or_default();
+                amount_delta = Some(
+                    load_statement_refund_entry(conn, household_id, document_id, reference)
+                        .await?
+                        .amount_yen,
+                );
+            }
+            let delta = SignedYenDelta::new(
+                amount_delta.ok_or(CorrectPurchasePersistenceError::InvalidDecision)?,
+            )
+            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+            let payments = request
+                .payments
+                .iter()
+                .map(|(account_id, amount)| {
+                    let account_id = AccountId::new(account_id.clone())
+                        .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+                    let amount = PositiveYen::new(*amount)
+                        .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+                    Ok(bookkeeping_workflows::correct_purchase::CorrectionPayment {
+                        account_id,
+                        amount,
+                    })
+                })
+                .collect::<Result<Vec<_>, CorrectPurchasePersistenceError>>()?;
+            let item_balance = item_id
+                .map(|id| item_refundable.get(&id).copied())
+                .flatten()
+                .map(Yen::new)
+                .transpose()
+                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+            let command = CorrectionCommand {
+                purchase_id: PurchaseId::new(purchase_id.to_string())
+                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
+                purchase_status: match status.as_str() {
+                    "DRAFT" => PurchaseStatus::Draft,
+                    "POSTED" => PurchaseStatus::Posted,
+                    _ => PurchaseStatus::Other,
+                },
+                target: match item_id {
+                    Some(id) => CorrectionTarget::Item(
+                        ItemId::new(id.to_string())
+                            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
+                    ),
+                    None => CorrectionTarget::Purchase,
+                },
+                amount_delta: delta,
+                reason: request.reason.clone(),
+                original_period: original_period.format("%Y-%m-%d").to_string(),
+                original_period_status,
+                effective_period: effective_period.format("%Y-%m-%d").to_string(),
+                effective_period_open,
+                purchase_refundable: Yen::new(purchase_refundable)
+                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
+                item_refundable: item_balance,
+                saved_allocations,
+                requested_allocations,
+                payments,
+            };
+            decide_correct_purchase(command)
+                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)
+        })
+        .await?;
+    persist_correct_purchase(
+        pool,
+        PersistCorrectPurchase {
+            household_id: request.household_id,
+            actor_id: request.actor_id,
+            operation: if request.source_document_id.is_some() {
+                "correctPurchaseFromStatement"
+            } else {
+                "correctPurchase"
+            },
+            idempotency_key: request.idempotency_key,
+            request_fingerprint: request.request_fingerprint,
+        },
+        result,
+    )
+    .await
 }
 
 pub async fn link_statement_refund_correction(
@@ -272,7 +558,7 @@ pub async fn persist_correct_purchase(
             let inserted = diesel::insert_into(idem::idempotency_records)
                 .values((
                     idem::household_id.eq(household_id),
-                    idem::operation.eq(OPERATION),
+                    idem::operation.eq(input.operation),
                     idem::key.eq(&input.idempotency_key),
                     idem::request_fingerprint.eq(input.request_fingerprint.to_vec()),
                     idem::resource_kind.eq("purchase_correction"),
@@ -287,7 +573,7 @@ pub async fn persist_correct_purchase(
             if inserted.is_none() {
                 let (fingerprint, resource_id) = idem::idempotency_records
                     .filter(idem::household_id.eq(household_id))
-                    .filter(idem::operation.eq(OPERATION))
+                    .filter(idem::operation.eq(input.operation))
                     .filter(idem::key.eq(&input.idempotency_key))
                     .select((idem::request_fingerprint, idem::resource_id))
                     .first::<(Vec<u8>, Uuid)>(&mut *conn)
