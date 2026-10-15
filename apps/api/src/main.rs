@@ -4,9 +4,17 @@ use horse_auth::{AuthConfig, AuthService};
 use horse_http_api::{Config, router};
 use horse_postgres::connect;
 use tokio::net::TcpListener;
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    tracing_subscriber::fmt()
+        .json()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
+
     let database_url = env::var("DATABASE_URL")?;
     let port = env::var("PORT")
         .ok()
@@ -39,8 +47,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             },
         ),
     )
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
     Ok(())
 }
 
@@ -51,7 +59,9 @@ async fn shutdown_signal() {
 
     #[cfg(unix)]
     let terminate = async {
-        if let Ok(mut signal) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+        if let Ok(mut signal) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
             let _ = signal.recv().await;
         }
     };
