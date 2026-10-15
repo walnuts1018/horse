@@ -116,6 +116,10 @@ run = "mise exec -- web/node_modules/.bin/oxfmt --check 'graphql/**/*.graphql'"
 description = "APIの起動"
 run = "go run ./cmd/api"
 
+[tasks."api:rust"]
+description = "Rust APIの起動"
+run = "cargo run -p horse-api"
+
 [tasks.worker]
 description = "取り込みワーカーの起動"
 run = "go run ./cmd/worker"
