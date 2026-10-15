@@ -66,11 +66,11 @@ function matchRows<T extends Record<string, unknown>>(
 ): ExtractionRowChange[] {
   const previous = before ?? [];
   const current = after ?? [];
-  const canConfirmAdditionsAndRemovals = [...previous, ...current].every(
-    (entry) => identities(entry).length > 0,
-  );
   const previousCounts = countIdentities(previous, identities);
   const currentCounts = countIdentities(current, identities);
+  const canConfirmAdditionsAndRemovals =
+    hasUniqueIdentity(previous, identities, previousCounts) &&
+    hasUniqueIdentity(current, identities, currentCounts);
   const previousIndices = new Map(
     previous.flatMap((entry, index) => {
       return identities(entry).flatMap((key) =>
@@ -128,6 +128,14 @@ function matchRows<T extends Record<string, unknown>>(
     });
   });
   return rows;
+}
+
+function hasUniqueIdentity<T>(
+  entries: T[],
+  identities: (entry: T) => string[],
+  counts: Map<string, number>,
+): boolean {
+  return entries.every((entry) => identities(entry).some((key) => counts.get(key) === 1));
 }
 
 function findFallbackMatches<T>(

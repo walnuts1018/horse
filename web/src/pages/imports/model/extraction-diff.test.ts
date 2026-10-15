@@ -191,6 +191,29 @@ describe("compareExtractions", () => {
     ]);
   });
 
+  it("does not confirm additions or removals for duplicate item identities", () => {
+    const item = {
+      name: "パン",
+      printedAmount: 100,
+      grossAmount: 100,
+      confidence: 1,
+      verification: "verified",
+      key: "duplicate",
+      region,
+    };
+    const diff = compareExtractions(
+      { receipt: { items: [item, item] } },
+      { receipt: { items: [item, item] } },
+    );
+
+    expect(diff.itemChanges.map(({ status }) => status)).toEqual([
+      "unmatched-current",
+      "unmatched-current",
+      "unmatched-previous",
+      "unmatched-previous",
+    ]);
+  });
+
   it("ignores reordering when item keys are stable", () => {
     const first = {
       name: "パン",
