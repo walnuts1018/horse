@@ -54,10 +54,10 @@ export const FailedInstructionCanBeResent: Story = {
     const canvas = within(canvasElement);
     await userEvent.type(canvas.getByLabelText("AIに追加指示"), "店名を確認してください");
     await userEvent.click(canvas.getByRole("button", { name: "このモデルで再確認" }));
-    await waitFor(() => {
-      expect(canvas.getByText("店名を確認してください")).toBeTruthy();
-      expect(canvas.getByRole("button", { name: "同じ指示を再送" })).toBeTruthy();
-      expect(
+    await waitFor(async () => {
+      await expect(canvas.getByText("店名を確認してください")).toBeTruthy();
+      await expect(canvas.getByRole("button", { name: "同じ指示を再送" })).toBeTruthy();
+      await expect(
         canvas.getByRole("button", { name: "Gemini 3.1 Pro Previewで同じ指示を再送・有料" }),
       ).toBeTruthy();
     });
