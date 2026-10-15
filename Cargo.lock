@@ -957,6 +957,9 @@ dependencies = [
 [[package]]
 name = "household-workflows"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+]
 
 [[package]]
 name = "http"
