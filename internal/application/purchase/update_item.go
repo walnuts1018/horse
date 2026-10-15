@@ -68,37 +68,7 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	if accountingChanged != nil {
 		*accountingChanged = *accountingChanged || plan.itemChange.allocationsChanged
 	}
-	if err := applyItemVariantNameLearning(ctx, executor, state.householdID, actorUUID, plan.variantID, plan.productLearning); err != nil {
-		return UpdateResult{}, err
-	}
-	fieldRevisionValue := itemChangeFieldValue(plan.itemChange)
-	if _, err := models.PurchaseItems.Update((&models.PurchaseItemSetter{
-		Name: &plan.name, AmountYen: &plan.amount, CategoryID: &plan.itemChange.categoryID, ProductVariantID: &plan.itemChange.productVariantID,
-		AllocationOverride: &plan.itemChange.allocationOverride, Revision: &plan.itemChange.revision, FieldRevisions: &fieldRevisionValue,
-		QuantityNumerator: &plan.measure.quantityNumerator, QuantityDenominator: &plan.measure.quantityDenominator, QuantityUnit: &plan.measure.quantityUnit,
-		PrintedUnitPriceYen: &plan.measure.printedUnitPriceYen, PrintedUnitPriceQuantityNumerator: &plan.measure.printedUnitPriceQuantityNumerator,
-		PrintedUnitPriceQuantityDenominator: &plan.measure.printedUnitPriceQuantityDenominator, PrintedUnitPriceUnit: &plan.measure.printedUnitPriceUnit,
-	}).UpdateMod(), um.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
-		return UpdateResult{}, err
-	}
-	if err := recordItemProductVariantChange(ctx, executor, state.householdID, actorUUID, state.purchase, state.item, itemUUID, command, plan.variantID, plan.productLearning); err != nil {
-		return UpdateResult{}, err
-	}
-	if err := applyItemAllocationPlan(ctx, executor, state.item, plan.itemChange); err != nil {
-		return UpdateResult{}, err
-	}
-	if err := applyPurchaseItemPaymentPlan(ctx, tx, executor, state.householdID, state.purchase, plan.accounting); err != nil {
-		return UpdateResult{}, err
-	}
-	if _, err := models.Purchases.Update(um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(state.purchase.ID))),
-		um.SetCol("revision").To(models.Purchases.Columns.Revision.Plus(psql.Arg(int64(1)))), um.SetCol("updated_at").To(psql.F("now")),
-	).Exec(ctx, executor); err != nil {
-		return UpdateResult{}, err
-	}
-	if err := accounting.RecordEvent(ctx, executor, state.householdID, itemUUID, "purchase.item.updated", plan.itemChange.revision, command.ChangedFields, actorUUID); err != nil {
-		return UpdateResult{}, err
-	}
-	if err := applyPurchaseItemAccountingSync(ctx, executor, state.purchase, plan.accounting); err != nil {
+	if err := applyPurchaseItemUpdatePlan(ctx, tx, executor, actorUUID, command, state, plan); err != nil {
 		return UpdateResult{}, err
 	}
 	if ownsTransaction {
@@ -107,6 +77,43 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 		}
 	}
 	return UpdateResult{PurchaseID: state.purchase.ID.String()}, nil
+}
+
+func applyPurchaseItemUpdatePlan(ctx context.Context, tx pgx.Tx, executor bob.Executor, actorID gofrsuuid.UUID, command UpdateItemCommand, state purchaseItemUpdateState, plan purchaseItemUpdatePlan) error {
+	if err := applyItemVariantNameLearning(ctx, executor, state.householdID, actorID, plan.variantID, plan.productLearning); err != nil {
+		return err
+	}
+	fieldRevisionValue := itemChangeFieldValue(plan.itemChange)
+	if _, err := models.PurchaseItems.Update((&models.PurchaseItemSetter{
+		Name: &plan.name, AmountYen: &plan.amount, CategoryID: &plan.itemChange.categoryID, ProductVariantID: &plan.itemChange.productVariantID,
+		AllocationOverride: &plan.itemChange.allocationOverride, Revision: &plan.itemChange.revision, FieldRevisions: &fieldRevisionValue,
+		QuantityNumerator: &plan.measure.quantityNumerator, QuantityDenominator: &plan.measure.quantityDenominator, QuantityUnit: &plan.measure.quantityUnit,
+		PrintedUnitPriceYen: &plan.measure.printedUnitPriceYen, PrintedUnitPriceQuantityNumerator: &plan.measure.printedUnitPriceQuantityNumerator,
+		PrintedUnitPriceQuantityDenominator: &plan.measure.printedUnitPriceQuantityDenominator, PrintedUnitPriceUnit: &plan.measure.printedUnitPriceUnit,
+	}).UpdateMod(), um.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(state.item.ID))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
+		return err
+	}
+	if err := recordItemProductVariantChange(ctx, executor, state.householdID, actorID, state.purchase, state.item, state.item.ID, command, plan.variantID, plan.productLearning); err != nil {
+		return err
+	}
+	if err := applyItemAllocationPlan(ctx, executor, state.item, plan.itemChange); err != nil {
+		return err
+	}
+	if err := applyPurchaseItemPaymentPlan(ctx, tx, executor, state.householdID, state.purchase, plan.accounting); err != nil {
+		return err
+	}
+	if _, err := models.Purchases.Update(um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(state.purchase.ID))),
+		um.SetCol("revision").To(models.Purchases.Columns.Revision.Plus(psql.Arg(int64(1)))), um.SetCol("updated_at").To(psql.F("now")),
+	).Exec(ctx, executor); err != nil {
+		return err
+	}
+	if err := accounting.RecordEvent(ctx, executor, state.householdID, state.item.ID, "purchase.item.updated", plan.itemChange.revision, command.ChangedFields, actorID); err != nil {
+		return err
+	}
+	if err := applyPurchaseItemAccountingSync(ctx, executor, state.purchase, plan.accounting); err != nil {
+		return err
+	}
+	return nil
 }
 
 type purchaseItemUpdateMeasure struct {

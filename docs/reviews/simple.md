@@ -28,9 +28,9 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 - [purchase/correction.go — Correct()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/correction.go#L250-L606)
 - [purchase/update_operations.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/update_operations.go)
 
-`f106383`では`updateItem()`の入力検証、更新対象の取得とロック、計画構築をそれぞれヘルパーへ分離しました。商品学習の設定解釈や履歴記録も`item_product_learning.go`にあります。
+`f106383`では`updateItem()`の入力検証、更新対象の取得とロック、計画構築をそれぞれヘルパーへ分離しました。今回、トランザクション内の明細・配賦・支払・購入revisionの更新、履歴と監査イベントの記録、仕訳同期を`applyPurchaseItemUpdatePlan()`へまとめました。適用順序は従来どおりで、既存Integration Testで明細revision、監査イベント、購入revisionを確認します。商品学習の設定解釈や履歴記録も`item_product_learning.go`にあります。
 
-一方、`buildPurchaseItemUpdatePlan()`は商品バリアントや支払情報などをDBから取得しながら計画を構築します。`updateItem()`は計画後の商品学習、明細・配賦・支払の更新、購入revisionの更新、監査イベント記録、仕訳同期をトランザクション内で順に調整します。読み込みを伴う計画構築と適用順序の責務をどこまで分けるかは、競合検出とロック順序を保った上で検討できます。
+一方、`buildPurchaseItemUpdatePlan()`は商品バリアントや支払情報、配賦ルールなどをDBから取得しながら計画を構築します。DB読み込みと純粋な業務計算の分離は引き続き改善候補です。分離する場合も、競合検出とロック順序を維持する必要があります。
 
 ### 2. GraphQLの巨大な一括組み立て処理を見直す
 

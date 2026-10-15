@@ -119,6 +119,51 @@ func TestServiceUpdatePersistsRevisionEventAndRejectsClosedPeriod(t *testing.T) 
 	if updated.Merchant != bulkMerchant || updated.Revision != 3 {
 		t.Fatalf("purchase after bulk update has merchant %q and revision %d; want %q and 3", updated.Merchant, updated.Revision, bulkMerchant)
 	}
+	itemID, err := gofrsuuid.NewV7()
+	if err != nil {
+		t.Fatal(err)
+	}
+	itemName, itemAmount := "Before item update", int64(0)
+	if _, err := models.PurchaseItems.Insert(&models.PurchaseItemSetter{
+		ID: &itemID, HouseholdID: &householdID, PurchaseID: &purchaseID, Name: &itemName, AmountYen: &itemAmount,
+	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	updatedItemName := "After item update"
+	itemResult, err := service.UpdateItem(ctx, UpdateItemCommand{
+		ActorID: memberID.String(), ItemID: itemID.String(), BaseRevision: 1,
+		ChangedFields: []string{itemFieldName}, Name: &updatedItemName,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if itemResult.PurchaseID != purchaseID.String() {
+		t.Fatalf("UpdateItem returned purchase %q; want %q", itemResult.PurchaseID, purchaseID)
+	}
+	updatedItem, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemID)))).One(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedItem.Name != updatedItemName || updatedItem.Revision != 2 {
+		t.Fatalf("item after update has name %q and revision %d; want %q and 2", updatedItem.Name, updatedItem.Revision, updatedItemName)
+	}
+	itemEvents, err := models.HouseholdEvents.Query(sm.Where(psql.And(
+		models.HouseholdEvents.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.HouseholdEvents.Columns.EntityID.EQ(psql.Arg(itemID)),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(itemEvents) != 1 || itemEvents[0].Type != "purchase.item.updated" || itemEvents[0].Revision != updatedItem.Revision {
+		t.Fatalf("item events after update = %#v; want one purchase.item.updated event at revision 2", itemEvents)
+	}
+	updated, err = models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Revision != 4 {
+		t.Fatalf("purchase revision after item update = %d; want 4", updated.Revision)
+	}
 	events, err := models.HouseholdEvents.Query(sm.Where(psql.And(
 		models.HouseholdEvents.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdEvents.Columns.EntityID.EQ(psql.Arg(purchaseID)),
@@ -132,7 +177,7 @@ func TestServiceUpdatePersistsRevisionEventAndRejectsClosedPeriod(t *testing.T) 
 			seenRevisions[event.Revision] = true
 		}
 	}
-	if len(events) != 2 || !seenRevisions[2] || !seenRevisions[updated.Revision] {
+	if len(events) != 2 || !seenRevisions[2] || !seenRevisions[3] {
 		t.Fatalf("purchase events after updates = %#v; want purchase.updated events at revisions 2 and 3", events)
 	}
 
@@ -155,7 +200,7 @@ func TestServiceUpdatePersistsRevisionEventAndRejectsClosedPeriod(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Merchant != bulkMerchant || updated.Revision != 3 {
-		t.Fatalf("purchase after failed update has merchant %q and revision %d; want %q and 3", updated.Merchant, updated.Revision, bulkMerchant)
+	if updated.Merchant != bulkMerchant || updated.Revision != 4 {
+		t.Fatalf("purchase after failed update has merchant %q and revision %d; want %q and 4", updated.Merchant, updated.Revision, bulkMerchant)
 	}
 }
