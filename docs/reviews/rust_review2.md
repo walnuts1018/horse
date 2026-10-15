@@ -138,6 +138,12 @@ DMMF\_%E6%9B%B8%E7%B1%8D%E5%85%A8%E7%AB%A0%E5%88%86%E6%9E%90\_%E8%A8%AD%E8%A8%88
 
 構造の改善だけでなく、実際の整合性リスクや細部の型設計にも修正候補があります。
 
+### 数量単位の換算
+
+`CreatePurchaseCommand`は検証済みUTC日時、`DatePrecision`、`PurchaseOrigin`、0を取れない`AllocationRuleVersion`を受け取ります。GraphQL境界で各値と数量を型へ変換し、数量の分子・分母と単位は`Measure`のSmart Constructorで保証します。Postgres保存境界ではDSLを使ってDBの日時・文字列・数値へ変換し、`source_document_id`からoriginを推定しません。`PurchaseOrigin`は現在のAPIとDB制約にある`AI`、`MANUAL`、`UNKNOWN`を表し、`Imported`は既存のDB制約とAPIにないため追加していません。
+
+`1 kg`と`1000 g`のような異なる単位の換算や同値判定は実装していません。必要な場合は業務要件を定めたうえで追加してください。
+
 ## 4. ディレクトリ・crate 構成も再設計したい
 
 現在の Workspace は `bookkeeping-domain` と各 `*-workflows` が業務別になっている一方で、`postgres` と `graphql-api` が技術別の大きな共有モジュールになっています。

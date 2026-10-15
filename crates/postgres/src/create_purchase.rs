@@ -397,9 +397,10 @@ async fn validate_catalog_references(
     use public::product_concepts::dsl as concepts;
     use public::product_variants::dsl as variants;
 
-    let default_version = i64::try_from(decision.allocation_rule_version.value()).map_err(|_| {
-        CreatePurchasePersistenceError::NumericOutOfRange("allocation_rule_version")
-    })?;
+    let default_version =
+        i64::try_from(decision.allocation_rule_version.value()).map_err(|_| {
+            CreatePurchasePersistenceError::NumericOutOfRange("allocation_rule_version")
+        })?;
     let current_default_version = households::households
         .filter(households::id.eq(household_id))
         .select(households::default_allocation_version)
@@ -519,8 +520,7 @@ async fn validate_catalog_references(
         if selected_rule.map(|id| id.to_string()) != first.rule_id {
             return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
         }
-        if first.rule_id.is_none()
-            && first.rule_version != decision.allocation_rule_version.value()
+        if first.rule_id.is_none() && first.rule_version != decision.allocation_rule_version.value()
         {
             return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
         }

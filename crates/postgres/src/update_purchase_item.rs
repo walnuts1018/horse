@@ -1200,12 +1200,9 @@ fn measure(
         (Some(numerator), Some(denominator), Some(unit)) => {
             let unit = bookkeeping_workflows::create_purchase::QuantityUnit::parse(&unit)
                 .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidDecision)?;
-            let measure = bookkeeping_workflows::create_purchase::Measure::new(
-                numerator,
-                denominator,
-                unit,
-            )
-            .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidDecision)?;
+            let measure =
+                bookkeeping_workflows::create_purchase::Measure::new(numerator, denominator, unit)
+                    .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidDecision)?;
             Ok(Some(measure))
         }
         _ => Err(UpdatePurchaseItemPersistenceError::InvalidDecision),

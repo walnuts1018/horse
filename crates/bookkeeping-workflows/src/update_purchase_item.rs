@@ -4,7 +4,6 @@ use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId, Yen, alloca
 
 use crate::create_purchase::Measure;
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdatePurchaseItemCommand {
     pub item_id: String,

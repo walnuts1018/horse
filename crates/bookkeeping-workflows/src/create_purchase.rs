@@ -149,11 +149,7 @@ pub struct Measure {
 }
 
 impl Measure {
-    pub fn new(
-        numerator: i64,
-        denominator: i64,
-        unit: QuantityUnit,
-    ) -> Result<Self, MeasureError> {
+    pub fn new(numerator: i64, denominator: i64, unit: QuantityUnit) -> Result<Self, MeasureError> {
         if numerator <= 0
             || numerator > 1_000_000_000_000
             || denominator <= 0
@@ -162,12 +158,22 @@ impl Measure {
         {
             return Err(MeasureError::InvalidMeasure);
         }
-        Ok(Self { numerator, denominator, unit })
+        Ok(Self {
+            numerator,
+            denominator,
+            unit,
+        })
     }
 
-    pub const fn numerator(self) -> i64 { self.numerator }
-    pub const fn denominator(self) -> i64 { self.denominator }
-    pub const fn unit(self) -> QuantityUnit { self.unit }
+    pub const fn numerator(self) -> i64 {
+        self.numerator
+    }
+    pub const fn denominator(self) -> i64 {
+        self.denominator
+    }
+    pub const fn unit(self) -> QuantityUnit {
+        self.unit
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -294,7 +300,7 @@ pub fn decide_create_purchase(
             .ok_or(CreatePurchaseError::AmountOverflow)?;
         if let Some(price) = &item.printed_unit_price {
             if !(0..=1_000_000_000_000).contains(&price.amount_yen) {
-                return Err(CreatePurchaseError::InvalidMeasure);
+                return Err(CreatePurchaseError::InvalidAmount);
             }
         }
         let mut seen_pools = BTreeSet::new();

@@ -502,8 +502,8 @@ pub async fn create_purchase(
             None => return Err(crate::internal_error(error)),
         },
     };
-    let command = apply_allocation_context(parsed.command, context)
-        .map_err(crate::internal_error)?;
+    let command =
+        apply_allocation_context(parsed.command, context).map_err(crate::internal_error)?;
     let decision = match decide_create_purchase(command) {
         Ok(value) => value,
         Err(_) => return Ok(bad_input().into()),
@@ -578,8 +578,8 @@ pub async fn create_and_post_purchase(
         },
     };
     let post_fingerprint = post_fingerprint(&parsed.command.purchase_id, 1)?;
-    let command = apply_allocation_context(parsed.command, context)
-        .map_err(crate::internal_error)?;
+    let command =
+        apply_allocation_context(parsed.command, context).map_err(crate::internal_error)?;
     let decision = match decide_create_purchase(command) {
         Ok(value) => value,
         Err(_) => return Ok(bad_input().into()),
@@ -810,21 +810,17 @@ fn parse_create_input(
     let occurred_at = input.occurred_at.parse_utc().map_err(|_| bad_input())?;
     let date_precision = input
         .date_precision
-        .map(|value| {
-            match value {
-                PurchaseDatePrecision::DateTime => DatePrecision::DateTime,
-                PurchaseDatePrecision::DateOnly => DatePrecision::DateOnly,
-            }
+        .map(|value| match value {
+            PurchaseDatePrecision::DateTime => DatePrecision::DateTime,
+            PurchaseDatePrecision::DateOnly => DatePrecision::DateOnly,
         })
         .unwrap_or(DatePrecision::DateTime);
     let origin = input
         .origin
-        .map(|value| {
-            match value {
-                PurchaseOrigin::Ai => WorkflowPurchaseOrigin::AiAssisted,
-                PurchaseOrigin::Manual => WorkflowPurchaseOrigin::Manual,
-                PurchaseOrigin::Unknown => WorkflowPurchaseOrigin::Unknown,
-            }
+        .map(|value| match value {
+            PurchaseOrigin::Ai => WorkflowPurchaseOrigin::AiAssisted,
+            PurchaseOrigin::Manual => WorkflowPurchaseOrigin::Manual,
+            PurchaseOrigin::Unknown => WorkflowPurchaseOrigin::Unknown,
         })
         .unwrap_or(WorkflowPurchaseOrigin::Manual);
     let purchase_id = Uuid::now_v7().to_string();
@@ -860,7 +856,8 @@ fn parse_create_input(
                 Ok(PrintedUnitPrice {
                     amount_yen: value.amount_yen.0,
                     basis: {
-                        let unit = QuantityUnit::parse(&value.basis.unit).map_err(|_| bad_input())?;
+                        let unit =
+                            QuantityUnit::parse(&value.basis.unit).map_err(|_| bad_input())?;
                         Measure::new(
                             value.basis.numerator.parse().map_err(|_| bad_input())?,
                             value.basis.denominator.parse().map_err(|_| bad_input())?,
