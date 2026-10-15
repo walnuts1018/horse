@@ -1,9 +1,11 @@
 package ingestion
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -12,8 +14,8 @@ import (
 	"google.golang.org/genai"
 )
 
-func generateGeminiContent(ctx context.Context, apiKey, baseURL string, httpClient *http.Client, timeout time.Duration, model string, contents []*genai.Content, config *genai.GenerateContentConfig, reserveInputTokens func(context.Context, int64) (func(context.Context, int64) error, error)) (*genai.GenerateContentResponse, geminiUsage, error) {
-	capture := new(geminiResponseCapture)
+func generateGeminiContent(ctx context.Context, apiKey, baseURL string, httpClient *http.Client, timeout time.Duration, model string, contents []*genai.Content, config *genai.GenerateContentConfig, reserveInputTokens func(context.Context, int64) (func(context.Context, int64) error, error), maxRequestBodyBytes int64) (*genai.GenerateContentResponse, geminiUsage, error) {
+	capture := &geminiResponseCapture{maxRequestBodyBytes: maxRequestBodyBytes}
 	client, err := newGeminiClient(ctx, apiKey, baseURL, httpClient, timeout, capture)
 	if err != nil {
 		return nil, geminiUsage{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "client_initialization_failed"}
@@ -22,6 +24,9 @@ func generateGeminiContent(ctx context.Context, apiKey, baseURL string, httpClie
 	if reserveInputTokens != nil {
 		countedTokens, err := client.Models.CountTokens(ctx, model, contents, nil)
 		if err != nil {
+			if errors.Is(err, errGeminiInlineImageRequestTooLarge) {
+				return nil, geminiUsage{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: geminiFailureRequestTooLarge}
+			}
 			if apiErr, ok := errors.AsType[genai.APIError](err); ok {
 				return nil, geminiUsage{}, providerError(apiErr, capture)
 			}
@@ -39,6 +44,9 @@ func generateGeminiContent(ctx context.Context, apiKey, baseURL string, httpClie
 	capture.header = nil
 	result, err := client.Models.GenerateContent(ctx, model, contents, config)
 	if err != nil {
+		if errors.Is(err, errGeminiInlineImageRequestTooLarge) {
+			return nil, geminiUsage{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: geminiFailureRequestTooLarge}
+		}
 		if apiErr, ok := errors.AsType[genai.APIError](err); ok {
 			return nil, geminiUsage{}, providerError(apiErr, capture)
 		}
@@ -115,8 +123,9 @@ func providerError(response genai.APIError, capture *geminiResponseCapture) *Gem
 }
 
 type geminiResponseCapture struct {
-	statusCode int
-	header     http.Header
+	statusCode          int
+	header              http.Header
+	maxRequestBodyBytes int64
 }
 
 type geminiResponseTransport struct {
@@ -125,12 +134,65 @@ type geminiResponseTransport struct {
 }
 
 func (t geminiResponseTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if t.capture.maxRequestBodyBytes > 0 && request.Method == http.MethodPost {
+		tooLarge, err := requestBodyExceedsLimit(request, t.capture.maxRequestBodyBytes)
+		if err != nil {
+			return nil, fmt.Errorf("inspect Gemini request body: %w", err)
+		}
+		if tooLarge {
+			if request.Body != nil {
+				_ = request.Body.Close()
+			}
+			return nil, errGeminiInlineImageRequestTooLarge
+		}
+	}
 	response, err := t.base.RoundTrip(request)
 	if response != nil {
 		t.capture.statusCode = response.StatusCode
 		t.capture.header = response.Header.Clone()
 	}
 	return response, err
+}
+
+var errGeminiInlineImageRequestTooLarge = errors.New("Gemini inline image request exceeds size limit")
+
+const maxGeminiInlineImageRequestBytes = 20_000_000
+const geminiFailureRequestTooLarge = "request_too_large"
+
+func geminiInlineImageRequestLimit(mimeType string) int64 {
+	if strings.HasPrefix(mimeType, "image/") {
+		return maxGeminiInlineImageRequestBytes
+	}
+
+	return 0
+}
+
+func requestBodyExceedsLimit(request *http.Request, limit int64) (bool, error) {
+	if request.Body == nil || limit <= 0 {
+		return false, nil
+	}
+	if request.ContentLength >= 0 {
+		return request.ContentLength > limit, nil
+	}
+
+	body, err := io.ReadAll(io.LimitReader(request.Body, limit+1))
+	closeErr := request.Body.Close()
+	if err != nil {
+		return false, errors.Join(err, closeErr)
+	}
+	if int64(len(body)) > limit {
+		return true, nil
+	}
+	if closeErr != nil {
+		return false, closeErr
+	}
+	request.Body = io.NopCloser(bytes.NewReader(body))
+	request.ContentLength = int64(len(body))
+	request.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(body)), nil
+	}
+
+	return false, nil
 }
 
 func geminiHTTPClient(client *http.Client, timeout time.Duration, capture *geminiResponseCapture) *http.Client {

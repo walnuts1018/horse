@@ -1,17 +1,21 @@
 package ingestion
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json/v2"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
 const testGeminiModel = "test-model"
+const testConversationUserRole = "user"
 
 func TestReceiptSchemaMatchesJSONTypesAndRequiredFields(t *testing.T) {
 	t.Parallel()
@@ -66,6 +70,36 @@ func TestGeminiExtractsSourceKindSpecificStatementRows(t *testing.T) {
 	}
 	if len(verified.Statements) != 1 || verified.Statements[0].Amount != -1234 || verified.Statements[0].SourceReference != "row:1" || verified.Statements[0].Region.Page != 0 {
 		t.Fatalf("statement extraction lost signed amount or source geometry: %+v", verified.Statements)
+	}
+}
+
+func TestGeminiExtractRejectsOversizedSerializedInlineImageInCountTokens(t *testing.T) {
+	t.Parallel()
+	var requestReachedServer atomic.Bool
+	reservationCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requestReachedServer.Store(true)
+		http.Error(w, "unexpected request", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	gemini := Gemini{APIKey: testGeminiAPIKey, Model: testGeminiModel, Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
+	_, run, err := gemini.ExtractRun(t.Context(), Document{MIMEType: mimeTypeJPEG, Data: make([]byte, 15_000_000)}, nil, GeminiRequestOptions{
+		SourceKind: statementSourceCard,
+		ReserveInputTokens: func(context.Context, int64) (func(context.Context, int64) error, error) {
+			reservationCalled = true
+
+			return nil, nil
+		},
+	})
+	apiErr, ok := errors.AsType[*GeminiAPIError](err)
+	if !ok || apiErr.Kind != GeminiFailureRejected || apiErr.Code != geminiFailureRequestTooLarge || run.ErrorCode != geminiFailureRequestTooLarge {
+		t.Fatalf("oversized initial extraction error = %v, run = %+v, want permanent request_too_large rejection", err, run)
+	}
+	if retryWorkerError(err) || shouldFallbackToPaid(err) || workerErrorCode(err) != geminiFailureRequestTooLarge {
+		t.Fatalf("oversized initial extraction classification = retry %t, paid fallback %t, persisted code %q", retryWorkerError(err), shouldFallbackToPaid(err), workerErrorCode(err))
+	}
+	if reservationCalled || requestReachedServer.Load() {
+		t.Fatalf("oversized CountTokens request reached reservation or network: reservation=%t network=%t", reservationCalled, requestReachedServer.Load())
 	}
 }
 

@@ -66,7 +66,7 @@ func (g Gemini) InteractStreaming(ctx context.Context, document Document, source
 	if err != nil {
 		return Receipt{}, "", geminiUsage{}, err
 	}
-	capture := new(geminiResponseCapture)
+	capture := &geminiResponseCapture{maxRequestBodyBytes: geminiInlineImageRequestLimit(document.MIMEType)}
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey: g.APIKey, Backend: genai.BackendGeminiAPI, HTTPClient: geminiHTTPClient(g.HTTPClient, timeout, capture),
 		HTTPOptions: genai.HTTPOptions{BaseURL: baseURL, APIVersion: "v1beta", RetryOptions: &genai.HTTPRetryOptions{Attempts: new(int32(1))}},
@@ -109,7 +109,9 @@ func (g Gemini) InteractStreaming(ctx context.Context, document Document, source
 	var interactionErr error
 	var interaction *interactions.Interaction
 	if err != nil {
-		if apiErr, ok := errors.AsType[genai.APIError](err); ok {
+		if errors.Is(err, errGeminiInlineImageRequestTooLarge) {
+			interactionErr = &GeminiAPIError{Kind: GeminiFailureRejected, Code: geminiFailureRequestTooLarge}
+		} else if apiErr, ok := errors.AsType[genai.APIError](err); ok {
 			interactionErr = providerError(apiErr, capture)
 		} else if capture.statusCode == http.StatusOK {
 			interactionErr = &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "malformed_provider_json"}

@@ -2,12 +2,14 @@ package ingestion
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -79,6 +81,58 @@ func TestGeminiInteractStreamsOnlyReplyText(t *testing.T) {
 	}
 	if slices.ContainsFunc(previews, func(preview string) bool { return strings.ContainsAny(preview, "{}") }) {
 		t.Fatalf("reply preview contains partial JSON: %#v", previews)
+	}
+}
+
+func TestGeminiInteractRejectsOversizedSerializedInlineImageRequest(t *testing.T) {
+	t.Parallel()
+	var requestReachedServer atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requestReachedServer.Store(true)
+		http.Error(w, "unexpected request", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	history := make([]ConversationMessage, 40)
+	for i := range history {
+		role := testConversationUserRole
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		history[i] = ConversationMessage{Role: role, Text: strings.Repeat("x", 12_000)}
+	}
+	gemini := Gemini{APIKey: testGeminiAPIKey, Model: ModelReceipt, Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
+	_, _, _, err := gemini.Interact(
+		t.Context(), Document{MIMEType: mimeTypeJPEG, Data: make([]byte, 14_800_000)}, "receipt",
+		[]byte(`{"receipt":{}}`), history, "check the total", GeminiRequestOptions{},
+	)
+	apiErr, ok := errors.AsType[*GeminiAPIError](err)
+	if !ok || apiErr.Kind != GeminiFailureRejected || apiErr.Code != geminiFailureRequestTooLarge {
+		t.Fatalf("oversized interaction error = %#v, want permanent request_too_large rejection", err)
+	}
+	if retryWorkerError(err) || shouldFallbackToPaid(err) || workerErrorCode(err) != geminiFailureRequestTooLarge {
+		t.Fatalf("oversized interaction classification = retry %t, paid fallback %t, persisted code %q", retryWorkerError(err), shouldFallbackToPaid(err), workerErrorCode(err))
+	}
+	if requestReachedServer.Load() {
+		t.Fatal("oversized serialized request reached Gemini transport")
+	}
+}
+
+func TestGeminiInteractionRequestLimitAppliesOnlyToImageMIME(t *testing.T) {
+	t.Parallel()
+	for mimeType, wantLimit := range map[string]int64{
+		mimeTypeJPEG:      maxGeminiInlineImageRequestBytes,
+		mimeTypePNG:       maxGeminiInlineImageRequestBytes,
+		mimeTypeWebP:      maxGeminiInlineImageRequestBytes,
+		"image/tiff":      maxGeminiInlineImageRequestBytes,
+		mimeTypePDF:       0,
+		mimeTypePlainText: 0,
+		mimeTypeCSV:       0,
+		"message/rfc822":  0,
+	} {
+		if got := geminiInlineImageRequestLimit(mimeType); got != wantLimit {
+			t.Errorf("Gemini request limit for %q = %d, want %d", mimeType, got, wantLimit)
+		}
 	}
 }
 

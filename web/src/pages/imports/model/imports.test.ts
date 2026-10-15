@@ -152,6 +152,7 @@ describe("AIモデルの利用上限", () => {
     ).toBe(true);
     expect(deferredExtractionMessage("spend_cap_reached")).toContain("500円");
     expect(deferredExtractionMessage("paid_route_unavailable")).toContain("有料モデル");
+    expect(deferredExtractionMessage("request_too_large")).toContain("画像サイズを小さくして");
     expect(
       isExtractionDeferred({
         id: "document-8",

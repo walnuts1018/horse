@@ -190,7 +190,7 @@ func (g Gemini) ExtractRun(ctx context.Context, document Document, hints []Histo
 		ThinkingConfig:     &genai.ThinkingConfig{ThinkingLevel: genai.ThinkingLevel(strings.ToUpper(run.ThinkingLevel))},
 		ServiceTier:        genai.ServiceTier(run.ServiceTier),
 	}
-	result, usage, err := generateGeminiContent(ctx, g.APIKey, baseURL, g.HTTPClient, timeout, g.Model, contents, generationConfig, options.ReserveInputTokens)
+	result, usage, err := generateGeminiContent(ctx, g.APIKey, baseURL, g.HTTPClient, timeout, g.Model, contents, generationConfig, options.ReserveInputTokens, geminiInlineImageRequestLimit(document.MIMEType))
 	run.InputTokens = usage.inputTokens
 	run.OutputTokens = usage.outputTokens
 	usageAvailable = usage.available

@@ -69,6 +69,7 @@ const deferredExtractionMessages = new Map([
   ["quota_reservation_deferred", "Geminiモデルの利用枠を超えました。"],
   ["spend_cap_reached", "有料モデルの月500円上限に達しました。"],
   ["paid_route_unavailable", "有料モデルを利用できません。"],
+  ["request_too_large", "画像の送信サイズ上限を超えています。画像サイズを小さくして再取り込みしてください。"],
 ]);
 
 export function isImportModel(value: string): value is ImportModel {
