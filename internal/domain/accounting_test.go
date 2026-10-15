@@ -77,11 +77,61 @@ func TestSplitFundingExpenseKeepsResponsibilityAcrossMultiplePayments(t *testing
 	}
 	for _, expense := range got {
 		var total int64
-		for _, allocation := range expense.Items[0].Allocations {
-			total += allocation.Amount
+		for _, item := range expense.Items {
+			var allocationTotal int64
+			for _, allocation := range item.Allocations {
+				allocationTotal += allocation.Amount
+			}
+			if allocationTotal != item.Amount {
+				t.Fatalf("payment source %q has mismatched allocation total: %#v", expense.PaymentPoolID, item)
+			}
+			total += item.Amount
 		}
-		if total != expense.Items[0].Amount {
-			t.Fatalf("payment source %q has mismatched allocation total: %#v", expense.PaymentPoolID, expense.Items[0])
+		if total != expense.PaidAmount {
+			t.Fatalf("payment source %q has item total %d, want paid amount %d: %#v", expense.PaymentPoolID, total, expense.PaidAmount, expense)
+		}
+	}
+}
+
+func TestSplitFundingExpensePreservesPaymentAmountsAcrossRoundedItems(t *testing.T) {
+	t.Parallel()
+	items := []FundingExpenseItem{
+		{Amount: 1, Allocations: []PoolAmount{{PoolID: sharedPoolID, Amount: 1}}},
+		{Amount: 1, Allocations: []PoolAmount{{PoolID: sharedPoolID, Amount: 1}}},
+	}
+	payments := []FundingPayment{
+		{ID: "account-a", PoolID: personalAPoolID, Amount: 1},
+		{ID: "account-b", PoolID: personalBPoolID, Amount: 1},
+	}
+
+	got, err := SplitFundingExpense(items, payments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(payments) {
+		t.Fatalf("got %d payment expenses, want %d", len(got), len(payments))
+	}
+	itemTotals := make([]int64, len(items))
+	for index, expense := range got {
+		var total int64
+		for itemIndex, item := range expense.Items {
+			var allocationTotal int64
+			for _, allocation := range item.Allocations {
+				allocationTotal += allocation.Amount
+			}
+			if allocationTotal != item.Amount {
+				t.Fatalf("payment source %q item %d has allocation total %d, want %d", expense.PaymentPoolID, itemIndex, allocationTotal, item.Amount)
+			}
+			total += item.Amount
+			itemTotals[itemIndex] += item.Amount
+		}
+		if total != payments[index].Amount || total != expense.PaidAmount {
+			t.Fatalf("payment source %q item total %d does not match payment and paid amount %d/%d", expense.PaymentPoolID, total, payments[index].Amount, expense.PaidAmount)
+		}
+	}
+	for index, total := range itemTotals {
+		if total != items[index].Amount {
+			t.Fatalf("item %d split total is %d, want %d", index, total, items[index].Amount)
 		}
 	}
 }

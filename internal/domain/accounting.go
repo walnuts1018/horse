@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -228,7 +229,6 @@ func SplitFundingExpense(items []FundingExpenseItem, payments []FundingPayment) 
 	if len(items) == 0 || len(payments) == 0 {
 		return nil, ErrInvalidFundingExpense
 	}
-	weights := make([]Weight, 0, len(payments))
 	seen := make(map[string]struct{}, len(payments))
 	var paymentTotal int64
 	for _, payment := range payments {
@@ -239,7 +239,6 @@ func SplitFundingExpense(items []FundingExpenseItem, payments []FundingPayment) 
 			return nil, ErrInvalidFundingExpense
 		}
 		seen[payment.ID] = struct{}{}
-		weights = append(weights, Weight{PoolID: payment.ID, Value: payment.Amount})
 		var ok bool
 		paymentTotal, ok = addInt64(paymentTotal, payment.Amount)
 		if !ok {
@@ -247,9 +246,13 @@ func SplitFundingExpense(items []FundingExpenseItem, payments []FundingPayment) 
 		}
 	}
 	result := make([]FundingExpense, len(payments))
+	remaining := make([]int64, len(payments))
+	paymentIndexByID := make(map[string]int, len(payments))
 	for index, payment := range payments {
 		result[index].PaymentPoolID = payment.PoolID
 		result[index].PaidAmount = payment.Amount
+		remaining[index] = payment.Amount
+		paymentIndexByID[payment.ID] = index
 	}
 	var itemsTotal int64
 	for _, item := range items {
@@ -261,7 +264,19 @@ func SplitFundingExpense(items []FundingExpenseItem, payments []FundingPayment) 
 		for index := range perPayment {
 			perPayment[index] = make(map[string]int64, len(item.Allocations))
 		}
-		for _, allocation := range item.Allocations {
+		allocations := slices.Clone(item.Allocations)
+		slices.SortFunc(allocations, func(left, right PoolAmount) int {
+			if comparison := cmpString(left.PoolID, right.PoolID); comparison != 0 {
+				return comparison
+			}
+			return cmp.Compare(left.Amount, right.Amount)
+		})
+		for _, allocation := range allocations {
+			for index := range perPayment {
+				perPayment[index][allocation.PoolID] = 0
+			}
+		}
+		for _, allocation := range allocations {
 			if allocation.PoolID == "" || allocation.Amount < 0 {
 				return nil, ErrInvalidFundingExpense
 			}
@@ -270,17 +285,35 @@ func SplitFundingExpense(items []FundingExpenseItem, payments []FundingPayment) 
 			if !ok {
 				return nil, ErrInvalidFundingExpense
 			}
-			parts, err := Allocate(allocation.Amount, weights)
+			availableWeights := make([]Weight, 0, len(payments))
+			var available int64
+			for index, payment := range payments {
+				if remaining[index] == 0 {
+					continue
+				}
+				availableWeights = append(availableWeights, Weight{PoolID: payment.ID, Value: remaining[index]})
+				available, ok = addInt64(available, remaining[index])
+				if !ok {
+					return nil, ErrInvalidFundingExpense
+				}
+			}
+			if allocation.Amount > available {
+				return nil, ErrInvalidFundingExpense
+			}
+			if allocation.Amount == 0 {
+				continue
+			}
+			parts, err := Allocate(allocation.Amount, availableWeights)
 			if err != nil {
 				return nil, err
 			}
 			for _, part := range parts {
-				for index, payment := range payments {
-					if payment.ID == part.PoolID {
-						perPayment[index][allocation.PoolID] = part.Amount
-						break
-					}
+				index := paymentIndexByID[part.PoolID]
+				perPayment[index][allocation.PoolID], ok = addInt64(perPayment[index][allocation.PoolID], part.Amount)
+				if !ok || part.Amount > remaining[index] {
+					return nil, ErrInvalidFundingExpense
 				}
+				remaining[index] -= part.Amount
 			}
 		}
 		if itemTotal != item.Amount || item.Amount > paymentTotal {
@@ -308,6 +341,11 @@ func SplitFundingExpense(items []FundingExpenseItem, payments []FundingPayment) 
 	}
 	if itemsTotal != paymentTotal {
 		return nil, ErrInvalidFundingExpense
+	}
+	for _, amount := range remaining {
+		if amount != 0 {
+			return nil, ErrInvalidFundingExpense
+		}
 	}
 	return result, nil
 }
