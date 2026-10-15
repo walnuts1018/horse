@@ -12,16 +12,14 @@ pub fn parse_email_attachments(data: &[u8]) -> Result<Vec<EmailAttachment>, &'st
 use std::{env, error::Error, time::Duration};
 
 use chrono::Utc;
-use evidence_application::ingestion_job::{
-    ExtractionExecutionOutcome, execute_extraction_job,
-};
+use evidence_application::ingestion_job::{ExtractionExecutionOutcome, execute_extraction_job};
 use evidence_postgres::ingestion_job::{
     ClaimedExtractionJob, claim_next_extraction_job, record_extraction_failure,
     record_extraction_success, recover_expired_extraction_jobs,
 };
 use horse_postgres_common::connect;
 use object_store::ObjectStore;
-use processing::{ProcessConfig, ProcessErrorKind, process};
+use processing::{ProcessConfig, process};
 use serde_json::Value;
 
 pub struct Worker {
@@ -92,23 +90,12 @@ impl Worker {
             },
             |failure| async move {
                 let retry_delay_ms = failure.retry_delay_ms(failure_job.attempt_no, Utc::now());
-                let kind = match failure.kind {
-                    ProcessErrorKind::Retryable => {
-                        evidence_application::ingestion_job::ExtractionFailureKind::Retryable
-                    }
-                    ProcessErrorKind::SpendCap => {
-                        evidence_application::ingestion_job::ExtractionFailureKind::SpendCap
-                    }
-                    ProcessErrorKind::Permanent => {
-                        evidence_application::ingestion_job::ExtractionFailureKind::Permanent
-                    }
-                };
                 record_extraction_failure(
                     pool,
                     &failure_job.id,
                     failure_job.attempt_no,
                     &failure_job.lease_token,
-                    kind,
+                    failure.kind,
                     &failure.code,
                     failure.safe_message,
                     Some(failure.partial_result.clone()),
@@ -116,7 +103,7 @@ impl Worker {
                     Utc::now(),
                 )
                 .await
-            }
+            },
         )
         .await;
         match outcome {

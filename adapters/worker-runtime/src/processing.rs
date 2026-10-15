@@ -1,6 +1,7 @@
 use std::{collections::HashMap, env, time::Instant};
 
 use chrono::{DateTime, Datelike, Duration as ChronoDuration, NaiveDate, Utc};
+use evidence_application::ingestion_job::ExtractionFailureKind;
 use evidence_postgres::ingestion_job::{ClaimedExtractionJob, save_interaction_reply_preview};
 use futures_util::StreamExt;
 use horse_gemini_developer_api::{
@@ -51,12 +52,7 @@ impl ProcessConfig {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ProcessErrorKind {
-    Retryable,
-    SpendCap,
-    Permanent,
-}
+pub type ProcessErrorKind = ExtractionFailureKind;
 
 pub struct Failure {
     pub kind: ProcessErrorKind,

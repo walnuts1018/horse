@@ -347,244 +347,167 @@ impl CreateInvitationOperations for PostgresCreateInvitationOperations<'_> {
     }
 }
 
-pub async fn accept_invitation(
-    pool: &PgPool,
-    command: AcceptInvitationCommand,
-    token_hash: [u8; 32],
-    now_value: DateTime<Utc>,
-) -> Result<String, HouseholdInvitationError> {
-    let member_id = parse_uuid(&command.member_id, "member_id")?;
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| HouseholdInvitationError::Pool(error.to_string()))?;
-    (&mut *pooled)
-        .transaction::<String, HouseholdInvitationError, _>(async |conn| {
-            use public::{
-                household_invitations as invitations, household_members as members, households,
-            };
-            let row = invitations::table
-                .filter(invitations::token_hash.eq(token_hash.to_vec()))
-                .for_update()
-                .select((
-                    invitations::id,
-                    invitations::household_id,
-                    invitations::expires_at,
-                    invitations::revoked_at,
-                    invitations::accepted_at,
-                ))
-                .first::<(
-                    Uuid,
-                    Uuid,
-                    DateTime<Utc>,
-                    Option<DateTime<Utc>>,
-                    Option<DateTime<Utc>>,
-                )>(&mut *conn)
-                .await
-                .optional()?
-                .ok_or(HouseholdInvitationError::InvitationNotFound)?;
-            let (invitation_id, household_id, expires_at, revoked_at, accepted_at) = row;
-            if command.household_id != household_id.to_string() {
-                return Err(HouseholdInvitationError::InvitationNotFound);
-            }
-            households::table
-                .filter(households::id.eq(household_id))
-                .for_update()
-                .select(households::id)
-                .first::<Uuid>(&mut *conn)
-                .await
-                .optional()?
-                .ok_or(HouseholdInvitationError::HouseholdNotFound)?;
-            let existing = members::table
-                .filter(members::household_id.eq(household_id))
-                .filter(members::member_id.eq(member_id))
-                .for_update()
-                .select(members::left_at)
-                .first::<Option<DateTime<Utc>>>(&mut *conn)
-                .await
-                .optional()?;
-            let decision = decide_accept_invitation(
-                command,
-                expires_at,
-                revoked_at.is_some(),
-                accepted_at.is_some(),
-                existing == Some(None),
-                now_value,
-            )
-            .map_err(map_workflow_error)?;
-            if decision.restore_membership {
-                if existing.is_some() {
-                    diesel::update(
-                        members::table
-                            .filter(members::household_id.eq(household_id))
-                            .filter(members::member_id.eq(member_id)),
-                    )
-                    .set((
-                        members::left_at.eq(None::<DateTime<Utc>>),
-                        members::joined_at.eq(now_value),
-                        members::role.eq("MEMBER"),
-                    ))
-                    .execute(&mut *conn)
-                    .await?;
-                } else {
-                    let inserted = diesel::insert_into(members::table)
-                        .values((
-                            members::household_id.eq(household_id),
-                            members::member_id.eq(member_id),
-                            members::role.eq("MEMBER"),
-                        ))
-                        .on_conflict((members::household_id, members::member_id))
-                        .do_nothing()
-                        .returning(members::member_id)
-                        .get_result::<Uuid>(&mut *conn)
-                        .await
-                        .optional()?;
-                    if inserted.is_none() {
-                        return Err(HouseholdInvitationError::Conflict);
-                    }
-                }
-            }
-            diesel::update(invitations::table.filter(invitations::id.eq(invitation_id)))
-                .set((
-                    invitations::accepted_by.eq(Some(member_id)),
-                    invitations::accepted_at.eq(Some(now_value)),
-                ))
-                .execute(&mut *conn)
-                .await?;
-            record_change(
-                conn,
-                household_id,
-                member_id,
-                member_id,
-                "member",
-                "household.member.joined",
-                vec![Some("members".to_owned())],
-            )
-            .await?;
-            Ok(household_id.to_string())
-        })
-        .await
-}
-
 pub async fn accept_invitation_by_token(
     pool: &PgPool,
     member_id: String,
     token_hash: [u8; 32],
     now_value: DateTime<Utc>,
 ) -> Result<String, HouseholdInvitationError> {
-    let member_id = parse_uuid(&member_id, "member_id")?;
+    parse_uuid(&member_id, "member_id")?;
     let mut pooled = pool
         .get()
         .await
         .map_err(|error| HouseholdInvitationError::Pool(error.to_string()))?;
     (&mut *pooled)
         .transaction::<String, HouseholdInvitationError, _>(async |conn| {
-            use public::{
-                household_invitations as invitations, household_members as members, households,
-            };
-            let row = invitations::table
-                .filter(invitations::token_hash.eq(token_hash.to_vec()))
-                .for_update()
-                .select((
-                    invitations::id,
-                    invitations::household_id,
-                    invitations::expires_at,
-                    invitations::revoked_at,
-                    invitations::accepted_at,
-                ))
-                .first::<(
-                    Uuid,
-                    Uuid,
-                    DateTime<Utc>,
-                    Option<DateTime<Utc>>,
-                    Option<DateTime<Utc>>,
-                )>(&mut *conn)
-                .await
-                .optional()?
-                .ok_or(HouseholdInvitationError::InvitationNotFound)?;
-            let (invitation_id, household_id, expires_at, revoked_at, accepted_at) = row;
-            households::table
-                .filter(households::id.eq(household_id))
-                .for_update()
-                .select(households::id)
-                .first::<Uuid>(&mut *conn)
-                .await
-                .optional()?
-                .ok_or(HouseholdInvitationError::HouseholdNotFound)?;
-            let existing = members::table
-                .filter(members::household_id.eq(household_id))
-                .filter(members::member_id.eq(member_id))
-                .for_update()
-                .select(members::left_at)
-                .first::<Option<DateTime<Utc>>>(&mut *conn)
-                .await
-                .optional()?;
-            let command = AcceptInvitationCommand {
-                member_id: member_id.to_string(),
-                household_id: household_id.to_string(),
-                invitation_id: invitation_id.to_string(),
-            };
-            let decision = decide_accept_invitation(
-                command,
-                expires_at,
-                revoked_at.is_some(),
-                accepted_at.is_some(),
-                existing == Some(None),
+            let mut operations = PostgresAcceptInvitationOperations { conn, token_hash };
+            household_application::invitation::accept_invitation_by_token(
+                &mut operations,
+                member_id,
+                None,
                 now_value,
             )
-            .map_err(map_workflow_error)?;
-            if decision.restore_membership {
-                if existing.is_some() {
-                    diesel::update(
-                        members::table
-                            .filter(members::household_id.eq(household_id))
-                            .filter(members::member_id.eq(member_id)),
-                    )
-                    .set((
-                        members::left_at.eq(None::<DateTime<Utc>>),
-                        members::joined_at.eq(now_value),
-                        members::role.eq("MEMBER"),
-                    ))
-                    .execute(&mut *conn)
-                    .await?;
-                } else {
-                    let inserted = diesel::insert_into(members::table)
-                        .values((
-                            members::household_id.eq(household_id),
-                            members::member_id.eq(member_id),
-                            members::role.eq("MEMBER"),
-                        ))
-                        .on_conflict((members::household_id, members::member_id))
-                        .do_nothing()
-                        .returning(members::member_id)
-                        .get_result::<Uuid>(&mut *conn)
-                        .await
-                        .optional()?;
-                    if inserted.is_none() {
-                        return Err(HouseholdInvitationError::Conflict);
-                    }
-                }
-            }
-            diesel::update(invitations::table.filter(invitations::id.eq(invitation_id)))
-                .set((
-                    invitations::accepted_by.eq(Some(member_id)),
-                    invitations::accepted_at.eq(Some(now_value)),
-                ))
-                .execute(&mut *conn)
-                .await?;
-            record_change(
-                conn,
-                household_id,
-                member_id,
-                member_id,
-                "member",
-                "household.member.joined",
-                vec![Some("members".to_owned())],
-            )
-            .await?;
-            Ok(household_id.to_string())
+            .await
         })
         .await
+}
+
+struct PostgresAcceptInvitationOperations<'a> {
+    conn: &'a mut crate::AsyncPgConnection,
+    token_hash: [u8; 32],
+}
+
+impl AcceptInvitationOperations for PostgresAcceptInvitationOperations<'_> {
+    type Error = HouseholdInvitationError;
+
+    async fn load_invitation(&mut self) -> Result<AcceptInvitationFacts, Self::Error> {
+        use public::household_invitations as invitations;
+        let row = invitations::table
+            .filter(invitations::token_hash.eq(self.token_hash.to_vec()))
+            .for_update()
+            .select((
+                invitations::id,
+                invitations::household_id,
+                invitations::expires_at,
+                invitations::revoked_at,
+                invitations::accepted_at,
+            ))
+            .first::<(
+                Uuid,
+                Uuid,
+                DateTime<Utc>,
+                Option<DateTime<Utc>>,
+                Option<DateTime<Utc>>,
+            )>(&mut *self.conn)
+            .await
+            .optional()?
+            .ok_or(HouseholdInvitationError::InvitationNotFound)?;
+        Ok(AcceptInvitationFacts {
+            invitation_id: row.0.to_string(),
+            household_id: row.1.to_string(),
+            expires_at: row.2,
+            revoked: row.3.is_some(),
+            accepted: row.4.is_some(),
+        })
+    }
+
+    async fn lock_household(&mut self, household_id: &str) -> Result<(), Self::Error> {
+        use public::households;
+        let household_id = parse_uuid(household_id, "household_id")?;
+        households::table
+            .filter(households::id.eq(household_id))
+            .for_update()
+            .select(households::id)
+            .first::<Uuid>(&mut *self.conn)
+            .await
+            .optional()?
+            .ok_or(HouseholdInvitationError::HouseholdNotFound)?;
+        Ok(())
+    }
+
+    async fn load_membership(
+        &mut self,
+        household_id: &str,
+        member_id: &str,
+    ) -> Result<MembershipStatus, Self::Error> {
+        use public::household_members as members;
+        let household_id = parse_uuid(household_id, "household_id")?;
+        let member_id = parse_uuid(member_id, "member_id")?;
+        let left_at = members::table
+            .filter(members::household_id.eq(household_id))
+            .filter(members::member_id.eq(member_id))
+            .for_update()
+            .select(members::left_at)
+            .first::<Option<DateTime<Utc>>>(&mut *self.conn)
+            .await
+            .optional()?;
+        Ok(MembershipStatus {
+            exists: left_at.is_some(),
+            active: left_at == Some(None),
+        })
+    }
+
+    async fn persist(
+        &mut self,
+        decision: AcceptInvitationDecision,
+        membership: MembershipStatus,
+        now_value: DateTime<Utc>,
+    ) -> Result<String, Self::Error> {
+        use public::{household_invitations as invitations, household_members as members};
+        let member_id = parse_uuid(&decision.member_id, "member_id")?;
+        let household_id = parse_uuid(&decision.household_id, "household_id")?;
+        let invitation_id = parse_uuid(&decision.invitation_id, "invitation_id")?;
+        if decision.restore_membership {
+            if membership.exists {
+                diesel::update(
+                    members::table
+                        .filter(members::household_id.eq(household_id))
+                        .filter(members::member_id.eq(member_id)),
+                )
+                .set((
+                    members::left_at.eq(None::<DateTime<Utc>>),
+                    members::joined_at.eq(now_value),
+                    members::role.eq("MEMBER"),
+                ))
+                .execute(&mut *self.conn)
+                .await?;
+            } else {
+                let inserted = diesel::insert_into(members::table)
+                    .values((
+                        members::household_id.eq(household_id),
+                        members::member_id.eq(member_id),
+                        members::role.eq("MEMBER"),
+                    ))
+                    .on_conflict((members::household_id, members::member_id))
+                    .do_nothing()
+                    .returning(members::member_id)
+                    .get_result::<Uuid>(&mut *self.conn)
+                    .await
+                    .optional()?;
+                if inserted.is_none() {
+                    return Err(HouseholdInvitationError::Conflict);
+                }
+            }
+        }
+        diesel::update(invitations::table.filter(invitations::id.eq(invitation_id)))
+            .set((
+                invitations::accepted_by.eq(Some(member_id)),
+                invitations::accepted_at.eq(Some(now_value)),
+            ))
+            .execute(&mut *self.conn)
+            .await?;
+        record_change(
+            self.conn,
+            household_id,
+            member_id,
+            member_id,
+            "member",
+            "household.member.joined",
+            vec![Some("members".to_owned())],
+        )
+        .await?;
+        Ok(household_id.to_string())
+    }
 }
 
 pub async fn revoke_invitation(
