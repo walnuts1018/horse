@@ -230,14 +230,18 @@ fn encode_node_id(kind: &str, raw_id: &str) -> std::result::Result<String, ()> {
     Ok(URL_SAFE_NO_PAD.encode(payload))
 }
 
-fn user_error_code(
-    error: &postgres_category::CategoryPersistenceError,
-) -> Option<MutationErrorCode> {
-    use postgres_category::CategoryPersistenceError as E;
+fn user_error_code(error: &postgres_category::CategoryWorkflowError) -> Option<MutationErrorCode> {
+    use postgres_category::CategoryWorkflowError as E;
     match error {
-        E::InvalidUuid(_) | E::InvalidWorkflow(_) => Some(MutationErrorCode::BadInput),
-        E::HouseholdNotFound | E::CategoryNotFound => Some(MutationErrorCode::NotFound),
-        E::Pool(_) | E::Database(_) | E::CorruptStoredData => None,
+        E::InvalidActorId
+        | E::InvalidHouseholdId
+        | E::InvalidCategoryId
+        | E::InvalidParentId
+        | E::InvalidName => Some(MutationErrorCode::BadInput),
+        E::HouseholdNotFound | E::CategoryNotFound | E::ParentNotFound | E::NotAMember => {
+            Some(MutationErrorCode::NotFound)
+        }
+        E::InvariantViolation(_) | E::Pool(_) | E::Database(_) | E::CorruptStoredData => None,
     }
 }
 

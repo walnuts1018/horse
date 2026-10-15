@@ -23,7 +23,7 @@ User:
 
 - オンプレのk8sクラスタで動作させる
 - FEはReactを使う。Next.js or TanStack Start
-- BEはGoによるGraphQL APIか、フルスタックTS（FEフレームワークに組み込む）
+- BEはGraphQL APIとWorker・バッチを含めてRustで実装します。FEはTanStack Start + Reactを使用します。
 - その他SeaweedFS、PostgreSQL、Valkey、ScyllaDB，RabbitMQ、ElasticSearch、Qdrantなどが利用可能
 - ログインはZITADEL oidc
 
@@ -596,7 +596,7 @@ Google AI for Developers
 | 文字・位置の抽出 | OCR＋必要に応じてGemini |
 | レシート全体の理解 | Geminiの画像理解 |
 | 商品名・店舗名補完 | 過去データとの照合＋LLM |
-| 税額・合計・差額検証 | Goによる確定的な計算 |
+| 税額・合計・差額検証 | Rustによる確定的な計算 |
 | 重複検出 | ハッシュ＋確率的照合 |
 | 負担割合決定 | ルールエンジン＋過去の修正 |
 | 最終保存 | 人間の承認とサーバー側検証 |
@@ -760,18 +760,18 @@ Qdrantは意味検索で明確なメリットが出る場合に導入します�
 
 推定が不確かなときだけ、邪魔にならない小さな提案を表示します。
 
-## 7. 推奨する技術スタック
+## 7. 採用する技術スタック
 
-結論として、私は TanStack Start + React + Go GraphQL + PostgreSQL を推奨します。
+採用する構成はTanStack Start + React + Rust GraphQL API + Rust Worker・バッチ + PostgreSQLです。BE全体をRustに統一し、DBスキーマはAtlas migrationで管理します。アプリケーションからのDBアクセスにはDiesel 2.3とdiesel-async 0.9.2の型付きDSLを使い、生SQLは使用しません。
 
 | フロントエンド | TanStack Start / React / TypeScript |
 | -------------- | ----------------------------------- |
-| API | Go / gqlgen / GraphQL |
-| DB | PostgreSQL（CloudNativePG） |
+| API | Rust / GraphQL |
+| DB | PostgreSQL（CloudNativePG、Atlas migration、Diesel 2.3 / diesel-async 0.9.2） |
 | リアルタイム | GraphQL Subscription＋変更履歴 |
 | 認証 | ZITADEL OIDC |
 | オブジェクト保存 | SeaweedFS S3 API |
-| ジョブ | RabbitMQ＋Go Worker |
+| ジョブ | RabbitMQ＋Rust Worker |
 | キャッシュ・Presence | Valkey |
 | AI | Gemini API＋ローカルOCR |
 | Observability | OpenTelemetry |
@@ -784,19 +784,17 @@ Qdrantは意味検索で明確なメリットが出る場合に導入します�
 
 TanStack Startはこれらに適しており、Next.js特有のServer ComponentsやServer Actionsを中心に設計する必然性は小さいと考えます。
 
-Go APIを独立させるので、フロントのフレームワークを交換しやすい点もメリットです。
+Rust GraphQL APIを独立させるので、フロントのフレームワークを交換しやすい点もメリットです。
 
 画面ごとにファイルベースのルートとURLを割り当てます。画面の選択にクエリパラメーターを使わず、ブラウザーの再読み込み、戻る、進むでも同じ画面を開けるようにします。クエリパラメーターは帳簿の絞り込みなど、URLで共有・復元する画面状態に限って使います。
 
 未保存の入力があるときは、アプリ内の画面遷移とブラウザー離脱の両方で確認を行います。購入入力は下書きを保存し、再読み込み後に復元します。スマートフォンでドロワーを開いている間は、背景ページを固定してoverscrollによる意図しない再読み込みを防ぎます。
 
-### 7.2 GoかフルスタックTSか
+### 7.2 BEのRust統一
 
-両方で実現できますが、今回の要件ではGoを選びます。
+GraphQL API、Worker、バッチをRustで実装します。
 
-理由は、会計処理をUIから完全に切り離し、金額・負担配分・精算・締めの不変条件を単一のサーバー側ドメインとして扱いたいためです。
-
-これはTypeScriptでも可能ですが、Go + PostgreSQLのトランザクション処理で実装する構成が、今回の既存インフラとの親和性も高いでしょう。
+会計処理をUIから完全に切り離し、金額・負担配分・精算・締めの不変条件をサーバー側ドメインとして扱います。PostgreSQLへのアクセスはDieselの型付きDSLに統一し、DBスキーマの変更はAtlas migrationで管理します。
 
 GraphQLは、購入単位で必要な品目・負担情報をまとめて取得できること、型生成とフロントの連携がしやすいことから適しています。
 
@@ -893,7 +891,7 @@ PostgreSQLを唯一の会計上の正本にします。
           Web/BFF                    OIDC
               │
               ▼
-         Go GraphQL API
+       Rust GraphQL API
               │
        ┌──────┼──────────────┐
        │      │              │
@@ -905,7 +903,7 @@ PostgreSQLを唯一の会計上の正本にします。
           │
     ┌─────┴─────────┐
     │               │
- Import Worker   AI Worker
+   Rust Import Worker   Rust AI Worker
     │               │
     │          ┌────┴─────┐
     │          │          │
@@ -926,7 +924,7 @@ TanStack Start React Docs
 
 そのほか、以下を設計に組み込みます。
 
-- API、Worker、DB間の通信をNetworkPolicyで最小化。
+- Rust API、Worker、DB間の通信をNetworkPolicyで最小化。
 - Gemini APIへの通信はAI Workerに限定。
 - SeaweedFSの証拠画像は原則非公開。
 - 添付画像の閲覧権限は家庭・取引単位で判定。
@@ -935,11 +933,11 @@ TanStack Start React Docs
 - AIプロンプトへの入力は必要な情報に限定し、原本送信について設定可能にする。
 - PostgreSQLのバックアップとオブジェクトストレージのバックアップを整合するよう管理する。
 
-### 9.2 Worker構成
+### 9.2 Rust Worker構成
 
 AI画像認識は同期APIリクエストで完結させず、非同期ジョブとして実行します。
 
-RabbitMQに投入し、Workerが画像解析・照合・候補生成を行います。進捗はSubscriptionでフロントに通知します。
+RabbitMQに投入し、Rust Workerが画像解析・照合・候補生成を行います。ローカル推論はPythonサービスに委譲し、進捗はGraphQL Subscriptionでフロントに通知します。
 
 ジョブは再実行可能にし、同じレシートを再解析しても確定済みの帳簿が重複作成されない設計にします。
 
@@ -1076,7 +1074,7 @@ UI面では、購入単位に共通項目をまとめ、品目ごとには原則
 
 AI面では、Geminiによる抽出だけでなく、OCR、過去履歴、複数ソース照合、画像上の根拠、訂正学習を1つの処理系として構築します。
 
-技術面では、TanStack Start、React、Go、GraphQL、PostgreSQL、SeaweedFS、RabbitMQ、Valkey、ZITADELを中心に据え、不要な分散システムを増やさず、オンプレKubernetes上で運用します。
+技術面では、TanStack Start、React、Rust、GraphQL、PostgreSQL、Atlas migration、Diesel 2.3 / diesel-async 0.9.2、SeaweedFS、RabbitMQ、Valkey、ZITADELを中心に据え、不要な分散システムを増やさず、オンプレKubernetes上で運用します。
 
 そして最も重視したいのは、1品目を登録するために利用者が何回操作する必要があるかという指標です。
 
@@ -1300,7 +1298,7 @@ type ReceiptItem = {
 ここは、LLMに計算させるのではなく、次のような処理にします。
 
 1. LLMが画像から税に関する観測事実と解釈候補を出す。
-2. Goの検証エンジンが候補ごとの金額を計算する。
+2. Rustの検証エンジンが候補ごとの金額を計算する。
 3. レシートの税率別小計・総額・支払総額と照合する。
 4. 複数候補が成立する場合は、履歴や原本の表示から絞り込む。
 5. 一意に確定できなければ、推定として保持する。
@@ -1348,7 +1346,7 @@ type ReceiptItem = {
 
 例えば、「この商品は食料品カテゴリで、A:B=3:2」という設定がDBに存在するなら、LLMに負担割合を再推論させる必要はありません。
 
-Goで確定的に適用できます。
+Rustで確定的に適用できます。
 
 LLMを使うのは、レシート上の商品と商品マスタを結びつけるときなど、曖昧性がある箇所に限定します。
 
@@ -1729,7 +1727,7 @@ flowchart TD
 
 ### コンポーネントの分離
 
-Goのバックエンドを前提とするなら、次のような内部構成を推奨します。
+Rustのバックエンドでは、次のように論理コンポーネントを分けます。
 
 | コンポーネント | 担当 |
 | ------------------------ | ------------------ |
@@ -1747,7 +1745,7 @@ Goのバックエンドを前提とするなら、次のような内部構成を
 
 実際のKubernetes上では、これらを全部別Deploymentにする必要はありません。
 
-論理的なコンポーネントとして分離し、GoのWorker、Pythonのローカル推論サービス、GoのGraphQL APIなどにまとめられます。
+論理的なコンポーネントとして分離し、RustのWorker、Pythonのローカル推論サービス、RustのGraphQL APIなどにまとめられます。
 
 ### モデルルーティングは動的にする
 
@@ -1809,7 +1807,7 @@ AI処理の採用方針
 | 主解析 | Gemini 3.8 Flashで画像を直接理解 |
 | ------- | ------------------------------ |
 | 独立した読取 | ローカルPP-OCRv6を補助的に使用 |
-| 税の解釈 | LLMによる仮説生成＋Goによる制約検証 |
+| 税の解釈 | LLMによる仮説生成＋Rustによる制約検証 |
 | 過去の履歴 | PostgreSQLで関連候補を検索、必要な情報だけLLMへ |
 | 難しいレシート | 高解像度クロップ、必要ならGemini Pro |
 | メール・EC | 構造化パーサー＋Flash-Lite |

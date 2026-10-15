@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, hash::Hash};
 
 use crate::Yen;
 
@@ -32,22 +32,22 @@ impl PoolId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AllocationWeight {
-    pool_id: PoolId,
+pub struct AllocationWeight<Id = PoolId> {
+    id: Id,
     value: u64,
 }
 
-impl AllocationWeight {
-    pub fn new(pool_id: PoolId, value: u64) -> Result<Self, AllocationError> {
+impl<Id> AllocationWeight<Id> {
+    pub fn new(id: Id, value: u64) -> Result<Self, AllocationError> {
         if value == 0 {
             return Err(AllocationError::NonPositiveWeight);
         }
 
-        Ok(Self { pool_id, value })
+        Ok(Self { id, value })
     }
 
-    pub fn pool_id(&self) -> &PoolId {
-        &self.pool_id
+    pub fn id(&self) -> &Id {
+        &self.id
     }
 
     pub const fn value(&self) -> u64 {
@@ -56,10 +56,10 @@ impl AllocationWeight {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AllocationShares(Vec<AllocationWeight>);
+pub struct AllocationShares<Id = PoolId>(Vec<AllocationWeight<Id>>);
 
-impl AllocationShares {
-    pub fn new(weights: Vec<AllocationWeight>) -> Result<Self, AllocationError> {
+impl<Id: Eq + Hash> AllocationShares<Id> {
+    pub fn new(weights: Vec<AllocationWeight<Id>>) -> Result<Self, AllocationError> {
         if weights.is_empty() {
             return Err(AllocationError::EmptyShares);
         }
@@ -67,7 +67,7 @@ impl AllocationShares {
         let mut pool_ids = HashSet::with_capacity(weights.len());
         let mut total_weight = 0_i128;
         for weight in &weights {
-            if !pool_ids.insert(&weight.pool_id) {
+            if !pool_ids.insert(&weight.id) {
                 return Err(AllocationError::DuplicatePoolId);
             }
             total_weight = total_weight
@@ -78,21 +78,21 @@ impl AllocationShares {
         Ok(Self(weights))
     }
 
-    pub fn weights(&self) -> &[AllocationWeight] {
+    pub fn weights(&self) -> &[AllocationWeight<Id>] {
         &self.0
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Allocation {
-    pool_id: PoolId,
+pub struct Allocation<Id = PoolId> {
+    id: Id,
     weight: u64,
     amount: Yen,
 }
 
-impl Allocation {
-    pub fn pool_id(&self) -> &PoolId {
-        &self.pool_id
+impl<Id> Allocation<Id> {
+    pub fn id(&self) -> &Id {
+        &self.id
     }
 
     pub const fn weight(&self) -> u64 {
@@ -110,7 +110,10 @@ struct Remainder {
 }
 
 /// 最大剰余法で整数円を配分し、余りはpool ID順で決定的に配る。
-pub fn allocate(amount: Yen, shares: &AllocationShares) -> Vec<Allocation> {
+pub fn allocate<Id: Clone + Ord>(
+    amount: Yen,
+    shares: &AllocationShares<Id>,
+) -> Vec<Allocation<Id>> {
     let total_weight: i128 = shares.0.iter().map(|weight| i128::from(weight.value)).sum();
     let mut allocated_total = 0_i64;
     let mut result = Vec::with_capacity(shares.0.len());
@@ -122,7 +125,7 @@ pub fn allocate(amount: Yen, shares: &AllocationShares) -> Vec<Allocation> {
         let remainder = numerator % total_weight;
         allocated_total += part;
         result.push(Allocation {
-            pool_id: weight.pool_id.clone(),
+            id: weight.id.clone(),
             weight: weight.value,
             amount: Yen::new(part).expect("配分額は元の円金額を超えない"),
         });
@@ -136,7 +139,7 @@ pub fn allocate(amount: Yen, shares: &AllocationShares) -> Vec<Allocation> {
         right
             .value
             .cmp(&left.value)
-            .then_with(|| result[left.index].pool_id.cmp(&result[right.index].pool_id))
+            .then_with(|| result[left.index].id.cmp(&result[right.index].id))
     });
 
     let remaining = (amount.value() - allocated_total) as usize;
@@ -146,8 +149,20 @@ pub fn allocate(amount: Yen, shares: &AllocationShares) -> Vec<Allocation> {
             Yen::new(current + 1).expect("配分額は元の円金額を超えない");
     }
 
-    result.sort_by(|left, right| left.pool_id.cmp(&right.pool_id));
+    result.sort_by(|left, right| left.id.cmp(&right.id));
     result
+}
+
+impl Allocation<PoolId> {
+    pub fn pool_id(&self) -> &PoolId {
+        self.id()
+    }
+}
+
+impl AllocationWeight<PoolId> {
+    pub fn pool_id(&self) -> &PoolId {
+        self.id()
+    }
 }
 
 #[cfg(test)]

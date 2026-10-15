@@ -5,7 +5,9 @@ use catalog_workflows::category::{
 };
 use chrono::Utc;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
-use diesel_async::{AsyncConnection, RunQueryDsl};
+use diesel_async::{
+    AsyncConnection, RunQueryDsl, pooled_connection::bb8::RunError as PoolRunError,
+};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -20,12 +22,11 @@ struct PersistedCategory {
 }
 
 impl TryFrom<PersistedCategory> for Category {
-    type Error = CategoryPersistenceError;
+    type Error = CategoryWorkflowError;
 
     // DB復元値を無検証で信用せず、Smart Constructorを通して制約を再確認する。
     fn try_from(category: PersistedCategory) -> Result<Self, Self::Error> {
-        CategoryName::new(&category.name)
-            .map_err(|_| CategoryPersistenceError::CorruptStoredData)?;
+        CategoryName::new(&category.name).map_err(|_| CategoryWorkflowError::CorruptStoredData)?;
         Ok(Self {
             id: category.id.to_string(),
             household_id: category.household_id.to_string(),
@@ -37,48 +38,74 @@ impl TryFrom<PersistedCategory> for Category {
 }
 
 #[derive(Debug)]
-pub enum CategoryPersistenceError {
-    Pool(String),
-    Database(DieselError),
-    InvalidUuid(&'static str),
-    InvalidWorkflow(CategoryError),
+pub enum CategoryWorkflowError {
+    // 業務エラー: GraphQLに公開できる。
+    InvalidActorId,
+    InvalidHouseholdId,
+    InvalidCategoryId,
+    InvalidParentId,
+    InvalidName,
     HouseholdNotFound,
     CategoryNotFound,
+    ParentNotFound,
+    // 非メンバーであることは存在開示回避のためGraphQLではNotFoundに写像するが、型上は分離する。
+    NotAMember,
+    // decide通過後のUUID再パース失敗など、ユーザー入力ではなく実装側の不変違反。
+    InvariantViolation(&'static str),
+    // infra: 非公開。
+    Pool(PoolRunError),
+    Database(DieselError),
     // 保存済みデータがドメイン制約を満たさない場合。入力不良や競合とは区別する。
     CorruptStoredData,
 }
 
-impl From<DieselError> for CategoryPersistenceError {
+impl From<DieselError> for CategoryWorkflowError {
     fn from(error: DieselError) -> Self {
         Self::Database(error)
+    }
+}
+
+impl From<PoolRunError> for CategoryWorkflowError {
+    fn from(error: PoolRunError) -> Self {
+        Self::Pool(error)
+    }
+}
+
+impl From<CategoryError> for CategoryWorkflowError {
+    fn from(error: CategoryError) -> Self {
+        match error {
+            CategoryError::InvalidActorId => Self::InvalidActorId,
+            CategoryError::InvalidHouseholdId => Self::InvalidHouseholdId,
+            CategoryError::InvalidCategoryId => Self::InvalidCategoryId,
+            CategoryError::InvalidParentId => Self::InvalidParentId,
+            CategoryError::InvalidName => Self::InvalidName,
+        }
     }
 }
 
 pub async fn persist_create_category(
     pool: &PgPool,
     command: CreateCategoryCommand,
-) -> Result<Category, CategoryPersistenceError> {
-    let decision =
-        decide_create_category(command).map_err(CategoryPersistenceError::InvalidWorkflow)?;
-    let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
-    let household_id = parse_uuid(decision.household_id.as_str(), "household_id")?;
-    let category_id = parse_uuid(decision.category_id.as_str(), "category_id")?;
-    let parent_id = decision
-        .parent_id
-        .as_ref()
-        .map(|value| parse_uuid(value.as_str(), "parent_id"))
-        .transpose()?;
-
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| CategoryPersistenceError::Pool(error.to_string()))?;
+) -> Result<Category, CategoryWorkflowError> {
+    let mut pooled = pool.get().await.map_err(CategoryWorkflowError::from)?;
     (&mut *pooled)
-        .transaction::<Category, CategoryPersistenceError, _>(async |conn| {
+        .transaction::<Category, CategoryWorkflowError, _>(async |conn| {
             use public::categories::dsl as categories;
             use public::household_events::dsl as events;
             use public::households::dsl as households;
 
+            // 1. Decide: 純粋関数。DBを認識しない。
+            let decision = decide_create_category(command)?;
+            let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+            let household_id = parse_uuid(decision.household_id.as_str(), "household_id")?;
+            let category_id = parse_uuid(decision.category_id.as_str(), "category_id")?;
+            let parent_id = decision
+                .parent_id
+                .as_ref()
+                .map(|value| parse_uuid(value.as_str(), "parent_id"))
+                .transpose()?;
+
+            // 2. Load: 必要な状態をロック付きで読む。
             households::households
                 .filter(households::id.eq(household_id))
                 .for_update()
@@ -86,7 +113,7 @@ pub async fn persist_create_category(
                 .first::<Uuid>(conn)
                 .await
                 .optional()?
-                .ok_or(CategoryPersistenceError::HouseholdNotFound)?;
+                .ok_or(CategoryWorkflowError::HouseholdNotFound)?;
             require_member(conn, household_id, actor_id).await?;
 
             if let Some(parent_id) = parent_id {
@@ -97,9 +124,10 @@ pub async fn persist_create_category(
                     .first::<Uuid>(conn)
                     .await
                     .optional()?
-                    .ok_or(CategoryPersistenceError::CategoryNotFound)?;
+                    .ok_or(CategoryWorkflowError::ParentNotFound)?;
             }
 
+            // 3. Persist: 本体とイベントを同一トランザクションで確定する。
             diesel::insert_into(categories::categories)
                 .values((
                     categories::id.eq(category_id),
@@ -142,21 +170,19 @@ pub async fn persist_create_category(
 pub async fn persist_update_category_name(
     pool: &PgPool,
     command: UpdateCategoryNameCommand,
-) -> Result<Category, CategoryPersistenceError> {
-    let decision =
-        decide_update_category_name(command).map_err(CategoryPersistenceError::InvalidWorkflow)?;
-    let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
-    let category_id = parse_uuid(decision.category_id.as_str(), "category_id")?;
-
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| CategoryPersistenceError::Pool(error.to_string()))?;
+) -> Result<Category, CategoryWorkflowError> {
+    let mut pooled = pool.get().await.map_err(CategoryWorkflowError::from)?;
     (&mut *pooled)
-        .transaction::<Category, CategoryPersistenceError, _>(async |conn| {
+        .transaction::<Category, CategoryWorkflowError, _>(async |conn| {
             use public::categories::dsl as categories;
             use public::household_events::dsl as events;
 
+            // 1. Decide: 純粋関数。DBを認識しない。
+            let decision = decide_update_category_name(command)?;
+            let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+            let category_id = parse_uuid(decision.category_id.as_str(), "category_id")?;
+
+            // 2. Load: 更新対象をロック付きで読む。
             let row = categories::categories
                 .filter(categories::id.eq(category_id))
                 .for_update()
@@ -169,9 +195,10 @@ pub async fn persist_update_category_name(
                 .first::<(Uuid, Option<Uuid>, String, bool)>(conn)
                 .await
                 .optional()?
-                .ok_or(CategoryPersistenceError::CategoryNotFound)?;
+                .ok_or(CategoryWorkflowError::CategoryNotFound)?;
             require_member(conn, row.0, actor_id).await?;
 
+            // 3. Persist: 本体とイベントを同一トランザクションで確定する。
             if row.2 != decision.name.as_str() {
                 diesel::update(
                     categories::categories
@@ -214,21 +241,19 @@ pub async fn persist_update_category_name(
 pub async fn persist_set_category_archived(
     pool: &PgPool,
     command: SetCategoryArchivedCommand,
-) -> Result<Category, CategoryPersistenceError> {
-    let decision =
-        decide_set_category_archived(command).map_err(CategoryPersistenceError::InvalidWorkflow)?;
-    let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
-    let category_id = parse_uuid(decision.category_id.as_str(), "category_id")?;
-
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| CategoryPersistenceError::Pool(error.to_string()))?;
+) -> Result<Category, CategoryWorkflowError> {
+    let mut pooled = pool.get().await.map_err(CategoryWorkflowError::from)?;
     (&mut *pooled)
-        .transaction::<Category, CategoryPersistenceError, _>(async |conn| {
+        .transaction::<Category, CategoryWorkflowError, _>(async |conn| {
             use public::categories::dsl as categories;
             use public::household_events::dsl as events;
 
+            // 1. Decide: 純粋関数。DBを認識しない。
+            let decision = decide_set_category_archived(command)?;
+            let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+            let category_id = parse_uuid(decision.category_id.as_str(), "category_id")?;
+
+            // 2. Load: 更新対象をロック付きで読む。
             let row = categories::categories
                 .filter(categories::id.eq(category_id))
                 .for_update()
@@ -241,9 +266,10 @@ pub async fn persist_set_category_archived(
                 .first::<(Uuid, Option<Uuid>, String, bool)>(conn)
                 .await
                 .optional()?
-                .ok_or(CategoryPersistenceError::CategoryNotFound)?;
+                .ok_or(CategoryWorkflowError::CategoryNotFound)?;
             require_member(conn, row.0, actor_id).await?;
 
+            // 3. Persist: 本体とイベントを同一トランザクションで確定する。
             if row.3 != decision.archived {
                 diesel::update(
                     categories::categories
@@ -287,7 +313,7 @@ pub async fn persist_set_category_archived(
 async fn next_event_revision(
     conn: &mut diesel_async::AsyncPgConnection,
     entity_id: Uuid,
-) -> Result<i64, CategoryPersistenceError> {
+) -> Result<i64, CategoryWorkflowError> {
     use public::household_events::dsl as events;
 
     let max_revision = events::household_events
@@ -303,7 +329,7 @@ async fn require_member(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     actor_id: Uuid,
-) -> Result<(), CategoryPersistenceError> {
+) -> Result<(), CategoryWorkflowError> {
     use public::household_members::dsl as members;
 
     let is_member = diesel::select(diesel::dsl::exists(
@@ -315,13 +341,13 @@ async fn require_member(
     .first::<bool>(conn)
     .await?;
     if !is_member {
-        return Err(CategoryPersistenceError::CategoryNotFound);
+        return Err(CategoryWorkflowError::NotAMember);
     }
     Ok(())
 }
 
-fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, CategoryPersistenceError> {
-    Uuid::parse_str(value).map_err(|_| CategoryPersistenceError::InvalidUuid(field))
+fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, CategoryWorkflowError> {
+    Uuid::parse_str(value).map_err(|_| CategoryWorkflowError::InvariantViolation(field))
 }
 
 fn event_fields(event: &CategoryEvent) -> Vec<Option<String>> {

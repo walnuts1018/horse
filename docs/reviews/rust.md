@@ -787,6 +787,10 @@ GraphQL Subscription は、クライアントに「再読込すべき変更が�
 
 BC 間のビジネス処理を GraphQL Subscription に依存させるべきではありません。
 
+Rust実装では`purchaseChanges`と`sharedPurchaseDraftChanges`をこの用途に限定します。購入変更は共有ポーラーからbounded channelへ配信し、購読中もHouseholdの認可を定期的に確認します。購入変更はcursor、entity、revision、変更フィールドと関連するPurchaseを通知します。
+
+購入品目の削除イベントには親Purchase IDを`household_events.payload`へ保存します。削除後は品目行から親IDを引けないためです。この変更履歴はGraphQLの更新通知に使い、BC間の公開イベントやTransactional Outboxの代わりにはしません。
+
 ## 11. AI 取り込み Worker は永続状態機械として設計する
 
 DMMF 第7章 §7.9 の Saga / Process Manager に最も近い Horse の機能が、AI 文書取り込みです。

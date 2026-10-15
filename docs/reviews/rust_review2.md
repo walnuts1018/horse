@@ -138,31 +138,6 @@ DMMF\_%E6%9B%B8%E7%B1%8D%E5%85%A8%E7%AB%A0%E5%88%86%E6%9E%90\_%E8%A8%AD%E8%A8%88
 
 構造の改善だけでなく、実際の整合性リスクや細部の型設計にも修正候補があります。
 
-### P1-4. MemberId を PoolId として扱って配分している
-
-該当：[bookkeeping-workflows/src/lib.rs L540–574](https://github.com/walnuts1018/horse/blob/a3603e2/crates/bookkeeping-workflows/src/lib.rs#L540-L574)
-
-`MemberId` を文字列に戻し、`PoolId` として作り直して、同じ最大剰余法を利用しています。
-
-動作は成立していても、概念上は異なる ID を偽装しています。
-
-ここは配分アルゴリズムだけを型パラメータ化するのが適切です。
-
-```
-pub struct Weight<Id> {
-    id: Id,
-    value: NonZeroU64,
-}
-
-pub struct WeightedShares<Id> {
-    weights: NonEmptyVec<Weight<Id>>,
-}
-```
-
-例えば `WeightedShares<PoolId>` と `WeightedShares<MemberId>` に共通アルゴリズムを適用できます。
-
-これは抽象化によって意味を失わずにコードを共有する、Rust らしい改善だと思います。
-
 ### P1-5. CreatePurchase にプリミティブ型が多い
 
 該当：[bookkeeping-workflows/src/create_purchase.rs](https://github.com/walnuts1018/horse/blob/a3603e2/crates/bookkeeping-workflows/src/create_purchase.rs)

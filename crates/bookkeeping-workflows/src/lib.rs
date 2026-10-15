@@ -522,11 +522,11 @@ pub fn decide_post_purchase(
                 .map_err(|_| PostPurchaseError::AmountOverflow)?,
         );
         let funding_weights = allocation.funding.weights();
-        let shares = shares(&allocation.pool_id, &funding_weights)?;
+        let shares = member_shares(&allocation.pool_id, &funding_weights)?;
         for part in allocate(allocation.amount, &shares) {
             let weight = funding_weights
                 .iter()
-                .find(|weight| weight.member_id.as_str() == part.pool_id().as_str())
+                .find(|weight| weight.member_id == *part.id())
                 .expect("shares preserve member ids");
             member_burden_snapshots.push(MemberBurdenSnapshot {
                 item_id: allocation.item_id.clone(),
@@ -546,7 +546,7 @@ pub fn decide_post_purchase(
     let mut payment_funding_snapshots = Vec::new();
     for (index, payment) in command.payments.iter().enumerate() {
         let funding_weights = payment.funding.rule.weights();
-        shares(&payment.funding.pool_id, &funding_weights)?;
+        member_shares(&payment.funding.pool_id, &funding_weights)?;
         if index + 1 > u32::MAX as usize {
             return Err(PostPurchaseError::JournalLineCountOverflow);
         }
@@ -629,17 +629,13 @@ pub fn decide_post_purchase(
     })
 }
 
-fn shares(
+fn member_shares(
     pool_id: &PoolId,
     weights: &[MemberWeight],
-) -> Result<AllocationShares, PostPurchaseError> {
+) -> Result<AllocationShares<MemberId>, PostPurchaseError> {
     let domain_weights = weights
         .iter()
-        .map(|weight| {
-            let member_as_pool =
-                PoolId::new(weight.member_id.as_str().to_owned()).expect("member IDs are nonempty");
-            AllocationWeight::new(member_as_pool, weight.weight)
-        })
+        .map(|weight| AllocationWeight::new(weight.member_id.clone(), weight.weight))
         .collect::<Result<Vec<_>, _>>();
     let domain_weights = domain_weights.map_err(|_| PostPurchaseError::InvalidMemberShares {
         pool_id: pool_id.clone(),
@@ -652,11 +648,7 @@ fn shares(
 fn validate_member_weights(weights: &[MemberWeight]) -> Result<(), FundingBasisError> {
     let domain_weights = weights
         .iter()
-        .map(|weight| {
-            let member_as_pool =
-                PoolId::new(weight.member_id.as_str().to_owned()).expect("member IDs are nonempty");
-            AllocationWeight::new(member_as_pool, weight.weight)
-        })
+        .map(|weight| AllocationWeight::new(weight.member_id.clone(), weight.weight))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| FundingBasisError::InvalidMemberShares)?;
     AllocationShares::new(domain_weights)

@@ -348,6 +348,9 @@ pub async fn persist_bulk_delete_purchase_items(
                                 events::entity_id.eq(item_id),
                                 events::revision.eq(revision),
                                 events::changed_fields.eq(vec![Some("deleted".to_owned())]),
+                                events::payload.eq(serde_json::json!({
+                                    "purchaseId": purchase_id.to_string(),
+                                })),
                                 events::actor_id.eq(actor_id),
                             )).execute(&mut *conn).await?;
                     }

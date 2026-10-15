@@ -292,6 +292,7 @@ pub mod public {
             entity_id -> Uuid,
             revision -> Int8,
             changed_fields -> Array<Nullable<Text>>,
+            payload -> Jsonb,
             actor_id -> Uuid,
             created_at -> Timestamptz,
         }

@@ -245,6 +245,7 @@ CREATE TABLE household_events (
     entity_id uuid NOT NULL,
     revision bigint NOT NULL CHECK (revision > 0),
     changed_fields text[] NOT NULL DEFAULT '{}',
+    payload jsonb NOT NULL DEFAULT '{}'::jsonb,
     actor_id uuid NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (household_id, entity_kind, entity_id, revision, event_type),
