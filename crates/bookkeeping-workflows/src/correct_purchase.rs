@@ -42,6 +42,23 @@ pub enum OriginalPeriodStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountingPeriod(String);
+
+impl AccountingPeriod {
+    pub fn new(value: impl Into<String>) -> Result<Self, CorrectPurchaseError> {
+        let value = value.into();
+        if !valid_period(&value) {
+            return Err(CorrectPurchaseError::InvalidAccountingPeriod);
+        }
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorrectionPayment {
     pub account_id: AccountId,
     pub amount: PositiveYen,
@@ -54,9 +71,9 @@ pub struct CorrectionCommand {
     pub target: CorrectionTarget,
     pub amount_delta: SignedYenDelta,
     pub reason: String,
-    pub original_period: String,
+    pub original_period: AccountingPeriod,
     pub original_period_status: OriginalPeriodStatus,
-    pub effective_period: String,
+    pub effective_period: AccountingPeriod,
     pub effective_period_open: bool,
     pub purchase_refundable: Yen,
     pub item_refundable: Option<Yen>,
@@ -71,7 +88,7 @@ pub struct CorrectPurchaseDecision {
     pub target: CorrectionTarget,
     pub amount_delta: SignedYenDelta,
     pub reason: String,
-    pub effective_period: String,
+    pub effective_period: AccountingPeriod,
     pub allocations: Vec<CorrectionAllocation>,
     pub journal_lines: Vec<CorrectionJournalLine>,
     pub event: CorrectionEvent,
@@ -274,7 +291,9 @@ pub fn decide_correct_purchase(
     if command.reason.trim().is_empty() {
         return Err(CorrectPurchaseError::BlankReason);
     }
-    if !valid_period(&command.original_period) || !valid_period(&command.effective_period) {
+    if !valid_period(command.original_period.as_str())
+        || !valid_period(command.effective_period.as_str())
+    {
         return Err(CorrectPurchaseError::InvalidAccountingPeriod);
     }
     match command.original_period_status {
@@ -969,9 +988,9 @@ mod tests {
             target: CorrectionTarget::Item(id(ItemId::new, "item-1")),
             amount_delta: SignedYenDelta::new(delta).unwrap(),
             reason: "refund".into(),
-            original_period: "2026-10".into(),
+            original_period: AccountingPeriod::new("2026-10").unwrap(),
             original_period_status: OriginalPeriodStatus::Open,
-            effective_period: "2026-10".into(),
+            effective_period: AccountingPeriod::new("2026-10").unwrap(),
             effective_period_open: true,
             purchase_refundable: Yen::new(100).unwrap(),
             item_refundable: Some(Yen::new(80).unwrap()),

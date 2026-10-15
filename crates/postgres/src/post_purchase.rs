@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use bookkeeping_workflows::{PostPurchaseDecision, Side};
+use bookkeeping_workflows::{PostPurchaseDecision, PostingTarget, Side};
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
@@ -266,37 +266,36 @@ pub async fn persist_post_purchase_in_transaction(
         .await?;
 
     for line in &decision.journal_lines {
-        let line_no = i32::try_from(line.line_no)
+        let line_no = i32::try_from(line.line_no())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal line_no"))?;
-        let amount = i64::try_from(line.amount.value())
+        let amount = i64::try_from(line.amount().value())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal amount"))?;
+        let (account_id, pool_id) = match line.target() {
+            PostingTarget::Account(id) => (
+                Some(parse_uuid(id.as_str(), "account_id")?),
+                None,
+            ),
+            PostingTarget::Pool(id) => (None, Some(parse_uuid(id.as_str(), "pool_id")?)),
+        };
         diesel::insert_into(public::journal_entries::table)
             .values((
                 public::journal_entries::household_id.eq(household_id),
                 public::journal_entries::journal_id.eq(journal_id),
                 public::journal_entries::line_no.eq(line_no),
-                public::journal_entries::account_id.eq(line
-                    .account_id
-                    .as_ref()
-                    .map(|id| parse_uuid(id.as_str(), "account_id"))
-                    .transpose()?),
-                public::journal_entries::pool_id.eq(line
-                    .pool_id
-                    .as_ref()
-                    .map(|id| parse_uuid(id.as_str(), "pool_id"))
-                    .transpose()?),
+                public::journal_entries::account_id.eq(account_id),
+                public::journal_entries::pool_id.eq(pool_id),
                 public::journal_entries::member_id.eq::<Option<Uuid>>(None),
-                public::journal_entries::debit_yen.eq(if line.side == Side::Debit {
+                public::journal_entries::debit_yen.eq(if line.side() == Side::Debit {
                     amount
                 } else {
                     0
                 }),
-                public::journal_entries::credit_yen.eq(if line.side == Side::Credit {
+                public::journal_entries::credit_yen.eq(if line.side() == Side::Credit {
                     amount
                 } else {
                     0
                 }),
-                public::journal_entries::memo.eq(line.memo),
+                public::journal_entries::memo.eq(line.memo()),
             ))
             .execute(&mut *conn)
             .await?;
@@ -427,14 +426,14 @@ fn validate_decision(
     let mut debit = 0_i64;
     let mut credit = 0_i64;
     for line in &decision.journal_lines {
-        let number = i32::try_from(line.line_no)
+        let number = i32::try_from(line.line_no())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal line_no"))?;
         if number <= 0 || !lines.insert(number) {
             return Err(PostPurchasePersistenceError::InvalidDecision);
         }
-        let amount = i64::try_from(line.amount.value())
+        let amount = i64::try_from(line.amount().value())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal amount"))?;
-        match line.side {
+        match line.side() {
             Side::Debit => {
                 debit = debit.checked_add(amount).ok_or(
                     PostPurchasePersistenceError::NumericOutOfRange("debit total"),
@@ -450,12 +449,7 @@ fn validate_decision(
     if debit == 0 || debit != credit || debit > 1_000_000_000_000 {
         return Err(PostPurchasePersistenceError::InvalidDecision);
     }
-    if decision.journal_lines.iter().any(|line| match line.side {
-        Side::Debit => line.pool_id.is_none() || line.account_id.is_some(),
-        Side::Credit => line.account_id.is_none() || line.pool_id.is_some(),
-    }) {
-        return Err(PostPurchasePersistenceError::InvalidDecision);
-    }
+    // 明細の相手先の組み合わせ(プールか口座のどちらか一つ)はPostingTarget型で保証されるため、ここでは再検査しない。
     Ok(())
 }
 
@@ -463,9 +457,9 @@ fn ledger_amount(decision: &PostPurchaseDecision) -> Result<i64, PostPurchasePer
     let total = decision
         .journal_lines
         .iter()
-        .filter(|line| line.side == Side::Debit)
+        .filter(|line| line.side() == Side::Debit)
         .try_fold(0_i64, |sum, line| {
-            sum.checked_add(line.amount.value()).ok_or(
+            sum.checked_add(line.amount().value()).ok_or(
                 PostPurchasePersistenceError::NumericOutOfRange("ledger amount"),
             )
         })?;
@@ -552,11 +546,13 @@ async fn validate_household_references(
     let mut member_ids = BTreeSet::from([actor_id]);
     let mut item_ids = BTreeSet::new();
     for line in &decision.journal_lines {
-        if let Some(id) = &line.pool_id {
-            pool_ids.insert(parse_uuid(id.as_str(), "pool_id")?);
-        }
-        if let Some(id) = &line.account_id {
-            account_ids.insert(parse_uuid(id.as_str(), "account_id")?);
+        match line.target() {
+            PostingTarget::Pool(id) => {
+                pool_ids.insert(parse_uuid(id.as_str(), "pool_id")?);
+            }
+            PostingTarget::Account(id) => {
+                account_ids.insert(parse_uuid(id.as_str(), "account_id")?);
+            }
         }
     }
     for snapshot in &decision.member_burden_snapshots {
@@ -853,17 +849,16 @@ fn validate_journal_rows(
     }
     let mut actual_credits = BTreeMap::<Uuid, i64>::new();
     for line in &decision.journal_lines {
-        let amount = i64::try_from(line.amount.value())
+        let amount = i64::try_from(line.amount().value())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal amount"))?;
-        let id = match line.side {
+        let id = match line.side() {
             Side::Debit => continue,
-            Side::Credit => parse_uuid(
-                line.account_id
-                    .as_ref()
-                    .ok_or(PostPurchasePersistenceError::InvalidDecision)?
-                    .as_str(),
-                "account_id",
-            )?,
+            Side::Credit => match line.target() {
+                PostingTarget::Account(id) => parse_uuid(id.as_str(), "account_id")?,
+                PostingTarget::Pool(_) => {
+                    return Err(PostPurchasePersistenceError::InvalidDecision);
+                }
+            },
         };
         let total = actual_credits.entry(id).or_insert(0);
         *total =
@@ -901,15 +896,14 @@ fn validate_journal_debits(
     for line in decision
         .journal_lines
         .iter()
-        .filter(|line| line.side == Side::Debit)
+        .filter(|line| line.side() == Side::Debit)
     {
-        let pool_id = parse_uuid(
-            line.pool_id
-                .as_ref()
-                .ok_or(PostPurchasePersistenceError::InvalidDecision)?
-                .as_str(),
-            "pool_id",
-        )?;
+        let pool_id = match line.target() {
+            PostingTarget::Pool(id) => parse_uuid(id.as_str(), "pool_id")?,
+            PostingTarget::Account(_) => {
+                return Err(PostPurchasePersistenceError::InvalidDecision);
+            }
+        };
         let total = actual.entry(pool_id).or_insert(0);
         *total = total.checked_add(line.amount.value()).ok_or(
             PostPurchasePersistenceError::NumericOutOfRange("journal debit total"),

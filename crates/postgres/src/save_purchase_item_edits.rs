@@ -75,22 +75,17 @@ pub async fn persist_save_purchase_item_edits(
     (&mut *pooled)
         .transaction::<Vec<String>, SavePurchaseItemEditsPersistenceError, _>(async move |conn| {
             use public::household_members::dsl as members;
+            use public::purchase_items::dsl as items_table;
             use public::purchase_member_burdens::dsl as burdens;
             use public::purchase_payment_funding_snapshots::dsl as payment_snapshots;
             use public::purchase_payments::dsl as payments;
-            use public::purchase_items::dsl as items_table;
             use public::purchases::dsl as purchases;
 
-            let (purchase_owner, initial_status, initial_occurred_at, initial_merchant) = purchases::purchases
+            let (purchase_owner, initial_status) = purchases::purchases
                 .filter(purchases::id.eq(purchase_id))
                 .for_update()
-                .select((
-                    purchases::household_id,
-                    purchases::status,
-                    purchases::occurred_at,
-                    purchases::merchant,
-                ))
-                .first::<(Uuid, String, chrono::DateTime<chrono::Utc>, String)>(conn)
+                .select((purchases::household_id, purchases::status))
+                .first::<(Uuid, String)>(conn)
                 .await
                 .optional()?
                 .ok_or(SavePurchaseItemEditsPersistenceError::PurchaseNotFound)?;
@@ -187,9 +182,9 @@ pub async fn persist_save_purchase_item_edits(
                 accounting_changed |= persisted.accounting_changed;
                 payments_changed |= persisted.payments_changed;
             }
-            let purchase_patch_syncs_accounting = purchase_patch.as_ref().is_some_and(|command| {
-                command.payment_allocations.is_some() || command.occurred_at.is_some()
-            });
+            let purchase_patch_changes_payments = purchase_patch
+                .as_ref()
+                .is_some_and(|command| command.payment_allocations.is_some());
             if let Some(command) = purchase_patch {
                 let (revision, status, occurred_at, date_precision, merchant, field_revisions) =
                     purchases::purchases
@@ -242,11 +237,12 @@ pub async fn persist_save_purchase_item_edits(
                     actor_id,
                     command,
                     decision,
+                    accounting_changed,
                 )
                 .await
                 .map_err(SavePurchaseItemEditsPersistenceError::InvalidPurchaseUpdate)?;
             }
-            if initial_status == "POSTED" && accounting_changed && !purchase_patch_syncs_accounting {
+            if initial_status == "POSTED" && accounting_changed {
                 let (revision, occurred_at, merchant) = purchases::purchases
                     .filter(purchases::id.eq(purchase_id))
                     .filter(purchases::household_id.eq(household_id))
@@ -269,7 +265,7 @@ pub async fn persist_save_purchase_item_edits(
                     &previous_burdens,
                     &previous_payment_accounts,
                     &previous_payment_snapshots,
-                    payments_changed,
+                    payments_changed || purchase_patch_changes_payments,
                 )
                 .await
                 .map_err(SavePurchaseItemEditsPersistenceError::InvalidItemUpdate)?;

@@ -333,6 +333,76 @@ pub(crate) async fn purchase_corrections_connection(
     })
 }
 
+pub(crate) async fn resolve_purchase_correction_node(
+    ctx: &Context<'_>,
+    household_id: Uuid,
+    correction_id: Uuid,
+) -> Result<crate::ledger_entry::Node> {
+    let actor = crate::actor(ctx)?;
+    let pool = ctx.data::<PgPool>()?;
+    if !horse_postgres::household_access::is_active_member(pool, household_id, actor.0)
+        .await
+        .map_err(crate::internal_error)?
+    {
+        return Err(async_graphql::Error::new("not found"));
+    }
+    let Some(value) = horse_postgres::node_query::load_purchase_correction_node(
+        pool,
+        household_id,
+        correction_id,
+    )
+    .await
+    .map_err(crate::internal_error)?
+    else {
+        return Err(async_graphql::Error::new("not found"));
+    };
+    let payments = value
+        .correction
+        .payment_allocations
+        .into_iter()
+        .map(|payment| {
+            let kind = account_kind(&payment.account_kind)?;
+            Ok(PurchasePayment {
+                payment_account_id: encode_node_id("Account", payment.account_id),
+                account: AccountObject {
+                    id: encode_node_id("Account", payment.account_id),
+                    name: payment.account_name,
+                    kind,
+                    card_last4: payment.account_card_last4,
+                    pool_id: payment.account_pool_id.map(|id| encode_node_id("Pool", id)),
+                },
+                amount_yen: Long(payment.amount_yen),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let correction = value.correction;
+    let id = encode_node_id("PurchaseCorrection", correction.id);
+    let settlement_month =
+        crate::policy_mutations::YearMonth::from_naive_date(correction.settlement_month);
+    let occurred_at: DateTime = correction.occurred_at.into();
+    Ok(match correction.item_id {
+        Some(item_id) => {
+            crate::ledger_entry::Node::PurchaseItemCorrection(PurchaseItemCorrection {
+                id,
+                item_id: encode_node_id("PurchaseItem", item_id),
+                amount_delta_yen: Long(correction.amount_delta_yen),
+                reason: correction.reason,
+                occurred_at,
+                settlement_month,
+                payment_allocations: payments,
+            })
+        }
+        None => crate::ledger_entry::Node::PurchaseWideCorrection(PurchaseWideCorrection {
+            id,
+            amount_delta_yen: Long(correction.amount_delta_yen),
+            reason: correction.reason,
+            occurred_at,
+            settlement_month,
+            payment_allocations: payments,
+        }),
+    })
+}
+
 #[derive(Clone, Debug, SimpleObject)]
 pub struct CreatePurchaseSuccess {
     pub result: PurchaseObject,

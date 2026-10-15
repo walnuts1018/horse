@@ -60,6 +60,8 @@ pub mod set_funding_schedule;
 pub mod settlement_preview;
 pub mod settlement_query;
 pub mod shared_draft;
+pub mod statement_refund_correction_query;
+pub mod unmatched_observations_query;
 pub mod statement_transfer;
 pub mod tag;
 pub mod update_purchase;

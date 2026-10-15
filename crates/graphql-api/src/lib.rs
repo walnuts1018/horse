@@ -8,6 +8,7 @@ use household_workflows::mail_forwarding;
 use uuid::Uuid;
 
 pub mod account_balances;
+pub mod account_balance_analysis;
 pub mod account_creation;
 pub mod account_history;
 pub mod account_mutations;
@@ -31,6 +32,7 @@ pub mod pagination;
 pub mod policy_mutations;
 pub mod pool_mutations;
 pub mod purchase_analytics_query;
+pub mod purchase_bulk_mutations;
 pub mod purchase_correction_query;
 pub mod purchase_corrections_mutations;
 pub mod purchase_defaults_query;
@@ -39,8 +41,10 @@ pub mod purchase_edit_mutations;
 pub mod purchase_mutations;
 pub mod scalars;
 pub mod settlement_mutations;
+pub mod statement_refund_correction_query;
 pub mod shared_purchase_draft;
 pub mod statement_link_mutations;
+pub mod unmatched_observations_query;
 pub mod viewer_query;
 pub use scalars::{DateTime, Long};
 
@@ -178,6 +182,28 @@ impl QueryRoot {
         to: policy_mutations::YearMonth,
     ) -> Result<monthly_spending_query::MonthlyMemberSpendingReport> {
         monthly_spending_query::graphql_monthly_member_spending(ctx, household_id, from, to).await
+    }
+
+    async fn account_balance_analysis(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        account_id: ID,
+        from: policy_mutations::YearMonth,
+        to: policy_mutations::YearMonth,
+        first: Option<i32>,
+        after: Option<String>,
+    ) -> Result<account_balance_analysis::AccountBalanceAnalysis> {
+        account_balance_analysis::resolve_account_balance_analysis(
+            ctx,
+            household_id,
+            account_id,
+            from,
+            to,
+            first,
+            after,
+        )
+        .await
     }
 
     async fn funding_schedules(
@@ -405,6 +431,54 @@ impl QueryRoot {
         last: Option<i32>,
     ) -> Result<ledger_query::LedgerConnection> {
         ledger_query::graphql_ledger(ctx, household_id, after, before, first, last).await
+    }
+
+    async fn statement_refund_corrections(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        source_document_id: ID,
+        source_reference: String,
+        first: Option<i32>,
+        after: Option<String>,
+    ) -> Result<statement_refund_correction_query::StatementRefundCorrectionConnection> {
+        statement_refund_correction_query::graphql_statement_refund_corrections(
+            ctx,
+            household_id,
+            source_document_id,
+            source_reference,
+            first,
+            after,
+        )
+        .await
+    }
+
+    async fn unmatched_observations(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        from: Option<policy_mutations::YearMonth>,
+        to: Option<policy_mutations::YearMonth>,
+        source_kind: Option<purchase_mutations::SourceKind>,
+        state: Option<unmatched_observations_query::UnmatchedObservationState>,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<unmatched_observations_query::UnmatchedObservationConnection> {
+        unmatched_observations_query::graphql_unmatched_observations(
+            ctx,
+            household_id,
+            from,
+            to,
+            source_kind,
+            state,
+            after,
+            before,
+            first,
+            last,
+        )
+        .await
     }
 }
 
@@ -840,6 +914,22 @@ impl MutationRoot {
         shared_purchase_draft::update_shared_purchase_draft(ctx, input).await
     }
 
+    async fn bulk_update_purchases(
+        &self,
+        ctx: &Context<'_>,
+        input: purchase_bulk_mutations::BulkUpdatePurchasesInput,
+    ) -> Result<purchase_bulk_mutations::BulkUpdatePurchasesResult> {
+        purchase_bulk_mutations::bulk_update_purchases(ctx, input).await
+    }
+
+    async fn save_purchase_item_edits(
+        &self,
+        ctx: &Context<'_>,
+        input: purchase_bulk_mutations::SavePurchaseItemEditsInput,
+    ) -> Result<purchase_bulk_mutations::SavePurchaseItemEditsResult> {
+        purchase_bulk_mutations::save_purchase_item_edits(ctx, input).await
+    }
+
     async fn link_statement_account_movement(
         &self,
         ctx: &Context<'_>,
@@ -1086,6 +1176,8 @@ pub enum MutationError {
     ClosePeriodUserError(settlement_mutations::ClosePeriodUserError),
     SharedPurchaseDraftUserError(shared_purchase_draft::SharedPurchaseDraftUserError),
     UpdateSharedPurchaseDraftConflict(shared_purchase_draft::UpdateSharedPurchaseDraftConflict),
+    BulkUpdatePurchasesUserError(purchase_bulk_mutations::BulkUpdatePurchasesUserError),
+    SavePurchaseItemEditsUserError(purchase_bulk_mutations::SavePurchaseItemEditsUserError),
 }
 
 #[derive(Clone, Debug, SimpleObject)]

@@ -148,6 +148,8 @@ pub enum Node {
     PurchaseCorrection(crate::purchase_mutations::PurchaseCorrection),
     PurchaseWideCorrection(crate::purchase_mutations::PurchaseWideCorrection),
     PurchaseItemCorrection(crate::purchase_mutations::PurchaseItemCorrection),
+    UnmatchedObservation(crate::unmatched_observations_query::UnmatchedObservation),
+    ConfirmedObservation(crate::unmatched_observations_query::ConfirmedObservation),
     LedgerEntry(LedgerEntry),
     PurchaseLedgerEntry(PurchaseLedgerEntry),
     CorrectionLedgerEntry(CorrectionLedgerEntry),

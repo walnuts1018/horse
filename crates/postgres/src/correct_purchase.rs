@@ -10,14 +10,15 @@ use bookkeeping_workflows::{
         CorrectionPurchaseBurdenSnapshot, CorrectionPurchasePayment,
         CorrectionSettlementAdjustment, CorrectionSettlementPolicy, CorrectionTarget,
         LinkStatementRefundCorrectionCommand, LinkStatementRefundCorrectionError,
-        OriginalPeriodStatus, SignedYenDelta, StatementRefundObservation,
+        AccountingPeriod, OriginalPeriodStatus, SignedYenDelta, StatementRefundObservation,
         calculate_correction_funding_effects, decide_correct_purchase,
         decide_link_statement_refund_correction,
     },
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
-    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
+    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now as recorded_at,
+    result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
@@ -431,9 +432,13 @@ pub async fn correct_purchase(
                 },
                 amount_delta: delta,
                 reason: request.reason.clone(),
-                original_period: original_period.format("%Y-%m-%d").to_string(),
+                original_period: AccountingPeriod::new(original_period.format("%Y-%m").to_string())
+                    .map_err(|_| CorrectPurchasePersistenceError::InvalidPeriod)?,
                 original_period_status,
-                effective_period: effective_period.format("%Y-%m-%d").to_string(),
+                effective_period: AccountingPeriod::new(
+                    effective_period.format("%Y-%m").to_string(),
+                )
+                .map_err(|_| CorrectPurchasePersistenceError::InvalidPeriod)?,
                 effective_period_open,
                 purchase_refundable: Yen::new(purchase_refundable)
                     .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
@@ -744,7 +749,7 @@ async fn persist_correct_purchase_in_transaction(
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
     let purchase_id = parse_uuid(decision.purchase_id.as_str(), "purchase_id")?;
-    let effective_period = parse_period(&decision.effective_period)?;
+    let effective_period = parse_period(decision.effective_period.as_str())?;
     validate_decision(&decision)?;
 
     let correction_id = Uuid::new_v4();

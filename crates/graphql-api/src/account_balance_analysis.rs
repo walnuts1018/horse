@@ -174,10 +174,7 @@ async fn resolve_source(
     account_name: &str,
     account_kind_value: &str,
 ) -> Result<AccountBalanceSource> {
-    use crate::{
-        ledger_entry::{LedgerEntry, Node},
-        purchase_mutations::PurchaseCorrection,
-    };
+    use crate::ledger_entry::{LedgerEntry, Node};
 
     if source_kind == "ACCOUNT_OPENING_BALANCE" {
         return Ok(AccountBalanceSource::AccountOpeningBalance(
@@ -199,7 +196,25 @@ async fn resolve_source(
     } else {
         let type_name = match source_kind {
             "PURCHASE" => "Purchase",
-            "CORRECTION" => "PurchaseCorrection",
+            "CORRECTION" => {
+                return crate::node_query::resolve_purchase_correction_node(
+                    ctx,
+                    household_id,
+                    source_id,
+                )
+                .await
+                .and_then(|node| match node {
+                    Node::PurchaseWideCorrection(value) => {
+                        Ok(AccountBalanceSource::PurchaseWideCorrection(value))
+                    }
+                    Node::PurchaseItemCorrection(value) => {
+                        Ok(AccountBalanceSource::PurchaseItemCorrection(value))
+                    }
+                    _ => Err(crate::internal_error(
+                        "purchase correction resolved to an unexpected node type",
+                    )),
+                });
+            }
             "FUNDING" => "FundingLedgerEntry",
             "ACCOUNT_MOVEMENT" => "AccountMovement",
             "ACCOUNT_INCOME" => "AccountIncome",
@@ -216,16 +231,6 @@ async fn resolve_source(
     match node {
         Node::Purchase(value) if source_kind == "PURCHASE" => {
             Ok(AccountBalanceSource::Purchase(value))
-        }
-        Node::PurchaseCorrection(PurchaseCorrection::Wide(value))
-            if source_kind == "CORRECTION" =>
-        {
-            Ok(AccountBalanceSource::PurchaseWideCorrection(value))
-        }
-        Node::PurchaseCorrection(PurchaseCorrection::Item(value))
-            if source_kind == "CORRECTION" =>
-        {
-            Ok(AccountBalanceSource::PurchaseItemCorrection(value))
         }
         Node::AccountMovement(value) if source_kind == "ACCOUNT_MOVEMENT" => {
             Ok(AccountBalanceSource::AccountMovement(value))

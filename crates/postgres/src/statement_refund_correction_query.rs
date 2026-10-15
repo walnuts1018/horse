@@ -96,8 +96,10 @@ pub async fn load_statement_refund_corrections(
             statements
                 .iter()
                 .filter_map(|statement| {
-                    crate::correct_purchase::statement_observation(statement, source_reference)
-                        .ok()
+                    if statement_reference(statement).as_deref() != Some(source_reference) {
+                        return None;
+                    }
+                    crate::correct_purchase::statement_observation(statement, source_reference).ok()
                 })
                 .map(RefundStatement::from)
                 .find(|statement| statement.reference == source_reference)
@@ -142,9 +144,13 @@ pub async fn load_statement_refund_corrections(
                 continue;
             }
             let linked_statement = observation.get("statement").unwrap_or(&observation);
-            let linked = crate::correct_purchase::statement_observation(linked_statement, &linked_reference)
-            .ok()
-            .map(RefundStatement::from);
+            if statement_reference(linked_statement).as_deref() != Some(linked_reference.as_str()) {
+                continue;
+            }
+            let linked =
+                crate::correct_purchase::statement_observation(linked_statement, &linked_reference)
+                    .ok()
+                    .map(RefundStatement::from);
             if !linked.as_ref().is_some_and(|linked| {
                 is_refund(linked)
                     && linked.amount_yen == current.amount_yen
@@ -214,10 +220,24 @@ pub async fn load_statement_refund_corrections(
     })
 }
 
+fn statement_reference(statement: &Value) -> Option<String> {
+    statement
+        .get("sourceReference")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .or_else(|| {
+            statement
+                .get("row")
+                .and_then(Value::as_i64)
+                .map(|row| format!("row:{row}"))
+        })
+}
+
 impl From<bookkeeping_workflows::correct_purchase::StatementRefundObservation> for RefundStatement {
     fn from(value: bookkeeping_workflows::correct_purchase::StatementRefundObservation) -> Self {
-        let seconds = (value.occurred_at_unix_nanos / 1_000_000_000) as i64;
-        let nanos = (value.occurred_at_unix_nanos % 1_000_000_000) as u32;
+        let seconds = value.occurred_at_unix_nanos.div_euclid(1_000_000_000) as i64;
+        let nanos = value.occurred_at_unix_nanos.rem_euclid(1_000_000_000) as u32;
         Self {
             reference: value.source_reference,
             amount_yen: value.amount_yen,

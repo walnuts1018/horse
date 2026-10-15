@@ -94,6 +94,7 @@ fn identifier(value: impl Into<String>) -> Result<String, IdentifierError> {
 pub enum PurchaseStatus {
     Draft,
     Posted,
+    Closed,
     Other,
 }
 
@@ -252,23 +253,113 @@ pub struct PostPurchaseCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostPurchaseDecision {
-    pub purchase_id: PurchaseId,
-    pub new_revision: u64,
-    pub new_status: PurchaseStatus,
-    pub journal_lines: Vec<JournalLine>,
-    pub member_burden_snapshots: Vec<MemberBurdenSnapshot>,
-    pub payment_funding_snapshots: Vec<PaymentFundingSnapshot>,
-    pub events: Vec<DomainEvent>,
+    purchase_id: PurchaseId,
+    new_revision: u64,
+    new_status: PurchaseStatus,
+    journal_lines: Vec<JournalLine>,
+    member_burden_snapshots: Vec<MemberBurdenSnapshot>,
+    payment_funding_snapshots: Vec<PaymentFundingSnapshot>,
+    events: Vec<DomainEvent>,
+}
+
+impl PostPurchaseDecision {
+    pub fn purchase_id(&self) -> &PurchaseId {
+        &self.purchase_id
+    }
+
+    pub const fn new_revision(&self) -> u64 {
+        self.new_revision
+    }
+
+    pub const fn new_status(&self) -> PurchaseStatus {
+        self.new_status
+    }
+
+    pub fn journal_lines(&self) -> &[JournalLine] {
+        &self.journal_lines
+    }
+
+    pub fn member_burden_snapshots(&self) -> &[MemberBurdenSnapshot] {
+        &self.member_burden_snapshots
+    }
+
+    pub fn payment_funding_snapshots(&self) -> &[PaymentFundingSnapshot] {
+        &self.payment_funding_snapshots
+    }
+
+    pub fn events(&self) -> &[DomainEvent] {
+        &self.events
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JournalLine {
-    pub line_no: u32,
-    pub side: Side,
-    pub account_id: Option<AccountId>,
-    pub pool_id: Option<PoolId>,
-    pub amount: PositiveYen,
-    pub memo: &'static str,
+    line_no: u32,
+    side: Side,
+    target: PostingTarget,
+    amount: PositiveYen,
+    memo: &'static str,
+}
+
+// 借方・貸方の相手先はプールか口座のどちらか一つだけを指す。両方なし・両方ありの明細は型で表現できない。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PostingTarget {
+    Pool(PoolId),
+    Account(AccountId),
+}
+
+impl JournalLine {
+    pub const fn pool_line(
+        line_no: u32,
+        side: Side,
+        pool_id: PoolId,
+        amount: PositiveYen,
+        memo: &'static str,
+    ) -> Self {
+        Self {
+            line_no,
+            side,
+            target: PostingTarget::Pool(pool_id),
+            amount,
+            memo,
+        }
+    }
+
+    pub const fn account_line(
+        line_no: u32,
+        side: Side,
+        account_id: AccountId,
+        amount: PositiveYen,
+        memo: &'static str,
+    ) -> Self {
+        Self {
+            line_no,
+            side,
+            target: PostingTarget::Account(account_id),
+            amount,
+            memo,
+        }
+    }
+
+    pub const fn line_no(&self) -> u32 {
+        self.line_no
+    }
+
+    pub const fn side(&self) -> Side {
+        self.side
+    }
+
+    pub const fn target(&self) -> &PostingTarget {
+        &self.target
+    }
+
+    pub const fn amount(&self) -> PositiveYen {
+        self.amount
+    }
+
+    pub const fn memo(&self) -> &'static str {
+        self.memo
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -483,36 +574,34 @@ pub fn decide_post_purchase(
         if amount.value() == 0 {
             continue;
         }
-        journal_lines.push(JournalLine {
-            line_no: next_line_no(journal_lines.len())?,
-            side: Side::Debit,
-            account_id: None,
-            pool_id: Some(pool_id),
-            amount: PositiveYen::new(amount.value()).expect("nonzero pool total is positive"),
-            memo: "Purchase allocation",
-        });
+        journal_lines.push(JournalLine::pool_line(
+            next_line_no(journal_lines.len())?,
+            Side::Debit,
+            pool_id,
+            PositiveYen::new(amount.value()).expect("nonzero pool total is positive"),
+            "Purchase allocation",
+        ));
     }
     for payment in &command.payments {
-        journal_lines.push(JournalLine {
-            line_no: next_line_no(journal_lines.len())?,
-            side: Side::Credit,
-            account_id: Some(payment.account_id.clone()),
-            pool_id: None,
-            amount: payment.amount,
-            memo: "Payment",
-        });
+        journal_lines.push(JournalLine::account_line(
+            next_line_no(journal_lines.len())?,
+            Side::Credit,
+            payment.account_id.clone(),
+            payment.amount,
+            "Payment",
+        ));
     }
     let debit_total = sum_yen(
         journal_lines
             .iter()
-            .filter(|line| line.side == Side::Debit)
-            .map(|line| line.amount.yen()),
+            .filter(|line| line.side() == Side::Debit)
+            .map(|line| line.amount().yen()),
     )?;
     let credit_total = sum_yen(
         journal_lines
             .iter()
-            .filter(|line| line.side == Side::Credit)
-            .map(|line| line.amount.yen()),
+            .filter(|line| line.side() == Side::Credit)
+            .map(|line| line.amount().yen()),
     )?;
     if debit_total != credit_total {
         return Err(PostPurchaseError::JournalUnbalanced);
@@ -645,7 +734,7 @@ mod tests {
             decision
                 .journal_lines
                 .iter()
-                .map(|line| line.line_no)
+                .map(|line| line.line_no())
                 .collect::<Vec<_>>(),
             vec![1, 2]
         );
@@ -748,8 +837,8 @@ mod tests {
         let decision = decide_post_purchase(command).unwrap();
 
         assert_eq!(decision.journal_lines.len(), 3);
-        assert_eq!(decision.journal_lines[0].side, Side::Debit);
-        assert_eq!(decision.journal_lines[0].amount.value(), 150);
+        assert_eq!(decision.journal_lines[0].side(), Side::Debit);
+        assert_eq!(decision.journal_lines[0].amount().value(), 150);
         assert_eq!(
             decision
                 .member_burden_snapshots
