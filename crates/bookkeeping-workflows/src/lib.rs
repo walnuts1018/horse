@@ -2,6 +2,9 @@ use std::collections::BTreeMap;
 
 use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId, PositiveYen, Yen, allocate};
 
+pub mod close_period;
+pub mod correct_purchase;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PurchaseId(String);
 
@@ -96,16 +99,108 @@ pub struct PurchaseItem {
 /// 会員負担snapshotの算出に使うfunding rule情報。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberFundingBasis {
-    pub rule_version: u32,
-    pub weights: Vec<MemberWeight>,
-    pub requires_settlement_policy: bool,
-    pub settlement_policy: Option<String>,
+    rule_version: u32,
+    kind: FundingBasisKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FundingBasisKind {
+    Personal {
+        owner: MemberId,
+    },
+    Shared {
+        weights: Vec<MemberWeight>,
+        settlement_policy: SettlementPolicy,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettlementPolicy {
+    BalanceToStandard,
+    ReimbursePersonal,
+}
+
+impl SettlementPolicy {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::BalanceToStandard => "BALANCE_TO_STANDARD",
+            Self::ReimbursePersonal => "REIMBURSE_PERSONAL",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FundingBasisError {
+    InvalidRuleVersion,
+    InvalidMemberShares,
+}
+
+impl MemberFundingBasis {
+    pub fn personal(rule_version: u32, owner: MemberId) -> Result<Self, FundingBasisError> {
+        if rule_version == 0 {
+            return Err(FundingBasisError::InvalidRuleVersion);
+        }
+        Ok(Self {
+            rule_version,
+            kind: FundingBasisKind::Personal { owner },
+        })
+    }
+
+    pub fn shared(
+        rule_version: u32,
+        weights: Vec<MemberWeight>,
+        settlement_policy: SettlementPolicy,
+    ) -> Result<Self, FundingBasisError> {
+        if rule_version == 0 {
+            return Err(FundingBasisError::InvalidRuleVersion);
+        }
+        validate_member_weights(&weights)?;
+        Ok(Self {
+            rule_version,
+            kind: FundingBasisKind::Shared {
+                weights,
+                settlement_policy,
+            },
+        })
+    }
+
+    fn rule_version(&self) -> u32 {
+        self.rule_version
+    }
+
+    fn weights(&self) -> Vec<MemberWeight> {
+        match &self.kind {
+            FundingBasisKind::Personal { owner } => vec![MemberWeight {
+                member_id: owner.clone(),
+                weight: 1,
+            }],
+            FundingBasisKind::Shared { weights, .. } => weights.clone(),
+        }
+    }
+
+    fn settlement_policy(&self) -> Option<SettlementPolicy> {
+        match &self.kind {
+            FundingBasisKind::Personal { .. } => None,
+            FundingBasisKind::Shared {
+                settlement_policy, ..
+            } => Some(*settlement_policy),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberWeight {
-    pub member_id: MemberId,
-    pub weight: u64,
+    member_id: MemberId,
+    weight: u64,
+}
+
+impl MemberWeight {
+    pub fn new(member_id: MemberId, weight: u64) -> Result<Self, FundingBasisError> {
+        if weight == 0 {
+            return Err(FundingBasisError::InvalidMemberShares);
+        }
+        Ok(Self { member_id, weight })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,10 +214,7 @@ pub struct Payment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaymentFundingBasis {
     pub pool_id: PoolId,
-    pub rule_version: u32,
-    pub weights: Vec<MemberWeight>,
-    pub requires_settlement_policy: bool,
-    pub settlement_policy: Option<String>,
+    pub rule: MemberFundingBasis,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,7 +300,6 @@ pub enum PostPurchaseError {
     AllocationTotalMismatch,
     PaymentTotalMismatch,
     EmptyAllocation,
-    InvalidFundingRule { pool_id: PoolId },
     InvalidMemberShares { pool_id: PoolId },
     RevisionOverflow,
     JournalLineCountOverflow,
@@ -276,7 +367,12 @@ pub fn decide_post_purchase(
         );
     }
     for (item_id, amount) in &item_amounts {
-        if item_allocation_totals.get(item_id).copied().unwrap_or(Yen::new(0).expect("0 is in range")) != *amount {
+        if item_allocation_totals
+            .get(item_id)
+            .copied()
+            .unwrap_or(Yen::new(0).expect("0 is in range"))
+            != *amount
+        {
             return Err(PostPurchaseError::ItemAllocationTotalMismatch {
                 item_id: item_id.clone(),
             });
@@ -312,12 +408,10 @@ pub fn decide_post_purchase(
                 .checked_add(allocation.amount)
                 .map_err(|_| PostPurchaseError::AmountOverflow)?,
         );
-        validate_funding(&allocation.pool_id, &allocation.funding)?;
-        let shares = shares(&allocation.pool_id, &allocation.funding.weights)?;
+        let funding_weights = allocation.funding.weights();
+        let shares = shares(&allocation.pool_id, &funding_weights)?;
         for part in allocate(allocation.amount, &shares) {
-            let weight = allocation
-                .funding
-                .weights
+            let weight = funding_weights
                 .iter()
                 .find(|weight| weight.member_id.as_str() == part.pool_id().as_str())
                 .expect("shares preserve member ids");
@@ -326,29 +420,24 @@ pub fn decide_post_purchase(
                 pool_id: allocation.pool_id.clone(),
                 member_id: weight.member_id.clone(),
                 amount: part.amount(),
-                funding_rule_version: allocation.funding.rule_version,
+                funding_rule_version: allocation.funding.rule_version(),
                 funding_weight: weight.weight,
-                settlement_policy: allocation.funding.settlement_policy.clone(),
+                settlement_policy: allocation
+                    .funding
+                    .settlement_policy()
+                    .map(|policy| policy.as_str().to_owned()),
             });
         }
     }
 
     let mut payment_funding_snapshots = Vec::new();
     for (index, payment) in command.payments.iter().enumerate() {
-        validate_funding(
-            &payment.funding.pool_id,
-            &MemberFundingBasis {
-                rule_version: payment.funding.rule_version,
-                weights: payment.funding.weights.clone(),
-                requires_settlement_policy: payment.funding.requires_settlement_policy,
-                settlement_policy: payment.funding.settlement_policy.clone(),
-            },
-        )?;
-        shares(&payment.funding.pool_id, &payment.funding.weights)?;
+        let funding_weights = payment.funding.rule.weights();
+        shares(&payment.funding.pool_id, &funding_weights)?;
         if index + 1 > u32::MAX as usize {
             return Err(PostPurchaseError::JournalLineCountOverflow);
         }
-        let mut weights = payment.funding.weights.iter().collect::<Vec<_>>();
+        let mut weights = funding_weights.iter().collect::<Vec<_>>();
         weights.sort_by(|left, right| left.member_id.cmp(&right.member_id));
         for weight in weights {
             payment_funding_snapshots.push(PaymentFundingSnapshot {
@@ -356,9 +445,13 @@ pub fn decide_post_purchase(
                 account_id: payment.account_id.clone(),
                 pool_id: payment.funding.pool_id.clone(),
                 member_id: weight.member_id.clone(),
-                funding_rule_version: payment.funding.rule_version,
+                funding_rule_version: payment.funding.rule.rule_version(),
                 funding_weight: weight.weight,
-                settlement_policy: payment.funding.settlement_policy.clone(),
+                settlement_policy: payment
+                    .funding
+                    .rule
+                    .settlement_policy()
+                    .map(|policy| policy.as_str().to_owned()),
             });
         }
     }
@@ -377,26 +470,15 @@ pub fn decide_post_purchase(
             memo: "Purchase allocation",
         });
     }
-    if command.payments.is_empty() {
+    for payment in &command.payments {
         journal_lines.push(JournalLine {
             line_no: next_line_no(journal_lines.len())?,
             side: Side::Credit,
-            account_id: None,
+            account_id: Some(payment.account_id.clone()),
             pool_id: None,
-            amount: command.total,
+            amount: payment.amount,
             memo: "Payment",
         });
-    } else {
-        for payment in &command.payments {
-            journal_lines.push(JournalLine {
-                line_no: next_line_no(journal_lines.len())?,
-                side: Side::Credit,
-                account_id: Some(payment.account_id.clone()),
-                pool_id: None,
-                amount: payment.amount,
-                memo: "Payment",
-            });
-        }
     }
     let debit_total = sum_yen(
         journal_lines
@@ -436,20 +518,6 @@ pub fn decide_post_purchase(
     })
 }
 
-fn validate_funding(pool_id: &PoolId, basis: &MemberFundingBasis) -> Result<(), PostPurchaseError> {
-    if basis.rule_version == 0
-        || basis.weights.is_empty()
-        || (basis.requires_settlement_policy
-            && basis.settlement_policy.as_deref().unwrap_or("").is_empty())
-    {
-        return Err(PostPurchaseError::InvalidFundingRule {
-            pool_id: pool_id.clone(),
-        });
-    }
-    shares(pool_id, &basis.weights)?;
-    Ok(())
-}
-
 fn shares(
     pool_id: &PoolId,
     weights: &[MemberWeight],
@@ -468,6 +536,21 @@ fn shares(
     AllocationShares::new(domain_weights).map_err(|_| PostPurchaseError::InvalidMemberShares {
         pool_id: pool_id.clone(),
     })
+}
+
+fn validate_member_weights(weights: &[MemberWeight]) -> Result<(), FundingBasisError> {
+    let domain_weights = weights
+        .iter()
+        .map(|weight| {
+            let member_as_pool =
+                PoolId::new(weight.member_id.as_str().to_owned()).expect("member IDs are nonempty");
+            AllocationWeight::new(member_as_pool, weight.weight)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| FundingBasisError::InvalidMemberShares)?;
+    AllocationShares::new(domain_weights)
+        .map(|_| ())
+        .map_err(|_| FundingBasisError::InvalidMemberShares)
 }
 
 fn sum_yen(mut values: impl Iterator<Item = Yen>) -> Result<Yen, PostPurchaseError> {
@@ -490,6 +573,10 @@ mod tests {
         new(value.to_owned()).unwrap()
     }
 
+    fn member_weight(member: &str, weight: u64) -> MemberWeight {
+        MemberWeight::new(id(MemberId::new, member), weight).unwrap()
+    }
+
     fn command() -> PostPurchaseCommand {
         let pool_id = PoolId::new("pool-a").unwrap();
         PostPurchaseCommand {
@@ -508,35 +595,20 @@ mod tests {
             allocations: vec![PoolAllocation {
                 item_id: id(ItemId::new, "item-1"),
                 pool_id: pool_id.clone(),
-                amount: PositiveYen::new(101).unwrap(),
-                funding: MemberFundingBasis {
-                    rule_version: 2,
-                    weights: vec![
-                        MemberWeight {
-                            member_id: id(MemberId::new, "member-b"),
-                            weight: 1,
-                        },
-                        MemberWeight {
-                            member_id: id(MemberId::new, "member-a"),
-                            weight: 1,
-                        },
-                    ],
-                    requires_settlement_policy: true,
-                    settlement_policy: Some("monthly".into()),
-                },
+                amount: Yen::new(101).unwrap(),
+                funding: MemberFundingBasis::shared(
+                    2,
+                    vec![member_weight("member-b", 1), member_weight("member-a", 1)],
+                    SettlementPolicy::BalanceToStandard,
+                )
+                .unwrap(),
             }],
             payments: vec![Payment {
                 account_id: id(AccountId::new, "account-1"),
-                amount: Yen::new(101).unwrap(),
+                amount: PositiveYen::new(101).unwrap(),
                 funding: PaymentFundingBasis {
                     pool_id,
-                    rule_version: 2,
-                    weights: vec![MemberWeight {
-                        member_id: id(MemberId::new, "member-a"),
-                        weight: 1,
-                    }],
-                    requires_settlement_policy: false,
-                    settlement_policy: None,
+                    rule: MemberFundingBasis::personal(2, id(MemberId::new, "member-a")).unwrap(),
                 },
             }],
         }
@@ -577,10 +649,11 @@ mod tests {
 
         let mut unbalanced = command();
         unbalanced.allocations[0].amount = Yen::new(100).unwrap();
-        assert_eq!(
+        assert!(matches!(
             decide_post_purchase(unbalanced),
-            Err(PostPurchaseError::ItemAllocationTotalMismatch { .. })
-        );
+            Err(PostPurchaseError::ItemAllocationTotalMismatch { item_id })
+                if item_id.as_str() == "item-1"
+        ));
 
         let mut closed = command();
         closed.accounting_period_open = false;
@@ -588,6 +661,46 @@ mod tests {
             decide_post_purchase(closed),
             Err(PostPurchaseError::AccountingPeriodClosed)
         );
+    }
+
+    #[test]
+    fn posting_rejects_missing_payments_and_invalid_item_allocations() {
+        let mut no_payments = command();
+        no_payments.payments.clear();
+        assert_eq!(
+            decide_post_purchase(no_payments),
+            Err(PostPurchaseError::MissingPayments)
+        );
+
+        let mut wrong_item_total = command();
+        wrong_item_total.items[0].amount = Yen::new(100).unwrap();
+        assert_eq!(
+            decide_post_purchase(wrong_item_total),
+            Err(PostPurchaseError::ItemTotalMismatch)
+        );
+
+        let mut duplicate_item = command();
+        duplicate_item.items.push(duplicate_item.items[0].clone());
+        assert!(matches!(
+            decide_post_purchase(duplicate_item),
+            Err(PostPurchaseError::DuplicateItemId { .. })
+        ));
+
+        let mut duplicate_item_pool = command();
+        duplicate_item_pool
+            .allocations
+            .push(duplicate_item_pool.allocations[0].clone());
+        assert!(matches!(
+            decide_post_purchase(duplicate_item_pool),
+            Err(PostPurchaseError::DuplicateItemPoolAllocation { .. })
+        ));
+
+        let mut unknown_item = command();
+        unknown_item.allocations[0].item_id = id(ItemId::new, "unknown-item");
+        assert!(matches!(
+            decide_post_purchase(unknown_item),
+            Err(PostPurchaseError::UnknownItemAllocation { .. })
+        ));
     }
 
     #[test]
@@ -635,5 +748,26 @@ mod tests {
         );
         assert_eq!(decision.payment_funding_snapshots[0].line_no, 1);
         assert_eq!(decision.payment_funding_snapshots[1].line_no, 2);
+    }
+
+    #[test]
+    fn posting_accepts_zero_amount_allocations_for_an_item() {
+        let mut command = command();
+        let zero_item = id(ItemId::new, "item-zero");
+        command.items.push(PurchaseItem {
+            id: zero_item.clone(),
+            amount: Yen::new(0).unwrap(),
+        });
+        let mut zero_allocation = command.allocations[0].clone();
+        zero_allocation.item_id = zero_item;
+        zero_allocation.amount = Yen::new(0).unwrap();
+        command.allocations.push(zero_allocation);
+
+        let decision = decide_post_purchase(command).unwrap();
+
+        assert_eq!(decision.journal_lines.len(), 2);
+        assert!(decision.member_burden_snapshots.iter().any(|snapshot| {
+            snapshot.item_id.as_str() == "item-zero" && snapshot.amount.value() == 0
+        }));
     }
 }
