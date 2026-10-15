@@ -1,0 +1,280 @@
+use bookkeeping_workflows::category::{
+    Category, CategoryError, CreateCategoryCommand, SetCategoryArchivedCommand,
+    UpdateCategoryNameCommand, decide_create_category, decide_set_category_archived,
+    decide_update_category_name,
+};
+use chrono::Utc;
+use diesel::{
+    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
+};
+use diesel_async::{AsyncConnection, RunQueryDsl};
+use uuid::Uuid;
+
+use crate::{PgPool, schema::public};
+
+#[derive(Debug)]
+pub enum CategoryPersistenceError {
+    Pool(String),
+    Database(DieselError),
+    InvalidUuid(&'static str),
+    InvalidWorkflow(CategoryError),
+    HouseholdNotFound,
+    CategoryNotFound,
+}
+
+impl From<DieselError> for CategoryPersistenceError {
+    fn from(error: DieselError) -> Self {
+        Self::Database(error)
+    }
+}
+
+pub async fn persist_create_category(
+    pool: &PgPool,
+    command: CreateCategoryCommand,
+) -> Result<Category, CategoryPersistenceError> {
+    let decision = decide_create_category(command)
+        .map_err(CategoryPersistenceError::InvalidWorkflow)?;
+    let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
+    let household_id = parse_uuid(&decision.household_id, "household_id")?;
+    let category_id = parse_uuid(&decision.category_id, "category_id")?;
+    let parent_id = decision
+        .parent_id
+        .as_deref()
+        .map(|value| parse_uuid(value, "parent_id"))
+        .transpose()?;
+
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|error| CategoryPersistenceError::Pool(error.to_string()))?;
+    (&mut *pooled)
+        .transaction::<Category, CategoryPersistenceError, _>(async |conn| {
+            use public::categories::dsl as categories;
+            use public::household_events::dsl as events;
+            use public::households::dsl as households;
+
+            households::households
+                .filter(households::id.eq(household_id))
+                .for_update()
+                .select(households::id)
+                .first::<Uuid>(conn)
+                .await
+                .optional()?
+                .ok_or(CategoryPersistenceError::HouseholdNotFound)?;
+
+            if let Some(parent_id) = parent_id {
+                categories::categories
+                    .filter(categories::id.eq(parent_id))
+                    .filter(categories::household_id.eq(household_id))
+                    .select(categories::id)
+                    .first::<Uuid>(conn)
+                    .await
+                    .optional()?
+                    .ok_or(CategoryPersistenceError::CategoryNotFound)?;
+            }
+
+            diesel::insert_into(categories::categories)
+                .values((
+                    categories::id.eq(category_id),
+                    categories::household_id.eq(household_id),
+                    categories::parent_id.eq(parent_id),
+                    categories::name.eq(&decision.name),
+                ))
+                .execute(&mut *conn)
+                .await?;
+
+            diesel::insert_into(events::household_events)
+                .values((
+                    events::household_id.eq(household_id),
+                    events::event_type.eq("category.created"),
+                    events::entity_kind.eq("category"),
+                    events::entity_id.eq(category_id),
+                    events::revision.eq(1_i64),
+                    events::changed_fields.eq(vec![Some("name".to_owned()), Some("parentId".to_owned())]),
+                    events::actor_id.eq(actor_id),
+                    events::created_at.eq(Utc::now()),
+                ))
+                .execute(&mut *conn)
+                .await?;
+
+            Ok(Category {
+                id: category_id.to_string(),
+                household_id: household_id.to_string(),
+                parent_id: parent_id.map(|id| id.to_string()),
+                name: decision.name.clone(),
+                archived: false,
+            })
+        })
+        .await
+}
+
+pub async fn persist_update_category_name(
+    pool: &PgPool,
+    command: UpdateCategoryNameCommand,
+) -> Result<Category, CategoryPersistenceError> {
+    let decision = decide_update_category_name(command)
+        .map_err(CategoryPersistenceError::InvalidWorkflow)?;
+    let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
+    let category_id = parse_uuid(&decision.category_id, "category_id")?;
+
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|error| CategoryPersistenceError::Pool(error.to_string()))?;
+    (&mut *pooled)
+        .transaction::<Category, CategoryPersistenceError, _>(async |conn| {
+            use public::categories::dsl as categories;
+            use public::household_events::dsl as events;
+            use public::household_members::dsl as members;
+
+            let row = categories::categories
+                .filter(categories::id.eq(category_id))
+                .for_update()
+                .select((
+                    categories::household_id,
+                    categories::parent_id,
+                    categories::name,
+                    categories::archived,
+                ))
+                .first::<(Uuid, Option<Uuid>, String, bool)>(conn)
+                .await
+                .optional()?
+                .ok_or(CategoryPersistenceError::CategoryNotFound)?;
+            require_member(conn, row.0, actor_id).await?;
+
+            if row.2 != decision.name {
+                diesel::update(
+                    categories::categories
+                        .filter(categories::id.eq(category_id))
+                        .filter(categories::household_id.eq(row.0)),
+                )
+                .set(categories::name.eq(&decision.name))
+                .execute(&mut *conn)
+                .await?;
+                diesel::insert_into(events::household_events)
+                    .values((
+                        events::household_id.eq(row.0),
+                        events::event_type.eq("category.name_updated"),
+                        events::entity_kind.eq("category"),
+                        events::entity_id.eq(category_id),
+                        events::revision.eq(1_i64),
+                        events::changed_fields.eq(vec![Some("name".to_owned())]),
+                        events::actor_id.eq(actor_id),
+                        events::created_at.eq(Utc::now()),
+                    ))
+                    .execute(&mut *conn)
+                    .await?;
+            }
+
+            Ok(Category {
+                id: category_id.to_string(),
+                household_id: row.0.to_string(),
+                parent_id: row.1.map(|id| id.to_string()),
+                name: decision.name.clone(),
+                archived: row.3,
+            })
+        })
+        .await
+}
+
+pub async fn persist_set_category_archived(
+    pool: &PgPool,
+    command: SetCategoryArchivedCommand,
+) -> Result<Category, CategoryPersistenceError> {
+    let decision = decide_set_category_archived(
+        command.actor_id,
+        command.category_id,
+        command.archived,
+    )
+    .map_err(CategoryPersistenceError::InvalidWorkflow)?;
+    let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
+    let category_id = parse_uuid(&decision.category_id, "category_id")?;
+
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|error| CategoryPersistenceError::Pool(error.to_string()))?;
+    (&mut *pooled)
+        .transaction::<Category, CategoryPersistenceError, _>(async |conn| {
+            use public::categories::dsl as categories;
+            use public::household_events::dsl as events;
+            use public::household_members::dsl as members;
+
+            let row = categories::categories
+                .filter(categories::id.eq(category_id))
+                .for_update()
+                .select((
+                    categories::household_id,
+                    categories::parent_id,
+                    categories::name,
+                    categories::archived,
+                ))
+                .first::<(Uuid, Option<Uuid>, String, bool)>(conn)
+                .await
+                .optional()?
+                .ok_or(CategoryPersistenceError::CategoryNotFound)?;
+            require_member(conn, row.0, actor_id).await?;
+
+            if row.3 != decision.archived {
+                diesel::update(
+                    categories::categories
+                        .filter(categories::id.eq(category_id))
+                        .filter(categories::household_id.eq(row.0)),
+                )
+                .set(categories::archived.eq(decision.archived))
+                .execute(&mut *conn)
+                .await?;
+                diesel::insert_into(events::household_events)
+                    .values((
+                        events::household_id.eq(row.0),
+                        events::event_type.eq(if decision.archived {
+                            "category.archived"
+                        } else {
+                            "category.unarchived"
+                        }),
+                        events::entity_kind.eq("category"),
+                        events::entity_id.eq(category_id),
+                        events::revision.eq(1_i64),
+                        events::changed_fields.eq(vec![Some("archived".to_owned())]),
+                        events::actor_id.eq(actor_id),
+                        events::created_at.eq(Utc::now()),
+                    ))
+                    .execute(&mut *conn)
+                    .await?;
+            }
+
+            Ok(Category {
+                id: category_id.to_string(),
+                household_id: row.0.to_string(),
+                parent_id: row.1.map(|id| id.to_string()),
+                name: row.2,
+                archived: decision.archived,
+            })
+        })
+        .await
+}
+
+async fn require_member(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    actor_id: Uuid,
+) -> Result<(), CategoryPersistenceError> {
+    use public::household_members::dsl as members;
+
+    let is_member = diesel::select(diesel::dsl::exists(
+        members::household_members
+            .filter(members::household_id.eq(household_id))
+            .filter(members::member_id.eq(actor_id))
+            .filter(members::left_at.is_null()),
+    ))
+    .first::<bool>(conn)
+    .await?;
+    if !is_member {
+        return Err(CategoryPersistenceError::CategoryNotFound);
+    }
+    Ok(())
+}
+
+fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, CategoryPersistenceError> {
+    Uuid::parse_str(value).map_err(|_| CategoryPersistenceError::InvalidUuid(field))
+}

@@ -1,11 +1,11 @@
 use chrono::Utc;
-use diesel::{ExpressionMethods, QueryDsl, dsl::now, result::Error as DieselError};
+use diesel::{
+    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
+};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
-use bookkeeping_workflows::create_pool::{
-    CreatePoolCommand, CreatePoolDecision, decide_create_pool,
-};
+use bookkeeping_workflows::create_pool::{CreatePoolCommand, decide_create_pool};
 
 use crate::{PgPool, schema::public};
 
@@ -34,7 +34,8 @@ pub async fn persist_create_pool(
     pool: &PgPool,
     command: CreatePoolCommand,
 ) -> Result<PersistedCreatePool, CreatePoolPersistenceError> {
-    let decision = decide_create_pool(command).map_err(|_| CreatePoolPersistenceError::InvalidDecision)?;
+    let decision =
+        decide_create_pool(command).map_err(|_| CreatePoolPersistenceError::InvalidDecision)?;
     let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
     let household_id = parse_uuid(&decision.household_id, "household_id")?;
     let pool_id = parse_uuid(&decision.pool_id, "pool_id")?;
@@ -59,11 +60,9 @@ pub async fn persist_create_pool(
             let revision = current_revision
                 .checked_add(1)
                 .ok_or(CreatePoolPersistenceError::NumericOutOfRange("revision"))?;
-            let version = current_version
-                .checked_add(1)
-                .ok_or(CreatePoolPersistenceError::NumericOutOfRange(
-                    "default_allocation_version",
-                ))?;
+            let version = current_version.checked_add(1).ok_or(
+                CreatePoolPersistenceError::NumericOutOfRange("default_allocation_version"),
+            )?;
 
             diesel::insert_into(public::pools::table)
                 .values((
@@ -91,7 +90,7 @@ pub async fn persist_create_pool(
                 .select((defaults::pool_id, defaults::weight))
                 .load::<(Uuid, i64)>(&mut *conn)
                 .await?;
-            let mut values = previous_weights
+            let values = previous_weights
                 .into_iter()
                 .map(|(previous_pool_id, weight)| {
                     (
@@ -102,10 +101,12 @@ pub async fn persist_create_pool(
                     )
                 })
                 .collect::<Vec<_>>();
-            diesel::insert_into(defaults::allocation_defaults)
-                .values(values.drain(..))
-                .execute(&mut *conn)
-                .await?;
+            if !values.is_empty() {
+                diesel::insert_into(defaults::allocation_defaults)
+                    .values(values)
+                    .execute(&mut *conn)
+                    .await?;
+            }
             diesel::insert_into(defaults::allocation_defaults)
                 .values((
                     defaults::household_id.eq(household_id),
@@ -150,6 +151,3 @@ pub async fn persist_create_pool(
 fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, CreatePoolPersistenceError> {
     Uuid::parse_str(value).map_err(|_| CreatePoolPersistenceError::InvalidUuid(field))
 }
-
-#[allow(dead_code)]
-fn _decision_type(_: CreatePoolDecision) {}

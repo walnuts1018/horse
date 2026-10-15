@@ -343,6 +343,15 @@ pub mod public {
     }
 
     diesel::table! {
+        oidc_sessions (token_hash) {
+            token_hash -> Bytea,
+            member_id -> Uuid,
+            expiry -> Timestamptz,
+            created_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
         pool_funding_rules (household_id, pool_id, version) {
             household_id -> Uuid,
             pool_id -> Uuid,
@@ -743,6 +752,7 @@ pub mod public {
     diesel::joinable!(idempotency_records -> households (household_id));
     diesel::joinable!(journals -> households (household_id));
     diesel::joinable!(ledger_entries -> households (household_id));
+    diesel::joinable!(oidc_sessions -> members (member_id));
     diesel::joinable!(pools -> households (household_id));
     diesel::joinable!(product_concepts -> households (household_id));
     diesel::joinable!(purchases -> households (household_id));
@@ -773,6 +783,7 @@ pub mod public {
         ledger_entries,
         mailbox_cursors,
         members,
+        oidc_sessions,
         pool_funding_rules,
         pool_funding_shares,
         pools,

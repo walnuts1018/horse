@@ -1,0 +1,12 @@
+[package]
+name = "horse-auth"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = { workspace = true }
+diesel = { workspace = true }
+diesel-async = { workspace = true }
+horse-postgres = { path = "../postgres" }
+sha2 = "0.10"
+uuid = { workspace = true }
