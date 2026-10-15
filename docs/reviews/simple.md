@@ -49,7 +49,7 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 
 Member、Account、Category、Household、Pool Nodeの複数ID解決では、所属確認と対象データ取得をBobで一括取得するよう変更しました。重複IDを含む順序維持、家庭所属の認可、CategoryのParentID mappingをfocused integration testで確認しています。単一LedgerEntry Nodeもbatch loaderへ通し、既存テストでLoanBalanceを含む型を解決できることを確認しました。`nodes(ids:)`で複数のUnmatchedObservation Nodeを取得する経路も、所属家庭、SourceObservation、DocumentConfirmation、必要なCorrectionをまとめて取得するよう変更しました。複合Node IDの重複、順序、未存在行、家庭所属の認可をfocused integration testで確認しました。Settlement Nodeのclosed run取得を一括化しました。未確定periodのpreview計算はSettlement Serviceを個別に呼び出します。
 
-また、`loadHousehold()`と`loadPurchases()`は取得データからGraphQL表示モデルを組み立てる処理も担っています。Householdの未要求詳細取得は解消しましたが、表示モデル組み立ての責務や`loadPurchases()`の大きさ、残るNode解決のbatchingは引き続き見直し対象です。
+`loadPurchases()`のGraphQL表示モデル組み立ては`purchase_graph.go`の`mapPurchases()`へ分離しました。DBから関連データをbatch取得する処理と、GraphQLモデルへの変換を個別に追えます。関連データの取得範囲をGraphQL選択fieldに応じて絞る改善と、`loadHousehold()`の表示モデル組み立ての分離は引き続き見直し対象です。
 
 目指すのは「すべてを先読みする巨大なローダー」でも「フィールドごとに1件ずつSQLを実行する構造」でもなく、GraphQLで要求されたデータだけを、親子関係に応じた適切な単位で一括取得する構造です。
 
@@ -90,7 +90,7 @@ GraphQLなどの公開API
 
 | 対象 | 確認した問題 | 推奨する改善 |
 | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
-| [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離され、`Do()`にはDB操作、権限確認、ロック、冪等性処理などが残る | ユースケース処理の責務と順序を整理する |
+| [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離され、`Do()`にはDB操作、権限確認、ロック、記帳処理が残る。冪等性再生の検索・検証は専用関数へ集約済み | 口座・明細・返済情報の読み込みと記帳順序をさらに整理する |
 | [Geminiクライアント](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/gemini.go#L74-L313) | JSON応答の復号とusage抽出は純粋なdecoderへ分離されたが、HTTPクライアント設定、Prompt、API呼び出し、Quota処理は`ExtractRun()`に残る | Provider、Prompt、Quota処理の責務を整理する |
 
 ### 小さな自前ユーティリティも整理する
