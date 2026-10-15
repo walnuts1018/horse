@@ -256,7 +256,6 @@ async fn persist_close_period_in_transaction(
 
     let household_exists = households::households
         .filter(households::id.eq(household_id))
-        .for_update()
         .select(households::id)
         .first::<Uuid>(&mut *conn)
         .await
@@ -654,36 +653,16 @@ async fn persist_close_period_in_transaction(
         }
     }
 
-    for closure in &decision.purchase_closures {
-        let purchase_id = parse_uuid(closure.purchase_id.as_str(), "purchase_id")?;
-        let expected = i64::try_from(closure.expected_revision)
+    for snapshot in &decision.purchases {
+        let purchase_id = parse_uuid(snapshot.id.as_str(), "purchase_id")?;
+        let purchase_revision = i64::try_from(snapshot.revision)
             .map_err(|_| ClosePeriodPersistenceError::NumericOutOfRange("purchase revision"))?;
-        let next = i64::try_from(closure.revision)
-            .map_err(|_| ClosePeriodPersistenceError::NumericOutOfRange("purchase revision"))?;
-        let updated = diesel::update(
-            purchases::purchases
-                .filter(purchases::household_id.eq(household_id))
-                .filter(purchases::id.eq(purchase_id))
-                .filter(purchases::status.eq("POSTED"))
-                .filter(purchases::revision.eq(expected)),
-        )
-        .set((
-            purchases::status.eq("CLOSED"),
-            purchases::revision.eq(next),
-            purchases::updated_at.eq(now),
-        ))
-        .execute(&mut *conn)
-        .await?;
-        if updated != 1 {
-            return Err(ClosePeriodPersistenceError::StalePurchase);
-        }
         diesel::insert_into(public::settlement_run_purchase_snapshots::table)
             .values((
                 public::settlement_run_purchase_snapshots::household_id.eq(household_id),
                 public::settlement_run_purchase_snapshots::settlement_run_id.eq(settlement_run_id),
                 public::settlement_run_purchase_snapshots::purchase_id.eq(purchase_id),
-                public::settlement_run_purchase_snapshots::expected_revision.eq(expected),
-                public::settlement_run_purchase_snapshots::revision.eq(next),
+                public::settlement_run_purchase_snapshots::purchase_revision.eq(purchase_revision),
             ))
             .execute(&mut *conn)
             .await?;
@@ -724,27 +703,28 @@ async fn persist_close_period_in_transaction(
 
     Ok(PersistedClosePeriod {
         settlement_run_id: settlement_run_id.to_string(),
-        period: decision.period.clone(),
-        revision: decision.revision,
+        period: decision.period.as_string(),
+        revision: decision.period.revision(),
     })
 }
 
 fn validate_decision(
     decision: &ClosePeriodDecision,
-    period: &str,
+    period_start: NaiveDate,
     revision: i64,
     actor_id: Uuid,
 ) -> Result<(), ClosePeriodPersistenceError> {
     let previous_revision = revision
         .checked_sub(1)
         .ok_or(ClosePeriodPersistenceError::InvalidDecision)?;
-    if decision.period != period
-        || decision.event.period != decision.period
-        || decision.event.revision != decision.revision
+    if decision.period.year_month() != year_month(period_start)?
+        || decision.period.status() != AccountingPeriodStatus::Closed
+        || decision.event.period != decision.period.year_month()
+        || decision.event.revision != decision.period.revision()
         || parse_uuid(decision.event.actor_id.as_str(), "actor_id")? != actor_id
         || decision.event.changed_fields != ["status"]
         || revision <= 1
-        || i64::try_from(decision.revision).ok() != Some(revision)
+        || i64::try_from(decision.period.revision()).ok() != Some(revision)
         || decision
             .settlements
             .iter()
@@ -756,13 +736,12 @@ fn validate_decision(
             .collect::<Result<std::collections::BTreeSet<_>, _>>()?
             .len()
             != decision.settlements.len()
-        || decision.purchase_closures.iter().any(|closure| {
-            i64::try_from(closure.expected_revision)
-                .ok()
-                .and_then(|expected| expected.checked_add(1))
-                != i64::try_from(closure.revision).ok()
-        })
-        || decision.revision.checked_sub(1) != u64::try_from(previous_revision).ok()
+        || decision
+            .purchases
+            .iter()
+            .any(|purchase| purchase.revision == 0)
+        || decision.period.revision().checked_sub(1)
+            != u64::try_from(previous_revision).ok()
     {
         return Err(ClosePeriodPersistenceError::InvalidDecision);
     }
@@ -793,17 +772,17 @@ fn validate_purchase_revisions(
     persisted: Vec<(Uuid, i64)>,
 ) -> Result<(), ClosePeriodPersistenceError> {
     let expected = decision
-        .purchase_closures
+        .purchases
         .iter()
-        .map(|closure| {
-            let id = parse_uuid(closure.purchase_id.as_str(), "purchase_id")?;
-            let revision = i64::try_from(closure.expected_revision)
+        .map(|snapshot| {
+            let id = parse_uuid(snapshot.id.as_str(), "purchase_id")?;
+            let revision = i64::try_from(snapshot.revision)
                 .map_err(|_| ClosePeriodPersistenceError::NumericOutOfRange("purchase revision"))?;
             Ok((id, revision))
         })
         .collect::<Result<BTreeMap<_, _>, ClosePeriodPersistenceError>>()?;
     let actual = persisted.into_iter().collect::<BTreeMap<_, _>>();
-    if actual != expected || actual.len() != decision.purchase_closures.len() {
+    if actual != expected || actual.len() != decision.purchases.len() {
         return Err(ClosePeriodPersistenceError::StalePurchase);
     }
     Ok(())

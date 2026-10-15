@@ -189,6 +189,7 @@ async fn active_forwarding(
     forwardings::household_mail_forwardings
         .filter(forwardings::token_hash.eq(token_hash.to_vec()))
         .filter(forwardings::revoked_at.is_null())
+        .for_share()
         .select((forwardings::household_id, forwardings::created_by))
         .first::<(Uuid, Uuid)>(conn)
         .await

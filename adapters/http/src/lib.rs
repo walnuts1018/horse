@@ -47,6 +47,7 @@ pub fn router(pool: PgPool, config: Config, graphql_schema: GraphqlSchema) -> Ro
         .route("/auth/logout", axum::routing::post(logout))
         .route("/documents", post(upload_document))
         .route("/documents/{id}/content", get(document_content))
+        .route("/documents/{id}/retry", post(retry_document))
         .route("/events", get(events))
         .with_state(ApiState {
             pool,
@@ -516,6 +517,102 @@ async fn document_content(
         Err(error) => {
             tracing::error!(error = ?error, "Document content storage read failed");
             StatusCode::BAD_GATEWAY.into_response()
+        }
+    }
+}
+
+async fn retry_document(
+    State(state): State<ApiState>,
+    Path(raw_id): Path<String>,
+    headers: HeaderMap,
+    Json(input): Json<Value>,
+) -> Response {
+    if !same_origin(&headers, &state.config) {
+        return (StatusCode::FORBIDDEN, "request origin rejected").into_response();
+    }
+    let Ok(document_id) = uuid::Uuid::parse_str(&raw_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(error) => {
+            tracing::error!(error = ?error, "Document session lookup failed");
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+    };
+    let model = input.get("model").and_then(Value::as_str).unwrap_or("free");
+    if !matches!(model, "free" | "pro" | "flash" | "flash-lite") {
+        return (StatusCode::BAD_REQUEST, "invalid extraction retry input").into_response();
+    }
+    if let Some(crop) = input.get("crop") {
+        let valid = ["top", "left", "bottom", "right"]
+            .iter()
+            .all(|key| crop.get(key).and_then(Value::as_f64).is_some_and(f64::is_finite));
+        let page = crop.get("page").and_then(Value::as_u64).unwrap_or(0);
+        let top = crop.get("top").and_then(Value::as_f64).unwrap_or(0.0);
+        let left = crop.get("left").and_then(Value::as_f64).unwrap_or(0.0);
+        let bottom = crop.get("bottom").and_then(Value::as_f64).unwrap_or(0.0);
+        let right = crop.get("right").and_then(Value::as_f64).unwrap_or(0.0);
+        if !valid || page > u64::from(u32::MAX) || top < 0.0 || left < 0.0 || bottom > 1.0 || right > 1.0 || top >= bottom || left >= right {
+            return (StatusCode::BAD_REQUEST, "invalid extraction crop").into_response();
+        }
+    }
+    use horse_postgres_common::schema::public::{household_members, source_documents};
+    let mut pooled = match state.pool.get().await {
+        Ok(pooled) => pooled,
+        Err(error) => {
+            tracing::error!(error = ?error, "Document database connection unavailable");
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+    };
+    let household_id = source_documents::table
+        .inner_join(
+            household_members::table.on(household_members::household_id
+                .eq(source_documents::household_id)),
+        )
+        .filter(source_documents::id.eq(document_id))
+        .filter(household_members::member_id.eq(principal.member_id))
+        .select(source_documents::household_id)
+        .first::<uuid::Uuid>(&mut *pooled)
+        .await;
+    let household_id = match household_id {
+        Ok(household_id) => household_id,
+        Err(diesel::result::Error::NotFound) => return StatusCode::NOT_FOUND.into_response(),
+        Err(error) => {
+            tracing::error!(error = ?error, "Document retry authorization lookup failed");
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+    };
+    drop(pooled);
+    let mut request = serde_json::Map::new();
+    request.insert("purpose".to_owned(), Value::String("interactive".to_owned()));
+    if model != "free" {
+        request.insert("model".to_owned(), Value::String(model.to_owned()));
+    }
+    if let Some(crop) = input.get("crop") {
+        request.insert("crop".to_owned(), crop.clone());
+    }
+    let job = evidence_postgres::document_registration::enqueue_extraction_job(
+        &state.pool,
+        household_id,
+        document_id,
+        principal.member_id,
+        "gemini_developer_api",
+        if model == "free" { "" } else { model },
+        &format!("retry:{}", uuid::Uuid::now_v7()),
+        Value::Object(request),
+    )
+    .await;
+    match job {
+        Ok(job_id) => (StatusCode::ACCEPTED, Json(json!({"jobId": job_id, "status": "queued"}))).into_response(),
+        Err(error) => {
+            tracing::error!(error = ?error, "Document retry registration failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
 }
