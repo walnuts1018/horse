@@ -24,6 +24,8 @@ pub enum PolicyPersistenceError {
     Database(DieselError),
     InvalidUuid(&'static str),
     InvalidWorkflow,
+    InvalidBudget(budget::BudgetError),
+    InvalidRecurringExpense(recurring_expense::RecurringExpenseError),
     HouseholdNotFound,
     MemberNotFound,
     BudgetNotFound,
@@ -41,14 +43,14 @@ impl From<DieselError> for PolicyPersistenceError {
 }
 
 impl From<budget::BudgetError> for PolicyPersistenceError {
-    fn from(_: budget::BudgetError) -> Self {
-        Self::InvalidWorkflow
+    fn from(error: budget::BudgetError) -> Self {
+        Self::InvalidBudget(error)
     }
 }
 
 impl From<recurring_expense::RecurringExpenseError> for PolicyPersistenceError {
-    fn from(_: recurring_expense::RecurringExpenseError) -> Self {
-        Self::InvalidWorkflow
+    fn from(error: recurring_expense::RecurringExpenseError) -> Self {
+        Self::InvalidRecurringExpense(error)
     }
 }
 

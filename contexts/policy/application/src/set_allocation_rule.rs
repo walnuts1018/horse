@@ -74,7 +74,9 @@ pub async fn set_allocation_rule<O: SetAllocationRuleOperations>(
     operations: &mut O,
     command: SetAllocationRuleCommand,
 ) -> Result<SetAllocationRuleResult, O::Error> {
-    operations.persist(validate_set_allocation_rule(command)?).await
+    operations
+        .persist(validate_set_allocation_rule(command)?)
+        .await
 }
 
 pub fn validate_set_allocation_rule(

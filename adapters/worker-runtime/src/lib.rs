@@ -12,6 +12,9 @@ pub fn parse_email_attachments(data: &[u8]) -> Result<Vec<EmailAttachment>, &'st
 use std::{env, error::Error, time::Duration};
 
 use chrono::Utc;
+use evidence_application::ingestion_job::{
+    ExtractionExecutionOutcome, execute_extraction_job,
+};
 use evidence_postgres::ingestion_job::{
     ClaimedExtractionJob, claim_next_extraction_job, record_extraction_failure,
     record_extraction_success, recover_expired_extraction_jobs,
@@ -77,22 +80,14 @@ impl Worker {
     }
 
     async fn process_one(&self, job: ClaimedExtractionJob) {
-        match process(&self.pool, &self.store, &self.config, &job).await {
-            Ok(mut result) => {
+        let outcome = execute_extraction_job(
+            &job,
+            |job| process(&self.pool, &self.store, &self.config, job),
+            |job, mut result| async move {
                 append_previous_runs(&mut result, job.previous_result.as_ref());
-                match record_extraction_success(&self.pool, &job, result, Utc::now()).await {
-                    Ok(true) => {
-                        tracing::info!(job_id = %job.id, attempt = job.attempt_no, "extraction completed")
-                    }
-                    Ok(false) => {
-                        tracing::warn!(job_id = %job.id, attempt = job.attempt_no, "extraction completion rejected by lease fence")
-                    }
-                    Err(error) => {
-                        tracing::error!(job_id = %job.id, error = ?error, "save extraction result failed")
-                    }
-                }
-            }
-            Err(failure) => {
+                record_extraction_success(&self.pool, job, result, Utc::now()).await
+            },
+            |job, failure| async move {
                 let retry_delay_ms = failure.retry_delay_ms(job.attempt_no, Utc::now());
                 let kind = match failure.kind {
                     ProcessErrorKind::Retryable => {
@@ -105,31 +100,49 @@ impl Worker {
                         evidence_application::ingestion_job::ExtractionFailureKind::Permanent
                     }
                 };
-                let error_message = failure.safe_message;
-                match record_extraction_failure(
+                record_extraction_failure(
                     &self.pool,
                     &job.id,
                     job.attempt_no,
                     &job.lease_token,
                     kind,
                     &failure.code,
-                    error_message,
-                    Some(failure.partial_result),
+                    failure.safe_message,
+                    Some(failure.partial_result.clone()),
                     retry_delay_ms,
                     Utc::now(),
                 )
                 .await
-                {
-                    Ok(true) => {
-                        tracing::warn!(job_id = %job.id, attempt = job.attempt_no, error_code = %failure.code, "extraction attempt failed")
-                    }
-                    Ok(false) => {
-                        tracing::warn!(job_id = %job.id, attempt = job.attempt_no, "extraction failure rejected by lease fence")
-                    }
-                    Err(error) => {
-                        tracing::error!(job_id = %job.id, error = ?error, "save extraction failure failed")
-                    }
-                }
+            }
+        )
+        .await;
+        match outcome {
+            ExtractionExecutionOutcome::Succeeded(Ok(true)) => {
+                tracing::info!(job_id = %job.id, attempt = job.attempt_no, "extraction completed")
+            }
+            ExtractionExecutionOutcome::Succeeded(Ok(false)) => {
+                tracing::warn!(job_id = %job.id, attempt = job.attempt_no, "extraction completion rejected by lease fence")
+            }
+            ExtractionExecutionOutcome::Succeeded(Err(error)) => {
+                tracing::error!(job_id = %job.id, error = ?error, "save extraction result failed")
+            }
+            ExtractionExecutionOutcome::Failed {
+                failure,
+                persistence: Ok(true),
+            } => {
+                tracing::warn!(job_id = %job.id, attempt = job.attempt_no, error_code = %failure.code, "extraction attempt failed")
+            }
+            ExtractionExecutionOutcome::Failed {
+                persistence: Ok(false),
+                ..
+            } => {
+                tracing::warn!(job_id = %job.id, attempt = job.attempt_no, "extraction failure rejected by lease fence")
+            }
+            ExtractionExecutionOutcome::Failed {
+                persistence: Err(error),
+                ..
+            } => {
+                tracing::error!(job_id = %job.id, error = ?error, "save extraction failure failed")
             }
         }
     }

@@ -68,8 +68,8 @@ pub async fn set_default_allocation<O: SetDefaultAllocationOperations>(
     command: SetDefaultAllocationCommand,
 ) -> Result<SetDefaultAllocationResult, O::Error> {
     operations
-        .persist(validate_default_allocation(command)?).
-        await
+        .persist(validate_default_allocation(command)?)
+        .await
 }
 
 pub fn validate_default_allocation(

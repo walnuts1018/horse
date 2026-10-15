@@ -492,8 +492,7 @@ pub async fn create_recurring_expense(
         next_due_on: input.next_due_on.0,
         ends_on: input.ends_on.map(|value| value.0),
     };
-    let mut operations =
-        postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
+    let mut operations = postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
     match recurring_expense::create_recurring_expense(&mut operations, command).await {
         Ok(value) => Ok(CreateRecurringExpenseSuccess {
             result: value.into(),
@@ -541,8 +540,7 @@ pub async fn update_recurring_expense(
         next_due_on: input.next_due_on.0,
         ends_on: input.ends_on.map(|value| value.0),
     };
-    let mut operations =
-        postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
+    let mut operations = postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
     match recurring_expense::update_recurring_expense(&mut operations, command).await {
         Ok(value) => Ok(UpdateRecurringExpenseSuccess {
             result: value.into(),
@@ -579,8 +577,7 @@ pub async fn archive_recurring_expense(
         expected_revision: i64::from(input.base_revision),
         archived: input.archived,
     };
-    let mut operations =
-        postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
+    let mut operations = postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
     match recurring_expense::archive_recurring_expense(&mut operations, command).await {
         Ok(value) => Ok(ArchiveRecurringExpenseSuccess {
             result: value.into(),
@@ -614,8 +611,7 @@ pub async fn match_recurring_expense(
         purchase_id: purchase_id.to_string(),
         expected_revision: i64::from(input.base_revision),
     };
-    let mut operations =
-        postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
+    let mut operations = postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
     match recurring_expense::match_recurring_expense(&mut operations, command).await {
         Ok(value) => Ok(MatchRecurringExpenseSuccess {
             result: value.into(),
@@ -855,7 +851,10 @@ fn policy_error<T: From<MutationErrorCode>>(
 ) -> Result<T> {
     use postgres_policy::PolicyPersistenceError as Error;
     match error {
-        Error::InvalidUuid(_) | Error::InvalidWorkflow => Ok(MutationErrorCode::BadInput.into()),
+        Error::InvalidUuid(_)
+        | Error::InvalidWorkflow
+        | Error::InvalidBudget(_)
+        | Error::InvalidRecurringExpense(_) => Ok(MutationErrorCode::BadInput.into()),
         Error::Conflict => Ok(MutationErrorCode::Conflict.into()),
         Error::HouseholdNotFound
         | Error::MemberNotFound

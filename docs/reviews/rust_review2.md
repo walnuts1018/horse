@@ -114,7 +114,7 @@ pub struct PurchaseDraft {
 
 [purchase_create_and_post.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/postgres/src/purchase_create_and_post.rs)は、現在、Application Workflowが指定する操作を同じAsyncPgConnection上で実行します。
 
-これらは直ちに不正な実装ではありません。特に `persist_create_and_post_purchase()` は同一トランザクション内で処理しており、以前のレビューで懸念されていた別接続間のロック問題を回避しています。
+これらは直ちに不正な実装ではありません。購入作成・即時計上はApplication Workflowが処理順序を定義し、Postgres Adapterが一つのトランザクションを開始して、同じ接続でロック・読み込み・保存を実行します。以前のレビューで懸念されていた別接続間のロック問題も発生しません。
 
 カテゴリ作成については、業務操作の定義を`catalog-application`へ移しました。Postgres Adapterはプール接続上でトランザクションを開始し、Workflowが要求する読み書きを実装します。購入作成・即時計上も同じ責務分離へ移行しました。単独購入作成、単独投稿、購入訂正、カテゴリ更新・アーカイブ、月次締め、資金設定には、ResolverまたはPostgreSQL Adapterに処理順序や意思決定が残っています。
 
@@ -179,35 +179,21 @@ platform/
 
 購入作成・即時計上とカテゴリ作成は、Application Workflowが操作契約を通じてLoad・Decision・Persistを順序付ける形へ移行済みです。単独購入作成、単独投稿、購入訂正、カテゴリ更新・アーカイブ、月次締め、資金設定には、ResolverまたはPostgreSQL Adapterに処理順序や意思決定が残っています。次に、トランザクション境界とロックを保ちながら、残りの業務操作を同じ責務分離へ移す必要があります。cross-context queryも、Context固有の認可・読取モデルの責務を整理し、専用Adapterに残す範囲を確定する必要があります。
 
-## 5. 理想的な Workflow の組み立て方
+## 5. WorkflowとTransactionの責務
 
-ここが再実装全体の核になります。
+この経路では、GraphQL DTOのデコード後にApplicationが処理順序を定義し、Postgres Adapterが同じAsyncPgConnection上でI/Oを実行します。
 
-### Purchase を例にした実行構造
-
-GraphQL DTO → Command
-
-デコード・形式検証・認証済み Actor
-
-Application Workflow
-
-トランザクション開始・権限確認・データロード
-
-Pure Domain Decision
-
-Validated Facts → PostedPurchase + Journal + Events
-
-I/O なし
-
-Persist Decision + Outbox
-
-同一 Transaction 内で原子的に確定
-
-Result DTO / Event Delivery
-
-Commit 後にレスポンス・非同期配送
-
-購入作成・即時計上はこの構造へ移行しました。GraphQL Resolverは入力DTOをデコードして`CreateAndPostPurchaseCommand`を組み立て、Applicationの`create_and_post_purchase`をPostgres Adapter経由で呼び出します。
+```text
+GraphQL DTO
+  ↓ decode
+CreateAndPostPurchaseCommand
+  ↓ Application Workflow
+Load → Decide → Persist
+  ↓ Postgres transaction runner
+PostgreSQL transaction
+  ↓ commit
+Purchase projection → GraphQL response
+```
 
 Application Workflowは、同じトランザクションに結び付いた操作契約を使い、次の順序を定義します。
 
@@ -271,7 +257,7 @@ GraphQL については、現在の `Success | UserError` union を維持して�
 
 さらに、DB から復元する際には、保存値を直接信用せず、必要な Smart Constructor と整合性検証を通します。
 
-例えば現状の `catalog_workflows::category::Category` はすべて `pub` フィールドで `String` と `bool` を持っています。DB レコードから `From` で直接構築するため、カテゴリ名などの制約が永続化境界で再確認されません。
+例えば現状の`catalog_application::category::Category`はすべて`pub`フィールドで`String`と`bool`を持っています。Postgres AdapterはDBから復元したカテゴリ名を`CategoryName`のSmart Constructorで再検証しますが、返却する`Category`自体は制約を型で表していません。
 
 これは DMMF 第11章 §11.4、第12章 §12.5.3–12.5.4 に照らして改善余地があります。
 

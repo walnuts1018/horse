@@ -5,8 +5,10 @@ use diesel::{
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use household_application::invitation::{
-    AcceptInvitationCommand, CreateInvitationCommand, InvitationError, RevokeInvitationCommand,
-    decide_accept_invitation, decide_create_invitation, decide_revoke_invitation,
+    AcceptInvitationCommand, AcceptInvitationDecision, AcceptInvitationFacts,
+    AcceptInvitationOperations, CreateInvitationCommand, CreateInvitationDecision,
+    CreateInvitationOperations, InvitationError, MembershipStatus, RevokeInvitationCommand,
+    RevokeInvitationDecision, RevokeInvitationOperations,
 };
 use uuid::Uuid;
 
@@ -231,6 +233,12 @@ pub async fn list_invitations(
 impl From<DieselError> for HouseholdInvitationError {
     fn from(error: DieselError) -> Self {
         Self::Database(error)
+    }
+}
+
+impl From<InvitationError> for HouseholdInvitationError {
+    fn from(error: InvitationError) -> Self {
+        map_workflow_error(error)
     }
 }
 

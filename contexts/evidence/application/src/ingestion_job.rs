@@ -1,3 +1,5 @@
+use std::future::Future;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueuedJob {
     pub id: String,
@@ -158,6 +160,40 @@ pub enum ExtractionFailureKind {
     Retryable,
     SpendCap,
     Permanent,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ExtractionExecutionOutcome<F, E> {
+    Succeeded(Result<bool, E>),
+    Failed {
+        failure: F,
+        persistence: Result<bool, E>,
+    },
+}
+
+pub async fn execute_extraction_job<J, O, F, E, Process, ProcessFuture, PersistSuccess, SuccessFuture, PersistFailure, FailureFuture>(
+    job: &J,
+    process: Process,
+    persist_success: PersistSuccess,
+    persist_failure: PersistFailure,
+) -> ExtractionExecutionOutcome<F, E>
+where
+    Process: FnOnce(&J) -> ProcessFuture,
+    ProcessFuture: Future<Output = Result<O, F>>,
+    PersistSuccess: FnOnce(&J, O) -> SuccessFuture,
+    SuccessFuture: Future<Output = Result<bool, E>>,
+    PersistFailure: FnOnce(&J, &F) -> FailureFuture,
+    FailureFuture: Future<Output = Result<bool, E>>,
+{
+    match process(job).await {
+        Ok(result) => {
+            ExtractionExecutionOutcome::Succeeded(persist_success(job, result).await)
+        }
+        Err(failure) => ExtractionExecutionOutcome::Failed {
+            persistence: persist_failure(job, &failure).await,
+            failure,
+        },
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
