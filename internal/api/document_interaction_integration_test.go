@@ -157,6 +157,7 @@ func TestDocumentInteractionBranchesFromSelectedExtractionVersion(t *testing.T) 
 	var createdRequest struct {
 		ConversationID    string                          `json:"conversationId"`
 		Clarification     string                          `json:"clarification"`
+		BaseJobID         string                          `json:"baseJobId"`
 		Conversation      []ingestion.ConversationMessage `json:"conversation"`
 		CurrentExtraction struct {
 			Receipt ingestion.Receipt `json:"receipt"`
@@ -165,7 +166,60 @@ func TestDocumentInteractionBranchesFromSelectedExtractionVersion(t *testing.T) 
 	if err := stdjson.Unmarshal(createdJob.Request.Val, &createdRequest); err != nil {
 		t.Fatal(err)
 	}
-	if createdJob.Version != 3 || createdRequest.Clarification != "Recheck the old result" || createdRequest.ConversationID == "old-conversation" || createdRequest.ConversationID == "latest-conversation" || len(createdRequest.Conversation) != 2 || createdRequest.Conversation[0].Text != "Old item question" || len(createdRequest.CurrentExtraction.Receipt.Items) != 1 || createdRequest.CurrentExtraction.Receipt.Items[0].Name != "Old item" {
+	if createdJob.Version != 3 || createdRequest.Clarification != "Recheck the old result" || createdRequest.BaseJobID != firstJobID.String() || createdRequest.ConversationID == "old-conversation" || createdRequest.ConversationID == "latest-conversation" || len(createdRequest.Conversation) != 2 || createdRequest.Conversation[0].Text != "Old item question" || len(createdRequest.CurrentExtraction.Receipt.Items) != 1 || createdRequest.CurrentExtraction.Receipt.Items[0].Name != "Old item" {
 		t.Fatalf("new job did not branch from the selected extraction: version=%d request=%#v", createdJob.Version, createdRequest)
+	}
+	assertPendingInteraction := func(wantStatus string) {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, "/documents/"+documentID.String(), nil)
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: cookieValue})
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, request)
+		var document struct {
+			Status             string `json:"status"`
+			PendingInteraction *struct {
+				JobID     string `json:"jobId"`
+				Status    string `json:"status"`
+				Message   string `json:"message"`
+				Model     string `json:"model"`
+				BaseJobID string `json:"baseJobId"`
+			} `json:"pendingInteraction"`
+		}
+		if response.Code != http.StatusOK || stdjson.Unmarshal(response.Body.Bytes(), &document) != nil {
+			t.Fatalf("document interaction state lookup failed: status=%d body=%s", response.Code, response.Body.String())
+		}
+		if document.Status != wantStatus || document.PendingInteraction == nil || document.PendingInteraction.JobID != createdJobID.String() || document.PendingInteraction.Status != wantStatus || document.PendingInteraction.Message != "Recheck the old result" || document.PendingInteraction.Model != ingestion.ModelReceipt || document.PendingInteraction.BaseJobID != firstJobID.String() {
+			t.Fatalf("document interaction state was not restored: %#v", document)
+		}
+	}
+	assertPendingInteraction("queued")
+	failedStatus := "failed"
+	errorCode := sql.Null[string]{V: "provider_unavailable", Valid: true}
+	if err := createdJob.Update(ctx, executor, &models.ExtractionJobSetter{Status: &failedStatus, ErrorCode: &errorCode}); err != nil {
+		t.Fatal(err)
+	}
+	assertPendingInteraction("failed")
+	request = httptest.NewRequest(http.MethodGet, "/documents?householdId="+householdID.String(), nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: cookieValue})
+	response = httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	var documentsResponse struct {
+		Documents []struct {
+			ID                 string `json:"id"`
+			PendingInteraction *struct {
+				JobID     string `json:"jobId"`
+				Status    string `json:"status"`
+				Message   string `json:"message"`
+				Model     string `json:"model"`
+				BaseJobID string `json:"baseJobId"`
+			} `json:"pendingInteraction"`
+		} `json:"documents"`
+	}
+	if response.Code != http.StatusOK || stdjson.Unmarshal(response.Body.Bytes(), &documentsResponse) != nil || len(documentsResponse.Documents) != 1 {
+		t.Fatalf("document list interaction state lookup failed: status=%d body=%s", response.Code, response.Body.String())
+	}
+	listed := documentsResponse.Documents[0]
+	if listed.ID != documentID.String() || listed.PendingInteraction == nil || listed.PendingInteraction.JobID != createdJobID.String() || listed.PendingInteraction.Status != "failed" || listed.PendingInteraction.Message != "Recheck the old result" || listed.PendingInteraction.Model != ingestion.ModelReceipt || listed.PendingInteraction.BaseJobID != firstJobID.String() {
+		t.Fatalf("document list did not restore the failed interaction: %#v", listed)
 	}
 }

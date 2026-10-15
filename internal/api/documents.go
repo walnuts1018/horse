@@ -44,24 +44,33 @@ const (
 )
 
 type documentResponse struct {
-	ID               string                    `json:"id"`
-	HouseholdID      string                    `json:"householdId"`
-	Name             string                    `json:"name,omitempty"`
-	SHA256           string                    `json:"sha256"`
-	MIMEType         string                    `json:"mimeType"`
-	SourceKind       string                    `json:"sourceKind"`
-	Status           string                    `json:"status"`
-	Model            string                    `json:"model,omitempty"`
-	ErrorCode        string                    `json:"errorCode,omitempty"`
-	JobID            string                    `json:"jobId,omitempty"`
-	Duplicate        bool                      `json:"duplicate"`
-	Result           any                       `json:"result,omitempty"`
-	CreatedAt        time.Time                 `json:"createdAt"`
-	Confirmations    []documentConfirmation    `json:"confirmations"`
-	HasEvidence      bool                      `json:"hasEvidence"`
-	DeletionPending  bool                      `json:"deletionPending,omitempty"`
-	Attachments      []documentAttachment      `json:"attachments,omitempty"`
-	AttachmentParent *documentAttachmentParent `json:"attachmentParent,omitempty"`
+	ID                 string                      `json:"id"`
+	HouseholdID        string                      `json:"householdId"`
+	Name               string                      `json:"name,omitempty"`
+	SHA256             string                      `json:"sha256"`
+	MIMEType           string                      `json:"mimeType"`
+	SourceKind         string                      `json:"sourceKind"`
+	Status             string                      `json:"status"`
+	Model              string                      `json:"model,omitempty"`
+	ErrorCode          string                      `json:"errorCode,omitempty"`
+	JobID              string                      `json:"jobId,omitempty"`
+	Duplicate          bool                        `json:"duplicate"`
+	Result             any                         `json:"result,omitempty"`
+	PendingInteraction *documentPendingInteraction `json:"pendingInteraction,omitempty"`
+	CreatedAt          time.Time                   `json:"createdAt"`
+	Confirmations      []documentConfirmation      `json:"confirmations"`
+	HasEvidence        bool                        `json:"hasEvidence"`
+	DeletionPending    bool                        `json:"deletionPending,omitempty"`
+	Attachments        []documentAttachment        `json:"attachments,omitempty"`
+	AttachmentParent   *documentAttachmentParent   `json:"attachmentParent,omitempty"`
+}
+
+type documentPendingInteraction struct {
+	JobID     string `json:"jobId"`
+	Status    string `json:"status"`
+	Message   string `json:"message"`
+	Model     string `json:"model,omitempty"`
+	BaseJobID string `json:"baseJobId,omitempty"`
 }
 
 type documentAttachment struct {
@@ -293,6 +302,7 @@ func (s *Server) documentResponse(ctx context.Context, exec bob.Executor, docume
 	if job.ErrorCode.Valid {
 		result.ErrorCode = job.ErrorCode.V
 	}
+	result.PendingInteraction = pendingDocumentInteraction(job)
 	if job.Result.Valid {
 		var decoded any
 		if err := json.Unmarshal(job.Result.V.Val, &decoded); err == nil {
@@ -667,6 +677,7 @@ func (s *Server) documentResponses(ctx context.Context, exec bob.Executor, docum
 			if job.ErrorCode.Valid {
 				response.ErrorCode = job.ErrorCode.V
 			}
+			response.PendingInteraction = pendingDocumentInteraction(job)
 			response.Result = extractionResult(job, latestSuccessfulJobs[document.ID])
 		}
 	}
@@ -755,6 +766,25 @@ func (s *Server) documentResponses(ctx context.Context, exec bob.Executor, docum
 	}
 
 	return responses, nil
+}
+
+func pendingDocumentInteraction(job *models.ExtractionJob) *documentPendingInteraction {
+	if job == nil || job.Status != "queued" && job.Status != "running" && job.Status != "failed" {
+		return nil
+	}
+	var request struct {
+		Purpose       string `json:"purpose"`
+		Clarification string `json:"clarification"`
+		BaseJobID     string `json:"baseJobId"`
+		Model         string `json:"model"`
+	}
+	if err := stdjson.Unmarshal(job.Request.Val, &request); err != nil || request.Purpose != ingestion.JobPurposeInteractive || request.Clarification == "" {
+		return nil
+	}
+	return &documentPendingInteraction{
+		JobID: job.ID.String(), Status: job.Status, Message: request.Clarification,
+		Model: request.Model, BaseJobID: request.BaseJobID,
+	}
 }
 
 func extractionResult(latest, latestSuccessful *models.ExtractionJob) any {

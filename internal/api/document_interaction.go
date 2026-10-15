@@ -186,11 +186,12 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		Purpose           string                          `json:"purpose"`
 		Model             string                          `json:"model"`
 		Clarification     string                          `json:"clarification"`
+		BaseJobID         string                          `json:"baseJobId"`
 		ConversationID    string                          `json:"conversationId"`
 		Conversation      []ingestion.ConversationMessage `json:"conversation,omitempty"`
 		CurrentExtraction stdjson.RawMessage              `json:"currentExtraction"`
 	}{
-		Purpose: ingestion.JobPurposeInteractive, Model: model, Clarification: input.Message, ConversationID: conversationID,
+		Purpose: ingestion.JobPurposeInteractive, Model: model, Clarification: input.Message, BaseJobID: baseJob.ID.String(), ConversationID: conversationID,
 		Conversation: previous.Conversation, CurrentExtraction: currentExtraction,
 	})
 	if err != nil {
