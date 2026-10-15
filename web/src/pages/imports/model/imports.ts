@@ -326,7 +326,7 @@ export type DocumentExtraction = DocumentExtractionVersion & {
   result: NonNullable<DocumentReview["result"]>;
 };
 
-export function isQuotaLimitedExtraction(document: DocumentReview): boolean {
+export function isExtractionDeferred(document: DocumentReview): boolean {
   const status = document.status.toUpperCase();
   return (
     (status === "QUEUED" || status === "FAILED") &&

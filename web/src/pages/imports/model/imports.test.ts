@@ -5,7 +5,7 @@ import {
   canReclassifyAttachment,
   deferredExtractionMessage,
   defaultUploadSourceKind,
-  isQuotaLimitedExtraction,
+  isExtractionDeferred,
   parseDocumentFilters,
   serializeDocumentFilters,
   uploadSourceKinds,
@@ -92,28 +92,28 @@ describe("保存済み原本の削除", () => {
 describe("AIモデルの利用上限", () => {
   it("有料Projectの上限や停止を保留として扱う", () => {
     expect(
-      isQuotaLimitedExtraction({
+      isExtractionDeferred({
         id: "document-1",
         status: "QUEUED",
         errorCode: "rate_limited",
       }),
     ).toBe(true);
     expect(
-      isQuotaLimitedExtraction({
+      isExtractionDeferred({
         id: "document-2",
         status: "FAILED",
         errorCode: "quota_reservation_deferred",
       }),
     ).toBe(true);
     expect(
-      isQuotaLimitedExtraction({
+      isExtractionDeferred({
         id: "document-6",
         status: "QUEUED",
         errorCode: "spend_cap_reached",
       }),
     ).toBe(true);
     expect(
-      isQuotaLimitedExtraction({
+      isExtractionDeferred({
         id: "document-7",
         status: "QUEUED",
         errorCode: "paid_route_unavailable",
@@ -122,25 +122,25 @@ describe("AIモデルの利用上限", () => {
     expect(deferredExtractionMessage("spend_cap_reached")).toContain("500円");
     expect(deferredExtractionMessage("paid_route_unavailable")).toContain("保留");
     expect(
-      isQuotaLimitedExtraction({
+      isExtractionDeferred({
         id: "document-8",
-        status: "QUEUED",
+        status: "FAILED",
         errorCode: "developer_api_consumer_use_restricted",
       }),
     ).toBe(true);
     expect(deferredExtractionMessage("developer_api_consumer_use_restricted")).toContain(
       "一時停止",
     );
-    expect(isQuotaLimitedExtraction({ id: "document-3", status: "FAILED" })).toBe(false);
+    expect(isExtractionDeferred({ id: "document-3", status: "FAILED" })).toBe(false);
     expect(
-      isQuotaLimitedExtraction({
+      isExtractionDeferred({
         id: "document-4",
         status: "SUCCEEDED",
         errorCode: "rate_limited",
       }),
     ).toBe(false);
     expect(
-      isQuotaLimitedExtraction({ id: "document-5", status: "QUEUED", errorCode: "unknown" }),
+      isExtractionDeferred({ id: "document-5", status: "QUEUED", errorCode: "unknown" }),
     ).toBe(false);
   });
 });
