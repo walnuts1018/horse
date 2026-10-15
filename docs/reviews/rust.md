@@ -953,7 +953,7 @@ pub enum HandlerError {
 | HTTP | `axum` | 薄い HTTP 境界、Tower ミドルウェア |
 | GraphQL | `async-graphql` | 型付き SDL・Resolver・DataLoader |
 | Async Runtime | `tokio` | I/O と Worker 実行 |
-| PostgreSQL | `sqlx` | SQL を直接記述、コンパイル時クエリ検査 |
+| PostgreSQL | `diesel` 2.3 + `diesel-async` 0.9.2 | 型付き Query DSL と非同期 PostgreSQL I/O |
 | Serialization | `serde` | DTO 専用に使用 |
 | Domain Errors | 手書き enum、`thiserror` | 業務エラーの明示 |
 | Infrastructure Errors | `thiserror` / `anyhow` | 境界で必要に応じて使用 |
@@ -961,9 +961,9 @@ pub enum HandlerError {
 | IDs | `uuid` | 意味別 newtype でラップ |
 | Property Testing | `proptest` | 不変条件の網羅的な検証 |
 | Observability | `tracing` / `opentelemetry` | Workflow と I/O のトレース |
-| Migrations | `sqlx migrate` | SQL ベースでスキーマ管理 |
+| Migrations | Atlas | 既存のスキーマ管理を継続 |
 
-`axum` は Tower の Middleware と統合でき、SQLx は SQL の静的検査や Migration を備えています。
+Dieselは`table!`で宣言したスキーマを使ってQuery DSLをコンパイル時に検査し、`diesel-async`は非同期のPostgreSQL接続とクエリ実行を提供します。`diesel print-schema`でAtlas適用後のスキーマから型定義を生成し、型付きQuery DSLでDBアクセスを実装します。アプリケーションコードでは生SQLを発行する`sql_query`を使いません。
 
 [image](https://www.google.com/s2/favicons?domain=https://docs.rs\&sz=32)
 
@@ -971,9 +971,7 @@ Docs.rs
 
 +2
 
-私なら、今回 ORM は採用しません。
-
-ORM が必ずしも DMMF に反するわけではありませんが、Domain Model と DB Model を明確に区別したい今回の設計では、SQL を明示してアダプターでマッピングするほうが適しています。
+DBアクセスにはDieselを採用します。DieselのQueryable型はInfrastructureに閉じ込め、Domain型と永続化DTOの変換をAdapterで行います。DBスキーマとmigrationはAtlasを正本とし、Dieselのmigration機能は使いません。DSLで表現できない処理に生SQLを追加せず、クエリやスキーマを見直します。
 
 また、`fp-core` や `frunk` などの関数型ライブラリを、DMMF らしくするためだけに導入する必要はありません。Rust 標準の `Option`、`Result`、関数、enum、trait で大部分を実現できます。
 
