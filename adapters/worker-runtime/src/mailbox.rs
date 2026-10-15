@@ -1,7 +1,6 @@
 use std::{env, error::Error, fmt, time::Duration};
 
 use async_imap::{Client, types::Fetch};
-use chrono::Utc;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, dsl::now};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::TryStreamExt;
@@ -441,7 +440,8 @@ fn trusted_delivered_to(raw: &[u8], recipient_base: &str) -> Option<String> {
 
 fn valid_plain_address(value: &str) -> bool {
     let Some((local, domain)) = value.split_once('@') else { return false };
-    !local.is_empty()
+    value.matches('@').count() == 1
+        && !local.is_empty()
         && !domain.is_empty()
         && !value
             .chars()

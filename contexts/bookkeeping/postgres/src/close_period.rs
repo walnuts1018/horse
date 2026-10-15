@@ -91,7 +91,9 @@ pub async fn close_period(
 ) -> Result<PersistedClosePeriod, ClosePeriodPersistenceError> {
     let household_id = parse_uuid(household_id, "household_id")?;
     let actor_id = parse_uuid(actor_id, "actor_id")?;
-    let (period_start, period_end) = period_bounds(period)?;
+    let year_month = YearMonth::parse(period)
+        .map_err(|_| ClosePeriodPersistenceError::InvalidPeriod)?;
+    let (period_start, period_end) = period_bounds(year_month)?;
     let mut pooled = pool
         .get()
         .await
@@ -123,6 +125,20 @@ pub async fn close_period(
             if !actor_is_member {
                 return Err(ClosePeriodPersistenceError::HouseholdNotFound);
             }
+            diesel::insert_into(accounting_periods::table)
+                .values((
+                    accounting_periods::household_id.eq(household_id),
+                    accounting_periods::period_start.eq(period_start),
+                    accounting_periods::status.eq("OPEN"),
+                    accounting_periods::revision.eq(1_i64),
+                ))
+                .on_conflict((
+                    accounting_periods::household_id,
+                    accounting_periods::period_start,
+                ))
+                .do_nothing()
+                .execute(&mut *conn)
+                .await?;
             let current_period = accounting_periods::table
                 .filter(accounting_periods::household_id.eq(household_id))
                 .filter(accounting_periods::period_start.eq(period_start))
@@ -788,22 +804,9 @@ fn validate_purchase_revisions(
     Ok(())
 }
 
-fn period_bounds(period: &str) -> Result<(NaiveDate, NaiveDate), ClosePeriodPersistenceError> {
-    let mut parts = period.split('-');
-    let year = parts
-        .next()
-        .filter(|part| part.len() == 4 && part.bytes().all(|byte| byte.is_ascii_digit()))
-        .and_then(|part| part.parse::<i32>().ok())
-        .ok_or(ClosePeriodPersistenceError::InvalidPeriod)?;
-    let month = parts
-        .next()
-        .filter(|part| part.len() == 2 && part.bytes().all(|byte| byte.is_ascii_digit()))
-        .and_then(|part| part.parse::<u32>().ok())
-        .filter(|month| (1..=12).contains(month))
-        .ok_or(ClosePeriodPersistenceError::InvalidPeriod)?;
-    if parts.next().is_some() {
-        return Err(ClosePeriodPersistenceError::InvalidPeriod);
-    }
+fn period_bounds(period: YearMonth) -> Result<(NaiveDate, NaiveDate), ClosePeriodPersistenceError> {
+    let year = i32::from(period.year());
+    let month = u32::from(period.month());
     let start = NaiveDate::from_ymd_opt(year, month, 1)
         .ok_or(ClosePeriodPersistenceError::InvalidPeriod)?;
     let (next_year, next_month) = if month == 12 {
@@ -818,6 +821,29 @@ fn period_bounds(period: &str) -> Result<(NaiveDate, NaiveDate), ClosePeriodPers
     let end = NaiveDate::from_ymd_opt(next_year, next_month, 1)
         .ok_or(ClosePeriodPersistenceError::InvalidPeriod)?;
     Ok((start, end))
+}
+
+fn year_month(date: NaiveDate) -> Result<YearMonth, ClosePeriodPersistenceError> {
+    YearMonth::new(
+        u16::try_from(date.year()).map_err(|_| ClosePeriodPersistenceError::InvalidPeriod)?,
+        u8::try_from(date.month()).map_err(|_| ClosePeriodPersistenceError::InvalidPeriod)?,
+    )
+    .map_err(|_| ClosePeriodPersistenceError::InvalidPeriod)
+}
+
+fn period_model(
+    period_start: NaiveDate,
+    status: &str,
+    revision: i64,
+) -> Result<AccountingPeriod, ClosePeriodPersistenceError> {
+    let year_month = year_month(period_start)?;
+    let revision = u64::try_from(revision).map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?;
+    match status {
+        "OPEN" => AccountingPeriod::open(year_month, revision),
+        "CLOSED" => AccountingPeriod::closed(year_month, revision),
+        _ => return Err(ClosePeriodPersistenceError::PeriodNotFound),
+    }
+    .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)
 }
 
 fn period_start_utc(date: NaiveDate) -> Result<DateTime<Utc>, ClosePeriodPersistenceError> {
