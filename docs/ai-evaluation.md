@@ -2,7 +2,7 @@
 
 各抽出実行はモデル、ルート、思考レベル、サービス階層、プロンプト版、価格表版、入出力token数、為替レートと出典、価格計算日時、推定費用を記録します。推定費用は`estimated_paid`と`free_tier`を区別し、価格表にないモデルや為替レートがない実行はゼロ円とみなさず、それぞれ`unknown_model_price`または`missing_exchange_rate`として残します。失敗した呼び出しは`unavailable_failed_run`です。推定額は実際の請求額ではありません。
 
-`gemini-prices-2026-10-v1`はGemini 3.8 Flashと3.6 Flashを2026年12月31日までは入力$0.75・出力$3.75、2027年1月1日以降は入力$1.50・出力$7.50、Gemini 3.5 Flash-Liteを入力$0.30・出力$2.50、Gemini 3.1 Pro Previewを入力token数20万以下では入力$2.00・出力$12.00、20万超では入力$4.00・出力$18.00として計算します。単位は100万tokenあたりのUSDです。Flexは各モデルのStandard価格の50%で計算します。価格は[Gemini API料金表](https://ai.google.dev/gemini-api/docs/pricing)と[Flex料金説明](https://ai.google.dev/gemini-api/docs/generate-content/flex-inference)に基づきます。価格表にないモデルは推定対象にしません。
+`gemini-prices-2026-10-v2`はGemini 3.8 Flashと3.6 Flashを2026年12月31日までは入力$0.75・出力$3.75、2027年1月1日以降は入力$1.50・出力$7.50、Gemini 3.5 Flash-Liteを入力$0.30・出力$2.50、Gemini 3.1 Pro Previewを入力token数20万以下では入力$2.00・出力$12.00、20万超では入力$4.00・出力$18.00として計算します。単位は100万tokenあたりのUSDです。Flexは各モデルのStandard価格の50%で計算します。価格は[Gemini API料金表](https://ai.google.dev/gemini-api/docs/pricing)と[Flex料金説明](https://ai.google.dev/gemini-api/docs/generate-content/flex-inference)に基づきます。価格表にないモデルは推定対象にしません。
 
 評価データセットは版とケースIDを持つJSONです。各ケースには人手で確認した正解値、保存済みの抽出結果、抽出実行の価格metadata、任意の人手修正操作数を含めます。原本画像は含めず、利用者の実データを公開データセットへ追加しません。
 
