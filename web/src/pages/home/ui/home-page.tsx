@@ -11,6 +11,7 @@ import { EmptyState } from "../../../shared/ui";
 import { homeDashboardQuery } from "../model/home-summary";
 import { pendingImportMessage, readPendingImportStatus } from "../model/pending-imports";
 import { summarizeSettlementDues } from "../model/settlement-dues";
+import { SettlementStatus } from "./settlement-status";
 import { SetupGuidance } from "./setup-guidance";
 
 import "./home-page.css";
@@ -182,13 +183,9 @@ export function HomePage({
               </li>
             ))}
           </ul>
-          <div className="settle-line">
-            <span
-              aria-hidden="true"
-              className={`status-dot ${settlement.__typename === "ClosedSettlement" ? "status-dot--closed" : "status-dot--open"}`}
-            />
-            {settlement.__typename === "ClosedSettlement" ? "締め済み" : "今月分の精算"}
-          </div>
+          <SettlementStatus
+            state={settlement.__typename === "ClosedSettlement" ? "closed" : "open"}
+          />
           <Link
             className="button button-soft"
             to="/households/$householdId/settlement"
