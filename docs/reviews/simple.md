@@ -23,12 +23,12 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 
 該当コード：
 
-- [purchase/update_item.go — updateItem()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/update_item.go#L46-L403)
+- [purchase/update_item.go — updateItem()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/update_item.go)
 - [purchase/service.go — create()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/service.go#L189-L453)
 - [purchase/correction.go — Correct()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/correction.go#L250-L606)
 - [purchase/update_operations.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/update_operations.go)
 
-通常更新と一括更新は`itemChangePlan`を共有し、配賦の再計算と`ItemAllocations`の更新を必要な変更に限るようになりました。明細更新では支払調整を計算し、支払行の置換とposted仕訳同期の要否を`purchaseItemAccountingPlan`へ集約しています。`f106383`では`updateItem()`の入力検証、更新対象の取得とロック、計画構築をそれぞれヘルパーへ分離しました。商品学習の設定解釈や履歴記録も`item_product_learning.go`にあります。
+`f106383`では`updateItem()`の入力検証、更新対象の取得とロック、計画構築をそれぞれヘルパーへ分離しました。商品学習の設定解釈や履歴記録も`item_product_learning.go`にあります。
 
 一方、`buildPurchaseItemUpdatePlan()`は商品バリアントや支払情報などをDBから取得しながら計画を構築します。`updateItem()`は計画後の商品学習、明細・配賦・支払の更新、購入revisionの更新、監査イベント記録、仕訳同期をトランザクション内で順に調整します。読み込みを伴う計画構築と適用順序の責務をどこまで分けるかは、競合検出とロック順序を保った上で検討できます。
 
@@ -53,7 +53,7 @@ Member、Account、Category、Household、Pool Nodeの複数ID解決では、所
 
 目指すのは「すべてを先読みする巨大なローダー」でも「フィールドごとに1件ずつSQLを実行する構造」でもなく、GraphQLで要求されたデータだけを、親子関係に応じた適切な単位で一括取得する構造です。
 
-## 4. 通常更新・一括更新・まとめて保存が別々の実装になっている
+## 4. 通常更新・一括更新・まとめて保存の責務境界
 
 優先度：最高 / 改善効果：非常に大きい
 
@@ -64,11 +64,7 @@ Member、Account、Category、Household、Pool Nodeの複数ID解決では、所
 - [purchase/bulk_update_items.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/bulk_update_items.go)
 - [purchase/save_item_edits.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/save_item_edits.go)
 
-ここは特に改善効果が大きそうです。
-
-購入全体の通常更新と一括更新では、リビジョン競合判定と更新値の適用を`purchaseUpdatePlan`と`applyPurchaseUpdatePlan()`に集約しました。入力フィールドと支払額の検証も共通ヘルパーを使いますが、各ユースケースが対象を読み込み、検証、ロック、適用、仕訳同期、監査イベント記録を調整します。
-
-明細更新では`updateItem()`と`updateBulkItem()`が`itemChangePlan`を共有し、リビジョンと配賦計算の一部を共通化しました。購入全体の通常更新と一括更新も`purchaseUpdatePlan`と`applyPurchaseUpdatePlan()`を共有し、フィールドリビジョンの競合判定と購入行・支払行の更新を共通化しました。入力検証、支払額の検証、ロック取得、一括更新の事前検証と適用順、仕訳同期、監査イベント記録の調整は各ユースケースに残っています。
+明細更新では`updateItem()`と`updateBulkItem()`が`itemChangePlan`を共有し、リビジョンと配賦計算の一部を共通化しました。購入全体の通常更新と一括更新も`purchaseUpdatePlan`と`applyPurchaseUpdatePlan()`を共有し、フィールドリビジョンの競合判定と購入行・支払行の更新を共通化しました。入力フィールドと支払額の検証には共通ヘルパーを使いますが、対象の読み込み、ロック、一括更新の事前検証と適用順、仕訳同期、監査イベント記録は各ユースケースが調整します。
 
 さらに`SaveItemEdits()`では、各明細について`updateItem()`を呼び、その後に購入全体の`update()`を呼んでいます。
 
