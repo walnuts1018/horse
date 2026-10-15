@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
-use bookkeeping_workflows::close_period::ClosePeriodDecision;
-use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone, Utc};
+use bookkeeping_workflows::close_period::{
+    ClosePeriodDecision, FundingCadence, FundingScheduleInput, decide_funding_obligations,
+};
+use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
@@ -25,6 +27,7 @@ pub enum ClosePeriodPersistenceError {
     InvalidPeriod,
     NumericOutOfRange(&'static str),
     InvalidDecision,
+    HouseholdNotFound,
     PeriodNotFound,
     PeriodAlreadyClosed,
     StalePeriod,
@@ -42,7 +45,6 @@ pub async fn persist_close_period(
     pool: &PgPool,
     household_id: &str,
     decision: ClosePeriodDecision,
-    funding_snapshot: serde_json::Value,
 ) -> Result<PersistedClosePeriod, ClosePeriodPersistenceError> {
     let household_id = parse_uuid(household_id, "household_id")?;
     let actor_id = parse_uuid(decision.event.actor_id.as_str(), "actor_id")?;
@@ -53,7 +55,7 @@ pub async fn persist_close_period(
         .checked_sub(1)
         .ok_or(ClosePeriodPersistenceError::InvalidDecision)?;
     validate_decision(&decision, &decision.period, revision, actor_id)?;
-    let settlement_run_id = Uuid::new_v4();
+    let settlement_run_id = Uuid::now_v7();
 
     let mut pooled = pool
         .get()
@@ -62,8 +64,33 @@ pub async fn persist_close_period(
     let conn = &mut *pooled;
     conn.transaction::<PersistedClosePeriod, ClosePeriodPersistenceError, _>(async |conn| {
         use public::accounting_periods::dsl as periods;
+        use public::households::dsl as households;
         use public::purchases::dsl as purchases;
         use public::settlement_runs::dsl as runs;
+
+        let household_exists = households::households
+            .filter(households::id.eq(household_id))
+            .for_update()
+            .select(households::id)
+            .first::<Uuid>(&mut *conn)
+            .await
+            .optional()?
+            .is_some();
+        if !household_exists {
+            return Err(ClosePeriodPersistenceError::HouseholdNotFound);
+        }
+
+        diesel::insert_into(periods::accounting_periods)
+            .values((
+                periods::household_id.eq(household_id),
+                periods::period_start.eq(period_start),
+                periods::status.eq("OPEN"),
+                periods::revision.eq(1_i64),
+            ))
+            .on_conflict((periods::household_id, periods::period_start))
+            .do_nothing()
+            .execute(&mut *conn)
+            .await?;
 
         let period_row = periods::accounting_periods
             .filter(periods::household_id.eq(household_id))
@@ -97,16 +124,264 @@ pub async fn persist_close_period(
             return Err(ClosePeriodPersistenceError::DraftPurchasesExist);
         }
 
+        let schedules = public::funding_schedules::table
+            .filter(public::funding_schedules::household_id.eq(household_id))
+            .filter(
+                public::funding_schedules::starts_on
+                    .lt(period_end),
+            )
+            .filter(
+                public::funding_schedules::ends_on
+                    .is_null()
+                    .or(public::funding_schedules::ends_on.ge(period_start)),
+            )
+            .filter(
+                public::funding_schedules::active
+                    .eq(true)
+                    .or(public::funding_schedules::ends_on.is_not_null()),
+            )
+            .select((
+                public::funding_schedules::id,
+                public::funding_schedules::member_id,
+                public::funding_schedules::pool_id,
+                public::funding_schedules::amount_yen,
+                public::funding_schedules::cadence,
+                public::funding_schedules::starts_on,
+                public::funding_schedules::ends_on,
+                public::funding_schedules::active,
+                public::funding_schedules::created_at,
+            ))
+            .load::<(
+                Uuid,
+                Uuid,
+                Uuid,
+                i64,
+                String,
+                NaiveDate,
+                Option<NaiveDate>,
+                bool,
+                DateTime<Utc>,
+            )>(&mut *conn)
+            .await?;
+        let schedule_inputs = schedules
+            .into_iter()
+            .map(
+                |(id, member_id, pool_id, amount_yen, cadence, starts_on, ends_on, active, created_at)| {
+                    let cadence = match cadence.as_str() {
+                        "MONTHLY" => FundingCadence::Monthly,
+                        "WEEKLY" => FundingCadence::Weekly,
+                        "CUSTOM" => FundingCadence::Custom,
+                        _ => return Err(ClosePeriodPersistenceError::InvalidDecision),
+                    };
+                    Ok(FundingScheduleInput {
+                        id: id.to_string(),
+                        member_id: bookkeeping_workflows::MemberId::new(member_id.to_string())
+                            .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
+                        pool_id: pool_id.to_string(),
+                        amount_yen,
+                        cadence,
+                        starts_on_day: starts_on.num_days_from_ce(),
+                        ends_on_day: ends_on.map(|day| day.num_days_from_ce()),
+                        active,
+                        created_at_micros: created_at.timestamp_micros(),
+                    })
+                },
+            )
+            .collect::<Result<Vec<_>, ClosePeriodPersistenceError>>()?;
+        let obligation_decisions = decide_funding_obligations(
+            period_start.num_days_from_ce(),
+            period_end.num_days_from_ce(),
+            schedule_inputs,
+        )
+        .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?;
+        for obligation in obligation_decisions {
+            let id = Uuid::now_v7();
+            let schedule_id = parse_uuid(&obligation.schedule_id, "schedule_id")?;
+            let member_id = parse_uuid(obligation.member_id.as_str(), "member_id")?;
+            let pool_id = parse_uuid(&obligation.pool_id, "pool_id")?;
+            diesel::insert_into(public::funding_obligations::table)
+                .values((
+                    public::funding_obligations::id.eq(id),
+                    public::funding_obligations::household_id.eq(household_id),
+                    public::funding_obligations::schedule_id.eq(Some(schedule_id)),
+                    public::funding_obligations::member_id.eq(member_id),
+                    public::funding_obligations::pool_id.eq(pool_id),
+                    public::funding_obligations::period_start.eq(period_start),
+                    public::funding_obligations::amount_yen.eq(obligation.amount_yen),
+                ))
+                .on_conflict((
+                    public::funding_obligations::household_id,
+                    public::funding_obligations::member_id,
+                    public::funding_obligations::pool_id,
+                    public::funding_obligations::period_start,
+                ))
+                .do_update()
+                .set((
+                    public::funding_obligations::schedule_id
+                        .eq(Some(schedule_id)),
+                    public::funding_obligations::amount_yen.eq(obligation.amount_yen),
+                ))
+                .execute(&mut *conn)
+                .await?;
+        }
+
+        let obligations = public::funding_obligations::table
+            .filter(public::funding_obligations::household_id.eq(household_id))
+            .filter(public::funding_obligations::period_start.eq(period_start))
+            .select((
+                public::funding_obligations::member_id,
+                public::funding_obligations::amount_yen,
+                public::funding_obligations::paid_yen,
+            ))
+            .load::<(Uuid, i64, i64)>(&mut *conn)
+            .await?;
+        let mut funding_totals = BTreeMap::<Uuid, (i64, i64)>::new();
+        for (member_id, scheduled_yen, paid_yen) in obligations {
+            let totals = funding_totals.entry(member_id).or_default();
+            totals.0 = totals
+                .0
+                .checked_add(scheduled_yen)
+                .ok_or(ClosePeriodPersistenceError::InvalidDecision)?;
+            totals.1 = totals
+                .1
+                .checked_add(paid_yen)
+                .ok_or(ClosePeriodPersistenceError::InvalidDecision)?;
+        }
+        for line in &decision.settlements {
+            let member_id = parse_uuid(line.member_id.as_str(), "member_id")?;
+            let totals = funding_totals.remove(&member_id).unwrap_or_default();
+            if (line.scheduled_yen, line.paid_yen) != totals {
+                return Err(ClosePeriodPersistenceError::InvalidDecision);
+            }
+        }
+        if !funding_totals.is_empty() {
+            return Err(ClosePeriodPersistenceError::InvalidDecision);
+        }
+
+        let active_members = public::household_members::table
+            .inner_join(
+                public::members::table.on(
+                    public::members::id.eq(public::household_members::member_id),
+                ),
+            )
+            .filter(public::household_members::household_id.eq(household_id))
+            .filter(
+                public::household_members::left_at
+                    .is_null()
+                    .or(
+                        public::household_members::left_at
+                            .gt(period_start_utc(period_start)?),
+                    ),
+            )
+            .select((
+                public::household_members::member_id,
+                public::members::display_name,
+            ))
+            .load::<(Uuid, String)>(&mut *conn)
+            .await?;
+        let active_members = active_members.into_iter().collect::<BTreeMap<_, _>>();
+        if active_members.len() != decision.settlements.len()
+            || decision.settlements.iter().any(|line| {
+                parse_uuid(line.member_id.as_str(), "member_id")
+                    .ok()
+                    .and_then(|member_id| active_members.get(&member_id))
+                    != Some(&line.member_name)
+            })
+        {
+            return Err(ClosePeriodPersistenceError::InvalidDecision);
+        }
+
         let posted_purchases = purchases::purchases
             .filter(purchases::household_id.eq(household_id))
             .filter(purchases::status.eq("POSTED"))
             .filter(purchases::occurred_at.ge(period_start_utc(period_start)?))
             .filter(purchases::occurred_at.lt(period_start_utc(period_end)?))
             .for_update()
+            .order(purchases::id.asc())
             .select((purchases::id, purchases::revision))
             .load::<(Uuid, i64)>(&mut *conn)
             .await?;
         validate_purchase_revisions(&decision, posted_purchases)?;
+
+        let pools = public::pools::table
+            .filter(public::pools::household_id.eq(household_id))
+            .select((
+                public::pools::id,
+                public::pools::kind,
+                public::pools::current_funding_version,
+            ))
+            .load::<(Uuid, String, Option<i32>)>(&mut *conn)
+            .await?;
+        let current_versions = pools
+            .iter()
+            .filter_map(|(pool_id, _, version)| version.map(|version| (*pool_id, version)))
+            .collect::<BTreeMap<_, _>>();
+        let rules = public::pool_funding_rules::table
+            .filter(public::pool_funding_rules::household_id.eq(household_id))
+            .select((
+                public::pool_funding_rules::pool_id,
+                public::pool_funding_rules::version,
+                public::pool_funding_rules::owner_member_id,
+                public::pool_funding_rules::settlement_policy,
+            ))
+            .load::<(Uuid, i32, Option<Uuid>, Option<String>)>(&mut *conn)
+            .await?;
+        let rules = rules
+            .into_iter()
+            .map(|(pool_id, version, owner_member_id, settlement_policy)| {
+                ((pool_id, version), (owner_member_id, settlement_policy))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let shares = public::pool_funding_shares::table
+            .filter(public::pool_funding_shares::household_id.eq(household_id))
+            .order_by((
+                public::pool_funding_shares::pool_id.asc(),
+                public::pool_funding_shares::version.asc(),
+                public::pool_funding_shares::member_id.asc(),
+            ))
+            .select((
+                public::pool_funding_shares::pool_id,
+                public::pool_funding_shares::version,
+                public::pool_funding_shares::member_id,
+                public::pool_funding_shares::weight,
+            ))
+            .load::<(Uuid, i32, Uuid, i64)>(&mut *conn)
+            .await?;
+        let mut shares_by_pool = BTreeMap::<(Uuid, i32), Vec<serde_json::Value>>::new();
+        for (pool_id, version, member_id, weight) in shares {
+            if current_versions.get(&pool_id) != Some(&version) {
+                continue;
+            }
+            shares_by_pool
+                .entry((pool_id, version))
+                .or_default()
+                .push(serde_json::json!({
+                    "MemberID": member_id.to_string(),
+                    "Weight": weight,
+                }));
+        }
+        let mut funding_rules = BTreeMap::<String, serde_json::Value>::new();
+        for (pool_id, kind, current_version) in pools {
+            let version = current_version.unwrap_or_default();
+            let (owner_member_id, settlement_policy) = rules
+                .get(&(pool_id, version))
+                .cloned()
+                .unwrap_or_default();
+            let funding_shares = shares_by_pool.remove(&(pool_id, version));
+            funding_rules.insert(
+                pool_id.to_string(),
+                serde_json::json!({
+                    "PoolID": pool_id.to_string(),
+                    "Kind": kind,
+                    "Version": version,
+                    "OwnerMemberID": owner_member_id.map(|id| id.to_string()).unwrap_or_default(),
+                    "SettlementPolicy": settlement_policy.unwrap_or_default(),
+                    "FundingShares": funding_shares,
+                }),
+            );
+        }
+        let funding_snapshot = serde_json::to_value(funding_rules)
+            .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?;
 
         diesel::insert_into(runs::settlement_runs)
             .values((
@@ -255,16 +530,58 @@ fn validate_decision(
     revision: i64,
     actor_id: Uuid,
 ) -> Result<(), ClosePeriodPersistenceError> {
+    let previous_revision = revision
+        .checked_sub(1)
+        .ok_or(ClosePeriodPersistenceError::InvalidDecision)?;
     if decision.period != period
         || decision.event.period != decision.period
         || decision.event.revision != decision.revision
         || parse_uuid(decision.event.actor_id.as_str(), "actor_id")? != actor_id
         || decision.event.changed_fields != ["status"]
-        || revision <= 0
+        || revision <= 1
+        || i64::try_from(decision.revision).ok() != Some(revision)
+        || decision
+            .settlements
+            .iter()
+            .any(|line| !settlement_line_is_valid(line))
+        || decision
+            .settlements
+            .iter()
+            .map(|line| parse_uuid(line.member_id.as_str(), "member_id"))
+            .collect::<Result<std::collections::BTreeSet<_>, _>>()?
+            .len()
+            != decision.settlements.len()
+        || decision.purchase_closures.iter().any(|closure| {
+            i64::try_from(closure.expected_revision)
+                .ok()
+                .and_then(|expected| expected.checked_add(1))
+                != i64::try_from(closure.revision).ok()
+        })
+        || decision.revision.checked_sub(1) != u64::try_from(previous_revision).ok()
     {
         return Err(ClosePeriodPersistenceError::InvalidDecision);
     }
     Ok(())
+}
+
+fn settlement_line_is_valid(line: &bookkeeping_workflows::close_period::SettlementLine) -> bool {
+    if line.member_name.trim().is_empty()
+        || !(0..=1_000_000_000_000).contains(&line.scheduled_yen)
+        || !(0..=1_000_000_000_000).contains(&line.paid_yen)
+        || !(-1_000_000_000_000..=1_000_000_000_000).contains(&line.carry_yen)
+        || !(-1_000_000_000_000..=1_000_000_000_000)
+            .contains(&line.monthly_adjustment_yen)
+        || !(0..=1_000_000_000_000).contains(&line.advance_credit_yen)
+    {
+        return false;
+    }
+    line.scheduled_yen
+        .checked_add(line.carry_yen)
+        .and_then(|amount| amount.checked_add(line.monthly_adjustment_yen))
+        .and_then(|amount| amount.checked_sub(line.paid_yen))
+        .and_then(|amount| amount.checked_sub(line.advance_credit_yen))
+        .filter(|amount| (-3_000_000_000_000..=3_000_000_000_000).contains(amount))
+        == Some(line.amount_due_yen)
 }
 
 fn validate_purchase_revisions(
@@ -282,7 +599,7 @@ fn validate_purchase_revisions(
         })
         .collect::<Result<BTreeMap<_, _>, ClosePeriodPersistenceError>>()?;
     let actual = persisted.into_iter().collect::<BTreeMap<_, _>>();
-    if actual != expected {
+    if actual != expected || actual.len() != decision.purchase_closures.len() {
         return Err(ClosePeriodPersistenceError::StalePurchase);
     }
     Ok(())
