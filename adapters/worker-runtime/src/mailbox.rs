@@ -1,13 +1,8 @@
-use std::{
-    env,
-    error::Error,
-    fmt,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{env, error::Error, fmt, time::Duration};
 
 use async_imap::{Client, types::Fetch};
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, dsl::now};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use diesel::{BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::TryStreamExt;
 use mail_parser::{HeaderName, HeaderValue, MessageParser};
@@ -33,6 +28,7 @@ const MAX_MESSAGES: usize = 1000;
 const MAX_BATCH_BYTES: usize = 50 << 20;
 const MAX_DOCUMENT_BYTES: usize = 20 << 20;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const MAILBOX_LEASE_DURATION: ChronoDuration = ChronoDuration::minutes(5);
 
 #[derive(Clone)]
 pub struct MailboxConfig {
@@ -59,182 +55,300 @@ pub struct MailboxMessage {
     pub rfc822: Vec<u8>,
 }
 
+struct MailboxLease {
+    token: Uuid,
+    cursor: MailboxCursor,
+}
+
+struct PreparedMessage {
+    command: RegisterDocumentCommand,
+    token_hash: [u8; 32],
+}
+
+struct RejectedMessage {
+    household_id: Uuid,
+    created_by: Uuid,
+    uid: u32,
+    token_hash: [u8; 32],
+}
+
 pub async fn poll_database(
     pool: &PgPool,
     store: &ObjectStore,
     config: &MailboxConfig,
 ) -> Result<MailboxBatch, MailboxError> {
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|_| MailboxError("mailbox database connection failed"))?;
-    let uploaded_keys = Arc::new(Mutex::new(Vec::new()));
-    let transaction_keys = Arc::clone(&uploaded_keys);
-    let result = pooled
-        .transaction::<MailboxBatch, MailboxError, _>(async |conn| {
-            use public::{household_events, mailbox_cursors::dsl as cursors};
-            let (uid_validity, uid) = cursors::mailbox_cursors
-                .filter(cursors::mailbox.eq("forwarding"))
-                .for_update()
-                .select((cursors::uid_validity, cursors::uid))
-                .first::<(i64, i64)>(conn)
-                .await
-                .map_err(|_| MailboxError("mailbox cursor load failed"))?;
-            let cursor = MailboxCursor {
-                uid_validity: u32::try_from(uid_validity)
-                    .map_err(|_| MailboxError("mailbox cursor is invalid"))?,
-                uid: u32::try_from(uid).map_err(|_| MailboxError("mailbox cursor is invalid"))?,
-            };
-            let mut batch = poll(config, cursor).await?;
-            let mut rejected_uids = Vec::new();
-            for message in &batch.messages {
-                let Some(token_hash) =
-                    forwarding_token_hash(&message.delivered_to, &config.recipient_base)
-                else {
-                    continue;
-                };
-                let Some((household_id, created_by)) = active_forwarding(conn, &token_hash).await?
-                else {
-                    continue;
-                };
-                let parsed_email = match crate::email::parse_email(&message.rfc822) {
-                    Ok(parsed_email) => parsed_email,
-                    Err(_) => {
-                        if message.rfc822.len() > MAX_DOCUMENT_BYTES
-                            && message.rfc822.len() <= MAX_MESSAGE_BYTES
-                        {
-                            diesel::insert_into(household_events::table)
-                                .values((
-                                    household_events::household_id.eq(household_id),
-                                    household_events::event_type
-                                        .eq("receipt.mailbox_message.rejected"),
-                                    household_events::entity_kind.eq("mailbox_message"),
-                                    household_events::entity_id.eq(Uuid::now_v7()),
-                                    household_events::revision.eq(1_i64),
-                                    household_events::changed_fields
-                                        .eq(vec![Some("status".to_owned())]),
-                                    household_events::payload
-                                        .eq(json!({"status": "rejected", "reason": "invalid_email_size"})),
-                                    household_events::actor_id.eq(created_by),
-                                    household_events::created_at.eq(now),
-                                ))
-                                .execute(conn)
-                                .await
-                                .map_err(|_| MailboxError("mailbox rejection event failed"))?;
-                            rejected_uids.push(message.uid);
-                        }
-                        continue;
-                    }
-                };
-                let attachments = parsed_email.attachments;
-                let (object_key, sha256) = store
-                    .put(household_id, "message/rfc822", &message.rfc822)
-                    .await
-                    .map_err(|_| MailboxError("mailbox message storage failed"))?;
-                if let Ok(mut keys) = transaction_keys.lock() {
-                    keys.push(object_key.clone());
-                }
-                let mut attachment_commands = Vec::with_capacity(attachments.len());
-                for (index, attachment) in attachments.iter().enumerate() {
-                    let (attachment_key, attachment_hash) = store
-                        .put(household_id, &attachment.mime_type, &attachment.data)
-                        .await
-                        .map_err(|_| MailboxError("mailbox attachment storage failed"))?;
-                    if let Ok(mut keys) = transaction_keys.lock() {
-                        keys.push(attachment_key.clone());
-                    }
-                    attachment_commands.push(RegisterDocumentAttachment {
-                        source_kind: "receipt".to_owned(),
-                        original_filename: attachment.filename.clone(),
-                        mime_type: attachment.mime_type.clone(),
-                        sha256: attachment_hash,
-                        object_key: attachment_key,
-                        metadata: json!({}),
-                        provider: "gemini_developer_api".to_owned(),
-                        model: "free".to_owned(),
-                        purpose: "interactive".to_owned(),
-                        idempotency_key: format!(
-                            "mailbox:{}:{}:attachment:{index}",
-                            batch.next.uid_validity, message.uid
-                        ),
-                        request: json!({"purpose": "interactive", "model": "free"}),
-                    });
-                }
-                register_document_in_transaction(
-                    conn,
-                    RegisterDocumentCommand {
-                        household_id,
-                        created_by,
-                        source_kind: "email".to_owned(),
-                        original_filename: String::new(),
-                        mime_type: "message/rfc822".to_owned(),
-                        sha256,
-                        object_key,
-                        analysis_object_key: None,
-                        analysis_mime_type: None,
-                        analysis_transform: None,
-                        metadata: json!({}),
-                        provider: "gemini_developer_api".to_owned(),
-                        model: "free".to_owned(),
-                        purpose: "interactive".to_owned(),
-                        idempotency_key: format!(
-                            "mailbox:{}:{}",
-                            batch.next.uid_validity, message.uid
-                        ),
-                        request: json!({"purpose": "interactive", "model": "free"}),
-                        attachments: attachment_commands,
-                    },
-                )
-                .await
-                .map_err(|_| MailboxError("mailbox document registration failed"))?;
-            }
-            batch.rejected_uids.extend(rejected_uids);
-            let updated =
-                diesel::update(cursors::mailbox_cursors.filter(cursors::mailbox.eq("forwarding")))
-                    .set((
-                        cursors::uid_validity.eq(i64::from(batch.next.uid_validity)),
-                        cursors::uid.eq(i64::from(batch.next.uid)),
-                        cursors::updated_at.eq(now),
-                    ))
-                    .execute(conn)
-                    .await
-                    .map_err(|_| MailboxError("mailbox cursor update failed"))?;
-            if updated != 1 {
-                return Err(MailboxError("mailbox cursor update failed"));
-            }
-            Ok(batch)
-        })
-        .await;
-    if result.is_err() {
-        let keys = uploaded_keys
-            .lock()
-            .map(|mut keys| std::mem::take(&mut *keys))
-            .unwrap_or_default();
-        for key in keys {
-            if object_is_referenced(pool, &key).await {
+    let Some(lease) = acquire_mailbox_lease(pool).await? else {
+        return Ok(MailboxBatch {
+            messages: Vec::new(),
+            rejected_uids: Vec::new(),
+            next: MailboxCursor::default(),
+        });
+    };
+    let work = async {
+        let mut batch = poll(config, lease.cursor).await?;
+        let mut prepared = Vec::new();
+        let mut rejected = Vec::new();
+        for message in &batch.messages {
+            let Some(token_hash) =
+                forwarding_token_hash(&message.delivered_to, &config.recipient_base)
+            else {
                 continue;
+            };
+            let Some((household_id, created_by)) = active_forwarding(pool, &token_hash).await?
+            else {
+                continue;
+            };
+            let parsed_email = match crate::email::parse_email(&message.rfc822) {
+                Ok(parsed_email) => parsed_email,
+                Err(_) => {
+                    if message.rfc822.len() > MAX_DOCUMENT_BYTES
+                        && message.rfc822.len() <= MAX_MESSAGE_BYTES
+                    {
+                        rejected.push(RejectedMessage {
+                            household_id,
+                            created_by,
+                            uid: message.uid,
+                            token_hash,
+                        });
+                    }
+                    continue;
+                }
+            };
+            let (object_key, sha256) = store
+                .put(household_id, "message/rfc822", &message.rfc822)
+                .await
+                .map_err(|_| MailboxError("mailbox message storage failed"))?;
+            let mut attachment_commands = Vec::with_capacity(parsed_email.attachments.len());
+            for (index, attachment) in parsed_email.attachments.iter().enumerate() {
+                let (attachment_key, attachment_hash) = store
+                    .put(household_id, &attachment.mime_type, &attachment.data)
+                    .await
+                    .map_err(|_| MailboxError("mailbox attachment storage failed"))?;
+                attachment_commands.push(RegisterDocumentAttachment {
+                    source_kind: "receipt".to_owned(),
+                    original_filename: attachment.filename.clone(),
+                    mime_type: attachment.mime_type.clone(),
+                    sha256: attachment_hash,
+                    object_key: attachment_key,
+                    metadata: json!({}),
+                    provider: "gemini_developer_api".to_owned(),
+                    model: "free".to_owned(),
+                    purpose: "interactive".to_owned(),
+                    idempotency_key: format!(
+                        "mailbox:{}:{}:attachment:{index}",
+                        batch.next.uid_validity, message.uid
+                    ),
+                    request: json!({"purpose": "interactive", "model": "free"}),
+                });
             }
-            if store.delete(&key).await.is_err() {
-                tracing::warn!("mailbox orphaned object cleanup failed");
+            prepared.push(PreparedMessage {
+                command: RegisterDocumentCommand {
+                    household_id,
+                    created_by,
+                    source_kind: "email".to_owned(),
+                    original_filename: String::new(),
+                    mime_type: "message/rfc822".to_owned(),
+                    sha256,
+                    object_key,
+                    analysis_object_key: None,
+                    analysis_mime_type: None,
+                    analysis_transform: None,
+                    metadata: json!({}),
+                    provider: "gemini_developer_api".to_owned(),
+                    model: "free".to_owned(),
+                    purpose: "interactive".to_owned(),
+                    idempotency_key: format!("mailbox:{}:{}", batch.next.uid_validity, message.uid),
+                    request: json!({"purpose": "interactive", "model": "free"}),
+                    attachments: attachment_commands,
+                },
+                token_hash,
+            });
+        }
+        batch
+            .rejected_uids
+            .extend(rejected.iter().map(|message| message.uid));
+        persist_mailbox_batch(pool, lease.token, batch, prepared, rejected).await
+    };
+    tokio::pin!(work);
+    let mut heartbeat = tokio::time::interval(Duration::from_secs(30));
+    heartbeat.tick().await;
+    let result = loop {
+        tokio::select! {
+            biased;
+            result = &mut work => break result,
+            _ = heartbeat.tick() => {
+                if !renew_mailbox_lease(pool, lease.token).await {
+                    break Err(MailboxError("mailbox lease ownership was lost"));
+                }
             }
         }
+    };
+
+    if result.is_err() {
+        release_mailbox_lease(pool, lease.token).await;
     }
     result
 }
 
-async fn object_is_referenced(pool: &PgPool, object_key: &str) -> bool {
-    use public::source_documents::dsl as documents;
+async fn renew_mailbox_lease(pool: &PgPool, token: Uuid) -> bool {
+    use public::mailbox_cursors::dsl as cursors;
     let Ok(mut pooled) = pool.get().await else {
-        return true;
+        return false;
     };
-    documents::source_documents
-        .filter(documents::object_key.eq(object_key))
-        .select(documents::id)
-        .first::<Uuid>(&mut *pooled)
+    let now = Utc::now();
+    diesel::update(
+        cursors::mailbox_cursors
+            .filter(cursors::mailbox.eq("forwarding"))
+            .filter(cursors::lease_token.eq(Some(token))),
+    )
+    .set((
+        cursors::lease_expires_at.eq(Some(now + MAILBOX_LEASE_DURATION)),
+        cursors::updated_at.eq(now),
+    ))
+    .execute(&mut *pooled)
+    .await
+    .is_ok_and(|updated| updated == 1)
+}
+
+async fn acquire_mailbox_lease(pool: &PgPool) -> Result<Option<MailboxLease>, MailboxError> {
+    use public::mailbox_cursors::dsl as cursors;
+    let mut pooled = pool
+        .get()
         .await
-        .optional()
-        .map(|document| document.is_some())
-        .unwrap_or(true)
+        .map_err(|_| MailboxError("mailbox database connection failed"))?;
+    let now = Utc::now();
+    let token = Uuid::now_v7();
+    let claimed = diesel::update(
+        cursors::mailbox_cursors
+            .filter(cursors::mailbox.eq("forwarding"))
+            .filter(
+                cursors::lease_expires_at
+                    .is_null()
+                    .or(cursors::lease_expires_at.lt(now)),
+            ),
+    )
+    .set((
+        cursors::lease_token.eq(Some(token)),
+        cursors::lease_expires_at.eq(Some(now + MAILBOX_LEASE_DURATION)),
+        cursors::updated_at.eq(now),
+    ))
+    .returning((cursors::uid_validity, cursors::uid))
+    .get_result::<(i64, i64)>(&mut *pooled)
+    .await
+    .optional()
+    .map_err(|_| MailboxError("mailbox cursor lease failed"))?;
+    let Some((uid_validity, uid)) = claimed else {
+        return Ok(None);
+    };
+    Ok(Some(MailboxLease {
+        token,
+        cursor: MailboxCursor {
+            uid_validity: u32::try_from(uid_validity)
+                .map_err(|_| MailboxError("mailbox cursor is invalid"))?,
+            uid: u32::try_from(uid).map_err(|_| MailboxError("mailbox cursor is invalid"))?,
+        },
+    }))
+}
+
+async fn persist_mailbox_batch(
+    pool: &PgPool,
+    lease_token: Uuid,
+    batch: MailboxBatch,
+    prepared: Vec<PreparedMessage>,
+    rejected: Vec<RejectedMessage>,
+) -> Result<MailboxBatch, MailboxError> {
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|_| MailboxError("mailbox database connection failed"))?;
+    (*pooled)
+        .transaction::<MailboxBatch, MailboxError, _>(async move |conn| {
+            use public::{household_events, mailbox_cursors::dsl as cursors};
+            for message in rejected {
+                let Some((household_id, created_by)) =
+                    active_forwarding_in_transaction(conn, &message.token_hash).await?
+                else {
+                    return Err(MailboxError("mailbox forwarding was revoked"));
+                };
+                if household_id != message.household_id || created_by != message.created_by {
+                    return Err(MailboxError("mailbox forwarding changed during polling"));
+                }
+                diesel::insert_into(household_events::table)
+                    .values((
+                        household_events::household_id.eq(message.household_id),
+                        household_events::event_type.eq("receipt.mailbox_message.rejected"),
+                        household_events::entity_kind.eq("mailbox_message"),
+                        household_events::entity_id.eq(Uuid::now_v7()),
+                        household_events::revision.eq(1_i64),
+                        household_events::changed_fields.eq(vec![Some("status".to_owned())]),
+                        household_events::payload
+                            .eq(json!({"status": "rejected", "reason": "invalid_email_size"})),
+                        household_events::actor_id.eq(message.created_by),
+                        household_events::created_at.eq(Utc::now()),
+                    ))
+                    .execute(conn)
+                    .await
+                    .map_err(|_| MailboxError("mailbox rejection event failed"))?;
+            }
+            for message in prepared {
+                let Some((household_id, created_by)) =
+                    active_forwarding_in_transaction(conn, &message.token_hash).await?
+                else {
+                    return Err(MailboxError("mailbox forwarding was revoked"));
+                };
+                if household_id != message.command.household_id
+                    || created_by != message.command.created_by
+                {
+                    return Err(MailboxError("mailbox forwarding changed during polling"));
+                }
+                register_document_in_transaction(conn, message.command)
+                    .await
+                    .map_err(|_| MailboxError("mailbox document registration failed"))?;
+            }
+            let updated = diesel::update(
+                cursors::mailbox_cursors
+                    .filter(cursors::mailbox.eq("forwarding"))
+                    .filter(cursors::lease_token.eq(Some(lease_token))),
+            )
+            .set((
+                cursors::uid_validity.eq(i64::from(batch.next.uid_validity)),
+                cursors::uid.eq(i64::from(batch.next.uid)),
+                cursors::lease_token.eq(None::<Uuid>),
+                cursors::lease_expires_at.eq(None::<DateTime<Utc>>),
+                cursors::updated_at.eq(Utc::now()),
+            ))
+            .execute(conn)
+            .await
+            .map_err(|_| MailboxError("mailbox cursor update failed"))?;
+            if updated != 1 {
+                return Err(MailboxError("mailbox lease ownership was lost"));
+            }
+            Ok(batch)
+        })
+        .await
+}
+
+async fn release_mailbox_lease(pool: &PgPool, token: Uuid) {
+    use public::mailbox_cursors::dsl as cursors;
+    let Ok(mut pooled) = pool.get().await else {
+        return;
+    };
+    if diesel::update(
+        cursors::mailbox_cursors
+            .filter(cursors::mailbox.eq("forwarding"))
+            .filter(cursors::lease_token.eq(Some(token))),
+    )
+    .set((
+        cursors::lease_token.eq(None::<Uuid>),
+        cursors::lease_expires_at.eq(None::<DateTime<Utc>>),
+        cursors::updated_at.eq(Utc::now()),
+    ))
+    .execute(&mut *pooled)
+    .await
+    .is_err()
+    {
+        tracing::warn!("mailbox lease release failed");
+    }
 }
 
 pub async fn run(
@@ -270,6 +384,25 @@ pub async fn run(
 }
 
 async fn active_forwarding(
+    pool: &PgPool,
+    token_hash: &[u8; 32],
+) -> Result<Option<(Uuid, Uuid)>, MailboxError> {
+    use public::household_mail_forwardings::dsl as forwardings;
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|_| MailboxError("mailbox database connection failed"))?;
+    forwardings::household_mail_forwardings
+        .filter(forwardings::token_hash.eq(token_hash.to_vec()))
+        .filter(forwardings::revoked_at.is_null())
+        .select((forwardings::household_id, forwardings::created_by))
+        .first::<(Uuid, Uuid)>(&mut *pooled)
+        .await
+        .optional()
+        .map_err(|_| MailboxError("mailbox forwarding lookup failed"))
+}
+
+async fn active_forwarding_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
     token_hash: &[u8; 32],
 ) -> Result<Option<(Uuid, Uuid)>, MailboxError> {
@@ -363,6 +496,106 @@ impl MailboxConfig {
             max_message_bytes,
             max_messages,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{DateTime, Utc};
+    use diesel::{ExpressionMethods, QueryDsl};
+    use diesel_async::RunQueryDsl;
+
+    use super::{acquire_mailbox_lease, release_mailbox_lease};
+    use horse_postgres_common::{connect, schema::public::mailbox_cursors::dsl as cursors};
+
+    #[tokio::test]
+    async fn forwarding_cursor_lease_is_exclusive_and_reacquirable() {
+        let Ok(database_url) = std::env::var("HORSE_TEST_DATABASE_URL") else {
+            eprintln!("HORSE_TEST_DATABASE_URL is unset; skipping the PostgreSQL lease check");
+            return;
+        };
+        let pool = connect(database_url)
+            .await
+            .expect("test database connection should succeed");
+        let mut connection = pool
+            .get()
+            .await
+            .expect("test database connection should be available");
+        let saved_cursor = cursors::mailbox_cursors
+            .filter(cursors::mailbox.eq("forwarding"))
+            .select((
+                cursors::uid_validity,
+                cursors::uid,
+                cursors::lease_token,
+                cursors::lease_expires_at,
+                cursors::updated_at,
+            ))
+            .first::<(
+                i64,
+                i64,
+                Option<uuid::Uuid>,
+                Option<DateTime<Utc>>,
+                DateTime<Utc>,
+            )>(&mut *connection)
+            .await
+            .expect("forwarding cursor should exist after migrations");
+        diesel::update(cursors::mailbox_cursors.filter(cursors::mailbox.eq("forwarding")))
+            .set((
+                cursors::uid_validity.eq(0_i64),
+                cursors::uid.eq(0_i64),
+                cursors::lease_token.eq(None::<uuid::Uuid>),
+                cursors::lease_expires_at.eq(None::<DateTime<Utc>>),
+                cursors::updated_at.eq(Utc::now()),
+            ))
+            .execute(&mut *connection)
+            .await
+            .expect("forwarding cursor should be reset for the concurrency check");
+        drop(connection);
+
+        let check = async {
+            let (first, second) =
+                tokio::join!(acquire_mailbox_lease(&pool), acquire_mailbox_lease(&pool));
+            let owned_token = match (first, second) {
+                (Ok(Some(lease)), Ok(None)) | (Ok(None), Ok(Some(lease))) => Some(lease.token),
+                (Ok(Some(first)), Ok(Some(second))) => {
+                    release_mailbox_lease(&pool, first.token).await;
+                    release_mailbox_lease(&pool, second.token).await;
+                    None
+                }
+                _ => None,
+            };
+            let Some(owned_token) = owned_token else {
+                return false;
+            };
+            release_mailbox_lease(&pool, owned_token).await;
+            let Ok(Some(reacquired)) = acquire_mailbox_lease(&pool).await else {
+                return false;
+            };
+            release_mailbox_lease(&pool, reacquired.token).await;
+            true
+        }
+        .await;
+
+        let mut connection = pool
+            .get()
+            .await
+            .expect("test database connection should be available for restoration");
+        diesel::update(cursors::mailbox_cursors.filter(cursors::mailbox.eq("forwarding")))
+            .set((
+                cursors::uid_validity.eq(saved_cursor.0),
+                cursors::uid.eq(saved_cursor.1),
+                cursors::lease_token.eq(saved_cursor.2),
+                cursors::lease_expires_at.eq(saved_cursor.3),
+                cursors::updated_at.eq(saved_cursor.4),
+            ))
+            .execute(&mut *connection)
+            .await
+            .expect("forwarding cursor state should be restored");
+
+        assert!(
+            check,
+            "concurrent lease acquisition must have exactly one owner and permit reacquisition after release"
+        );
     }
 }
 

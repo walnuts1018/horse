@@ -442,6 +442,8 @@ pub mod public {
             mailbox -> Text,
             uid_validity -> Int8,
             uid -> Int8,
+            lease_token -> Nullable<Uuid>,
+            lease_expires_at -> Nullable<Timestamptz>,
             updated_at -> Timestamptz,
         }
     }

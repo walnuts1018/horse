@@ -1,4 +1,4 @@
-h1:lvfG71nJY18C/iwL5OnH3bYjVCIGBTxntkKq+KZTBn0=
+h1:lkWFHbmCjAYN6O8unfiPIj5aYvxkgj10ecGb9BiclDQ=
 20261015000000_postpurchase.sql h1:Nm8PGsWtSwcoTotZgNgZPFEQ1ymTX4nJ60dXZiYac2g=
 20261015010000_household_mail_forwardings.sql h1:unQMFzawqE4eBgFrj26HLsG507Cuij1yzJIo59rN+qA=
 20261015020000_gemini_quota.sql h1:2demcZmqwpq9EUnpz7nx4WVQT/CS6JtpSVrdMBxqoiE=
@@ -24,3 +24,4 @@ h1:lvfG71nJY18C/iwL5OnH3bYjVCIGBTxntkKq+KZTBn0=
 20261016140000_shared_purchase_drafts.sql h1:p4w3yzLez2r1hj1tLWmhIBk/EgVSFeob5pFiJ7OFIdc=
 20261016150000_purchase_and_period_lifecycle.sql h1:aI6Js8uHALKIv9/FjDOCylZmfYOM/W4kOJnBs0EZyT8=
 20261016160000_household_event_stream_cursor.sql h1:ce3fKm71Pc3c80NzD+Dc5v7h1nSAb6/XteYPm87ag4Q=
+20261016170000_mailbox_cursor_lease.sql h1:IZtlfS8USjCgFPT7ch7vOBzwSPeO8qUlAs2JhlHleYI=
