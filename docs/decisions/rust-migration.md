@@ -1,5 +1,7 @@
 # Rust移行
 
+[Domain Modeling Made Functional](../dmmf/summary.md)も参考にする。
+
 ## 対象範囲
 
 Frontendは現行のTypeScript実装を維持します。BackendのGo実装はGraphQL API、REST API、Worker、mailbox ingestion、batch、評価CLIを含めてRustへ移行します。GraphQL Schemaを公開契約として維持し、APIとWorkerは別の実行バイナリにします。Domain Modeling Made Functionalの考え方に沿い、Bounded ContextごとにPure Domain、Workflow、Infrastructure Adapterを分離します。

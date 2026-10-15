@@ -87,6 +87,12 @@ pub struct PoolAllocation {
     pub funding: MemberFundingBasis,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PurchaseItem {
+    pub id: ItemId,
+    pub amount: Yen,
+}
+
 /// 会員負担snapshotの算出に使うfunding rule情報。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberFundingBasis {
@@ -105,7 +111,7 @@ pub struct MemberWeight {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Payment {
     pub account_id: AccountId,
-    pub amount: Yen,
+    pub amount: PositiveYen,
     pub funding: PaymentFundingBasis,
 }
 
@@ -125,6 +131,7 @@ pub struct PostPurchaseCommand {
     pub expected_revision: u64,
     pub accounting_period_open: bool,
     pub total: PositiveYen,
+    pub items: Vec<PurchaseItem>,
     pub allocations: Vec<PoolAllocation>,
     pub payments: Vec<Payment>,
 }
@@ -192,6 +199,12 @@ pub enum PostPurchaseError {
     AmountOverflow,
     RevisionMismatch { expected: u64, actual: u64 },
     PurchaseNotDraft,
+    MissingPayments,
+    ItemTotalMismatch,
+    ItemAllocationTotalMismatch { item_id: ItemId },
+    DuplicateItemId { item_id: ItemId },
+    DuplicateItemPoolAllocation { item_id: ItemId, pool_id: PoolId },
+    UnknownItemAllocation { item_id: ItemId },
     AllocationTotalMismatch,
     PaymentTotalMismatch,
     EmptyAllocation,
@@ -218,8 +231,56 @@ pub fn decide_post_purchase(
     if command.draft.status != PurchaseStatus::Draft {
         return Err(PostPurchaseError::PurchaseNotDraft);
     }
+    if command.payments.is_empty() {
+        return Err(PostPurchaseError::MissingPayments);
+    }
     if command.allocations.is_empty() {
         return Err(PostPurchaseError::EmptyAllocation);
+    }
+
+    let mut item_amounts = BTreeMap::<ItemId, Yen>::new();
+    for item in &command.items {
+        if item_amounts.insert(item.id.clone(), item.amount).is_some() {
+            return Err(PostPurchaseError::DuplicateItemId {
+                item_id: item.id.clone(),
+            });
+        }
+    }
+    if sum_yen(command.items.iter().map(|item| item.amount))? != command.total.yen() {
+        return Err(PostPurchaseError::ItemTotalMismatch);
+    }
+
+    let mut item_allocation_totals = BTreeMap::<ItemId, Yen>::new();
+    let mut item_pool_pairs = std::collections::BTreeSet::new();
+    for allocation in &command.allocations {
+        if !item_amounts.contains_key(&allocation.item_id) {
+            return Err(PostPurchaseError::UnknownItemAllocation {
+                item_id: allocation.item_id.clone(),
+            });
+        }
+        if !item_pool_pairs.insert((allocation.item_id.clone(), allocation.pool_id.clone())) {
+            return Err(PostPurchaseError::DuplicateItemPoolAllocation {
+                item_id: allocation.item_id.clone(),
+                pool_id: allocation.pool_id.clone(),
+            });
+        }
+        let allocated = item_allocation_totals
+            .get(&allocation.item_id)
+            .copied()
+            .unwrap_or(Yen::new(0).expect("0 is in range"));
+        item_allocation_totals.insert(
+            allocation.item_id.clone(),
+            allocated
+                .checked_add(allocation.amount)
+                .map_err(|_| PostPurchaseError::AmountOverflow)?,
+        );
+    }
+    for (item_id, amount) in &item_amounts {
+        if item_allocation_totals.get(item_id).copied().unwrap_or(Yen::new(0).expect("0 is in range")) != *amount {
+            return Err(PostPurchaseError::ItemAllocationTotalMismatch {
+                item_id: item_id.clone(),
+            });
+        }
     }
 
     let allocation_total = sum_yen(
@@ -232,7 +293,7 @@ pub fn decide_post_purchase(
         return Err(PostPurchaseError::AllocationTotalMismatch);
     }
     if !command.payments.is_empty() {
-        let payment_total = sum_yen(command.payments.iter().map(|payment| payment.amount))?;
+        let payment_total = sum_yen(command.payments.iter().map(|payment| payment.amount.yen()))?;
         if payment_total != command.total.yen() {
             return Err(PostPurchaseError::PaymentTotalMismatch);
         }
@@ -332,8 +393,7 @@ pub fn decide_post_purchase(
                 side: Side::Credit,
                 account_id: Some(payment.account_id.clone()),
                 pool_id: None,
-                amount: PositiveYen::new(payment.amount.value())
-                    .map_err(|_| PostPurchaseError::PaymentTotalMismatch)?,
+                amount: payment.amount,
                 memo: "Payment",
             });
         }
@@ -441,10 +501,14 @@ mod tests {
             expected_revision: 4,
             accounting_period_open: true,
             total: PositiveYen::new(101).unwrap(),
+            items: vec![PurchaseItem {
+                id: id(ItemId::new, "item-1"),
+                amount: Yen::new(101).unwrap(),
+            }],
             allocations: vec![PoolAllocation {
                 item_id: id(ItemId::new, "item-1"),
                 pool_id: pool_id.clone(),
-                amount: Yen::new(101).unwrap(),
+                amount: PositiveYen::new(101).unwrap(),
                 funding: MemberFundingBasis {
                     rule_version: 2,
                     weights: vec![
@@ -515,7 +579,7 @@ mod tests {
         unbalanced.allocations[0].amount = Yen::new(100).unwrap();
         assert_eq!(
             decide_post_purchase(unbalanced),
-            Err(PostPurchaseError::AllocationTotalMismatch)
+            Err(PostPurchaseError::ItemAllocationTotalMismatch { .. })
         );
 
         let mut closed = command();
@@ -530,15 +594,20 @@ mod tests {
     fn posting_aggregates_journal_by_pool_and_keeps_item_snapshots_separate() {
         let mut command = command();
         command.total = PositiveYen::new(150).unwrap();
+        command.items[0].amount = Yen::new(101).unwrap();
         command.allocations[0].amount = Yen::new(101).unwrap();
         let mut second_item = command.allocations[0].clone();
         second_item.item_id = id(ItemId::new, "item-2");
         second_item.amount = Yen::new(49).unwrap();
         command.allocations.push(second_item);
-        command.payments[0].amount = Yen::new(75).unwrap();
+        command.items.push(PurchaseItem {
+            id: id(ItemId::new, "item-2"),
+            amount: Yen::new(49).unwrap(),
+        });
+        command.payments[0].amount = PositiveYen::new(75).unwrap();
         let mut second_payment = command.payments[0].clone();
         second_payment.account_id = id(AccountId::new, "account-2");
-        second_payment.amount = Yen::new(75).unwrap();
+        second_payment.amount = PositiveYen::new(75).unwrap();
         command.payments.push(second_payment);
 
         let decision = decide_post_purchase(command).unwrap();
