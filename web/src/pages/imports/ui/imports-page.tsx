@@ -13,16 +13,16 @@ import { useEvidencePreview } from "../model/evidence-preview";
 import {
   asRecord,
   defaultUploadSourceKind,
-  defaultImportModel,
   isQuotaLimitedExtraction,
   importModels,
+  importModelSelectionForQuota,
   isImportModel,
   isSupportedFile,
   proImportModel,
   withStableEvidenceKeys,
   type DocumentFilters,
   type DocumentReview,
-  type ImportModel,
+  type ImportModelChoice,
   type PendingUpload,
   type StatementEntry,
   type StatementSourceKind,
@@ -71,10 +71,7 @@ export function ImportsPage({
     return () => window.cancelAnimationFrame(frame);
   }, [captureRequested, onCaptureHandled]);
   const [files, setFiles] = useState<PendingUpload[]>([]);
-  const [importModelChoice, setImportModelChoice] = useState<{
-    model: ImportModel;
-    quotaDocumentScope: string;
-  }>();
+  const [importModelChoice, setImportModelChoice] = useState<ImportModelChoice>();
   // 親への未保存通知は effect で状態を push せず、変化したイベントから直接行う
   const onUnsavedChangesRef = useRef(onUnsavedChanges);
   const reportedUnsavedChanges = useRef(false);
@@ -128,19 +125,14 @@ export function ImportsPage({
   } = useImportDocuments(household.id, documentFilters, setMessage);
   const [pending, setPending] = useState(false);
   const quotaLimitedDocuments = documents.filter(isQuotaLimitedExtraction);
-  const quotaLimitedDocumentIDs = JSON.stringify(
+  const quotaModelSelection = importModelSelectionForQuota(
     quotaLimitedDocuments.map((document) => document.id),
+    importModelChoice,
   );
-  const importModelForUpload =
-    importModelChoice?.quotaDocumentScope === quotaLimitedDocumentIDs
-      ? importModelChoice.model
-      : quotaLimitedDocuments.length > 0
-        ? proImportModel
-        : defaultImportModel;
+  const importModelForUpload = quotaModelSelection.model;
+  const quotaLimitedDocumentIDs = quotaModelSelection.quotaDocumentScope;
   const selectedImportModel = importModels.find((model) => model.value === importModelForUpload);
-  const importModelWasAutoSelectedForQuota =
-    quotaLimitedDocuments.length > 0 &&
-    importModelChoice?.quotaDocumentScope !== quotaLimitedDocumentIDs;
+  const importModelWasAutoSelectedForQuota = quotaModelSelection.autoSelectedForQuota;
   const selectedDocumentID = useRef(selected);
   useEffect(() => {
     selectedDocumentID.current = selected;

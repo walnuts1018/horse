@@ -60,9 +60,25 @@ export const importModels = [
 ] as const;
 
 export type ImportModel = (typeof importModels)[number]["value"];
+export type ImportModelChoice = { model: ImportModel; quotaDocumentScope: string };
 
 export const defaultImportModel: ImportModel = "gemini-3.8-flash";
 export const proImportModel: ImportModel = "gemini-3.1-pro-preview";
+
+export function importModelSelectionForQuota(
+  quotaLimitedDocumentIDs: readonly string[],
+  choice?: ImportModelChoice,
+) {
+  const quotaDocumentScope = JSON.stringify(quotaLimitedDocumentIDs);
+  if (choice?.quotaDocumentScope === quotaDocumentScope) {
+    return { model: choice.model, quotaDocumentScope, autoSelectedForQuota: false };
+  }
+  return {
+    model: quotaLimitedDocumentIDs.length > 0 ? proImportModel : defaultImportModel,
+    quotaDocumentScope,
+    autoSelectedForQuota: quotaLimitedDocumentIDs.length > 0,
+  };
+}
 
 const quotaLimitedExtractionErrorCodes = new Set(["rate_limited", "quota_reservation_deferred"]);
 

@@ -4,6 +4,7 @@ import {
   canDeleteDocument,
   canReclassifyAttachment,
   defaultUploadSourceKind,
+  importModelSelectionForQuota,
   isQuotaLimitedExtraction,
   parseDocumentFilters,
   serializeDocumentFilters,
@@ -29,6 +30,32 @@ describe("アップロード時の原本種別", () => {
     expect(uploadSourceKinds(eml)).toEqual([]);
     expect(defaultUploadSourceKind(pdf)).toBe("receipt");
     expect(uploadSourceKinds(pdf)).toEqual(["receipt", "order", "card", "bank"]);
+  });
+});
+
+describe("利用上限到達後のモデル選択", () => {
+  it("以前選択した無料モデルよりProを優先する", () => {
+    const selection = importModelSelectionForQuota(["limited-document"], {
+      model: "gemini-3.5-flash-lite",
+      quotaDocumentScope: "[]",
+    });
+
+    expect(selection).toMatchObject({
+      model: "gemini-3.1-pro-preview",
+      autoSelectedForQuota: true,
+    });
+  });
+
+  it("上限到達後にユーザーが再選択したモデルを保持する", () => {
+    const selection = importModelSelectionForQuota(["limited-document"], {
+      model: "gemini-3.1-flash-lite",
+      quotaDocumentScope: '["limited-document"]',
+    });
+
+    expect(selection).toMatchObject({
+      model: "gemini-3.1-flash-lite",
+      autoSelectedForQuota: false,
+    });
   });
 });
 
