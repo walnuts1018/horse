@@ -14,5 +14,6 @@ horse-auth = { path = "../identity" }
 horse-graphql-api = { path = "../graphql" }
 horse-postgres-common = { path = "../../platform/postgres-common" }
 serde_json = { workspace = true }
+serde = { workspace = true }
 tracing = { workspace = true }
 url = "2"
