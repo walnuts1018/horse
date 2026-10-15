@@ -48,6 +48,7 @@ pub enum RecordRepaymentPersistenceError {
     NumericOutOfRange(&'static str),
     AccountingPeriodClosed,
     LoanNotFound,
+    MemberNotFound,
     LoanDirectionMismatch,
     RepaymentExceedsOutstanding,
     AccountNotFound,
@@ -120,6 +121,7 @@ pub async fn persist_record_repayment(
                 .await
                 .optional()?
                 .ok_or(RecordRepaymentPersistenceError::LoanNotFound)?;
+            validate_active_members(&mut *conn, household_id, actor_id, &decision).await?;
             let inserted = diesel::insert_into(idem::idempotency_records)
                 .values((
                     idem::household_id.eq(household_id),

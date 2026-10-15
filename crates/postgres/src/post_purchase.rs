@@ -66,6 +66,54 @@ pub async fn persist_post_purchase(
         .await
 }
 
+pub async fn find_idempotent_post_purchase(
+    pool: &PgPool,
+    household_id: Uuid,
+    idempotency_key: &str,
+    request_fingerprint: [u8; 32],
+) -> Result<Option<PersistedPostPurchase>, PostPurchasePersistenceError> {
+    use public::idempotency_records::dsl as idem;
+    use public::journals::dsl as journals;
+    use public::ledger_entries::dsl as ledger;
+
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| PostPurchasePersistenceError::Pool(error.to_string()))?;
+    let existing = idem::idempotency_records
+        .filter(idem::household_id.eq(household_id))
+        .filter(idem::operation.eq(OPERATION))
+        .filter(idem::key.eq(idempotency_key))
+        .select((idem::request_fingerprint, idem::resource_kind, idem::resource_id))
+        .first::<(Vec<u8>, String, Uuid)>(&mut *conn)
+        .await
+        .optional()?;
+    let Some((fingerprint, resource_kind, purchase_id)) = existing else {
+        return Ok(None);
+    };
+    if fingerprint.as_slice() != request_fingerprint || resource_kind != "purchase" {
+        return Err(PostPurchasePersistenceError::IdempotencyConflict);
+    }
+    let journal_id = journals::journals
+        .filter(journals::household_id.eq(household_id))
+        .filter(journals::source_kind.eq("purchase"))
+        .filter(journals::source_id.eq(purchase_id))
+        .select(journals::id)
+        .first::<Uuid>(&mut *conn)
+        .await?;
+    let ledger_entry_id = ledger::ledger_entries
+        .filter(ledger::household_id.eq(household_id))
+        .filter(ledger::journal_id.eq(journal_id))
+        .select(ledger::id)
+        .first::<Uuid>(&mut *conn)
+        .await?;
+    Ok(Some(PersistedPostPurchase {
+        purchase_id: purchase_id.to_string(),
+        journal_id: journal_id.to_string(),
+        ledger_entry_id: ledger_entry_id.to_string(),
+    }))
+}
+
 pub async fn persist_post_purchase_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
     input: PersistPostPurchase,

@@ -627,7 +627,12 @@ fn transfer_persistence_error(
         | E::MemberNotFound
         | E::AccountNotFound
         | E::PoolNotFound
-        | E::LoanNotFound => Ok(not_found_transfer_error().into()),
+        | E::LoanNotFound
+        | E::SourceDocumentNotFound
+        | E::StatementReferenceNotFound => Ok(not_found_transfer_error().into()),
+        E::StatementAlreadyConfirmed => {
+            Ok(conflict_transfer_error().into())
+        }
         E::InvalidUuid(_)
         | E::InvalidIdempotencyKey
         | E::NumericOutOfRange(_)
@@ -636,6 +641,9 @@ fn transfer_persistence_error(
         | E::InvalidAccountKind
         | E::AccountWithoutPool
         | E::AccountOwnershipMismatch
+        | E::SourceIsNotBankStatement
+        | E::StatementExtractionUnavailable
+        | E::StatementDoesNotMatchTransfer
         | E::InvalidDecision => Ok(bad_transfer_error().into()),
         E::Pool(_) | E::Database(_) => Err(internal_error(error)),
     }
@@ -647,13 +655,21 @@ fn repayment_persistence_error(
     use postgres_repayment::RecordRepaymentPersistenceError as E;
     match error {
         E::IdempotencyConflict | E::AccountingPeriodClosed => Ok(conflict_repayment_error().into()),
-        E::LoanNotFound => Ok(not_found_repayment_error().into()),
+        E::StatementAlreadyConfirmed => Ok(conflict_repayment_error().into()),
+        E::LoanNotFound | E::SourceDocumentNotFound | E::StatementReferenceNotFound => {
+            Ok(not_found_repayment_error().into())
+        }
         E::InvalidUuid(_)
         | E::InvalidPeriod
         | E::InvalidIdempotencyKey
         | E::NumericOutOfRange(_)
         | E::LoanDirectionMismatch
         | E::RepaymentExceedsOutstanding
+        | E::AccountNotFound
+        | E::InvalidAccountKind
+        | E::SourceIsNotBankStatement
+        | E::StatementExtractionUnavailable
+        | E::StatementDoesNotMatchTransfer
         | E::InvalidDecision => Ok(bad_repayment_error().into()),
         E::Pool(_) | E::Database(_) => Err(internal_error(error)),
     }

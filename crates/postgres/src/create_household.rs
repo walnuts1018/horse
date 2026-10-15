@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use diesel::{
-    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
+    ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, dsl::now,
+    result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use household_workflows::create_household::{

@@ -14,11 +14,14 @@ pub mod card_last4;
 pub mod catalog_mutations;
 pub mod category;
 pub mod funding;
+pub mod financial_mutations;
+pub mod household_lifecycle;
 pub mod household_membership;
 pub mod ledger_entry;
 pub mod member_pool;
 pub mod pagination;
 pub mod policy_mutations;
+pub mod purchase_mutations;
 pub mod scalars;
 pub use scalars::{DateTime, Long};
 

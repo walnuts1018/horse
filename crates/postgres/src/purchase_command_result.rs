@@ -91,8 +91,8 @@ pub async fn load_purchase_command_result(
         purchase_allocations::dsl as allocations, purchase_corrections::dsl as corrections,
         purchase_item_tags::dsl as item_tags, purchase_items::dsl as items,
         purchase_payments::dsl as payments, purchases::dsl as purchases,
-        source_confirmations::dsl as confirmations,
-        source_documents::dsl as documents, tags::dsl as tags,
+        source_confirmations::dsl as confirmations, source_documents::dsl as documents,
+        tags::dsl as tags,
     };
 
     let mut conn = pool
@@ -196,11 +196,15 @@ pub async fn load_purchase_command_result(
             .filter(corrections::household_id.eq(household_id))
             .filter(corrections::purchase_id.eq(purchase_id))
             .filter(corrections::item_id.eq(Some(row.0)))
-            .select(diesel::dsl::sum(corrections::amount_delta_yen))
-            .first::<Option<i64>>(&mut *conn)
+            .select(corrections::amount_delta_yen)
+            .load::<i64>(&mut *conn)
             .await?
-            .unwrap_or_default();
-        let remaining_refundable_amount_yen = row.2.checked_add(item_correction_amount)
+            .into_iter()
+            .try_fold(0_i64, |total, value| total.checked_add(value))
+            .ok_or(PurchaseCommandResultError::NumericOutOfRange)?;
+        let remaining_refundable_amount_yen = row
+            .2
+            .checked_add(item_correction_amount)
             .ok_or(PurchaseCommandResultError::NumericOutOfRange)?;
         item_results.push(PurchaseItemCommandResult {
             id: row.0,
@@ -245,16 +249,26 @@ pub async fn load_purchase_command_result(
         ))
         .load::<(Uuid, String, String, Option<String>, Option<Uuid>, i64)>(&mut *conn)
         .await?;
-    if payment_rows.is_empty() && let Some(account_id) = base.8 {
+    if payment_rows.is_empty()
+        && let Some(account_id) = base.8
+    {
         if let Some(account) = accounts::accounts
             .filter(accounts::household_id.eq(household_id))
             .filter(accounts::id.eq(account_id))
-            .select((accounts::id, accounts::name, accounts::kind, accounts::card_last4, accounts::pool_id))
+            .select((
+                accounts::id,
+                accounts::name,
+                accounts::kind,
+                accounts::card_last4,
+                accounts::pool_id,
+            ))
             .first::<(Uuid, String, String, Option<String>, Option<Uuid>)>(&mut *conn)
             .await
             .optional()?
         {
-            payment_rows.push((account.0, account.1, account.2, account.3, account.4, total_yen));
+            payment_rows.push((
+                account.0, account.1, account.2, account.3, account.4, total_yen,
+            ));
         }
     }
     let payment_results = payment_rows
@@ -278,7 +292,9 @@ pub async fn load_purchase_command_result(
         .load::<String>(&mut *conn)
         .await?;
     let confirmed_source_kinds = confirmations::source_confirmations
-        .inner_join(documents::source_documents.on(documents::id.eq(confirmations::source_document_id)))
+        .inner_join(
+            documents::source_documents.on(documents::id.eq(confirmations::source_document_id)),
+        )
         .filter(confirmations::household_id.eq(household_id))
         .filter(confirmations::purchase_id.eq(Some(purchase_id)))
         .select(documents::source_kind)
@@ -315,7 +331,8 @@ pub async fn load_purchase_command_result(
         sum.checked_add(*amount)
             .ok_or(PurchaseCommandResultError::NumericOutOfRange)
     })?;
-    let remaining_refundable_amount_yen = total_yen.checked_add(correction_amount_yen)
+    let remaining_refundable_amount_yen = total_yen
+        .checked_add(correction_amount_yen)
         .ok_or(PurchaseCommandResultError::NumericOutOfRange)?;
 
     Ok(PurchaseCommandResult {
