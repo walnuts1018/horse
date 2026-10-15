@@ -16,7 +16,6 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/accounting"
-	"github.com/walnuts1018/horse/internal/application/inputvalidation"
 	"github.com/walnuts1018/horse/internal/application/txcleanup"
 	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
@@ -37,25 +36,8 @@ func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand) (Up
 }
 
 func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sharedTx pgx.Tx, deferAccountingSync bool, accountingChanged *bool) (UpdateResult, error) {
-	if err := inputvalidation.Check(command); err != nil {
+	if err := validateUpdateItemCommand(command); err != nil {
 		return UpdateResult{}, err
-	}
-	if len(command.ChangedFields) == 0 {
-		return UpdateResult{}, fmt.Errorf("%w: patch must contain a field", ErrBadInput)
-	}
-	seenFields := make(map[string]struct{}, len(command.ChangedFields))
-	for _, field := range command.ChangedFields {
-		if !slices.Contains([]string{itemFieldName, itemFieldAmountYen, itemFieldQuantity, itemFieldPrintedUnitPrice, itemFieldCategoryID, itemFieldProductVariantID, itemFieldAllocations}, field) {
-			return UpdateResult{}, fmt.Errorf("%w: invalid changed field", ErrBadInput)
-		}
-		if _, exists := seenFields[field]; exists {
-			return UpdateResult{}, fmt.Errorf("%w: duplicate changed field", ErrBadInput)
-		}
-		seenFields[field] = struct{}{}
-		provided := switchItemChangedField(command, field)
-		if !provided {
-			return UpdateResult{}, fmt.Errorf("%w: changed field has no value", ErrBadInput)
-		}
 	}
 	itemUUID, err := parseUUID(command.ItemID, "item")
 	if err != nil {
@@ -75,188 +57,48 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 		defer txcleanup.Rollback(ctx, tx)
 	}
 	executor := bobpgx.NewTx(tx, nil)
-	observedItem, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID)))).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) {
-		return UpdateResult{}, ErrNotFound
-	}
+	state, err := loadPurchaseItemUpdateState(ctx, executor, itemUUID, actorUUID, command)
 	if err != nil {
 		return UpdateResult{}, err
 	}
-	observedPurchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(observedItem.PurchaseID)))).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) {
-		return UpdateResult{}, ErrNotFound
-	}
+	plan, err := buildPurchaseItemUpdatePlan(ctx, tx, executor, command, state, deferAccountingSync)
 	if err != nil {
 		return UpdateResult{}, err
 	}
-	householdID := observedItem.HouseholdID
-	if err := requirePurchaseMember(ctx, executor, householdID, actorUUID); err != nil {
-		return UpdateResult{}, err
-	}
-	observedPeriod := accounting.PeriodFor(observedPurchase.OccurredAt)
-	if err := lockPurchaseAccountingPeriods(ctx, executor, householdID, observedPeriod); err != nil {
-		return UpdateResult{}, err
-	}
-	household, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForShare()).One(ctx, executor)
-	if err != nil {
-		return UpdateResult{}, err
-	}
-	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(observedItem.PurchaseID))), sm.ForUpdate()).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) {
-		return UpdateResult{}, ErrNotFound
-	}
-	if err != nil {
-		return UpdateResult{}, err
-	}
-	item, err := models.PurchaseItems.Query(sm.Where(psql.And(
-		models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID)),
-		models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchase.ID)),
-	)), sm.ForUpdate()).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) {
-		return UpdateResult{}, ErrNotFound
-	}
-	if err != nil {
-		return UpdateResult{}, err
-	}
-	if !purchase.OccurredAt.Equal(observedPurchase.OccurredAt) || purchase.HouseholdID != householdID {
-		return UpdateResult{}, ErrConflict
-	}
-	status := purchase.Status
-	if status != draftStatus && status != postedStatus {
-		return UpdateResult{}, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
-	}
-	if command.BaseRevision > item.Revision {
-		return UpdateResult{}, ErrConflict
-	}
-	conflict, err := purchaseUpdateValuesConflict(item.FieldRevisions.Val, command.BaseRevision, command.ChangedFields)
-	if err != nil {
-		return UpdateResult{}, err
-	}
-	if conflict {
-		return UpdateResult{}, ErrConflict
-	}
-	newName, newAmount := item.Name, item.AmountYen
-	if command.Name != nil {
-		newName = strings.TrimSpace(*command.Name)
-		if newName == "" {
-			return UpdateResult{}, fmt.Errorf("%w: invalid item name", ErrBadInput)
-		}
-	}
-	if command.AmountYen != nil {
-		newAmount = *command.AmountYen
-		if newAmount < 0 || newAmount > maxMoney {
-			return UpdateResult{}, fmt.Errorf("%w: invalid item amount", ErrBadInput)
-		}
-	}
-	categoryID, variantID := nullableID(item.CategoryID), nullableID(item.ProductVariantID)
-	if command.CategoryIDSet {
-		categoryID = command.CategoryID
-	}
-	if command.ProductVariantIDSet {
-		variantID = command.ProductVariantID
-	}
-	productLearning, err := prepareItemProductLearning(command, variantID)
-	if err != nil {
-		return UpdateResult{}, err
-	}
-	if command.ProductVariantIDSet && variantID != nil {
-		variantUUID, parseErr := parseUUID(*variantID, "product variant")
-		if parseErr != nil {
-			return UpdateResult{}, ErrNotFound
-		}
-		variant, queryErr := models.ProductVariants.Query(sm.Where(psql.And(
-			models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)),
-			models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-			models.ProductVariants.Columns.Archived.EQ(psql.Arg(false)),
-		))).One(ctx, executor)
-		if errors.Is(queryErr, sql.ErrNoRows) {
-			return UpdateResult{}, ErrNotFound
-		}
-		if queryErr != nil {
-			return UpdateResult{}, queryErr
-		}
-		concept, queryErr := models.ProductConcepts.Query(sm.Where(psql.And(
-			models.ProductConcepts.Columns.ID.EQ(psql.Arg(variant.ConceptID)),
-			models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-		))).One(ctx, executor)
-		if errors.Is(queryErr, sql.ErrNoRows) || queryErr == nil && concept.Archived {
-			return UpdateResult{}, ErrNotFound
-		}
-		if queryErr != nil {
-			return UpdateResult{}, queryErr
-		}
-	}
-	measure, err := measureFromItemUpdate(command, item)
-	if err != nil {
-		return UpdateResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
-	}
-	allocationOverride := item.AllocationOverride
-	if command.AllocationsSet {
-		allocationOverride = true
-	}
-	var requestedWeights []domain.Weight
-	if command.AllocationsSet {
-		requestedWeights = make([]domain.Weight, 0, len(command.Allocations))
-		for _, allocation := range command.Allocations {
-			requestedWeights = append(requestedWeights, domain.Weight{PoolID: allocation.PoolID, Value: allocation.Weight})
-		}
-	}
-	payments, updatePayments, err := adjustedPurchasePayments(ctx, executor, purchase, item.AmountYen, newAmount)
-	if err != nil {
-		return UpdateResult{}, err
-	}
-	categoryValue, err := nullableUUID(categoryID)
-	if err != nil {
-		return UpdateResult{}, ErrNotFound
-	}
-	variantValue, err := nullableUUID(variantID)
-	if err != nil {
-		return UpdateResult{}, ErrNotFound
-	}
-	plan, err := buildItemChangePlan(ctx, tx, executor, item, purchase, itemChangeInput{
-		fields: command.ChangedFields, amount: newAmount, categoryID: categoryValue, productVariantID: variantValue,
-		allocationOverride: allocationOverride, categoryOrVariantChanged: command.CategoryIDSet || command.ProductVariantIDSet,
-		allocationsSet: command.AllocationsSet, requestedWeights: requestedWeights,
-		defaultAllocationVersion: household.DefaultAllocationVersion,
-	})
-	if err != nil {
-		return UpdateResult{}, err
-	}
-	accountingPlan := buildPurchaseItemAccountingPlan(status, payments, updatePayments, plan.allocationsChanged, deferAccountingSync)
 	if accountingChanged != nil {
-		*accountingChanged = *accountingChanged || plan.allocationsChanged
+		*accountingChanged = *accountingChanged || plan.itemChange.allocationsChanged
 	}
-	if err := applyItemVariantNameLearning(ctx, executor, householdID, actorUUID, variantID, productLearning); err != nil {
+	if err := applyItemVariantNameLearning(ctx, executor, state.householdID, actorUUID, plan.variantID, plan.productLearning); err != nil {
 		return UpdateResult{}, err
 	}
-	fieldRevisionValue := itemChangeFieldValue(plan)
+	fieldRevisionValue := itemChangeFieldValue(plan.itemChange)
 	if _, err := models.PurchaseItems.Update((&models.PurchaseItemSetter{
-		Name: &newName, AmountYen: &newAmount, CategoryID: &categoryValue, ProductVariantID: &variantValue,
-		AllocationOverride: &plan.allocationOverride, Revision: &plan.revision, FieldRevisions: &fieldRevisionValue,
-		QuantityNumerator: &measure.quantityNumerator, QuantityDenominator: &measure.quantityDenominator, QuantityUnit: &measure.quantityUnit,
-		PrintedUnitPriceYen: &measure.printedUnitPriceYen, PrintedUnitPriceQuantityNumerator: &measure.printedUnitPriceQuantityNumerator,
-		PrintedUnitPriceQuantityDenominator: &measure.printedUnitPriceQuantityDenominator, PrintedUnitPriceUnit: &measure.printedUnitPriceUnit,
+		Name: &plan.name, AmountYen: &plan.amount, CategoryID: &plan.itemChange.categoryID, ProductVariantID: &plan.itemChange.productVariantID,
+		AllocationOverride: &plan.itemChange.allocationOverride, Revision: &plan.itemChange.revision, FieldRevisions: &fieldRevisionValue,
+		QuantityNumerator: &plan.measure.quantityNumerator, QuantityDenominator: &plan.measure.quantityDenominator, QuantityUnit: &plan.measure.quantityUnit,
+		PrintedUnitPriceYen: &plan.measure.printedUnitPriceYen, PrintedUnitPriceQuantityNumerator: &plan.measure.printedUnitPriceQuantityNumerator,
+		PrintedUnitPriceQuantityDenominator: &plan.measure.printedUnitPriceQuantityDenominator, PrintedUnitPriceUnit: &plan.measure.printedUnitPriceUnit,
 	}).UpdateMod(), um.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
 		return UpdateResult{}, err
 	}
-	if err := recordItemProductVariantChange(ctx, executor, householdID, actorUUID, purchase, item, itemUUID, command, variantID, productLearning); err != nil {
+	if err := recordItemProductVariantChange(ctx, executor, state.householdID, actorUUID, state.purchase, state.item, itemUUID, command, plan.variantID, plan.productLearning); err != nil {
 		return UpdateResult{}, err
 	}
-	if err := applyItemAllocationPlan(ctx, executor, item, plan); err != nil {
+	if err := applyItemAllocationPlan(ctx, executor, state.item, plan.itemChange); err != nil {
 		return UpdateResult{}, err
 	}
-	if err := applyPurchaseItemPaymentPlan(ctx, tx, executor, householdID, purchase, accountingPlan); err != nil {
+	if err := applyPurchaseItemPaymentPlan(ctx, tx, executor, state.householdID, state.purchase, plan.accounting); err != nil {
 		return UpdateResult{}, err
 	}
-	if _, err := models.Purchases.Update(um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchase.ID))),
+	if _, err := models.Purchases.Update(um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(state.purchase.ID))),
 		um.SetCol("revision").To(models.Purchases.Columns.Revision.Plus(psql.Arg(int64(1)))), um.SetCol("updated_at").To(psql.F("now")),
 	).Exec(ctx, executor); err != nil {
 		return UpdateResult{}, err
 	}
-	if err := accounting.RecordEvent(ctx, executor, householdID, itemUUID, "purchase.item.updated", plan.revision, command.ChangedFields, actorUUID); err != nil {
+	if err := accounting.RecordEvent(ctx, executor, state.householdID, itemUUID, "purchase.item.updated", plan.itemChange.revision, command.ChangedFields, actorUUID); err != nil {
 		return UpdateResult{}, err
 	}
-	if err := applyPurchaseItemAccountingSync(ctx, executor, purchase, accountingPlan); err != nil {
+	if err := applyPurchaseItemAccountingSync(ctx, executor, state.purchase, plan.accounting); err != nil {
 		return UpdateResult{}, err
 	}
 	if ownsTransaction {
@@ -264,28 +106,7 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 			return UpdateResult{}, err
 		}
 	}
-	return UpdateResult{PurchaseID: purchase.ID.String()}, nil
-}
-
-func switchItemChangedField(command UpdateItemCommand, field string) bool {
-	switch field {
-	case itemFieldName:
-		return command.Name != nil
-	case itemFieldAmountYen:
-		return command.AmountYen != nil
-	case itemFieldQuantity:
-		return command.QuantitySet
-	case itemFieldPrintedUnitPrice:
-		return command.PrintedUnitPriceSet
-	case itemFieldCategoryID:
-		return command.CategoryIDSet
-	case itemFieldProductVariantID:
-		return command.ProductVariantIDSet
-	case itemFieldAllocations:
-		return command.AllocationsSet
-	default:
-		return false
-	}
+	return UpdateResult{PurchaseID: state.purchase.ID.String()}, nil
 }
 
 type purchaseItemUpdateMeasure struct {
