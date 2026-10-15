@@ -40,6 +40,8 @@ CREATE TABLE mailbox_cursors (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+INSERT INTO mailbox_cursors (mailbox) VALUES ('forwarding');
+
 CREATE TABLE extraction_jobs (
     id uuid PRIMARY KEY,
     household_id uuid NOT NULL,
