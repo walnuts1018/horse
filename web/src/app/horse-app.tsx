@@ -38,6 +38,7 @@ import { errorMessage, usePurchaseOutbox } from "../shared/lib";
 import { Notice, type NoticeKind } from "../shared/ui";
 import { GraphQLErrorBoundary } from "./graphql-error-boundary";
 import { createUnsavedChangesRegistry, householdRouteContext } from "./household-route-context";
+import { clearOfflineDraftScope, writeOfflineDraftScope } from "./model/offline-draft-scope";
 import { useHouseholdNavigation } from "./model/use-household-navigation";
 import { useHouseholdSession } from "./model/use-household-session";
 import { usePendingInvitation } from "./model/use-pending-invitation";
@@ -153,6 +154,20 @@ export function App() {
   }, [redirectHouseholdId, navigateToHouseholdPage]);
   const householdMenuOpen = householdMenu && households.length > 1;
   const activeHousehold = household?.id === householdId ? household : null;
+  useEffect(() => {
+    if (
+      loading ||
+      error ||
+      householdLoading ||
+      householdLoadError ||
+      !viewer ||
+      !activeHousehold ||
+      !households.some((item) => item.id === activeHousehold.id) ||
+      !activeHousehold.members.some((member) => member.id === viewer.id)
+    )
+      return;
+    writeOfflineDraftScope(viewer.id, activeHousehold.id);
+  }, [activeHousehold, error, householdLoadError, householdLoading, households, loading, viewer]);
   const outbox = usePurchaseOutbox(viewer?.id);
   const getCurrentHouseholdId = useCallback(() => household?.id, [household?.id]);
   const navigateToLedger = useCallback(() => navigateToPage("ledger"), [navigateToPage]);
@@ -196,6 +211,7 @@ export function App() {
     const dirtyIds = unsavedChangesRegistry.getDirtyIds();
     const hadUnsavedChanges = dirtyIds.length > 0;
     if (hadUnsavedChanges && !window.confirm("未保存の変更を破棄してログアウトしますか？")) return;
+    clearOfflineDraftScope();
     if (hadUnsavedChanges) unsavedChangesRegistry.clearAll();
     setLoggingOut(true);
     try {

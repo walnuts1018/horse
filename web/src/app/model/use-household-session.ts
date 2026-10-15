@@ -5,6 +5,7 @@ import type { AppPage } from "../app-page";
 import { readHousehold, readHouseholds } from "../../entities/household";
 import { ApiError, getViewer, type Household } from "../../shared/api";
 import { errorMessage, toError } from "../../shared/lib";
+import { clearOfflineDraftScope } from "./offline-draft-scope";
 
 type Viewer = { id: string; displayName: string; email?: string };
 type HouseholdSummary = { id: string; name: string };
@@ -82,8 +83,10 @@ export function useHouseholdSession({
       .catch((reason: unknown) => {
         if (!active) return;
         const err = toError(reason);
-        if (err instanceof ApiError && err.status === 401) setError("ログインして家計簿を開く");
-        else setError(err.message || "データを読み込めませんでした");
+        if (err instanceof ApiError && err.status === 401) {
+          clearOfflineDraftScope();
+          setError("ログインして家計簿を開く");
+        } else setError(err.message || "データを読み込めませんでした");
       })
       .finally(() => active && setLoading(false));
     return () => {

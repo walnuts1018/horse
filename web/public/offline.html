@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#2f5d50" />
+    <title>オフライン | horse</title>
+    <link rel="icon" href="/icons/horse-192.png" />
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: system-ui, sans-serif;
+        background: #f6f3eb;
+        color: #20342d;
+      }
+      body {
+        min-height: 100svh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+      }
+      main {
+        width: min(calc(100% - 2rem), 42rem);
+        padding: 2rem;
+        box-sizing: border-box;
+      }
+      img {
+        width: 4rem;
+        height: 4rem;
+        border-radius: 1rem;
+      }
+      h1 {
+        margin: 1rem 0 0.5rem;
+        font-size: 1.5rem;
+      }
+      a {
+        display: inline-block;
+        margin-top: 1rem;
+        padding: 0.75rem 1.25rem;
+        border-radius: 999px;
+        background: #2f5d50;
+        color: white;
+        text-decoration: none;
+      }
+      h1 {
+        margin-bottom: 1.5rem;
+      }
+      form,
+      fieldset,
+      .offline-actions {
+        display: grid;
+        gap: 1rem;
+      }
+      fieldset {
+        padding: 1rem;
+        border: 1px solid #c5cec8;
+        border-radius: 0.75rem;
+      }
+      label {
+        display: grid;
+        gap: 0.4rem;
+      }
+      input {
+        min-width: 0;
+        padding: 0.75rem;
+        border: 1px solid #9eaaa2;
+        border-radius: 0.5rem;
+        font: inherit;
+      }
+      button {
+        min-height: 2.75rem;
+        padding: 0.65rem 1rem;
+        border: 0;
+        border-radius: 999px;
+        background: #2f5d50;
+        color: white;
+        font: inherit;
+      }
+      button.secondary {
+        background: #e4e9e5;
+        color: #20342d;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      #offline-status {
+        min-height: 1.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icons/horse-192.png" alt="" />
+      <h1 id="offline-title">オフライン</h1>
+      <p id="offline-message" role="status">再接続すると家計簿を開けます。</p>
+      <a id="open-draft" href="/" hidden>購入下書きを開く</a>
+      <section id="offline-editor" hidden>
+        <form id="draft-form" hidden>
+          <label>店舗<input name="merchant" autocomplete="organization" /></label>
+          <label>購入日時<input name="occurredAt" type="datetime-local" /></label>
+          <label>入力中の商品<input name="itemName" /></label>
+          <label>入力中の金額<input name="itemAmount" inputmode="numeric" /></label>
+          <div id="draft-items"></div>
+          <button id="add-item" class="secondary" type="button">品目を追加</button>
+          <button type="submit">下書きを保存</button>
+          <output id="offline-status" aria-live="polite"></output>
+        </form>
+        <div class="offline-actions">
+          <button id="offline-logout" class="secondary" type="button">
+            この端末で下書きを隠す
+          </button>
+          <a id="return-online" href="/">オンラインで開く</a>
+        </div>
+      </section>
+    </main>
+    <script src="/offline-shell.js" defer></script>
+  </body>
+</html>
