@@ -6,7 +6,6 @@ import {
   canReclassifyAttachment,
   canDeleteDocument,
   canRetryExtraction,
-  defaultImportModel,
   deferredExtractionMessage,
   importModelCostLabel,
   importModels,
@@ -14,6 +13,7 @@ import {
   isCsvFile,
   isEmailFile,
   receiptDateInputValue,
+  retryImportModel,
   sourceKindLabel,
   statusLabel,
   uploadSourceKinds,
@@ -341,6 +341,7 @@ export function ImportDocumentList({
             </button>
             {canRetryExtraction(document) && (
               <RetryExtractionAction
+                key={`${document.id}-${document.errorCode ?? ""}`}
                 document={document}
                 pending={pending}
                 onRetry={onRetryDocument}
@@ -401,10 +402,7 @@ function RetryExtractionAction({
   pending: boolean;
   onRetry: (document: DocumentReview, model: ImportModel) => void;
 }) {
-  const [model, setModel] = useState<ImportModel>(() => {
-    const candidate = document.model;
-    return candidate && isImportModel(candidate) ? candidate : defaultImportModel;
-  });
+  const [model, setModel] = useState<ImportModel>(() => retryImportModel(document));
 
   return (
     <div className="attachment-reclassification">

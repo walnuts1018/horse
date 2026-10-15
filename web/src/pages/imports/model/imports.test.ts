@@ -11,6 +11,7 @@ import {
   importModelTier,
   importModels,
   parseDocumentFilters,
+  retryImportModel,
   serializeDocumentFilters,
   uploadSourceKinds,
   type DocumentReview,
@@ -109,7 +110,7 @@ describe("保存済み原本の削除", () => {
 });
 
 describe("AIモデルの利用上限", () => {
-  it("利用上限の案内からモデル変更で再抽出できる", () => {
+  it("利用上限の案内を原因に合わせて表示する", () => {
     expect(
       isExtractionDeferred({
         id: "document-1",
@@ -124,9 +125,7 @@ describe("AIモデルの利用上限", () => {
         errorCode: "quota_reservation_deferred",
       }),
     ).toBe(true);
-    expect(deferredExtractionMessage("quota_reservation_deferred")).toContain(
-      "モデルを切り替えて再抽出",
-    );
+    expect(deferredExtractionMessage("quota_reservation_deferred")).toContain("利用枠");
     expect(
       isExtractionDeferred({
         id: "document-6",
@@ -149,8 +148,7 @@ describe("AIモデルの利用上限", () => {
       }),
     ).toBe(true);
     expect(deferredExtractionMessage("spend_cap_reached")).toContain("500円");
-    expect(deferredExtractionMessage("spend_cap_reached")).toContain("無料モデル");
-    expect(deferredExtractionMessage("paid_route_unavailable")).toContain("無料モデル");
+    expect(deferredExtractionMessage("paid_route_unavailable")).toContain("有料モデル");
     expect(
       isExtractionDeferred({
         id: "document-8",
@@ -168,6 +166,55 @@ describe("AIモデルの利用上限", () => {
     ).toBe(false);
     expect(isExtractionDeferred({ id: "document-5", status: "QUEUED", errorCode: "unknown" })).toBe(
       false,
+    );
+  });
+});
+
+describe("再抽出モデルの初期選択", () => {
+  it("quota超過時はProを選び、spend capでは無料モデルを選ぶ", () => {
+    expect(
+      retryImportModel({
+        id: "quota",
+        status: "FAILED",
+        errorCode: "rate_limited",
+        model: "gemini-3.8-flash",
+      }),
+    ).toBe("gemini-3.1-pro-preview");
+    expect(
+      retryImportModel({
+        id: "reservation",
+        status: "FAILED",
+        errorCode: "quota_reservation_deferred",
+        model: "free",
+      }),
+    ).toBe("gemini-3.1-pro-preview");
+    expect(
+      retryImportModel({
+        id: "spend-cap",
+        status: "FAILED",
+        errorCode: "spend_cap_reached",
+        model: "gemini-3.1-pro-preview",
+      }),
+    ).toBe("gemini-3.8-flash");
+    expect(
+      retryImportModel({
+        id: "paid-unavailable",
+        status: "FAILED",
+        errorCode: "paid_route_unavailable",
+        model: "gemini-3.5-flash-lite",
+      }),
+    ).toBe("gemini-3.5-flash-lite");
+  });
+
+  it("通常の失敗では既存のモデルIDを維持し、tier値を具体的なモデルIDに解決する", () => {
+    expect(
+      retryImportModel({ id: "exact", status: "FAILED", model: "gemini-3.1-flash-lite" }),
+    ).toBe("gemini-3.1-flash-lite");
+    expect(retryImportModel({ id: "free-tier", status: "FAILED", model: "free" })).toBe(
+      "gemini-3.8-flash",
+    );
+    expect(retryImportModel({ id: "pro-tier", status: "FAILED", model: "pro" })).toBe(
+      "gemini-3.1-pro-preview",
     );
   });
 });

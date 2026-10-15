@@ -64,13 +64,10 @@ export type ImportModel = (typeof importModels)[number]["value"];
 export const defaultImportModel: ImportModel = "gemini-3.8-flash";
 
 const deferredExtractionMessages = new Map([
-  ["rate_limited", "モデルの利用上限に達しました。モデルを切り替えて再抽出できます。"],
-  [
-    "quota_reservation_deferred",
-    "モデルの利用上限に達しました。モデルを切り替えて再抽出できます。",
-  ],
-  ["spend_cap_reached", "有料モデルの月500円上限に達しました。無料モデルを選んで再抽出できます。"],
-  ["paid_route_unavailable", "有料モデルを利用できません。無料モデルを選んで再抽出できます。"],
+  ["rate_limited", "Geminiモデルの利用枠を超えました。"],
+  ["quota_reservation_deferred", "Geminiモデルの利用枠を超えました。"],
+  ["spend_cap_reached", "有料モデルの月500円上限に達しました。"],
+  ["paid_route_unavailable", "有料モデルを利用できません。"],
 ]);
 
 export function isImportModel(value: string): value is ImportModel {
@@ -83,6 +80,34 @@ export function importModelTier(model: ImportModel): "free" | "paid" {
 
 export function importModelCostLabel(model: ImportModel): string {
   return importModelTier(model) === "paid" ? "有料・従量課金" : "無料・利用上限あり";
+}
+
+export function retryImportModel(document: DocumentReview): ImportModel {
+  const proModel: ImportModel = "gemini-3.1-pro-preview";
+  const currentModel = document.model ?? "";
+  const resolvedModel = isImportModel(currentModel)
+    ? currentModel
+    : currentModel === "pro"
+      ? proModel
+      : currentModel === "free"
+        ? defaultImportModel
+        : undefined;
+
+  if (
+    document.errorCode === "rate_limited" ||
+    document.errorCode === "quota_reservation_deferred"
+  ) {
+    return proModel;
+  }
+  if (
+    document.errorCode === "spend_cap_reached" ||
+    document.errorCode === "paid_route_unavailable"
+  ) {
+    return resolvedModel && importModelTier(resolvedModel) === "free"
+      ? resolvedModel
+      : defaultImportModel;
+  }
+  return resolvedModel ?? defaultImportModel;
 }
 
 export function receiptDateInputValue(purchasedAt?: string): string {
