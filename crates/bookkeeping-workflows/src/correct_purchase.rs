@@ -146,6 +146,7 @@ pub struct CorrectionPaymentFundingSnapshot {
     pub funding_rule_version: u32,
     pub funding_weight: u64,
     pub settlement_policy: Option<CorrectionSettlementPolicy>,
+    pub snapshot_source: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,7 +214,7 @@ pub fn decide_correct_purchase(
         }
         OriginalPeriodStatus::Open | OriginalPeriodStatus::Closed => {}
     }
-    if command.purchase_status != PurchaseStatus::Posted {
+    if command.purchase_status == PurchaseStatus::Draft {
         return Err(CorrectPurchaseError::PurchaseNotPosted);
     }
     if !command.effective_period_open {
@@ -451,12 +452,15 @@ pub fn calculate_correction_funding_effects(
                     pool_id: snapshot.pool_id.clone(),
                     version: snapshot.funding_rule_version,
                     policy: snapshot.settlement_policy,
+                    snapshot_source: snapshot.snapshot_source.clone(),
                     weights: BTreeMap::new(),
                 });
         if group.account_id != snapshot.account_id
             || group.pool_id != snapshot.pool_id
             || group.version != snapshot.funding_rule_version
             || group.policy != snapshot.settlement_policy
+            || group.snapshot_source != snapshot.snapshot_source
+            || !matches!(snapshot.snapshot_source.as_str(), "POSTED" | "LEGACY_CURRENT_RULES")
             || group
                 .weights
                 .insert(snapshot.member_id.clone(), snapshot.funding_weight)
@@ -705,6 +709,7 @@ struct PaymentSnapshotGroup {
     pool_id: String,
     version: u32,
     policy: Option<CorrectionSettlementPolicy>,
+    snapshot_source: String,
     weights: BTreeMap<String, u64>,
 }
 
@@ -962,6 +967,7 @@ mod tests {
                 funding_rule_version: 1,
                 funding_weight: 1,
                 settlement_policy: Some(CorrectionSettlementPolicy::BalanceToStandard),
+                snapshot_source: "POSTED".into(),
             })
             .collect::<Vec<_>>();
         let historical_rules = ["pool-a", "pool-b", "payment-pool"]

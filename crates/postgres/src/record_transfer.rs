@@ -10,7 +10,7 @@ use bookkeeping_workflows::record_transfer::{PostingSide, RecordTransferDecision
 
 use crate::{PgPool, schema::public};
 
-const OPERATION: &str = "record_transfer";
+const OPERATION: &str = "recordTransfer";
 const EVENT_TYPE: &str = "transfer.recorded";
 
 #[derive(Debug, Clone)]
@@ -37,6 +37,7 @@ pub enum RecordTransferPersistenceError {
     InvalidIdempotencyKey,
     IdempotencyConflict,
     NumericOutOfRange(&'static str),
+    HouseholdNotFound,
     AccountingPeriodClosed,
     MemberNotFound,
     AccountNotFound,
@@ -44,6 +45,9 @@ pub enum RecordTransferPersistenceError {
     LoanNotFound,
     LoanDirectionMismatch,
     RepaymentExceedsOutstanding,
+    InvalidAccountKind,
+    AccountWithoutPool,
+    AccountOwnershipMismatch,
     InvalidDecision,
 }
 
@@ -108,17 +112,28 @@ pub async fn persist_record_transfer(
     (&mut *pooled)
         .transaction::<PersistedTransfer, RecordTransferPersistenceError, _>(async |conn| {
             use public::idempotency_records::dsl as idem;
+            use public::households::dsl as households;
             use public::journals::dsl as journals;
             use public::ledger_entries::dsl as ledger;
 
+            households::households
+                .filter(households::id.eq(household_id))
+                .for_update()
+                .select(households::id)
+                .first::<Uuid>(&mut *conn)
+                .await
+                .optional()?
+                .ok_or(RecordTransferPersistenceError::HouseholdNotFound)?;
+            validate_active_members(&mut *conn, household_id, actor_id, from_member_id, to_member_id)
+                .await?;
             let inserted = diesel::insert_into(idem::idempotency_records)
                 .values((
                     idem::household_id.eq(household_id),
                     idem::operation.eq(OPERATION),
                     idem::key.eq(&input.idempotency_key),
                     idem::request_fingerprint.eq(input.request_fingerprint.to_vec()),
-                    idem::resource_kind.eq("transfer"),
-                    idem::resource_id.eq(transfer_id),
+                    idem::resource_kind.eq("ledger_entry"),
+                    idem::resource_id.eq(ledger_entry_id),
                 ))
                 .on_conflict((idem::household_id, idem::operation, idem::key))
                 .do_nothing()
@@ -127,37 +142,57 @@ pub async fn persist_record_transfer(
                 .await
                 .optional()?;
             if inserted.is_none() {
-                let (fingerprint, resource_id) = idem::idempotency_records
+                let (fingerprint, resource_kind, resource_id) = idem::idempotency_records
                     .filter(idem::household_id.eq(household_id))
                     .filter(idem::operation.eq(OPERATION))
                     .filter(idem::key.eq(&input.idempotency_key))
-                    .select((idem::request_fingerprint, idem::resource_id))
-                    .first::<(Vec<u8>, Uuid)>(&mut *conn)
+                    .select((
+                        idem::request_fingerprint,
+                        idem::resource_kind,
+                        idem::resource_id,
+                    ))
+                    .first::<(Vec<u8>, String, Uuid)>(&mut *conn)
                     .await?;
-                if fingerprint.as_slice() != input.request_fingerprint {
+                if fingerprint.as_slice() != input.request_fingerprint
+                    || resource_kind != "ledger_entry"
+                {
                     return Err(RecordTransferPersistenceError::IdempotencyConflict);
                 }
+                let (saved_journal_id, saved_transfer_id) = ledger::ledger_entries
+                    .filter(ledger::household_id.eq(household_id))
+                    .filter(ledger::id.eq(resource_id))
+                    .select((ledger::journal_id, ledger::source_id))
+                    .first::<(Uuid, Uuid)>(&mut *conn)
+                    .await?;
+                let saved_transfer_id = public::transfers::table
+                    .filter(public::transfers::household_id.eq(household_id))
+                    .filter(public::transfers::id.eq(saved_transfer_id))
+                    .select(public::transfers::id)
+                    .first::<Uuid>(&mut *conn)
+                    .await?;
                 let saved_journal_id = journals::journals
                     .filter(journals::household_id.eq(household_id))
-                    .filter(journals::source_kind.eq("transfer"))
-                    .filter(journals::source_id.eq(resource_id))
+                    .filter(journals::id.eq(saved_journal_id))
                     .select(journals::id)
                     .first::<Uuid>(&mut *conn)
                     .await?;
-                let saved_ledger_entry_id = ledger::ledger_entries
-                    .filter(ledger::household_id.eq(household_id))
-                    .filter(ledger::journal_id.eq(saved_journal_id))
-                    .select(ledger::id)
-                    .first::<Uuid>(&mut *conn)
-                    .await?;
                 return Ok(PersistedTransfer {
-                    transfer_id: resource_id.to_string(),
+                    transfer_id: saved_transfer_id.to_string(),
                     journal_id: saved_journal_id.to_string(),
-                    ledger_entry_id: saved_ledger_entry_id.to_string(),
+                    ledger_entry_id: resource_id.to_string(),
                 });
             }
 
             ensure_open_period(&mut *conn, household_id, period_start).await?;
+            let payment_pool_kind = validate_transfer_accounts(
+                &mut *conn,
+                household_id,
+                from_member_id,
+                to_member_id,
+                &decision,
+            )
+            .await?;
+            validate_settlement_adjustments(&decision, payment_pool_kind)?;
             validate_members_and_references(
                 &mut *conn,
                 household_id,
@@ -409,6 +444,134 @@ async fn validate_members_and_references(
     Ok(())
 }
 
+async fn validate_active_members(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    actor_id: Uuid,
+    from_member_id: Uuid,
+    to_member_id: Uuid,
+) -> Result<(), RecordTransferPersistenceError> {
+    use public::household_members::dsl as members;
+    for member_id in [actor_id, from_member_id, to_member_id] {
+        members::household_members
+            .filter(members::household_id.eq(household_id))
+            .filter(members::member_id.eq(member_id))
+            .filter(members::left_at.is_null())
+            .select(members::member_id)
+            .first::<Uuid>(conn)
+            .await
+            .optional()?
+            .ok_or(RecordTransferPersistenceError::MemberNotFound)?;
+    }
+    Ok(())
+}
+
+async fn validate_transfer_accounts(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    from_member_id: Uuid,
+    to_member_id: Uuid,
+    decision: &RecordTransferDecision,
+) -> Result<Option<String>, RecordTransferPersistenceError> {
+    let payment_pool_kind = if let Some(account_id) = &decision.payment_account_id {
+        Some(
+            validate_transfer_account(
+                conn,
+                household_id,
+                parse_uuid(account_id.as_str(), "payment_account_id")?,
+                from_member_id,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+    if let Some(account_id) = &decision.destination_account_id {
+        validate_transfer_account(
+            conn,
+            household_id,
+            parse_uuid(account_id.as_str(), "destination_account_id")?,
+            to_member_id,
+        )
+        .await?;
+    }
+    Ok(payment_pool_kind)
+}
+
+async fn validate_transfer_account(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    account_id: Uuid,
+    owner_member_id: Uuid,
+) -> Result<String, RecordTransferPersistenceError> {
+    use public::accounts::dsl as accounts;
+    let (kind, pool_id) = accounts::accounts
+        .filter(accounts::household_id.eq(household_id))
+        .filter(accounts::id.eq(account_id))
+        .select((accounts::kind, accounts::pool_id))
+        .first::<(String, Option<Uuid>)>(conn)
+        .await
+        .optional()?
+        .ok_or(RecordTransferPersistenceError::AccountNotFound)?;
+    if kind == "CARD" {
+        return Err(RecordTransferPersistenceError::InvalidAccountKind);
+    }
+    let pool_id = pool_id.ok_or(RecordTransferPersistenceError::AccountWithoutPool)?;
+    use public::pools::dsl as pools;
+    let (pool_kind, funding_version) = pools::pools
+        .filter(pools::household_id.eq(household_id))
+        .filter(pools::id.eq(pool_id))
+        .select((pools::kind, pools::current_funding_version))
+        .first::<(String, Option<i32>)>(conn)
+        .await
+        .optional()?
+        .ok_or(RecordTransferPersistenceError::PoolNotFound)?;
+    if pool_kind == "PERSONAL" {
+        let funding_version = funding_version
+            .ok_or(RecordTransferPersistenceError::AccountOwnershipMismatch)?;
+        use public::pool_funding_rules::dsl as funding_rules;
+        let owner = funding_rules::pool_funding_rules
+            .filter(funding_rules::household_id.eq(household_id))
+            .filter(funding_rules::pool_id.eq(pool_id))
+            .filter(funding_rules::version.eq(funding_version))
+            .select(funding_rules::owner_member_id)
+            .first::<Option<Uuid>>(conn)
+            .await
+            .optional()?
+            .flatten();
+        if owner != Some(owner_member_id) {
+            return Err(RecordTransferPersistenceError::AccountOwnershipMismatch);
+        }
+    }
+    Ok(pool_kind)
+}
+
+fn validate_settlement_adjustments(
+    decision: &RecordTransferDecision,
+    payment_pool_kind: Option<String>,
+) -> Result<(), RecordTransferPersistenceError> {
+    let amount = decision.amount.value();
+    let expected = match decision.kind {
+        TransferKind::Gift => Vec::new(),
+        TransferKind::Repayment if payment_pool_kind.as_deref() == Some("SHARED") => {
+            vec![(decision.to_member_id.as_str(), amount)]
+        }
+        TransferKind::Advance | TransferKind::Loan | TransferKind::Repayment => vec![
+            (decision.from_member_id.as_str(), -amount),
+            (decision.to_member_id.as_str(), amount),
+        ],
+    };
+    let actual = decision
+        .settlement_adjustments
+        .iter()
+        .map(|adjustment| (adjustment.member_id.as_str(), adjustment.amount_yen))
+        .collect::<Vec<_>>();
+    if actual != expected {
+        return Err(RecordTransferPersistenceError::InvalidDecision);
+    }
+    Ok(())
+}
+
 async fn validate_repayment(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
@@ -504,6 +667,32 @@ fn validate_decision(
             adjustment.amount_yen == 0 || adjustment.amount_yen.unsigned_abs() > 1_000_000_000_000
         })
     {
+        return Err(RecordTransferPersistenceError::InvalidDecision);
+    }
+    for (account_id, expected_side) in [
+        (decision.payment_account_id.as_ref(), PostingSide::Credit),
+        (decision.destination_account_id.as_ref(), PostingSide::Debit),
+    ] {
+        if let Some(account_id) = account_id {
+            let matching_lines = decision
+                .journal_lines
+                .iter()
+                .filter(|line| line.account_id.as_ref() == Some(account_id))
+                .collect::<Vec<_>>();
+            if matching_lines.len() != 1
+                || matching_lines[0].side != expected_side
+                || matching_lines[0].amount != decision.amount
+            {
+                return Err(RecordTransferPersistenceError::InvalidDecision);
+            }
+        }
+    }
+    if decision.journal_lines.iter().any(|line| {
+        line.account_id.as_ref().is_some_and(|account_id| {
+            decision.payment_account_id.as_ref() != Some(account_id)
+                && decision.destination_account_id.as_ref() != Some(account_id)
+        })
+    }) {
         return Err(RecordTransferPersistenceError::InvalidDecision);
     }
     Ok(())

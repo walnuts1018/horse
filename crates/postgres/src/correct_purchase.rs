@@ -49,6 +49,8 @@ pub enum CorrectPurchasePersistenceError {
     IdempotencyConflict,
     AccountingPeriodClosed,
     PurchaseNotPosted,
+    RefundExceedsPurchaseBalance,
+    RefundExceedsItemBalance,
     HouseholdMismatch,
     InvalidDecision,
     InvalidFundingSnapshot,
@@ -98,9 +100,7 @@ pub async fn persist_correct_purchase(
                 .select((purchases::occurred_at, purchases::status))
                 .first::<(DateTime<Utc>, String)>(&mut *conn)
                 .await?;
-            if purchase.1 != "POSTED" {
-                return Err(CorrectPurchasePersistenceError::PurchaseNotPosted);
-            }
+            validate_actor_membership(&mut *conn, household_id, actor_id).await?;
             let japan_offset = FixedOffset::east_opt(9 * 60 * 60)
                 .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
             let original_period = purchase
@@ -154,6 +154,9 @@ pub async fn persist_correct_purchase(
                     ledger_entry_id: saved_ledger_entry_id.to_string(),
                 });
             }
+            if purchase.1 == "DRAFT" {
+                return Err(CorrectPurchasePersistenceError::PurchaseNotPosted);
+            }
 
             let period_dates = if original_period == effective_period {
                 vec![original_period]
@@ -162,6 +165,19 @@ pub async fn persist_correct_purchase(
             } else {
                 vec![effective_period, original_period]
             };
+            for period_start in &period_dates {
+                diesel::insert_into(periods::accounting_periods)
+                    .values((
+                        periods::household_id.eq(household_id),
+                        periods::period_start.eq(period_start),
+                        periods::status.eq("OPEN"),
+                        periods::revision.eq(0_i64),
+                    ))
+                    .on_conflict((periods::household_id, periods::period_start))
+                    .do_nothing()
+                    .execute(&mut *conn)
+                    .await?;
+            }
             let locked_periods = periods::accounting_periods
                 .filter(periods::household_id.eq(household_id))
                 .filter(periods::period_start.eq_any(&period_dates))
@@ -188,6 +204,7 @@ pub async fn persist_correct_purchase(
             }
 
             validate_references(&mut *conn, household_id, actor_id, purchase_id, &decision).await?;
+            validate_refundable_balance(&mut *conn, household_id, purchase_id, &decision).await?;
             let amount_yen = decision.amount_delta.value().abs();
             diesel::insert_into(journals::journals)
                 .values((
@@ -339,6 +356,13 @@ pub async fn persist_correct_purchase(
                 .execute(&mut *conn)
                 .await?;
 
+            use public::households::dsl as households;
+            households::households
+                .filter(households::id.eq(household_id))
+                .for_update()
+                .select(households::id)
+                .first::<Uuid>(&mut *conn)
+                .await?;
             diesel::insert_into(events::household_events)
                 .values((
                     events::household_id.eq(household_id),
@@ -428,6 +452,98 @@ fn validate_decision(
     Ok(())
 }
 
+async fn validate_actor_membership(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    actor_id: Uuid,
+) -> Result<(), CorrectPurchasePersistenceError> {
+    use public::household_members::dsl as members;
+
+    let member = members::household_members
+        .filter(members::household_id.eq(household_id))
+        .filter(members::member_id.eq(actor_id))
+        .filter(members::left_at.is_null())
+        .select(members::member_id)
+        .first::<Uuid>(conn)
+        .await
+        .optional()?;
+    if member.is_none() {
+        return Err(CorrectPurchasePersistenceError::HouseholdMismatch);
+    }
+    Ok(())
+}
+
+async fn validate_refundable_balance(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    purchase_id: Uuid,
+    decision: &CorrectPurchaseDecision,
+) -> Result<(), CorrectPurchasePersistenceError> {
+    if decision.amount_delta.value() >= 0 {
+        return Ok(());
+    }
+
+    use public::{purchase_corrections, purchase_items};
+
+    let item_rows = purchase_items::table
+        .filter(purchase_items::household_id.eq(household_id))
+        .filter(purchase_items::purchase_id.eq(purchase_id))
+        .select((purchase_items::id, purchase_items::amount_yen))
+        .load::<(Uuid, i64)>(conn)
+        .await?;
+    let mut purchase_total = 0_i64;
+    let mut item_totals = BTreeMap::new();
+    for (item_id, amount) in item_rows {
+        purchase_total = purchase_total
+            .checked_add(amount)
+            .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+        item_totals.insert(item_id, amount);
+    }
+
+    let correction_rows = purchase_corrections::table
+        .filter(purchase_corrections::household_id.eq(household_id))
+        .filter(purchase_corrections::purchase_id.eq(purchase_id))
+        .select((
+            purchase_corrections::amount_delta_yen,
+            purchase_corrections::item_id,
+        ))
+        .load::<(i64, Option<Uuid>)>(conn)
+        .await?;
+    for (delta, item_id) in correction_rows {
+        purchase_total = purchase_total
+            .checked_add(delta)
+            .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+        if let Some(item_id) = item_id {
+            let total = item_totals
+                .get_mut(&item_id)
+                .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+            *total = total
+                .checked_add(delta)
+                .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+        }
+    }
+
+    let refund = decision
+        .amount_delta
+        .value()
+        .checked_abs()
+        .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+    if purchase_total < 0 || refund > purchase_total {
+        return Err(CorrectPurchasePersistenceError::RefundExceedsPurchaseBalance);
+    }
+    if let CorrectionTarget::Item(item_id) = &decision.target {
+        let item_id = parse_uuid(item_id.as_str(), "item_id")?;
+        let item_total = item_totals
+            .get(&item_id)
+            .copied()
+            .ok_or(CorrectPurchasePersistenceError::HouseholdMismatch)?;
+        if item_total < 0 || refund > item_total {
+            return Err(CorrectPurchasePersistenceError::RefundExceedsItemBalance);
+        }
+    }
+    Ok(())
+}
+
 async fn validate_references(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
@@ -458,6 +574,7 @@ async fn validate_references(
     let members = household_members::table
         .filter(household_members::household_id.eq(household_id))
         .filter(household_members::member_id.eq(actor_id))
+        .filter(household_members::left_at.is_null())
         .select(household_members::member_id)
         .load::<Uuid>(conn)
         .await?;
@@ -575,13 +692,14 @@ async fn load_correction_funding_effects(
             purchase_payment_funding_snapshots::funding_rule_version,
             purchase_payment_funding_snapshots::funding_weight,
             purchase_payment_funding_snapshots::settlement_policy,
+            purchase_payment_funding_snapshots::snapshot_source,
         ))
-        .load::<(i32, Uuid, Uuid, Uuid, i32, i64, Option<String>)>(conn)
+        .load::<(i32, Uuid, Uuid, Uuid, i32, i64, Option<String>, String)>(conn)
         .await?;
     let payment_snapshots = snapshot_rows
         .into_iter()
         .map(
-            |(line_no, account_id, pool_id, member_id, version, weight, policy)| {
+            |(line_no, account_id, pool_id, member_id, version, weight, policy, snapshot_source)| {
                 Ok(CorrectionPaymentFundingSnapshot {
                     line_no: u32::try_from(line_no)
                         .map_err(|_| CorrectPurchasePersistenceError::InvalidFundingSnapshot)?,
@@ -593,6 +711,7 @@ async fn load_correction_funding_effects(
                     funding_weight: u64::try_from(weight)
                         .map_err(|_| CorrectPurchasePersistenceError::InvalidFundingSnapshot)?,
                     settlement_policy: parse_funding_policy(policy.as_deref())?,
+                    snapshot_source,
                 })
             },
         )
