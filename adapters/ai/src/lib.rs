@@ -208,7 +208,7 @@ struct CreateInteractionRequest<'a> {
 ///
 /// `History`は`user_input`と`model_output`のstep列として送られる。
 /// APIへの保存は作成時に常に無効化される。
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(untagged)]
 pub enum InteractionsInput {
     Text(String),
@@ -240,7 +240,7 @@ impl HistoryStep {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 enum HistoryRole {
     #[serde(rename = "user_input")]
     UserInput,

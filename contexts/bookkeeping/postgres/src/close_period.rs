@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use bookkeeping_application::close_period::{
     ClosePeriodCommand, ClosePeriodDecision, FundingCadence, FundingScheduleInput,
-    PurchaseSnapshot, SettlementInput, decide_close_period, decide_funding_obligations,
+    PurchaseSnapshot, SettlementInput, close_period as close_period_workflow,
+    decide_funding_obligations,
 };
 use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, YearMonth};
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
@@ -91,8 +92,8 @@ pub async fn close_period(
 ) -> Result<PersistedClosePeriod, ClosePeriodPersistenceError> {
     let household_id = parse_uuid(household_id, "household_id")?;
     let actor_id = parse_uuid(actor_id, "actor_id")?;
-    let year_month = YearMonth::parse(period)
-        .map_err(|_| ClosePeriodPersistenceError::InvalidPeriod)?;
+    let year_month =
+        YearMonth::parse(period).map_err(|_| ClosePeriodPersistenceError::InvalidPeriod)?;
     let (period_start, period_end) = period_bounds(year_month)?;
     let mut pooled = pool
         .get()
@@ -205,7 +206,7 @@ pub async fn close_period(
                 })
                 .collect::<Result<Vec<_>, ClosePeriodPersistenceError>>()?;
             let period_model = period_model(period_start, &status, revision)?;
-            let decision = decide_close_period(ClosePeriodCommand {
+            let command = ClosePeriodCommand {
                 period: period_model,
                 expected_revision,
                 draft_purchases: draft_purchases
@@ -219,39 +220,68 @@ pub async fn close_period(
                     .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
                 settlements,
                 purchases: posted_purchases,
-            })
-            .map_err(|error| match error {
-                bookkeeping_application::close_period::ClosePeriodError::PeriodAlreadyClosed => {
-                    ClosePeriodPersistenceError::PeriodAlreadyClosed
-                }
-                bookkeeping_application::close_period::ClosePeriodError::RevisionMismatch {
-                    ..
-                } => ClosePeriodPersistenceError::StalePeriod,
-                bookkeeping_application::close_period::ClosePeriodError::DraftPurchasesExist => {
-                    ClosePeriodPersistenceError::DraftPurchasesExist
-                }
-                _ => ClosePeriodPersistenceError::InvalidDecision,
-            })?;
-            let revision = i64::try_from(decision.period.revision())
-                .map_err(|_| ClosePeriodPersistenceError::NumericOutOfRange("period revision"))?;
-            let expected_revision = revision
-                .checked_sub(1)
-                .ok_or(ClosePeriodPersistenceError::InvalidDecision)?;
-            validate_decision(&decision, period_start, revision, actor_id)?;
-            persist_close_period_in_transaction(
+            };
+            let mut operations = PgClosePeriodOperations {
                 conn,
                 household_id,
-                decision,
                 period_start,
                 period_end,
-                revision,
-                expected_revision,
                 actor_id,
-                Uuid::now_v7(),
-            )
-            .await
+            };
+            close_period_workflow(&mut operations, command)
+                .await
+                .map_err(|error| match error {
+                    bookkeeping_application::close_period::ClosePeriodWorkflowError::Decision(
+                        bookkeeping_application::close_period::ClosePeriodError::PeriodAlreadyClosed,
+                    ) => ClosePeriodPersistenceError::PeriodAlreadyClosed,
+                    bookkeeping_application::close_period::ClosePeriodWorkflowError::Decision(
+                        bookkeeping_application::close_period::ClosePeriodError::RevisionMismatch { .. },
+                    ) => ClosePeriodPersistenceError::StalePeriod,
+                    bookkeeping_application::close_period::ClosePeriodWorkflowError::Decision(
+                        bookkeeping_application::close_period::ClosePeriodError::DraftPurchasesExist,
+                    ) => ClosePeriodPersistenceError::DraftPurchasesExist,
+                    bookkeeping_application::close_period::ClosePeriodWorkflowError::Operations(error) => error,
+                    _ => ClosePeriodPersistenceError::InvalidDecision,
+                })
         })
         .await
+}
+
+struct PgClosePeriodOperations<'a> {
+    conn: &'a mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    period_start: NaiveDate,
+    period_end: NaiveDate,
+    actor_id: Uuid,
+}
+
+impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePeriodOperations<'_> {
+    type Error = ClosePeriodPersistenceError;
+    type Result = PersistedClosePeriod;
+
+    async fn persist(
+        &mut self,
+        decision: ClosePeriodDecision,
+    ) -> Result<Self::Result, Self::Error> {
+        let revision = i64::try_from(decision.period.revision())
+            .map_err(|_| ClosePeriodPersistenceError::NumericOutOfRange("period revision"))?;
+        let expected_revision = revision
+            .checked_sub(1)
+            .ok_or(ClosePeriodPersistenceError::InvalidDecision)?;
+        validate_decision(&decision, self.period_start, revision, self.actor_id)?;
+        persist_close_period_in_transaction(
+            self.conn,
+            self.household_id,
+            decision,
+            self.period_start,
+            self.period_end,
+            revision,
+            expected_revision,
+            self.actor_id,
+            Uuid::now_v7(),
+        )
+        .await
+    }
 }
 
 async fn persist_close_period_in_transaction(
@@ -756,8 +786,7 @@ fn validate_decision(
             .purchases
             .iter()
             .any(|purchase| purchase.revision == 0)
-        || decision.period.revision().checked_sub(1)
-            != u64::try_from(previous_revision).ok()
+        || decision.period.revision().checked_sub(1) != u64::try_from(previous_revision).ok()
     {
         return Err(ClosePeriodPersistenceError::InvalidDecision);
     }
@@ -837,7 +866,8 @@ fn period_model(
     revision: i64,
 ) -> Result<AccountingPeriod, ClosePeriodPersistenceError> {
     let year_month = year_month(period_start)?;
-    let revision = u64::try_from(revision).map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?;
+    let revision =
+        u64::try_from(revision).map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?;
     match status {
         "OPEN" => AccountingPeriod::open(year_month, revision),
         "CLOSED" => AccountingPeriod::closed(year_month, revision),

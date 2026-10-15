@@ -11,7 +11,7 @@ use bookkeeping_application::{
     },
     record_transfer::{PoolKind as TransferPoolKind, TransferAccount},
 };
-use bookkeeping_domain::{AccountingPeriod, PoolId, PositiveYen, Yen, YearMonth};
+use bookkeeping_domain::{AccountingPeriod, PoolId, PositiveYen, YearMonth, Yen};
 
 use crate::{PgPool, schema::public};
 
@@ -185,7 +185,10 @@ async fn load_period(
     let persisted_period = public::accounting_periods::table
         .filter(public::accounting_periods::household_id.eq(household_id))
         .filter(public::accounting_periods::period_start.eq(period_start))
-        .select((public::accounting_periods::status, public::accounting_periods::revision))
+        .select((
+            public::accounting_periods::status,
+            public::accounting_periods::revision,
+        ))
         .first::<(String, i64)>(&mut *conn)
         .await
         .optional()?;

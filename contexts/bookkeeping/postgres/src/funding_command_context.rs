@@ -3,7 +3,9 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-use bookkeeping_application::funding_record::{FundingAccount, FundingAccountKind, FundingPoolKind};
+use bookkeeping_application::funding_record::{
+    FundingAccount, FundingAccountKind, FundingPoolKind,
+};
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
 
 use crate::{PgPool, schema::public};
@@ -82,8 +84,7 @@ pub async fn load_funding_command_context(
         .select((periods::status, periods::revision))
         .first::<(String, i64)>(&mut *pooled)
         .await
-        .optional()?
-        ;
+        .optional()?;
     let local_date = occurred_at.with_timezone(&tokyo_offset).date_naive();
     let year_month = YearMonth::new(
         u16::try_from(local_date.year()).map_err(|_| {

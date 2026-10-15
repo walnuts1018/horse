@@ -16,10 +16,9 @@ pub use period::{
 };
 pub use purchase::{
     AccountId, DraftPurchase, FundingBasisError, IdentifierError, ItemId, JournalLine,
-    MemberBurdenSnapshot, MemberFundingBasis, MemberId, MemberWeight, Payment,
-    PaymentFundingBasis, PaymentFundingSnapshot, PoolAllocation, PostPurchaseCommand,
-    PostPurchaseDecision, PostPurchaseError, PostingTarget, Purchase, PurchaseEvent, PurchaseId,
-    PurchaseItem, PurchaseLifecycle, PurchasePostingMemo, SettlementPolicy, Side,
-    decide_post_purchase,
+    MemberBurdenSnapshot, MemberFundingBasis, MemberId, MemberWeight, Payment, PaymentFundingBasis,
+    PaymentFundingSnapshot, PoolAllocation, PostPurchaseCommand, PostPurchaseDecision,
+    PostPurchaseError, PostingTarget, Purchase, PurchaseEvent, PurchaseId, PurchaseItem,
+    PurchaseLifecycle, PurchasePostingMemo, SettlementPolicy, Side, decide_post_purchase,
 };
 pub use settlement::{SettlementAmounts, SettlementError, SettlementInput, calculate_settlement};

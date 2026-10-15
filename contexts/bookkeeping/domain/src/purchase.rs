@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use crate::{AccountingPeriod, AccountingPeriodStatus, AllocationShares, AllocationWeight, PoolId, PositiveYen, Yen, allocate};
+use crate::{
+    AccountingPeriod, AccountingPeriodStatus, AllocationShares, AllocationWeight, PoolId,
+    PositiveYen, Yen, allocate,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PurchaseId(String);
@@ -89,15 +92,33 @@ pub struct PostedPurchase {
 }
 
 impl PostedPurchase {
-    pub fn id(&self) -> &PurchaseId { &self.id }
-    pub const fn revision(&self) -> u64 { self.revision }
-    pub const fn total(&self) -> PositiveYen { self.total }
-    pub fn items(&self) -> &[PurchaseItem] { &self.items }
-    pub fn allocations(&self) -> &[PoolAllocation] { &self.allocations }
-    pub fn payments(&self) -> &[Payment] { &self.payments }
-    pub fn journal(&self) -> &BalancedJournal { &self.journal }
-    pub fn member_burden_snapshots(&self) -> &[MemberBurdenSnapshot] { &self.member_burden_snapshots }
-    pub fn payment_funding_snapshots(&self) -> &[PaymentFundingSnapshot] { &self.payment_funding_snapshots }
+    pub fn id(&self) -> &PurchaseId {
+        &self.id
+    }
+    pub const fn revision(&self) -> u64 {
+        self.revision
+    }
+    pub const fn total(&self) -> PositiveYen {
+        self.total
+    }
+    pub fn items(&self) -> &[PurchaseItem] {
+        &self.items
+    }
+    pub fn allocations(&self) -> &[PoolAllocation] {
+        &self.allocations
+    }
+    pub fn payments(&self) -> &[Payment] {
+        &self.payments
+    }
+    pub fn journal(&self) -> &BalancedJournal {
+        &self.journal
+    }
+    pub fn member_burden_snapshots(&self) -> &[MemberBurdenSnapshot] {
+        &self.member_burden_snapshots
+    }
+    pub fn payment_funding_snapshots(&self) -> &[PaymentFundingSnapshot] {
+        &self.payment_funding_snapshots
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -271,14 +292,30 @@ pub struct PostPurchaseDecision {
 }
 
 impl PostPurchaseDecision {
-    pub fn purchase_id(&self) -> &PurchaseId { &self.purchase.id }
-    pub const fn new_revision(&self) -> u64 { self.purchase.revision }
-    pub fn purchase(&self) -> &PostedPurchase { &self.purchase }
-    pub fn period(&self) -> &AccountingPeriod { &self.period }
-    pub fn journal(&self) -> &BalancedJournal { &self.purchase.journal }
-    pub fn journal_lines(&self) -> &[JournalLine] { self.purchase.journal.entries() }
-    pub fn member_burden_snapshots(&self) -> &[MemberBurdenSnapshot] { &self.purchase.member_burden_snapshots }
-    pub fn payment_funding_snapshots(&self) -> &[PaymentFundingSnapshot] { &self.purchase.payment_funding_snapshots }
+    pub fn purchase_id(&self) -> &PurchaseId {
+        &self.purchase.id
+    }
+    pub const fn new_revision(&self) -> u64 {
+        self.purchase.revision
+    }
+    pub fn purchase(&self) -> &PostedPurchase {
+        &self.purchase
+    }
+    pub fn period(&self) -> &AccountingPeriod {
+        &self.period
+    }
+    pub fn journal(&self) -> &BalancedJournal {
+        &self.purchase.journal
+    }
+    pub fn journal_lines(&self) -> &[JournalLine] {
+        self.purchase.journal.entries()
+    }
+    pub fn member_burden_snapshots(&self) -> &[MemberBurdenSnapshot] {
+        &self.purchase.member_burden_snapshots
+    }
+    pub fn payment_funding_snapshots(&self) -> &[PaymentFundingSnapshot] {
+        &self.purchase.payment_funding_snapshots
+    }
 
     pub fn events(&self) -> &[PurchaseEvent] {
         &self.events
@@ -400,18 +437,29 @@ pub struct PaymentFundingSnapshot {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PurchaseEvent {
-    Posted { purchase_id: PurchaseId, revision: u64 },
+    Posted {
+        purchase_id: PurchaseId,
+        revision: u64,
+    },
 }
 
 impl PurchaseEvent {
-    pub const fn event_type(&self) -> &'static str { "purchase.posted" }
+    pub const fn event_type(&self) -> &'static str {
+        "purchase.posted"
+    }
     pub fn purchase_id(&self) -> &PurchaseId {
-        match self { Self::Posted { purchase_id, .. } => purchase_id }
+        match self {
+            Self::Posted { purchase_id, .. } => purchase_id,
+        }
     }
     pub const fn revision(&self) -> u64 {
-        match self { Self::Posted { revision, .. } => *revision }
+        match self {
+            Self::Posted { revision, .. } => *revision,
+        }
     }
-    pub const fn changed_fields(&self) -> &'static [&'static str] { &["status"] }
+    pub const fn changed_fields(&self) -> &'static [&'static str] {
+        &["status"]
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -516,7 +564,13 @@ pub fn decide_post_purchase(
         return Err(PostPurchaseError::AllocationTotalMismatch);
     }
     if !command.draft.payments.is_empty() {
-        let payment_total = sum_yen(command.draft.payments.iter().map(|payment| payment.amount.yen()))?;
+        let payment_total = sum_yen(
+            command
+                .draft
+                .payments
+                .iter()
+                .map(|payment| payment.amount.yen()),
+        )?;
         if payment_total != command.draft.total.yen() {
             return Err(PostPurchaseError::PaymentTotalMismatch);
         }
@@ -621,9 +675,12 @@ pub fn decide_post_purchase(
         return Err(PostPurchaseError::JournalUnbalanced);
     }
 
-    let journal = BalancedJournal::new(journal_lines)
-        .map_err(|_| PostPurchaseError::JournalUnbalanced)?;
-    let new_revision = command.draft.revision.checked_add(1)
+    let journal =
+        BalancedJournal::new(journal_lines).map_err(|_| PostPurchaseError::JournalUnbalanced)?;
+    let new_revision = command
+        .draft
+        .revision
+        .checked_add(1)
         .ok_or(PostPurchaseError::RevisionOverflow)?;
     let purchase_id = command.draft.id.clone();
     let purchase = PostedPurchase {
@@ -640,7 +697,10 @@ pub fn decide_post_purchase(
     Ok(PostPurchaseDecision {
         purchase,
         period: command.period,
-        events: vec![PurchaseEvent::Posted { purchase_id, revision: new_revision }],
+        events: vec![PurchaseEvent::Posted {
+            purchase_id,
+            revision: new_revision,
+        }],
     })
 }
 

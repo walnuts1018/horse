@@ -7,6 +7,7 @@ use bookkeeping_application::{
     MemberFundingBasis, MemberId, MemberWeight, PostingTarget, SettlementPolicy,
     decide_post_purchase,
 };
+use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, YearMonth};
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
@@ -134,6 +135,7 @@ pub async fn persist_update_purchase_in_transaction(
     let mut lock_periods = vec![old_period, target_period];
     lock_periods.sort();
     lock_periods.dedup();
+    let mut original_accounting_period = None;
     for period_start in lock_periods {
         diesel::insert_into(periods::accounting_periods)
             .values((
@@ -146,15 +148,30 @@ pub async fn persist_update_purchase_in_transaction(
             .do_nothing()
             .execute(&mut *conn)
             .await?;
-        let status = periods::accounting_periods
+        let (status, period_revision) = periods::accounting_periods
             .filter(periods::household_id.eq(household_id))
             .filter(periods::period_start.eq(period_start))
             .for_update()
-            .select(periods::status)
-            .first::<String>(&mut *conn)
+            .select((periods::status, periods::revision))
+            .first::<(String, i64)>(&mut *conn)
             .await?;
         if status != "OPEN" {
             return Err(UpdatePurchasePersistenceError::AccountingPeriodClosed);
+        }
+        if period_start == old_period {
+            let year_month = YearMonth::new(
+                u16::try_from(period_start.year())
+                    .map_err(|_| UpdatePurchasePersistenceError::InvalidOccurredAt)?,
+                u8::try_from(period_start.month())
+                    .map_err(|_| UpdatePurchasePersistenceError::InvalidOccurredAt)?,
+            )
+            .map_err(|_| UpdatePurchasePersistenceError::InvalidOccurredAt)?;
+            let period_revision = u64::try_from(period_revision)
+                .map_err(|_| UpdatePurchasePersistenceError::InvalidOccurredAt)?;
+            original_accounting_period = Some(
+                AccountingPeriod::open(year_month, period_revision)
+                    .map_err(|_| UpdatePurchasePersistenceError::InvalidOccurredAt)?,
+            );
         }
     }
 
@@ -201,10 +218,21 @@ pub async fn persist_update_purchase_in_transaction(
     }
 
     let field_revisions = json_revisions(locked.6)?;
+    let lifecycle = match locked.2.as_str() {
+        "DRAFT" => bookkeeping_application::PurchaseLifecycle::Draft,
+        "POSTED" => bookkeeping_application::PurchaseLifecycle::Posted,
+        _ => {
+            return Err(UpdatePurchasePersistenceError::InvalidDecision(
+                UpdatePurchaseError::NotEditable,
+            ));
+        }
+    };
     let current = UpdatePurchaseDraft {
         revision: u64::try_from(locked.1)
             .map_err(|_| UpdatePurchasePersistenceError::NumericOutOfRange("revision"))?,
-        status: locked.2.clone(),
+        lifecycle,
+        accounting_period: original_accounting_period
+            .ok_or(UpdatePurchasePersistenceError::InvalidOccurredAt)?,
         occurred_at: locked.3.to_rfc3339(),
         date_precision: locked.4.clone(),
         merchant: locked.5.clone(),

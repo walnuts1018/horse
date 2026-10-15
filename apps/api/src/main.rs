@@ -79,6 +79,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Config {
                 public_origin,
                 frontend_origin,
+                ocr_endpoint: std::env::var("OCR_URL").unwrap_or_default(),
                 auth,
                 object_store,
             },

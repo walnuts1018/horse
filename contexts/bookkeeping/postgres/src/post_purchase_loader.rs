@@ -110,8 +110,7 @@ pub async fn load_post_purchase_command(
         .for_update()
         .select((periods::status, periods::revision))
         .first::<(String, i64)>(conn)
-        .await
-        ?;
+        .await?;
     let period_status = match period_status.as_str() {
         "OPEN" => AccountingPeriodStatus::Open,
         "CLOSED" => AccountingPeriodStatus::Closed,
@@ -125,11 +124,10 @@ pub async fn load_post_purchase_command(
     let period_revision = u64::try_from(period_revision)
         .map_err(|_| PostPurchaseLoadError::NumericOutOfRange("accounting_period.revision"))?;
     let year_month = YearMonth::new(
-        u16::try_from(period_start.year())
-            .map_err(|_| PostPurchaseLoadError::InvalidEnum {
-                field: "accounting_period.year",
-                value: period_start.year().to_string(),
-            })?,
+        u16::try_from(period_start.year()).map_err(|_| PostPurchaseLoadError::InvalidEnum {
+            field: "accounting_period.year",
+            value: period_start.year().to_string(),
+        })?,
         u8::try_from(period_start.month()).map_err(|_| PostPurchaseLoadError::InvalidEnum {
             field: "accounting_period.month",
             value: period_start.month().to_string(),

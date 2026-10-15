@@ -15,11 +15,15 @@ horse-auth = { path = "../identity" }
 evidence-application = { path = "../../contexts/evidence/application" }
 evidence-postgres = { path = "../../contexts/evidence/postgres" }
 futures-util = { workspace = true }
+hex = { workspace = true }
 horse-graphql-api = { path = "../graphql" }
 horse-object-storage = { path = "../object-storage" }
 horse-postgres-common = { path = "../../platform/postgres-common" }
+horse-worker-runtime = { path = "../worker-runtime" }
+reqwest = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
+sha2 = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 url = "2"

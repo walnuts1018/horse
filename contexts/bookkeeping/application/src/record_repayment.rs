@@ -352,11 +352,9 @@ mod tests {
         );
 
         let mut closed_period = command(PoolKind::Personal);
-        closed_period.accounting_period = AccountingPeriod::closed(
-            bookkeeping_domain::YearMonth::new(2026, 10).unwrap(),
-            1,
-        )
-        .unwrap();
+        closed_period.accounting_period =
+            AccountingPeriod::closed(bookkeeping_domain::YearMonth::new(2026, 10).unwrap(), 1)
+                .unwrap();
         assert_eq!(
             decide_record_repayment(closed_period),
             Err(RepaymentError::AccountingPeriodClosed)

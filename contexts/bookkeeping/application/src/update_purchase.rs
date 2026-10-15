@@ -1,3 +1,4 @@
+use crate::{AccountingPeriod, AccountingPeriodStatus, PurchaseLifecycle};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,7 +21,8 @@ pub struct UpdatePurchasePayment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdatePurchaseDraft {
     pub revision: u64,
-    pub status: String,
+    pub lifecycle: PurchaseLifecycle,
+    pub accounting_period: AccountingPeriod,
     pub occurred_at: String,
     pub date_precision: String,
     pub merchant: String,
@@ -60,7 +62,7 @@ pub fn decide_update_purchase(
     if command.purchase_id.is_empty() {
         return Err(UpdatePurchaseError::InvalidPurchaseId);
     }
-    if !matches!(current.status.as_str(), "DRAFT" | "POSTED") {
+    if current.accounting_period.status() == AccountingPeriodStatus::Closed {
         return Err(UpdatePurchaseError::NotEditable);
     }
     if command.base_revision == 0 || command.base_revision > current.revision {
@@ -154,7 +156,9 @@ mod tests {
     fn current() -> UpdatePurchaseDraft {
         UpdatePurchaseDraft {
             revision: 4,
-            status: "DRAFT".to_owned(),
+            lifecycle: PurchaseLifecycle::Draft,
+            accounting_period: AccountingPeriod::open(crate::YearMonth::new(2026, 10).unwrap(), 1)
+                .unwrap(),
             occurred_at: "2026-10-01T00:00:00+09:00".to_owned(),
             date_precision: "DATE_TIME".to_owned(),
             merchant: "店".to_owned(),
@@ -184,7 +188,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_conflicting_fields_and_closed_purchases() {
+    fn rejects_conflicting_fields_and_closed_period_updates() {
         let command = UpdatePurchaseCommand {
             purchase_id: "purchase".to_owned(),
             base_revision: 2,
@@ -200,7 +204,8 @@ mod tests {
         );
 
         let mut closed = current();
-        closed.status = "CLOSED".to_owned();
+        closed.accounting_period =
+            AccountingPeriod::closed(crate::YearMonth::new(2026, 10).unwrap(), 2).unwrap();
         assert_eq!(
             decide_update_purchase(command, closed),
             Err(UpdatePurchaseError::NotEditable)

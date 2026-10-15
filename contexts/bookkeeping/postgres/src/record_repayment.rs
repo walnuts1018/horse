@@ -715,13 +715,18 @@ async fn ensure_open_period(
         .filter(public::accounting_periods::household_id.eq(household_id))
         .filter(public::accounting_periods::period_start.eq(period_start))
         .for_update()
-        .select((public::accounting_periods::status, public::accounting_periods::revision))
+        .select((
+            public::accounting_periods::status,
+            public::accounting_periods::revision,
+        ))
         .first::<(String, i64)>(conn)
         .await
         .optional()?;
     let expected_revision = i64::try_from(expected_revision)
         .map_err(|_| RecordRepaymentPersistenceError::InvalidDecision)?;
-    if period.as_ref().map(|(status, revision)| (status.as_str(), *revision))
+    if period
+        .as_ref()
+        .map(|(status, revision)| (status.as_str(), *revision))
         != Some(("OPEN", expected_revision))
     {
         return Err(RecordRepaymentPersistenceError::AccountingPeriodClosed);

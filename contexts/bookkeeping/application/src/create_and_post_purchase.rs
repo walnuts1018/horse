@@ -263,7 +263,7 @@ pub async fn create_and_post_purchase<O: CreateAndPostPurchaseOperations>(
     })
 }
 
-fn apply_allocation_context(
+pub(crate) fn apply_allocation_context(
     mut command: CreatePurchaseCommand,
     context: PurchaseAllocationContext,
 ) -> Result<CreatePurchaseCommand, ()> {
@@ -291,7 +291,7 @@ fn apply_allocation_context(
     Ok(command)
 }
 
-fn normalize_merchant(value: &str) -> String {
+pub(crate) fn normalize_merchant(value: &str) -> String {
     value
         .split_whitespace()
         .collect::<Vec<_>>()

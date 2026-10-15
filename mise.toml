@@ -50,10 +50,6 @@ run = "golangci-lint run --new-from-rev=${LINT_BASE_REV:-HEAD^} ./..."
 description = "GitHub Actionsの静的解析"
 run = "jactionlint"
 
-[tasks."evaluation:run"]
-description = "保存済みのAI評価データセットをオフライン評価"
-run = "cargo run -p horse-evaluate -- --dataset ${EVALUATION_DATASET:-internal/evaluation/datasets/synthetic-v1.json}"
-
 [tasks."web:dev"]
 description = "フロントエンドの開発サーバー"
 dir = "web"

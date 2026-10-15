@@ -482,11 +482,9 @@ mod tests {
     #[test]
     fn transfer_rejects_closed_period_invalid_repayment_and_same_accounts() {
         let mut closed = base();
-        closed.accounting_period = AccountingPeriod::closed(
-            bookkeeping_domain::YearMonth::new(2026, 10).unwrap(),
-            1,
-        )
-        .unwrap();
+        closed.accounting_period =
+            AccountingPeriod::closed(bookkeeping_domain::YearMonth::new(2026, 10).unwrap(), 1)
+                .unwrap();
         assert_eq!(
             decide_record_transfer(RecordTransferCommand::Gift(closed)),
             Err(RecordTransferError::AccountingPeriodClosed)

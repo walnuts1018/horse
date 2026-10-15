@@ -23,8 +23,11 @@ impl YearMonth {
         let year = &value[..4];
         let month = &value[5..];
         Self::new(
-            year.parse().map_err(|_| AccountingPeriodError::InvalidMonth)?,
-            month.parse().map_err(|_| AccountingPeriodError::InvalidMonth)?,
+            year.parse()
+                .map_err(|_| AccountingPeriodError::InvalidMonth)?,
+            month
+                .parse()
+                .map_err(|_| AccountingPeriodError::InvalidMonth)?,
         )
     }
 
@@ -77,10 +80,7 @@ impl AccountingPeriod {
         })
     }
 
-    pub fn close(
-        self,
-        expected_revision: u64,
-    ) -> Result<Self, AccountingPeriodTransitionError> {
+    pub fn close(self, expected_revision: u64) -> Result<Self, AccountingPeriodTransitionError> {
         if self.status == AccountingPeriodStatus::Closed {
             return Err(AccountingPeriodTransitionError::AlreadyClosed);
         }
@@ -126,4 +126,20 @@ pub enum AccountingPeriodTransitionError {
 pub enum AccountingPeriodError {
     InvalidMonth,
     InvalidRevision,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AccountingPeriodError, YearMonth};
+
+    #[test]
+    fn year_month_accepts_only_ascii_yyyy_mm() {
+        assert_eq!(YearMonth::parse("2026-10").unwrap().as_string(), "2026-10");
+        for invalid in ["+026-10", "2026-+1", "2026-1", "2026/10", "２０２６-10"] {
+            assert_eq!(
+                YearMonth::parse(invalid),
+                Err(AccountingPeriodError::InvalidMonth)
+            );
+        }
+    }
 }

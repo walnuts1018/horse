@@ -6,17 +6,15 @@ use bookkeeping_application::{
     create_purchase::{
         AllocationRuleVersion, CreatePurchaseAllocation, CreatePurchaseCommand, CreatePurchaseItem,
         CreatePurchasePayment, DatePrecision, Measure, PrintedUnitPrice, PurchaseOccurredAt,
-        PurchaseOrigin as WorkflowPurchaseOrigin, QuantityUnit, decide_create_purchase,
+        PurchaseOrigin as WorkflowPurchaseOrigin, QuantityUnit,
     },
-    decide_post_purchase,
 };
 use bookkeeping_postgres::{
     create_purchase as postgres_create, post_purchase as postgres_post,
     post_purchase_loader::{self, PostPurchaseLoadError},
-    purchase_command_context::{self, PurchaseItemAllocationInput},
+    purchase_command_context,
     purchase_command_result, purchase_create_and_post,
 };
-use diesel_async::AsyncConnection;
 use horse_postgres_common::PgPool;
 use household_postgres::household_access as postgres_household_access;
 use serde::Serialize;
@@ -458,65 +456,41 @@ pub async fn create_purchase(
         Err(error) => return Ok(error.into()),
     };
     let pool = ctx.data::<PgPool>()?;
-    match postgres_household_access::is_active_member(pool, parsed.household_id, actor.0).await {
-        Ok(true) => {}
-        Ok(false) => return Ok(not_found().into()),
-        Err(error) => return Err(crate::internal_error(error)),
-    }
-    let allocation_inputs = parsed
-        .command
-        .items
-        .iter()
-        .map(|item| PurchaseItemAllocationInput {
-            category_id: item
-                .category_id
-                .as_deref()
-                .and_then(|id| Uuid::parse_str(id).ok()),
-            product_variant_id: item
-                .product_variant_id
-                .as_deref()
-                .and_then(|id| Uuid::parse_str(id).ok()),
-            merchant_key: normalize_merchant(&parsed.command.merchant),
-            allocations: item
-                .allocations
-                .iter()
-                .map(|allocation| {
-                    (
-                        Uuid::parse_str(&allocation.pool_id).expect("parsed pool identifier"),
-                        allocation.weight,
-                    )
-                })
-                .collect(),
-        })
-        .collect::<Vec<_>>();
-    let context = match purchase_command_context::load_purchase_command_context(
-        pool,
-        parsed.household_id,
-        &normalize_merchant(&parsed.command.merchant),
-        &allocation_inputs,
-    )
-    .await
-    {
+    let workflow_command = bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowCommand {
+        household_id: parsed.persistence.household_id.clone(),
+        actor_id: parsed.persistence.actor_id.clone(),
+        purchase: parsed.command,
+        persistence: bookkeeping_application::create_and_post_purchase::CreatePurchasePersistence {
+            household_id: parsed.persistence.household_id,
+            actor_id: parsed.persistence.actor_id,
+            idempotency_key: parsed.persistence.idempotency_key,
+            request_fingerprint: parsed.persistence.request_fingerprint,
+        },
+    };
+    let persisted = match postgres_create::create_purchase_workflow(pool, workflow_command).await {
         Ok(value) => value,
-        Err(error) => match context_user_error(&error) {
+        Err(bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowError::Decision(_)) => {
+            return Ok(bad_input().into());
+        }
+        Err(bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowError::AllocationContextMismatch) => {
+            return Err(crate::internal_error("purchase allocation context mismatch"));
+        }
+        Err(bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowError::Operations(
+            postgres_create::CreatePurchaseWorkflowAdapterError::Context(error),
+        )) => match context_user_error(&error) {
             Some(error) => return Ok(error.into()),
             None => return Err(crate::internal_error(error)),
         },
+        Err(bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowError::Operations(
+            postgres_create::CreatePurchaseWorkflowAdapterError::Persistence(error),
+        )) => match create_user_error(&error) {
+            Some(error) => return Ok(error.into()),
+            None => return Err(crate::internal_error(error)),
+        },
+        Err(bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowError::Operations(
+            postgres_create::CreatePurchaseWorkflowAdapterError::Database(error),
+        )) => return Err(crate::internal_error(error)),
     };
-    let command =
-        apply_allocation_context(parsed.command, context).map_err(crate::internal_error)?;
-    let decision = match decide_create_purchase(command) {
-        Ok(value) => value,
-        Err(_) => return Ok(bad_input().into()),
-    };
-    let persisted =
-        match postgres_create::persist_create_purchase(pool, parsed.persistence, decision).await {
-            Ok(value) => value,
-            Err(error) => match create_user_error(&error) {
-                Some(error) => return Ok(error.into()),
-                None => return Err(crate::internal_error(error)),
-            },
-        };
     Ok(CreatePurchaseSuccess {
         result: purchase_result(pool, parsed.household_id, &persisted.purchase_id).await?,
     }
@@ -649,11 +623,6 @@ pub async fn post_purchase(
             None => return Err(crate::internal_error(error)),
         },
     }
-    let mut conn = ctx
-        .data::<PgPool>()?
-        .get()
-        .await
-        .map_err(crate::internal_error)?;
     let projection = purchase_command_result::load_purchase_command_result(
         ctx.data::<PgPool>()?,
         household_id,
@@ -661,51 +630,46 @@ pub async fn post_purchase(
     )
     .await
     .map_err(crate::internal_error)?;
-    let result = (&mut *conn)
-        .transaction::<postgres_post::PersistedPostPurchase, PostMutationError, _>(async |conn| {
-            let loaded = post_purchase_loader::load_post_purchase_command(
-                conn,
-                &household_id.to_string(),
-                &purchase_id.to_string(),
-                input.expected_revision as u64,
-            )
-            .await
-            .map_err(PostMutationError::Load)?;
-            let decision =
-                decide_post_purchase(loaded.command).map_err(|_| PostMutationError::Workflow)?;
-            postgres_post::persist_post_purchase_in_transaction(
-                conn,
-                postgres_post::PersistPostPurchase {
-                    household_id: household_id.to_string(),
-                    actor_id: actor.0.to_string(),
-                    expected_revision: input.expected_revision as u64,
-                    ledger_description: projection.merchant.clone(),
-                    idempotency_key: input.idempotency_key.clone(),
-                    request_fingerprint: fingerprint,
-                    resolved_payments: loaded.resolved_payments,
-                },
-                decision,
-            )
-            .await
-            .map_err(PostMutationError::Persistence)
-        })
-        .await;
+    let result = postgres_post::post_purchase_workflow(
+        ctx.data::<PgPool>()?,
+        bookkeeping_application::post_purchase::PostPurchaseWorkflowCommand {
+            household_id: household_id.to_string(),
+            actor_id: actor.0.to_string(),
+            purchase_id: purchase_id.to_string(),
+            expected_revision: input.expected_revision as u64,
+            ledger_description: projection.merchant,
+            idempotency_key: input.idempotency_key,
+            request_fingerprint: fingerprint,
+        },
+    )
+    .await;
     match result {
         Ok(value) => Ok(PostPurchaseSuccess {
             result: purchase_result(ctx.data::<PgPool>()?, household_id, &value.purchase_id)
                 .await?,
         }
         .into()),
-        Err(PostMutationError::Load(error)) => match post_load_user_error(&error) {
+        Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Decision(_)) => {
+            Ok(conflict().into())
+        }
+        Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Operations(
+            postgres_post::PostPurchaseWorkflowAdapterError::Load(error),
+        )) => match post_load_user_error(&error) {
             Some(error) => Ok(error.into()),
             None => Err(crate::internal_error(error)),
         },
-        Err(PostMutationError::Workflow) => Ok(conflict().into()),
-        Err(PostMutationError::Persistence(error)) => match post_user_error(&error) {
+        Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Operations(
+            postgres_post::PostPurchaseWorkflowAdapterError::Persistence(error),
+        )) => match post_user_error(&error) {
             Some(error) => Ok(error.into()),
             None => Err(crate::internal_error(error)),
         },
-        Err(PostMutationError::Database(error)) => Err(crate::internal_error(error)),
+        Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Operations(
+            postgres_post::PostPurchaseWorkflowAdapterError::Pool(error),
+        )) => Err(crate::internal_error(error)),
+        Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Operations(
+            postgres_post::PostPurchaseWorkflowAdapterError::Database(error),
+        )) => Err(crate::internal_error(error)),
     }
 }
 
@@ -986,31 +950,6 @@ fn canonical_input(input: &CreatePurchaseInput) -> CanonicalCreatePurchase {
     }
 }
 
-fn apply_allocation_context(
-    mut command: CreatePurchaseCommand,
-    context: purchase_command_context::PurchaseCommandContext,
-) -> std::result::Result<CreatePurchaseCommand, ()> {
-    command.allocation_rule_version =
-        AllocationRuleVersion::new(context.allocation_rule_version).ok_or(())?;
-    for (item, resolved) in command.items.iter_mut().zip(context.items) {
-        if item.category_id.is_none() {
-            item.category_id = resolved.category_id.map(|id| id.to_string());
-        }
-        item.allocation_override = resolved.allocation_override;
-        item.allocations = resolved
-            .allocations
-            .into_iter()
-            .map(|allocation| CreatePurchaseAllocation {
-                pool_id: allocation.pool_id.to_string(),
-                weight: allocation.weight,
-                rule_version: allocation.rule_version,
-                rule_id: allocation.rule_id.map(|id| id.to_string()),
-            })
-            .collect();
-    }
-    Ok(command)
-}
-
 fn decode_node_id(
     value: &ID,
     expected_kind: &str,
@@ -1045,14 +984,6 @@ fn encode_node_id(kind: &str, id: Uuid) -> ID {
     bytes.push(b':');
     bytes.extend_from_slice(id.as_bytes());
     ID(URL_SAFE_NO_PAD.encode(bytes))
-}
-
-fn normalize_merchant(value: &str) -> String {
-    value
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
 }
 
 fn post_fingerprint(purchase_id: &str, expected_revision: i32) -> Result<[u8; 32]> {
@@ -1314,18 +1245,6 @@ impl From<PurchaseMutationUserError> for PostPurchaseResult {
             code: value.code,
             message: value.message,
         })
-    }
-}
-
-enum PostMutationError {
-    Database(diesel::result::Error),
-    Load(PostPurchaseLoadError),
-    Workflow,
-    Persistence(postgres_post::PostPurchasePersistenceError),
-}
-impl From<diesel::result::Error> for PostMutationError {
-    fn from(error: diesel::result::Error) -> Self {
-        Self::Database(error)
     }
 }
 

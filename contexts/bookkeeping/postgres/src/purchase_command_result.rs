@@ -150,8 +150,8 @@ pub async fn load_purchase_command_result(
         .optional()?;
     let status = match base.4.as_str() {
         "DRAFT" => "DRAFT",
-        "POSTED" | "CLOSED" => {
-            if period_status.as_deref() == Some("CLOSED") || base.4 == "CLOSED" {
+        "POSTED" => {
+            if period_status.as_deref() == Some("CLOSED") {
                 "CLOSED"
             } else {
                 "POSTED"
@@ -442,7 +442,9 @@ pub async fn load_purchase_edit_context(
         )>(&mut *conn)
         .await
         .optional()?;
-    let Some((revision, persisted_status, occurred_at, date_precision, merchant, field_revisions)) = row else {
+    let Some((revision, persisted_status, occurred_at, date_precision, merchant, field_revisions)) =
+        row
+    else {
         return Ok(None);
     };
     let period_status = periods::accounting_periods
@@ -454,8 +456,8 @@ pub async fn load_purchase_edit_context(
         .optional()?;
     let status = match persisted_status.as_str() {
         "DRAFT" => "DRAFT",
-        "POSTED" | "CLOSED" => {
-            if period_status.as_deref() == Some("CLOSED") || persisted_status == "CLOSED" {
+        "POSTED" => {
+            if period_status.as_deref() == Some("CLOSED") {
                 "CLOSED"
             } else {
                 "POSTED"

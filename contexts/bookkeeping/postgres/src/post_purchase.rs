@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use bookkeeping_application::post_purchase as application;
 use bookkeeping_application::{PostPurchaseDecision, PostingTarget, Side};
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use diesel::{
@@ -28,6 +29,121 @@ pub struct PersistedPostPurchase {
     pub purchase_id: String,
     pub journal_id: String,
     pub ledger_entry_id: String,
+}
+
+#[derive(Debug)]
+pub enum PostPurchaseWorkflowAdapterError {
+    Pool(String),
+    Database(DieselError),
+    Load(crate::post_purchase_loader::PostPurchaseLoadError),
+    Persistence(PostPurchasePersistenceError),
+}
+
+pub async fn post_purchase_workflow(
+    pool: &PgPool,
+    command: application::PostPurchaseWorkflowCommand,
+) -> Result<
+    application::PostPurchaseWorkflowResult,
+    application::PostPurchaseWorkflowError<PostPurchaseWorkflowAdapterError>,
+> {
+    let mut pooled = pool.get().await.map_err(|error| {
+        application::PostPurchaseWorkflowError::Operations(PostPurchaseWorkflowAdapterError::Pool(
+            error.to_string(),
+        ))
+    })?;
+    let result = (&mut *pooled)
+        .transaction::<
+            Result<_, application::PostPurchaseWorkflowError<PostPurchaseWorkflowAdapterError>>,
+            DieselError,
+            _,
+        >(async |conn| {
+            let mut operations = PurchasePostOperations { conn };
+            Ok(application::post_purchase(&mut operations, command).await)
+        })
+        .await
+        .map_err(|error| {
+            application::PostPurchaseWorkflowError::Operations(
+                PostPurchaseWorkflowAdapterError::Database(error),
+            )
+        })?;
+    result
+}
+
+struct PurchasePostOperations<'a> {
+    conn: &'a mut diesel_async::AsyncPgConnection,
+}
+
+impl application::PostPurchaseOperations for PurchasePostOperations<'_> {
+    type Error = PostPurchaseWorkflowAdapterError;
+
+    async fn load(
+        &mut self,
+        household_id: &str,
+        purchase_id: &str,
+        expected_revision: u64,
+    ) -> Result<application::LoadedPostPurchase, Self::Error> {
+        let loaded = crate::post_purchase_loader::load_post_purchase_command(
+            &mut *self.conn,
+            household_id,
+            purchase_id,
+            expected_revision,
+        )
+        .await
+        .map_err(|error| PostPurchaseWorkflowAdapterError::Load(error))?;
+        Ok(application::LoadedPostPurchase {
+            command: loaded.command,
+            resolved_payments: loaded
+                .resolved_payments
+                .into_iter()
+                .map(|payment| {
+                    bookkeeping_application::create_and_post_purchase::ResolvedPostPurchasePayment {
+                        line_no: payment.line_no,
+                        account_id: payment.account_id,
+                        amount: payment.amount,
+                        is_fallback: payment.is_fallback,
+                    }
+                })
+                .collect(),
+        })
+    }
+
+    async fn persist(
+        &mut self,
+        persistence: bookkeeping_application::create_and_post_purchase::PostPurchasePersistence,
+        decision: PostPurchaseDecision,
+    ) -> Result<application::PostPurchaseWorkflowResult, Self::Error> {
+        let persisted = persist_post_purchase_in_transaction(
+            &mut *self.conn,
+            PersistPostPurchase {
+                household_id: persistence.household_id,
+                actor_id: persistence.actor_id,
+                expected_revision: persistence.expected_revision,
+                ledger_description: persistence.ledger_description,
+                idempotency_key: persistence.idempotency_key,
+                request_fingerprint: persistence.request_fingerprint,
+                resolved_payments: persistence
+                    .resolved_payments
+                    .into_iter()
+                    .map(
+                        |payment| crate::post_purchase_loader::ResolvedPostPurchasePayment {
+                            line_no: payment.line_no,
+                            account_id: payment.account_id,
+                            amount: payment.amount,
+                            is_fallback: payment.is_fallback,
+                        },
+                    )
+                    .collect(),
+            },
+            decision,
+        )
+        .await
+        .map_err(PostPurchaseWorkflowAdapterError::Persistence)?;
+        Ok(application::PostPurchaseWorkflowResult {
+            purchase_id: persisted.purchase_id,
+            journal_id: persisted.journal_id,
+            ledger_entry_id: persisted.ledger_entry_id,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -143,8 +259,13 @@ pub async fn persist_post_purchase_in_transaction(
         1,
     )
     .ok_or(PostPurchasePersistenceError::InvalidDecision)?;
-    ensure_period_open(&mut *conn, household_id, period_start, decision.period().revision())
-        .await?;
+    ensure_period_open(
+        &mut *conn,
+        household_id,
+        period_start,
+        decision.period().revision(),
+    )
+    .await?;
 
     use public::household_members::dsl as members;
     use public::idempotency_records::dsl as idem;
@@ -508,7 +629,9 @@ pub(crate) async fn ensure_period_open(
         .optional()?;
     let expected_revision = i64::try_from(expected_revision)
         .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("period revision"))?;
-    if period.as_ref().map(|(status, revision)| (status.as_str(), *revision))
+    if period
+        .as_ref()
+        .map(|(status, revision)| (status.as_str(), *revision))
         != Some(("OPEN", expected_revision))
     {
         return Err(PostPurchasePersistenceError::AccountingPeriodClosed);

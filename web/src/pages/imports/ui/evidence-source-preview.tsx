@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import type { EvidencePreviewController } from "../model/evidence-preview";
 
+import { InlineError } from "../../../shared/ui";
 import { regionPolygon, type Region } from "../model/evidence-geometry";
 import { yen, type DocumentReview } from "../model/imports";
 import {
@@ -42,7 +43,18 @@ export function EvidenceSourcePreview({
   onDirty: () => void;
   onRetryCrop: () => void;
 }) {
-  const { page, preview, selectPage, receiptEvidenceIndex, setReceiptEvidenceIndex } = previewState;
+  const {
+    page,
+    pageDraft,
+    setPageDraft,
+    preview,
+    loading,
+    error,
+    showPage,
+    selectPage,
+    receiptEvidenceIndex,
+    setReceiptEvidenceIndex,
+  } = previewState;
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const receiptItems = useMemo(
     () => ensureReceiptItemKeys(document.result?.receipt?.items ?? []),
@@ -93,9 +105,32 @@ export function EvidenceSourcePreview({
           <FileImage size={23} />
           <span>原本ファイルを開く</span>
         </a>
-        {document.mimeType?.startsWith("image/") &&
-          preview?.documentId === document.id &&
-          preview.page === page && (
+        {document.mimeType === "application/pdf" && (
+          <div className={styles.evidencePreviewPageControls}>
+            <label>
+              PDFページ
+              <input
+                aria-label="PDFページ"
+                type="number"
+                min="1"
+                step="1"
+                value={pageDraft}
+                onChange={(event) => setPageDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") showPage();
+                }}
+              />
+            </label>
+            <button className="text-button" type="button" onClick={showPage}>
+              ページを表示
+            </button>
+          </div>
+        )}
+        {loading && <p>ページを読み込んでいます</p>}
+        {error && <InlineError message={error} />}
+        {preview?.documentId === document.id &&
+          preview.page === page &&
+          (document.mimeType?.startsWith("image/") || document.mimeType === "application/pdf") && (
             <div className={styles.evidenceImageStage}>
               <img src={preview.src} alt={`${page + 1}ページ目の原本`} />
               {receiptItems.map((item, index) =>
@@ -223,6 +258,23 @@ export function EvidenceSourcePreview({
                     />
                   </label>
                 ))}
+                <label>
+                  ページ
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={cropRegion.page + 1}
+                    onChange={(event) => {
+                      onDirty();
+                      const requestedPage = Math.max(0, Math.trunc(Number(event.target.value) - 1));
+                      onCropRegionChange((current) =>
+                        current ? { ...current, page: requestedPage } : current,
+                      );
+                      selectPage(requestedPage);
+                    }}
+                  />
+                </label>
                 <button
                   className="button button-soft"
                   type="button"

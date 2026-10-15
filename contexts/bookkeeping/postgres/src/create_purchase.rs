@@ -1,4 +1,9 @@
 use bookkeeping_application::create_purchase::CreatePurchaseDecision;
+use bookkeeping_application::create_purchase_workflow as application;
+use bookkeeping_application::create_and_post_purchase::{
+    CreatePurchasePersistence, CreatedPurchase, PurchaseAllocationContext,
+    PurchaseItemAllocationRequest,
+};
 use chrono::{Datelike, FixedOffset, NaiveDate};
 use diesel::{
     ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, dsl::now,
@@ -48,6 +53,149 @@ pub enum CreatePurchasePersistenceError {
 impl From<DieselError> for CreatePurchasePersistenceError {
     fn from(error: DieselError) -> Self {
         Self::Database(error)
+    }
+}
+
+#[derive(Debug)]
+pub enum CreatePurchaseWorkflowAdapterError {
+    Database(DieselError),
+    Context(crate::purchase_command_context::PurchaseCommandContextError),
+    Persistence(CreatePurchasePersistenceError),
+}
+
+pub async fn create_purchase_workflow(
+    pool: &PgPool,
+    command: application::CreatePurchaseWorkflowCommand,
+) -> Result<CreatedPurchase, application::CreatePurchaseWorkflowError<CreatePurchaseWorkflowAdapterError>> {
+    let mut pooled = pool.get().await.map_err(|error| {
+        application::CreatePurchaseWorkflowError::Operations(
+            CreatePurchaseWorkflowAdapterError::Persistence(
+                CreatePurchasePersistenceError::Pool(error.to_string()),
+            ),
+        )
+    })?;
+    let result = (&mut *pooled)
+        .transaction::<
+            Result<_, application::CreatePurchaseWorkflowError<CreatePurchaseWorkflowAdapterError>>,
+            DieselError,
+            _,
+        >(async |conn| {
+            let mut operations = PgCreatePurchaseOperations { conn };
+            Ok(application::create_purchase(&mut operations, command).await)
+        })
+        .await
+        .map_err(|error| {
+            application::CreatePurchaseWorkflowError::Operations(
+                CreatePurchaseWorkflowAdapterError::Database(error),
+            )
+        })?;
+    result
+}
+
+struct PgCreatePurchaseOperations<'a> {
+    conn: &'a mut diesel_async::AsyncPgConnection,
+}
+
+impl application::CreatePurchaseOperations for PgCreatePurchaseOperations<'_> {
+    type Error = CreatePurchaseWorkflowAdapterError;
+
+    async fn require_active_member(
+        &mut self,
+        household_id: &str,
+        actor_id: &str,
+    ) -> Result<(), Self::Error> {
+        use public::household_members::dsl as members;
+
+        let household_id = parse_uuid(household_id, "household_id").map_err(|error| {
+            CreatePurchaseWorkflowAdapterError::Persistence(error)
+        })?;
+        let actor_id = parse_uuid(actor_id, "actor_id")
+            .map_err(CreatePurchaseWorkflowAdapterError::Persistence)?;
+        members::household_members
+            .filter(members::household_id.eq(household_id))
+            .filter(members::member_id.eq(actor_id))
+            .filter(members::left_at.is_null())
+            .select(members::member_id)
+            .first::<Uuid>(&mut *self.conn)
+            .await
+            .optional()
+            .map_err(CreatePurchaseWorkflowAdapterError::Database)?
+            .ok_or(CreatePurchaseWorkflowAdapterError::Persistence(
+                CreatePurchasePersistenceError::MemberNotFound,
+            ))?;
+        Ok(())
+    }
+
+    async fn load_allocation_context(
+        &mut self,
+        household_id: &str,
+        merchant_key: &str,
+        items: &[PurchaseItemAllocationRequest],
+    ) -> Result<PurchaseAllocationContext, Self::Error> {
+        let household_id = parse_uuid(household_id, "household_id")
+            .map_err(CreatePurchaseWorkflowAdapterError::Persistence)?;
+        let item_inputs = items
+            .iter()
+            .map(|item| {
+                Ok(crate::purchase_command_context::PurchaseItemAllocationInput {
+                    category_id: item
+                        .category_id
+                        .as_deref()
+                        .map(|id| parse_uuid(id, "category_id"))
+                        .transpose()
+                        .map_err(CreatePurchaseWorkflowAdapterError::Persistence)?,
+                    product_variant_id: item
+                        .product_variant_id
+                        .as_deref()
+                        .map(|id| parse_uuid(id, "product_variant_id"))
+                        .transpose()
+                        .map_err(CreatePurchaseWorkflowAdapterError::Persistence)?,
+                    allocations: item
+                        .allocations
+                        .iter()
+                        .map(|allocation| {
+                            Ok((
+                                parse_uuid(&allocation.pool_id, "pool_id").map_err(
+                                    CreatePurchaseWorkflowAdapterError::Persistence,
+                                )?,
+                                allocation.weight,
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, Self::Error>>()?,
+                })
+            })
+            .collect::<Result<Vec<_>, Self::Error>>()?;
+        crate::purchase_command_context::load_purchase_command_context_in_transaction(
+            &mut *self.conn,
+            household_id,
+            merchant_key,
+            &item_inputs,
+        )
+        .await
+        .map_err(CreatePurchaseWorkflowAdapterError::Context)
+    }
+
+    async fn persist_create(
+        &mut self,
+        persistence: CreatePurchasePersistence,
+        decision: bookkeeping_application::create_purchase::CreatePurchaseDecision,
+    ) -> Result<CreatedPurchase, Self::Error> {
+        let persisted = persist_create_purchase_in_transaction(
+            &mut *self.conn,
+            PersistCreatePurchase {
+                household_id: persistence.household_id,
+                actor_id: persistence.actor_id,
+                idempotency_key: persistence.idempotency_key,
+                request_fingerprint: persistence.request_fingerprint,
+            },
+            decision,
+        )
+        .await
+        .map_err(CreatePurchaseWorkflowAdapterError::Persistence)?;
+        Ok(CreatedPurchase {
+            purchase_id: persisted.purchase_id,
+            created: persisted.created,
+        })
     }
 }
 

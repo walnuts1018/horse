@@ -4,11 +4,11 @@ use bookkeeping_application::funding_record::{
     RecordFundingCommand, RecordFundingError, decide_record_funding,
 };
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
-use chrono::{Datelike, FixedOffset};
 use bookkeeping_postgres::{
     funding_command_context as postgres_funding_context,
     funding_command_result as postgres_funding_result, funding_record as postgres_funding,
 };
+use chrono::{Datelike, FixedOffset};
 use horse_postgres_common::PgPool;
 use household_postgres::household_access as postgres_household_access;
 use serde::Serialize;

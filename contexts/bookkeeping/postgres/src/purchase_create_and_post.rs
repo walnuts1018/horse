@@ -72,9 +72,9 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
         use public::accounting_periods::dsl as periods;
 
         let household_id = parse_uuid(household_id, "household_id")?;
-        let tokyo = FixedOffset::east_opt(9 * 60 * 60).ok_or(
-            CreateAndPostPurchaseError::Post(PostPurchasePersistenceError::InvalidDecision),
-        )?;
+        let tokyo = FixedOffset::east_opt(9 * 60 * 60).ok_or(CreateAndPostPurchaseError::Post(
+            PostPurchasePersistenceError::InvalidDecision,
+        ))?;
         let local_date = occurred_at.with_timezone(&tokyo).date_naive();
         let period_start = local_date
             .with_day(1)
@@ -265,7 +265,7 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
                 })?;
                 let lifecycle = match status.as_str() {
                     "DRAFT" => bookkeeping_application::PurchaseLifecycle::Draft,
-                    "POSTED" | "CLOSED" => bookkeeping_application::PurchaseLifecycle::Posted,
+                    "POSTED" => bookkeeping_application::PurchaseLifecycle::Posted,
                     _ => {
                         return Err(CreateAndPostPurchaseError::Create(
                             CreatePurchasePersistenceError::InvalidDecision,

@@ -362,6 +362,11 @@ pub async fn process(
             partial_result(&lines, &issues, Value::Null, code, &model, route, project),
         )
     })?;
+    let thinking_level = request
+        .get("thinkingLevel")
+        .and_then(Value::as_str)
+        .filter(|value| matches!(*value, "low" | "medium" | "high"))
+        .unwrap_or("low");
     let started = Instant::now();
     let candidates = model_candidates(config, &job.source_kind, &model, route);
     let mut selected = None;
@@ -490,7 +495,7 @@ pub async fn process(
                 input.clone(),
                 SYSTEM_INSTRUCTION,
                 extraction_schema(&job.source_kind, is_csv_statement),
-                "low",
+                thinking_level,
                 16_384,
             )
             .await
@@ -868,7 +873,12 @@ pub async fn process(
         !clarification.is_empty(),
     );
     if let Some(object) = run.as_object_mut() {
-        object.insert("reason".to_owned(), json!(route_reason));
+        let reason = request
+            .get("reviewReason")
+            .and_then(Value::as_str)
+            .unwrap_or(route_reason);
+        object.insert("reason".to_owned(), json!(reason));
+        object.insert("thinkingLevel".to_owned(), json!(thinking_level));
         apply_cost_snapshot(
             object,
             config,
@@ -933,7 +943,7 @@ pub async fn process(
             issues.push("独立したOCR読取に明細行がありません。原本を確認してください。".to_owned());
         }
         let balanced = issues.is_empty();
-        Ok(json!({
+        let result = json!({
             "receipt": receipt,
             "transform": transform,
             "transformPage": transform_page,
@@ -946,7 +956,8 @@ pub async fn process(
             "candidates": [],
             "conversationId": request.get("conversationId"),
             "conversation": conversation_after(request, clarification, reply),
-        }))
+        });
+        run_optional_reviews(pool, store, config, job, &model, &document.mime_type, result).await
     } else {
         let Some(object) = receipt.as_object_mut() else {
             unreachable!()
@@ -973,7 +984,7 @@ pub async fn process(
             }
         }
         let balanced = issues.is_empty() && total_matches;
-        Ok(json!({
+        let result = json!({
             "receipt": receipt,
             "transform": transform,
             "transformPage": transform_page,
@@ -986,8 +997,167 @@ pub async fn process(
             "candidates": [],
             "conversationId": request.get("conversationId"),
             "conversation": conversation_after(request, clarification, reply),
-        }))
+        });
+        run_optional_reviews(pool, store, config, job, &model, &document.mime_type, result).await
     }
+}
+
+async fn run_optional_reviews(
+    pool: &PgPool,
+    store: &ObjectStore,
+    config: &ProcessConfig,
+    job: &ClaimedExtractionJob,
+    model: &str,
+    mime_type: &str,
+    mut current: Value,
+) -> Result<Value, Failure> {
+    let explicit_model = job
+        .request
+        .get("model")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.is_empty());
+    if explicit_model || current.get("balanced").and_then(Value::as_bool) == Some(true) {
+        return Ok(current);
+    }
+    let mut guidance = evidence_guidance(&current);
+    let quality_model = if model == config.lite_model {
+        config.flash_model.clone()
+    } else {
+        model.to_owned()
+    };
+    let quality_job = review_job(
+        job,
+        &quality_model,
+        "medium",
+        "evidence_guided_quality_review",
+        &guidance,
+    );
+    if let Ok(candidate) = process(pool, store, config, &quality_job).await {
+        current = select_review_result(current, candidate);
+    }
+
+    if current.get("balanced").and_then(Value::as_bool) != Some(true)
+        && !config.paid_api_key.is_empty()
+        && (mime_type.starts_with("image/") || mime_type == "application/pdf")
+        && needs_pro_review(&current)
+    {
+        guidance = evidence_guidance(&current);
+        let pro_job = review_job(
+            job,
+            &config.pro_model,
+            "high",
+            "evidence_guided_pro_review",
+            &guidance,
+        );
+        if let Ok(candidate) = process(pool, store, config, &pro_job).await {
+            current = select_review_result(current, candidate);
+        }
+    }
+    Ok(current)
+}
+
+fn review_job(
+    job: &ClaimedExtractionJob,
+    model: &str,
+    thinking_level: &str,
+    reason: &str,
+    guidance: &str,
+) -> ClaimedExtractionJob {
+    let mut review = job.clone();
+    let mut request = review.request.as_object().cloned().unwrap_or_default();
+    request.insert("model".to_owned(), json!(model));
+    request.insert("thinkingLevel".to_owned(), json!(thinking_level));
+    request.insert("reviewReason".to_owned(), json!(reason));
+    request.insert("reviewGuidance".to_owned(), json!(guidance));
+    review.request = Value::Object(request);
+    review
+}
+
+fn evidence_guidance(result: &Value) -> String {
+    let mut guidance = String::new();
+    if let Some(issues) = result.get("issues").and_then(Value::as_array) {
+        for issue in issues.iter().filter_map(Value::as_str) {
+            if guidance.len() >= 6_000 {
+                break;
+            }
+            guidance.push_str(issue);
+            guidance.push('\n');
+        }
+    }
+    if let Some(lines) = result.get("ocrLines").and_then(Value::as_array) {
+        guidance.push_str("Independent OCR observations from the same source:\n");
+        for line in lines.iter().take(80) {
+            let text = line.get("text").and_then(Value::as_str).unwrap_or_default();
+            let page = line.get("page").and_then(Value::as_u64).unwrap_or_default();
+            let top = line.get("top").and_then(Value::as_f64).unwrap_or_default();
+            let left = line.get("left").and_then(Value::as_f64).unwrap_or_default();
+            let text = text.chars().take(400).collect::<String>();
+            guidance.push_str(&format!(
+                "page={page} top={top:.4} left={left:.4} text={text:?}\n"
+            ));
+            if guidance.len() >= 6_000 {
+                guidance.truncate(6_000);
+                break;
+            }
+        }
+    }
+    guidance
+}
+
+fn needs_pro_review(result: &Value) -> bool {
+    result
+        .get("issues")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .any(|issue| {
+            ["税率", "税額", "税の端数", "小計", "合計"]
+                .iter()
+                .any(|term| issue.contains(term))
+        })
+}
+
+fn select_review_result(current: Value, candidate: Value) -> Value {
+    let current_balanced = current
+        .get("balanced")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let candidate_balanced = candidate
+        .get("balanced")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let current_issue_count = current
+        .get("issues")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let candidate_issue_count = candidate
+        .get("issues")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let mut runs = current
+        .get("runs")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(candidate_runs) = candidate.get("runs").and_then(Value::as_array) {
+        runs.extend(candidate_runs.iter().cloned());
+    }
+    let mut selected = if candidate_balanced != current_balanced {
+        if candidate_balanced {
+            candidate
+        } else {
+            current
+        }
+    } else if candidate_issue_count < current_issue_count {
+        candidate
+    } else {
+        current
+    };
+    if let Some(object) = selected.as_object_mut() {
+        object.insert("runs".to_owned(), Value::Array(runs));
+    }
+    selected
 }
 
 fn make_input(
@@ -1033,6 +1203,14 @@ fn make_input(
     }
     if email_has_attachments {
         prompt.push_str(" The email has separate attachments that are not included in this text. Do not infer their contents; review the separately registered attachments.");
+    }
+    if let Some(guidance) = request
+        .get("reviewGuidance")
+        .and_then(Value::as_str)
+        .filter(|guidance| !guidance.is_empty())
+    {
+        prompt.push_str(" This is an evidence-guided quality review. Re-read the original source and independently assess these observations. Resolve conflicts only from source evidence and preserve uncertainty. Review guidance: ");
+        prompt.push_str(&guidance.chars().take(6_000).collect::<String>());
     }
     if !lines.is_empty() {
         prompt.push_str("\nIndependent OCR lines, for corroboration only: ");

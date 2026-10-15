@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, YearMonth};
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
-use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, YearMonth};
 
 use bookkeeping_application::{account_income::IncomeAccountKind, account_movement::AccountKind};
 

@@ -1,4 +1,10 @@
-use std::{env, error::Error, fmt, time::Duration};
+use std::{
+    env,
+    error::Error,
+    fmt,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use async_imap::{Client, types::Fetch};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, dsl::now};
@@ -15,7 +21,7 @@ use uuid::Uuid;
 use webpki_roots::TLS_SERVER_ROOTS;
 
 use evidence_application::{RegisterDocumentAttachment, RegisterDocumentCommand};
-use evidence_postgres::{PgPool, document_registration::register_document};
+use evidence_postgres::{PgPool, document_registration::register_document_in_transaction};
 use horse_object_storage::ObjectStore;
 use horse_postgres_common::schema::public;
 use serde_json::json;
@@ -25,6 +31,7 @@ const MAX_MESSAGE_BYTES: usize = 25 << 20;
 const DEFAULT_MAX_MESSAGES: usize = 100;
 const MAX_MESSAGES: usize = 1000;
 const MAX_BATCH_BYTES: usize = 50 << 20;
+const MAX_DOCUMENT_BYTES: usize = 20 << 20;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
@@ -61,9 +68,11 @@ pub async fn poll_database(
         .get()
         .await
         .map_err(|_| MailboxError("mailbox database connection failed"))?;
-    (&mut *pooled)
+    let uploaded_keys = Arc::new(Mutex::new(Vec::new()));
+    let transaction_keys = Arc::clone(&uploaded_keys);
+    let result = (&mut *pooled)
         .transaction::<MailboxBatch, MailboxError, _>(async |conn| {
-            use public::mailbox_cursors::dsl as cursors;
+            use public::{household_events, mailbox_cursors::dsl as cursors};
             let (uid_validity, uid) = cursors::mailbox_cursors
                 .filter(cursors::mailbox.eq("forwarding"))
                 .for_update()
@@ -76,7 +85,8 @@ pub async fn poll_database(
                     .map_err(|_| MailboxError("mailbox cursor is invalid"))?,
                 uid: u32::try_from(uid).map_err(|_| MailboxError("mailbox cursor is invalid"))?,
             };
-            let batch = poll(config, cursor).await?;
+            let mut batch = poll(config, cursor).await?;
+            let mut rejected_uids = Vec::new();
             for message in &batch.messages {
                 let Some(token_hash) =
                     forwarding_token_hash(&message.delivered_to, &config.recipient_base)
@@ -87,20 +97,52 @@ pub async fn poll_database(
                 else {
                     continue;
                 };
-                let Ok(parsed_email) = crate::email::parse_email(&message.rfc822) else {
-                    continue;
+                let parsed_email = match crate::email::parse_email(&message.rfc822) {
+                    Ok(parsed_email) => parsed_email,
+                    Err(_) => {
+                        if message.rfc822.len() > MAX_DOCUMENT_BYTES
+                            && message.rfc822.len() <= MAX_MESSAGE_BYTES
+                        {
+                            diesel::insert_into(household_events::table)
+                                .values((
+                                    household_events::household_id.eq(household_id),
+                                    household_events::event_type
+                                        .eq("receipt.mailbox_message.rejected"),
+                                    household_events::entity_kind.eq("mailbox_message"),
+                                    household_events::entity_id.eq(Uuid::now_v7()),
+                                    household_events::revision.eq(1_i64),
+                                    household_events::changed_fields
+                                        .eq(vec![Some("status".to_owned())]),
+                                    household_events::payload
+                                        .eq(json!({"status": "rejected", "reason": "invalid_email_size"})),
+                                    household_events::actor_id.eq(created_by),
+                                    household_events::created_at.eq(now),
+                                ))
+                                .execute(conn)
+                                .await
+                                .map_err(|_| MailboxError("mailbox rejection event failed"))?;
+                            rejected_uids.push(message.uid);
+                        }
+                        continue;
+                    }
                 };
                 let attachments = parsed_email.attachments;
                 let (object_key, sha256) = store
                     .put(household_id, "message/rfc822", &message.rfc822)
                     .await
                     .map_err(|_| MailboxError("mailbox message storage failed"))?;
+                if let Ok(mut keys) = transaction_keys.lock() {
+                    keys.push(object_key.clone());
+                }
                 let mut attachment_commands = Vec::with_capacity(attachments.len());
                 for (index, attachment) in attachments.iter().enumerate() {
                     let (attachment_key, attachment_hash) = store
                         .put(household_id, &attachment.mime_type, &attachment.data)
                         .await
                         .map_err(|_| MailboxError("mailbox attachment storage failed"))?;
+                    if let Ok(mut keys) = transaction_keys.lock() {
+                        keys.push(attachment_key.clone());
+                    }
                     attachment_commands.push(RegisterDocumentAttachment {
                         source_kind: "receipt".to_owned(),
                         original_filename: attachment.filename.clone(),
@@ -118,8 +160,8 @@ pub async fn poll_database(
                         request: json!({"purpose": "interactive", "model": "free"}),
                     });
                 }
-                register_document(
-                    pool,
+                register_document_in_transaction(
+                    conn,
                     RegisterDocumentCommand {
                         household_id,
                         created_by,
@@ -143,6 +185,7 @@ pub async fn poll_database(
                 .await
                 .map_err(|_| MailboxError("mailbox document registration failed"))?;
             }
+            batch.rejected_uids.extend(rejected_uids);
             let updated =
                 diesel::update(cursors::mailbox_cursors.filter(cursors::mailbox.eq("forwarding")))
                     .set((
@@ -158,7 +201,37 @@ pub async fn poll_database(
             }
             Ok(batch)
         })
+        .await;
+    if result.is_err() {
+        let keys = uploaded_keys
+            .lock()
+            .map(|mut keys| std::mem::take(&mut *keys))
+            .unwrap_or_default();
+        for key in keys {
+            if object_is_referenced(pool, &key).await {
+                continue;
+            }
+            if store.delete(&key).await.is_err() {
+                tracing::warn!("mailbox orphaned object cleanup failed");
+            }
+        }
+    }
+    result
+}
+
+async fn object_is_referenced(pool: &PgPool, object_key: &str) -> bool {
+    use public::source_documents::dsl as documents;
+    let Ok(mut pooled) = pool.get().await else {
+        return true;
+    };
+    documents::source_documents
+        .filter(documents::object_key.eq(object_key))
+        .select(documents::id)
+        .first::<Uuid>(&mut *pooled)
         .await
+        .optional()
+        .map(|document| document.is_some())
+        .unwrap_or(true)
 }
 
 pub async fn run(

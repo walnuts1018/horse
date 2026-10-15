@@ -7,9 +7,8 @@ use bookkeeping_application::{
         CorrectionFundingRule, CorrectionMemberBurdenSnapshot, CorrectionPaymentFundingSnapshot,
         CorrectionPurchaseBurdenSnapshot, CorrectionPurchasePayment,
         CorrectionSettlementAdjustment, CorrectionSettlementPolicy, CorrectionTarget,
-        LinkStatementRefundCorrectionCommand, LinkStatementRefundCorrectionError,
-        SignedYenDelta, StatementRefundObservation,
-        calculate_correction_funding_effects, decide_correct_purchase,
+        LinkStatementRefundCorrectionCommand, LinkStatementRefundCorrectionError, SignedYenDelta,
+        StatementRefundObservation, calculate_correction_funding_effects, decide_correct_purchase,
         decide_link_statement_refund_correction,
     },
 };
@@ -219,8 +218,7 @@ pub async fn correct_purchase(
                     accounting_periods::revision,
                 ))
                 .load::<(NaiveDate, String, i64)>(conn)
-                .await
-                ?;
+                .await?;
             if locked_periods.len() != period_dates.len() {
                 return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed);
             }
@@ -232,10 +230,12 @@ pub async fn correct_purchase(
                 .iter()
                 .find(|(date, _, _)| *date == effective_period)
                 .map(|(_, status, _)| status.as_str());
-            if original_status != Some(match original_status_hint {
-                AccountingPeriodStatus::Open => "OPEN",
-                AccountingPeriodStatus::Closed => "CLOSED",
-            }) {
+            if original_status
+                != Some(match original_status_hint {
+                    AccountingPeriodStatus::Open => "OPEN",
+                    AccountingPeriodStatus::Closed => "CLOSED",
+                })
+            {
                 return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed);
             }
             match (original_status, effective_status) {
@@ -510,7 +510,7 @@ pub async fn correct_purchase(
                     .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
                 purchase_lifecycle: match status.as_str() {
                     "DRAFT" => PurchaseLifecycle::Draft,
-                    "POSTED" | "CLOSED" => PurchaseLifecycle::Posted,
+                    "POSTED" => PurchaseLifecycle::Posted,
                     _ => return Err(CorrectPurchasePersistenceError::InvalidDecision),
                 },
                 target: match item_id {

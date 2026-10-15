@@ -11,7 +11,9 @@ pub mod create_account;
 pub mod create_and_post_purchase;
 pub mod create_pool;
 pub mod create_purchase;
+pub mod create_purchase_workflow;
 pub mod funding_record;
+pub mod post_purchase;
 pub mod record_repayment;
 pub mod record_transfer;
 pub mod save_purchase_item_edits;
@@ -26,10 +28,10 @@ pub mod update_purchase_item;
 pub use bookkeeping_domain::{
     AccountId, AccountingPeriod, AccountingPeriodError, AccountingPeriodStatus, BalancedJournal,
     DraftPurchase, FundingBasisError, IdentifierError, ItemId, JournalError, JournalLine,
-    MemberBurdenSnapshot, MemberFundingBasis, MemberId, MemberWeight, Payment,
-    PaymentFundingBasis, PaymentFundingSnapshot, PoolAllocation, PostPurchaseCommand,
-    PostPurchaseDecision, PostPurchaseError, PostingTarget, Purchase, PurchaseEvent, PurchaseId,
-    PurchaseItem, PurchaseLifecycle, SettlementPolicy, Side, YearMonth, decide_post_purchase,
+    MemberBurdenSnapshot, MemberFundingBasis, MemberId, MemberWeight, Payment, PaymentFundingBasis,
+    PaymentFundingSnapshot, PoolAllocation, PostPurchaseCommand, PostPurchaseDecision,
+    PostPurchaseError, PostingTarget, Purchase, PurchaseEvent, PurchaseId, PurchaseItem,
+    PurchaseLifecycle, SettlementPolicy, Side, YearMonth, decide_post_purchase,
 };
 
 pub type PurchaseDraft = DraftPurchase;

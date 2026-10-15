@@ -75,7 +75,6 @@ pub struct SettlementLine {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeriodClosedEvent {
     pub actor_id: MemberId,
     pub period: YearMonth,
@@ -89,6 +88,14 @@ pub struct ClosePeriodDecision {
     pub settlements: Vec<SettlementLine>,
     pub purchases: Vec<PurchaseSnapshot>,
     pub event: PeriodClosedEvent,
+}
+
+pub trait ClosePeriodOperations {
+    type Error;
+    type Result;
+
+    async fn persist(&mut self, decision: ClosePeriodDecision)
+    -> Result<Self::Result, Self::Error>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -233,16 +240,19 @@ pub fn decide_close_period(
     if !command.draft_purchases.is_empty() {
         return Err(ClosePeriodError::DraftPurchasesExist);
     }
-    let period = command.period.close(command.expected_revision).map_err(|error| match error {
-        AccountingPeriodTransitionError::AlreadyClosed => ClosePeriodError::PeriodAlreadyClosed,
-        AccountingPeriodTransitionError::RevisionMismatch => {
-            ClosePeriodError::RevisionMismatch {
-                expected: command.expected_revision,
-                actual: command.period.revision(),
+    let period = command
+        .period
+        .close(command.expected_revision)
+        .map_err(|error| match error {
+            AccountingPeriodTransitionError::AlreadyClosed => ClosePeriodError::PeriodAlreadyClosed,
+            AccountingPeriodTransitionError::RevisionMismatch => {
+                ClosePeriodError::RevisionMismatch {
+                    expected: command.expected_revision,
+                    actual: command.period.revision(),
+                }
             }
-        }
-        AccountingPeriodTransitionError::RevisionOverflow => ClosePeriodError::RevisionOverflow,
-    })?;
+            AccountingPeriodTransitionError::RevisionOverflow => ClosePeriodError::RevisionOverflow,
+        })?;
     let revision = period.revision();
 
     let mut settlements = command
@@ -282,6 +292,23 @@ pub fn decide_close_period(
             changed_fields: &["status"],
         },
     })
+}
+
+pub async fn close_period<O: ClosePeriodOperations>(
+    operations: &mut O,
+    command: ClosePeriodCommand,
+) -> Result<O::Result, ClosePeriodWorkflowError<O::Error>> {
+    let decision = decide_close_period(command).map_err(ClosePeriodWorkflowError::Decision)?;
+    operations
+        .persist(decision)
+        .await
+        .map_err(ClosePeriodWorkflowError::Operations)
+}
+
+#[derive(Debug)]
+pub enum ClosePeriodWorkflowError<E> {
+    Decision(ClosePeriodError),
+    Operations(E),
 }
 
 fn calculate_close_settlement(input: SettlementInput) -> Result<SettlementLine, ClosePeriodError> {
