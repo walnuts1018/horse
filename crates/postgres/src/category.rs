@@ -112,6 +112,7 @@ pub async fn persist_create_category(
                         decision.event.category_id().as_str(),
                         "category_id",
                     )?),
+                    // 新規作成時の初回イベントなのでシーケンスは1から始まる。
                     events::revision.eq(1_i64),
                     events::changed_fields.eq(event_fields(&decision.event)),
                     events::actor_id.eq(actor_id),
@@ -174,6 +175,7 @@ pub async fn persist_update_category_name(
                 .set(categories::name.eq(decision.name.as_str()))
                 .execute(&mut *conn)
                 .await?;
+                let event_revision = next_event_revision(&mut *conn, category_id).await?;
                 diesel::insert_into(events::household_events)
                     .values((
                         events::household_id.eq(row.0),
@@ -183,7 +185,7 @@ pub async fn persist_update_category_name(
                             decision.event.category_id().as_str(),
                             "category_id",
                         )?),
-                        events::revision.eq(1_i64),
+                        events::revision.eq(event_revision),
                         events::changed_fields.eq(event_fields(&decision.event)),
                         events::actor_id.eq(actor_id),
                         events::created_at.eq(Utc::now()),
@@ -246,6 +248,7 @@ pub async fn persist_set_category_archived(
                 .set(categories::archived.eq(decision.archived))
                 .execute(&mut *conn)
                 .await?;
+                let event_revision = next_event_revision(&mut *conn, category_id).await?;
                 diesel::insert_into(events::household_events)
                     .values((
                         events::household_id.eq(row.0),
@@ -255,7 +258,7 @@ pub async fn persist_set_category_archived(
                             decision.event.category_id().as_str(),
                             "category_id",
                         )?),
-                        events::revision.eq(1_i64),
+                        events::revision.eq(event_revision),
                         events::changed_fields.eq(event_fields(&decision.event)),
                         events::actor_id.eq(actor_id),
                         events::created_at.eq(Utc::now()),
@@ -274,6 +277,22 @@ pub async fn persist_set_category_archived(
             .into())
         })
         .await
+}
+
+// categoriesテーブルにrevision列がないため、同一エンティティのイベントシーケンスとして採番する。更新対象行をFOR UPDATEでロック済みの同一トランザクション内で取得するため、同時更新との競合は直列化される。
+async fn next_event_revision(
+    conn: &mut diesel_async::AsyncPgConnection,
+    entity_id: Uuid,
+) -> Result<i64, CategoryPersistenceError> {
+    use public::household_events::dsl as events;
+
+    let max_revision = events::household_events
+        .filter(events::entity_kind.eq("category"))
+        .filter(events::entity_id.eq(entity_id))
+        .select(diesel::dsl::max(events::revision))
+        .first::<Option<i64>>(conn)
+        .await?;
+    Ok(max_revision.unwrap_or(0) + 1)
 }
 
 async fn require_member(

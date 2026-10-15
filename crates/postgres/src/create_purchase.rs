@@ -117,9 +117,7 @@ pub async fn persist_create_purchase_in_transaction(
         .await
         .optional()?
         .ok_or(CreatePurchasePersistenceError::HouseholdNotFound)?;
-    if current_default_version != allocation_rule_version {
-        return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
-    }
+    // 冪等性判定は業務判断(負担ルールバージョンチェック等)より先に行う。初回成功後に負担ルールが変わっても再送は過去の成功結果を返す。
     let member = members::household_members
         .filter(members::household_id.eq(household_id))
         .filter(members::member_id.eq(actor_id))
@@ -149,6 +147,9 @@ pub async fn persist_create_purchase_in_transaction(
             purchase_id: existing_id.to_string(),
             created: false,
         });
+    }
+    if current_default_version != allocation_rule_version {
+        return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
     }
 
     diesel::insert_into(periods::accounting_periods)
