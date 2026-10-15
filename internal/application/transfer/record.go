@@ -151,90 +151,21 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 	var paymentPoolID *gofrsuuid.UUID
 	var paymentPoolKind string
 	var paymentAccountID, destinationAccountID *gofrsuuid.UUID
-	if command.PaymentAccountID != nil {
-		id, parseErr := parseID(*command.PaymentAccountID, "payment account")
-		if parseErr != nil {
-			return Result{}, parseErr
-		}
-		account, accountErr := models.Accounts.Query(sm.Where(psql.And(
-			models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-			models.Accounts.Columns.ID.EQ(psql.Arg(id)),
-		))).One(ctx, executor)
-		if errors.Is(accountErr, sql.ErrNoRows) {
-			return Result{}, ErrNotFound
-		}
-		if accountErr != nil {
-			return Result{}, accountErr
-		}
-		if account.Kind == "CARD" {
-			return Result{}, fmt.Errorf("%w: transfer source must be a non-card account", ErrBadInput)
-		}
-		if !account.PoolID.Valid {
-			return Result{}, fmt.Errorf("%w: payment account is not assigned to a pool", ErrBadInput)
-		}
-		pool, poolErr := models.Pools.Query(sm.Where(psql.And(
-			models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-			models.Pools.Columns.ID.EQ(psql.Arg(account.PoolID.V)),
-		))).One(ctx, executor)
-		if poolErr != nil {
-			return Result{}, poolErr
-		}
-		paymentAccountID = &id
-		paymentPoolID = &account.PoolID.V
-		paymentPoolKind = pool.Kind
-		if pool.Kind == "PERSONAL" {
-			fundingRule, ruleErr := models.PoolFundingRules.Query(sm.Where(psql.And(
-				models.PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-				models.PoolFundingRules.Columns.PoolID.EQ(psql.Arg(pool.ID)),
-				models.PoolFundingRules.Columns.Version.EQ(psql.Arg(pool.FundingRuleVersion)),
-			))).One(ctx, executor)
-			if ruleErr != nil {
-				return Result{}, ruleErr
-			}
-			if !fundingRule.OwnerMemberID.Valid || fundingRule.OwnerMemberID.V != fromMemberID {
-				return Result{}, fmt.Errorf("%w: personal payment account must belong to the source member", ErrBadInput)
-			}
-		}
+	paymentAccount, err := loadTransferAccount(ctx, executor, householdID, command.PaymentAccountID, fromMemberID, paymentAccountRole)
+	if err != nil {
+		return Result{}, err
 	}
-	if command.DestinationAccountID != nil {
-		id, parseErr := parseID(*command.DestinationAccountID, "destination account")
-		if parseErr != nil {
-			return Result{}, parseErr
-		}
-		account, accountErr := models.Accounts.Query(sm.Where(psql.And(
-			models.Accounts.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-			models.Accounts.Columns.ID.EQ(psql.Arg(id)),
-		))).One(ctx, executor)
-		if errors.Is(accountErr, sql.ErrNoRows) {
-			return Result{}, ErrNotFound
-		}
-		if accountErr != nil {
-			return Result{}, accountErr
-		}
-		if !account.PoolID.Valid || account.Kind == "CARD" {
-			return Result{}, fmt.Errorf("%w: transfer destination must be a non-card account assigned to a pool", ErrBadInput)
-		}
-		pool, poolErr := models.Pools.Query(sm.Where(psql.And(
-			models.Pools.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-			models.Pools.Columns.ID.EQ(psql.Arg(account.PoolID.V)),
-		))).One(ctx, executor)
-		if poolErr != nil {
-			return Result{}, poolErr
-		}
-		if pool.Kind == "PERSONAL" {
-			fundingRule, ruleErr := models.PoolFundingRules.Query(sm.Where(psql.And(
-				models.PoolFundingRules.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-				models.PoolFundingRules.Columns.PoolID.EQ(psql.Arg(pool.ID)),
-				models.PoolFundingRules.Columns.Version.EQ(psql.Arg(pool.FundingRuleVersion)),
-			))).One(ctx, executor)
-			if ruleErr != nil {
-				return Result{}, ruleErr
-			}
-			if !fundingRule.OwnerMemberID.Valid || fundingRule.OwnerMemberID.V != toMemberID {
-				return Result{}, fmt.Errorf("%w: personal destination account must belong to the receiving member", ErrBadInput)
-			}
-		}
-		destinationAccountID = &id
+	if paymentAccount != nil {
+		paymentAccountID = &paymentAccount.id
+		paymentPoolID = &paymentAccount.poolID
+		paymentPoolKind = paymentAccount.poolKind
+	}
+	destinationAccount, err := loadTransferAccount(ctx, executor, householdID, command.DestinationAccountID, toMemberID, destinationAccountRole)
+	if err != nil {
+		return Result{}, err
+	}
+	if destinationAccount != nil {
+		destinationAccountID = &destinationAccount.id
 	}
 	if paymentAccountID != nil && destinationAccountID != nil && *paymentAccountID == *destinationAccountID {
 		return Result{}, fmt.Errorf("%w: transfer source and destination accounts must differ", ErrBadInput)
