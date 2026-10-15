@@ -6,6 +6,7 @@ pub mod account_card_last4;
 pub mod account_income;
 pub mod account_movement;
 pub mod bulk_delete_purchase_items;
+pub mod bulk_update_purchase_items;
 pub mod category;
 pub mod close_period;
 pub mod correct_purchase;
