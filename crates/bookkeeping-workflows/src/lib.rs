@@ -7,6 +7,7 @@ pub mod correct_purchase;
 pub mod create_purchase;
 pub mod record_repayment;
 pub mod record_transfer;
+pub mod update_purchase;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PurchaseId(String);
