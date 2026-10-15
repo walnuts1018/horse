@@ -555,7 +555,7 @@ export const isSupportedFile = (file: File) =>
 
 export const statusLabel = (status: string) =>
   (
-    ({
+    {
       QUEUED: "待機中",
       "DELETION-PENDING": "削除待ち",
       RUNNING: "抽出中",
@@ -566,18 +566,18 @@ export const statusLabel = (status: string) =>
       FAILED: "失敗",
       DUPLICATE: "重複",
       DONE: "抽出済み",
-    }) as Record<string, string>
+    } as Record<string, string>
   )[status.toUpperCase()] ?? "状態を確認中";
 
 export const sourceKindLabel = (kind?: string) =>
   (
-    ({
+    {
       receipt: "レシート",
       order: "注文履歴",
       email: "メール",
       card: "カード明細",
       bank: "銀行明細",
-    }) as Record<string, string>
+    } as Record<string, string>
   )[kind ?? ""] ?? "証拠";
 
 export const isProcessing = (status: string) => !terminalStatuses.has(status.toUpperCase());

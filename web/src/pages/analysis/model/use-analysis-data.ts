@@ -11,13 +11,13 @@ import type {
 } from "../../../shared/api";
 import type { Dimension, ItemMetric } from "./purchase-analytics";
 
-import { aggregatePurchaseAnalytics, topPriceItemIDs } from "./purchase-analytics";
 import {
   analysisPurchasePriceObservationsQuery,
   analysisBudgetsFragment,
   analysisDashboardQuery,
   analysisRecurringExpensesFragment,
 } from "../api/operations";
+import { aggregatePurchaseAnalytics, topPriceItemIDs } from "./purchase-analytics";
 
 export function useAnalysisData(
   householdId: string,
@@ -39,10 +39,7 @@ export function useAnalysisData(
     [dashboard.purchaseAnalytics],
   );
   const priceItemIds = useMemo(
-    () =>
-      itemMetric === "amount"
-        ? []
-        : topPriceItemIDs(purchaseAnalytics.rows.item.values()),
+    () => (itemMetric === "amount" ? [] : topPriceItemIDs(purchaseAnalytics.rows.item.values())),
     [itemMetric, purchaseAnalytics.rows.item],
   );
   const priceObservations = useLazyLoadQuery<AnalysisPurchasePriceObservationsQuery>(

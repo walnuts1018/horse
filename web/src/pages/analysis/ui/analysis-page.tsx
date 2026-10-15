@@ -2,9 +2,9 @@ import { BarChart3 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { Household } from "../../../shared/api";
+import type { AnalyticsRow } from "../model/purchase-analytics";
 
 import { InlineError } from "../../../shared/ui";
-import type { AnalyticsRow } from "../model/purchase-analytics";
 import { useAnalysisData } from "../model/use-analysis-data";
 import { useAnalysisPeriod } from "../model/use-analysis-period";
 import { AnalysisBreakdown } from "./analysis-breakdown";
@@ -64,8 +64,7 @@ export function AnalysisPage({ household }: { household: Household }) {
 
   const usesPurchases = dimension !== "category" && dimension !== "member";
   const aggregateError = dimension === "category" ? spendingError : memberSpendingError;
-  const aggregateLoading =
-    dimension === "category" ? spendingLoading : memberSpendingLoading;
+  const aggregateLoading = dimension === "category" ? spendingLoading : memberSpendingLoading;
   const aggregateReady = !aggregateError && !aggregateLoading;
   const data = aggregateReady && usesPurchases ? purchaseAnalytics : null;
   const categories = aggregateReady

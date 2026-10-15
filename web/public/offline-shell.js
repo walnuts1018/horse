@@ -221,14 +221,16 @@ async function start() {
         }
       });
       writeQueue = write.catch(() => {});
-      return write.then(() => {
-        if (editVersion !== version) return;
-        currentDraft = nextDraft;
-        hasUnsavedChanges = false;
-        status.textContent = "保存しました";
-      }).catch(() => {
-        if (editVersion === version) status.textContent = "保存できませんでした";
-      });
+      return write
+        .then(() => {
+          if (editVersion !== version) return;
+          currentDraft = nextDraft;
+          hasUnsavedChanges = false;
+          status.textContent = "保存しました";
+        })
+        .catch(() => {
+          if (editVersion === version) status.textContent = "保存できませんでした";
+        });
     };
     const scheduleSave = () => {
       hasUnsavedChanges = true;

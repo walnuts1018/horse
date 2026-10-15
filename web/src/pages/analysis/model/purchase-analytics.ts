@@ -1,5 +1,16 @@
 export type Dimension = "category" | "merchant" | "item" | "pool" | "account" | "member";
 export type PurchaseDimension = Exclude<Dimension, "category" | "member">;
+const purchaseDimensions = [
+  "merchant",
+  "item",
+  "pool",
+  "account",
+] as const satisfies readonly PurchaseDimension[];
+
+function isPurchaseDimension(value: string): value is PurchaseDimension {
+  return purchaseDimensions.some((dimension) => dimension === value);
+}
+
 export type ItemMetric = "amount" | "effective" | "printed";
 export type AnalyticsRow = { id: string; name: string; amount: number; count: number };
 export type PurchaseAnalyticsEntry = {
@@ -25,11 +36,18 @@ export type ItemPriceObservation = {
 export type MonthlyEntry = { month: string; id: string; amount: number };
 
 export function topPriceItemIDs(rows: Iterable<AnalyticsRow>) {
-  return Array.from(rows)
-    .filter((row) => row.id.includes("\0"))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 5)
-    .map((row) => row.id);
+  const topRows: AnalyticsRow[] = [];
+  for (const row of rows) {
+    if (!row.id.includes("\0")) continue;
+    const index = topRows.findIndex((candidate) => row.amount > candidate.amount);
+    if (index === -1) {
+      if (topRows.length < 5) topRows.push(row);
+      continue;
+    }
+    topRows.splice(index, 0, row);
+    topRows.pop();
+  }
+  return topRows.map((row) => row.id);
 }
 
 export function aggregatePurchaseAnalytics(entries: readonly PurchaseAnalyticsEntry[]) {
@@ -59,8 +77,8 @@ export function aggregatePurchaseAnalytics(entries: readonly PurchaseAnalyticsEn
   };
 
   for (const entry of entries) {
-    if (!(entry.dimension in rows)) continue;
-    const dimension = entry.dimension as PurchaseDimension;
+    if (!isPurchaseDimension(entry.dimension)) continue;
+    const dimension = entry.dimension;
     const amount = Number(entry.amountYen);
     const current = rows[dimension].get(entry.id) ?? {
       id: entry.id,
@@ -81,7 +99,7 @@ export function aggregatePurchaseAnalytics(entries: readonly PurchaseAnalyticsEn
     monthlyTotals[dimension].set(key, month);
   }
 
-  for (const dimension of Object.keys(monthlyTotals) as PurchaseDimension[]) {
+  for (const dimension of purchaseDimensions) {
     monthly[dimension] = Array.from(monthlyTotals[dimension].values());
   }
   return { rows, monthly };
@@ -103,7 +121,10 @@ export function itemPriceSeries(
     let label: string;
     let value: string;
     if (metric === "effective") {
-      if (!observation.effectiveUnitPriceNumeratorYen || !observation.effectiveUnitPriceDenominator) {
+      if (
+        !observation.effectiveUnitPriceNumeratorYen ||
+        !observation.effectiveUnitPriceDenominator
+      ) {
         unknownCount += 1;
         continue;
       }

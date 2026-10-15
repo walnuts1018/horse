@@ -57,47 +57,52 @@ export function ItemPricePanel({
           </select>
         </label>
       </div>
-      {rows.filter((row) => row.id.includes("\0")).slice(0, 5).map((row) => {
-        const matchingPrices = observations.filter((observation) => observation.itemId === row.id);
-        // oxlint-disable-next-line unicorn/no-array-sort
-        const prices = [...matchingPrices].sort(
-          (left, right) => Date.parse(left.occurredAt) - Date.parse(right.occurredAt),
-        );
-        const trend =
-          itemMetric === "amount" ? null : itemPriceSeries(observations, row.id, itemMetric);
-        return (
-          <div className="price-row" key={row.id}>
-            <span>{row.name}</span>
-            {itemMetric === "amount" ? (
-              <>
-                <strong>{yen(Math.round(row.amount / Math.max(1, row.count)))}</strong>
-                <small>{row.count}件</small>
-                {prices.length > 1 && (
-                  <small className="price-change">
-                    初回購入額 {yen(Number(prices[0].remainingRefundableAmountYen))}、最新購入額{" "}
-                    {yen(Number(prices[prices.length - 1].remainingRefundableAmountYen))}
-                  </small>
-                )}
-              </>
-            ) : (
-              <>
-                {trend?.series.map((series) => {
-                  const first = series.points[0];
-                  const last = series.points[series.points.length - 1];
-                  return (
-                    <small className="price-change" key={series.label}>
-                      {series.label}: {format(first.value)} → {format(last.value)} ·{" "}
-                      {series.points.length}件
+      {rows
+        .filter((row) => row.id.includes("\0"))
+        .slice(0, 5)
+        .map((row) => {
+          const matchingPrices = observations.filter(
+            (observation) => observation.itemId === row.id,
+          );
+          // oxlint-disable-next-line unicorn/no-array-sort
+          const prices = [...matchingPrices].sort(
+            (left, right) => Date.parse(left.occurredAt) - Date.parse(right.occurredAt),
+          );
+          const trend =
+            itemMetric === "amount" ? null : itemPriceSeries(observations, row.id, itemMetric);
+          return (
+            <div className="price-row" key={row.id}>
+              <span>{row.name}</span>
+              {itemMetric === "amount" ? (
+                <>
+                  <strong>{yen(Math.round(row.amount / Math.max(1, row.count)))}</strong>
+                  <small>{row.count}件</small>
+                  {prices.length > 1 && (
+                    <small className="price-change">
+                      初回購入額 {yen(Number(prices[0].remainingRefundableAmountYen))}、最新購入額{" "}
+                      {yen(Number(prices[prices.length - 1].remainingRefundableAmountYen))}
                     </small>
-                  );
-                })}
-                {trend?.unknownCount ? <small>単価不明 {trend.unknownCount}件</small> : null}
-                {!trend?.series.length && !trend?.unknownCount && <small>記録なし</small>}
-              </>
-            )}
-          </div>
-        );
-      })}
+                  )}
+                </>
+              ) : (
+                <>
+                  {trend?.series.map((series) => {
+                    const first = series.points[0];
+                    const last = series.points[series.points.length - 1];
+                    return (
+                      <small className="price-change" key={series.label}>
+                        {series.label}: {format(first.value)} → {format(last.value)} ·{" "}
+                        {series.points.length}件
+                      </small>
+                    );
+                  })}
+                  {trend?.unknownCount ? <small>単価不明 {trend.unknownCount}件</small> : null}
+                  {!trend?.series.length && !trend?.unknownCount && <small>記録なし</small>}
+                </>
+              )}
+            </div>
+          );
+        })}
     </section>
   );
 }

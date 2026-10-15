@@ -1,6 +1,6 @@
+import babel from "@rolldown/plugin-babel";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
-import babel from "@rolldown/plugin-babel";
 import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
 

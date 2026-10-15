@@ -21,12 +21,7 @@ export const analysisPurchasePriceObservationsQuery = graphql`
     $to: YearMonth!
     $itemIds: [String!]!
   ) {
-    purchasePriceObservations(
-      householdId: $householdId
-      from: $from
-      to: $to
-      itemIds: $itemIds
-    ) {
+    purchasePriceObservations(householdId: $householdId, from: $from, to: $to, itemIds: $itemIds) {
       itemId
       occurredAt
       amountYen
