@@ -9,7 +9,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use diesel::{ExpressionMethods, QueryDsl};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use futures_util::{Stream, stream};
 use horse_auth::{AuthService, Cookie, OidcError, resolve_cookie, revoke_cookie};
@@ -587,7 +587,8 @@ async fn list_documents(
             "hasEvidence": has_evidence
         }));
     }
-    Json(json!({"documents": results, "nextCursor": if truncated { Some("" ) } else { None }})).into_response()
+    let next_cursor = truncated.then_some("more");
+    Json(json!({"documents": results, "nextCursor": next_cursor})).into_response()
 }
 
 fn decode_household_id(value: &str) -> Option<uuid::Uuid> {
@@ -596,7 +597,9 @@ fn decode_household_id(value: &str) -> Option<uuid::Uuid> {
     }
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     let decoded = URL_SAFE_NO_PAD.decode(value).ok()?;
-    let (type_name, payload) = decoded.split_once(|byte| *byte == b':')?;
+    let separator = decoded.iter().position(|byte| *byte == b':')?;
+    let (type_name, payload) = decoded.split_at(separator);
+    let payload = &payload[1..];
     if type_name != b"Household" || payload.len() != 16 {
         return None;
     }

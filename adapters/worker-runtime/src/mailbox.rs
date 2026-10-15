@@ -484,7 +484,7 @@ where
 
 fn trusted_delivered_to(raw: &[u8], recipient_base: &str) -> Option<String> {
     let message = MessageParser::new().with_minimal_headers().parse(raw)?;
-    let values = message.header_values(HeaderName::Other("delivered-to"));
+    let values = message.header_values(HeaderName::Other("delivered-to".into()));
     let mut values = values.filter_map(|value| match value {
         HeaderValue::Text(value) => Some(value.trim()),
         _ => None,
