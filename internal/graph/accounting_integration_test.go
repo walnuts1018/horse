@@ -5,6 +5,7 @@ import (
 	stdjson "encoding/json"
 	"errors"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -1168,8 +1169,14 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil || repayment.TransferID == nil {
 		t.Fatalf("shared-pool repayment failed: transfer=%#v error=%v", repayment, err)
 	}
+	settlementBeforeGift, err := (&Resolver{DB: db}).Query().Settlement(ctx, household.ID, "2026-06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settlementLinesBeforeGift := settlementData(t, settlementBeforeGift).Lines
 	gift, err := resolver.recordTransfer(ctx, model.RecordTransferInput{
 		HouseholdID: household.ID, FromMemberID: memberA, ToMemberID: memberB, Kind: model.TransferInputKindGift,
+		PaymentAccountID: &lenderAccount.ID, DestinationAccountID: &borrowerAccount.ID,
 		AmountYen: 300, OccurredAt: "2026-06-14T12:00:00Z", Description: "Gift", IdempotencyKey: uuid.NewV7().String(),
 	})
 	if err != nil || gift.TransferID == nil {
@@ -1182,6 +1189,37 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	giftRow, err := models.Transfers.Query(sm.Where(models.Transfers.Columns.ID.EQ(psql.Arg(giftUUID)))).One(ctx, bobpgx.NewPool(db))
 	if err != nil || giftRow.Kind != string(model.TransferInputKindGift) || giftRow.FromMemberID.String() != memberA || giftRow.ToMemberID.String() != memberB {
 		t.Fatalf("gift kind or participants were not persisted: gift=%#v error=%v", giftRow, err)
+	}
+	if !giftRow.PaymentAccountID.Valid || giftRow.PaymentAccountID.V != generatedUUID(lenderAccount.ID) {
+		t.Fatalf("gift payment account was not persisted: gift=%#v", giftRow)
+	}
+	giftLedgerEntry, err := models.LedgerEntries.Query(sm.Where(models.LedgerEntries.Columns.ID.EQ(psql.Arg(giftRow.LedgerEntryID)))).One(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	giftEntries, err := models.JournalEntries.Query(
+		sm.Where(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(giftLedgerEntry.JournalID))),
+		sm.OrderBy(models.JournalEntries.Columns.LineNo),
+	).All(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var giftDebits, giftCredits, paymentAccountCredit, giftDestinationAccountDebit int64
+	for _, entry := range giftEntries {
+		giftDebits += entry.DebitYen
+		giftCredits += entry.CreditYen
+		if !entry.AccountID.Valid {
+			continue
+		}
+		if entry.AccountID.V == generatedUUID(lenderAccount.ID) {
+			paymentAccountCredit += entry.CreditYen
+		}
+		if entry.AccountID.V == generatedUUID(borrowerAccount.ID) {
+			giftDestinationAccountDebit += entry.DebitYen
+		}
+	}
+	if len(giftEntries) != 8 || giftDebits != 1200 || giftCredits != 1200 || paymentAccountCredit != 300 || giftDestinationAccountDebit != 300 {
+		t.Fatalf("gift journal does not balance the member transfer and account movements: entries=%#v debits=%d credits=%d paymentCredit=%d destinationDebit=%d", giftEntries, giftDebits, giftCredits, paymentAccountCredit, giftDestinationAccountDebit)
 	}
 	ledgerNodeID, err := encodeNodeID("LedgerEntry", loan.ID)
 	if err != nil {
@@ -1249,6 +1287,9 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	settlementData := settlementData(t, settlement)
+	if !reflect.DeepEqual(settlementLinesBeforeGift, settlementData.Lines) {
+		t.Fatalf("gift changed the settlement lines: before=%#v after=%#v", settlementLinesBeforeGift, settlementData.Lines)
+	}
 	if len(settlementData.Lines) != 2 {
 		t.Fatalf("expected two member settlement lines: %#v", settlementData.Lines)
 	}
@@ -1289,8 +1330,8 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	for _, balance := range balances {
 		balancesByAccount[balance.AccountID] = int64(balance.BalanceYen)
 	}
-	if balancesByAccount[sharedAccount.ID] != 5000 || balancesByAccount[lenderAccount.ID] != 5000 || balancesByAccount[borrowerAccount.ID] != 5000 {
-		t.Fatalf("bank balances do not reflect opening balances, loan, funding, and repayment: %#v", balancesByAccount)
+	if balancesByAccount[sharedAccount.ID] != 5000 || balancesByAccount[lenderAccount.ID] != 4700 || balancesByAccount[borrowerAccount.ID] != 5300 {
+		t.Fatalf("bank balances do not reflect opening balances, loan, funding, repayment, and gift: %#v", balancesByAccount)
 	}
 	category, err := resolver.createCategory(ctx, model.CreateCategoryInput{HouseholdID: household.ID, Name: testGroceriesCategoryName})
 	if err != nil {
@@ -1407,15 +1448,15 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if borrowerHistory.OpeningBalanceYen != 5000 || borrowerHistory.ClosingBalanceYen != 5000 || len(borrowerHistory.Changes.Edges) != 2 || accountBalanceSourceType(borrowerHistory.Changes.Edges[0].Node.Source) != graphQLFundingLedgerEntryType || borrowerHistory.Changes.Edges[0].Node.ChangeYen != -5000 || accountBalanceSourceType(borrowerHistory.Changes.Edges[1].Node.Source) != "LoanTransferLedgerEntry" || borrowerHistory.Changes.Edges[1].Node.ChangeYen != 5000 {
-		t.Fatalf("borrower account history did not track loan proceeds and attributed funding outflow: %#v", borrowerHistory)
+	if borrowerHistory.OpeningBalanceYen != 5000 || borrowerHistory.ClosingBalanceYen != 5300 || len(borrowerHistory.Changes.Edges) != 3 || accountBalanceSourceType(borrowerHistory.Changes.Edges[0].Node.Source) != "GiftTransferLedgerEntry" || borrowerHistory.Changes.Edges[0].Node.ChangeYen != 300 || accountBalanceSourceType(borrowerHistory.Changes.Edges[1].Node.Source) != graphQLFundingLedgerEntryType || borrowerHistory.Changes.Edges[1].Node.ChangeYen != -5000 || accountBalanceSourceType(borrowerHistory.Changes.Edges[2].Node.Source) != "LoanTransferLedgerEntry" || borrowerHistory.Changes.Edges[2].Node.ChangeYen != 5000 {
+		t.Fatalf("borrower account history did not track gift proceeds, loan proceeds, and attributed funding outflow: %#v", borrowerHistory)
 	}
 	lenderHistory, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, lenderAccount.ID, "2026-06", "2026-06", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lenderHistory.OpeningBalanceYen != 5000 || lenderHistory.ClosingBalanceYen != 5000 || len(lenderHistory.Changes.Edges) != 2 || accountBalanceSourceType(lenderHistory.Changes.Edges[0].Node.Source) != "RepaymentTransferLedgerEntry" || lenderHistory.Changes.Edges[0].Node.ChangeYen != 5000 || accountBalanceSourceType(lenderHistory.Changes.Edges[1].Node.Source) != "LoanTransferLedgerEntry" || lenderHistory.Changes.Edges[1].Node.ChangeYen != -5000 {
-		t.Fatalf("lender account history did not track outgoing loan and repayment receipt: %#v", lenderHistory)
+	if lenderHistory.OpeningBalanceYen != 5000 || lenderHistory.ClosingBalanceYen != 4700 || len(lenderHistory.Changes.Edges) != 3 || accountBalanceSourceType(lenderHistory.Changes.Edges[0].Node.Source) != "GiftTransferLedgerEntry" || lenderHistory.Changes.Edges[0].Node.ChangeYen != -300 || accountBalanceSourceType(lenderHistory.Changes.Edges[1].Node.Source) != "RepaymentTransferLedgerEntry" || lenderHistory.Changes.Edges[1].Node.ChangeYen != 5000 || accountBalanceSourceType(lenderHistory.Changes.Edges[2].Node.Source) != "LoanTransferLedgerEntry" || lenderHistory.Changes.Edges[2].Node.ChangeYen != -5000 {
+		t.Fatalf("lender account history did not track gift outflow, outgoing loan, and repayment receipt: %#v", lenderHistory)
 	}
 	beforeOpening, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, lenderAccount.ID, testApril2026, testApril2026, nil, nil)
 	if err != nil {
@@ -1456,7 +1497,7 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	}
 	spending, err := (&Resolver{DB: db}).Query().MonthlyCategorySpending(ctx, household.ID, "2026-06", "2026-07")
 	if err != nil || len(spending) != 1 || spending[0].AmountYen != 1000 {
-		t.Fatalf("income, funding, and account transfers changed household spending: spending=%#v error=%v", spending, err)
+		t.Fatalf("income, funding, account transfers, or gift changed household spending: spending=%#v error=%v", spending, err)
 	}
 	budgets, err := (&Resolver{DB: db}).Query().Budgets(ctx, household.ID, model.YearMonth("2026-06"), nil, nil, nil, nil)
 	if err != nil || len(budgets.Edges) != 1 || budgets.Edges[0].Node.ID != budget.ID || budgets.Edges[0].Node.ActualYen != 1000 {
