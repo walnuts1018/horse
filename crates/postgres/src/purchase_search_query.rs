@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
 use diesel::pg::Pg;
 use diesel::{
-    BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl,
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension,
+    PgTextExpressionMethods, QueryDsl,
     dsl::{count_star, exists, max, sum},
     result::Error as DieselError,
 };

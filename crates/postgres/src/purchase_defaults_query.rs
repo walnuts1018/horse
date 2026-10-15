@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, Utc};
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
+use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 

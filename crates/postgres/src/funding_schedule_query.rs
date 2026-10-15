@@ -72,7 +72,7 @@ pub async fn funding_schedules(
     if let Some(active) = active {
         base_query = base_query.filter(schedules::active.eq(active));
     }
-    let mut ordered_rows = base_query
+    let ordered_rows = base_query
         .order_by((schedules::starts_on.asc(), schedules::id.asc()))
         .select((
             schedules::id,

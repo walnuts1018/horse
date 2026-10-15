@@ -1,4 +1,7 @@
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
+use diesel::{
+    ExpressionMethods, OptionalExtension, PgSortExpressionMethods, QueryDsl,
+    result::Error as DieselError,
+};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
