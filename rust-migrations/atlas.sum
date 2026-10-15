@@ -1,4 +1,4 @@
-h1:kCz913SUPzILB3oeixRVoyZBilmXfBETzAPeYdHi0pY=
+h1:bojnRyz9a20gZsUYGU0/uFsjy50Iu0LvElVbmuZzPAY=
 20261015000000_postpurchase.sql h1:Nm8PGsWtSwcoTotZgNgZPFEQ1ymTX4nJ60dXZiYac2g=
 20261015100000_purchase_contract.sql h1:1/3fFhO/Omve3xd8kF2iDtOM5QpJXhpxTS2qIlk6fyk=
 20261015120000_bookkeeping_workflows.sql h1:RXY7Z/wA05QzWjpy6JeaYWpFWtg6iRfK/mQRXe87puM=
@@ -20,3 +20,4 @@ h1:kCz913SUPzILB3oeixRVoyZBilmXfBETzAPeYdHi0pY=
 20261016120000_worker_ingestion_metadata.sql h1:y9aCZfggLj5tEK4cYPFDzNrfYuc7MK2Nw7r2jlJ9xDs=
 20261016130000_funding_recurring_workflows.sql h1:K4+NY5qavmtE9Wo2uui3HJKPDJwfbglwtCTmDmUtdyA=
 20261016140000_shared_purchase_drafts.sql h1:LciLh9ZTf4I/Xhq2OV6cDOQtvOCZ9qnDwHrjnI/vqPA=
+20261016150000_purchase_and_period_lifecycle.sql h1:NNWhmbEZmYpb+jqBA00dU4U1TzsHiYiYxiirSCP9rBk=

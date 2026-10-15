@@ -87,6 +87,17 @@ pub enum Pool {
     UnconfiguredSharedPool(UnconfiguredSharedPool),
 }
 
+impl Pool {
+    pub(crate) fn node_id(&self) -> &ID {
+        match self {
+            Self::PersonalPool(value) => &value.id,
+            Self::UnconfiguredPersonalPool(value) => &value.id,
+            Self::SharedPool(value) => &value.id,
+            Self::UnconfiguredSharedPool(value) => &value.id,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MemberProjection {
     pub id: Uuid,

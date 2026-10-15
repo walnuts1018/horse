@@ -197,6 +197,7 @@ fn is_supported_node_type(type_name: &str) -> bool {
             | "Account"
             | "Category"
             | "Member"
+            | "Pool"
             | "Purchase"
             | "PurchaseCorrection"
             | "LedgerEntry"
@@ -281,9 +282,13 @@ pub(crate) async fn resolve_graphql_node(
     }
 
     match type_name {
-        "Account" | "Category" | "Member" => {
+        "Account" | "Category" | "Member" | "Pool" => {
             crate::household_lifecycle::resolve_household_node(
-                pool, actor.0, household_id, type_name, id,
+                pool,
+                actor.0,
+                household_id,
+                type_name,
+                id,
             )
             .await?
             .ok_or_else(|| Error::new("not found"))

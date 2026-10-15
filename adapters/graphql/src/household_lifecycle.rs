@@ -598,6 +598,11 @@ pub(crate) async fn resolve_household_node(
             .into_iter()
             .find(|value| value.id == global_id)
             .map(crate::ledger_entry::Node::Member),
+        "Pool" => household
+            .pools
+            .into_iter()
+            .find(|value| value.node_id() == &global_id)
+            .map(crate::ledger_entry::Node::Pool),
         _ => None,
     };
     Ok(node)
