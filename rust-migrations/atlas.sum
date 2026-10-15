@@ -1,4 +1,4 @@
-h1:7TviCmetyYmhT0ZjAToZ77tGWh2h2tO4KOk7W00g5M0=
+h1:oiwQGsWYb/BLmTBw+NUDGuVUHMMEJinc4FO+1jSfcps=
 20261015000000_postpurchase.sql h1:RgfuJe7XWes1UhAH9ehoGDdcEge9sTOBM1j6+7DzWUQ=
 20261015100000_purchase_contract.sql h1:MRdG/aYpeUwNT2VF7YK8P2C4hGtBXuma+GSYpk7DAhI=
 20261015120000_bookkeeping_workflows.sql h1:JL9Wv/ux5hnardeNlbgAxogK5JoPo4v2/Z6mhZFGG64=
@@ -14,3 +14,4 @@ h1:7TviCmetyYmhT0ZjAToZ77tGWh2h2tO4KOk7W00g5M0=
 20261015220000_oidc_states.sql h1:qSGumsmuEwbWYoLggZBZd3l/+uhDNr0YfeTjTSTnIFQ=
 20261015230000_policy_budget_recurring_expenses.sql h1:LaMiJAsiEjdjavd5xYX6+7225ePWBqUQn//m/kJ08Ho=
 20261015240000_household_invitations.sql h1:dkFTntzZgGwb+zMWqpxZmjAONvEGL6pGpoN/rw7YbrQ=
+20261016000000_catalog_tags.sql h1:biOcMZ1Fnj1zuLsE6ejZo6J8xPMCJFYmFyRzUaKenZU=

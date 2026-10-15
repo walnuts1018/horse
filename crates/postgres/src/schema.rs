@@ -815,6 +815,26 @@ pub mod public {
     }
 
     diesel::table! {
+        tags (id) {
+            id -> Uuid,
+            household_id -> Uuid,
+            name -> Text,
+            archived -> Bool,
+            revision -> Int8,
+            created_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
+        purchase_item_tags (item_id, tag_id) {
+            household_id -> Uuid,
+            purchase_id -> Uuid,
+            item_id -> Uuid,
+            tag_id -> Uuid,
+        }
+    }
+
+    diesel::table! {
         transfers (id) {
             id -> Uuid,
             household_id -> Uuid,
@@ -853,6 +873,7 @@ pub mod public {
     diesel::joinable!(product_concepts -> households (household_id));
     diesel::joinable!(purchases -> households (household_id));
     diesel::joinable!(source_documents -> households (household_id));
+    diesel::joinable!(tags -> households (household_id));
 
     diesel::allow_tables_to_appear_in_same_query!(
         account_incomes,
@@ -901,6 +922,7 @@ pub mod public {
         purchase_payment_funding_snapshots,
         purchase_payments,
         purchases,
+        purchase_item_tags,
         recurring_expenses,
         settlement_adjustments,
         settlement_run_adjustments,
@@ -912,6 +934,7 @@ pub mod public {
         source_documents,
         source_observations,
         statement_reconciliation_candidates,
+        tags,
         transfers,
     );
 }
