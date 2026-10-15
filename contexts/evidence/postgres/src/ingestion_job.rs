@@ -450,7 +450,7 @@ where
             &RunningJob,
             i64,
         ) -> Result<
-            evidence_application::ingestion_job::FinishExtractionJob,
+            evidence_application::ingestion_job::ExtractionJobTransition,
             FinishExtractionJobError,
         > + Send,
 {
@@ -526,10 +526,10 @@ where
                     .filter(jobs::lease_expires_at.gt(Some(now))),
             )
             .set(JobFinishChangeset {
-                status: status_text(transition.status),
-                failure_count: transition.failure_count,
-                available_at: db_time(transition.available_at_ms)?,
-                finished_at: Some(transition.finished_at_ms.map(db_time).transpose()?),
+                status: status_text(transition.status()),
+                failure_count: transition.failure_count(),
+                available_at: db_time(transition.available_at_ms())?,
+                finished_at: Some(transition.finished_at_ms().map(db_time).transpose()?),
                 lease_token: Some(None),
                 lease_expires_at: Some(None),
                 result,
@@ -543,7 +543,7 @@ where
             if changed != 1 {
                 return Ok(false);
             }
-            let attempt_status = if transition.status == ExtractionJobStatus::Succeeded {
+            let attempt_status = if transition.status() == ExtractionJobStatus::Succeeded {
                 "succeeded"
             } else {
                 "failed"
@@ -806,12 +806,12 @@ pub async fn recover_expired_extraction_jobs(
                     .map_err(|_| IngestionJobError::InvalidTransition)?;
                 let job_id = row.id;
                 let attempt_no = job.attempt_count;
-                let error_code = if transition.status == ExtractionJobStatus::Failed {
+                let error_code = if transition.status() == ExtractionJobStatus::Failed {
                     "retry_exhausted"
                 } else {
                     "worker_interrupted"
                 };
-                let finished_at = transition.finished_at_ms.map(db_time).transpose()?;
+                let finished_at = transition.finished_at_ms().map(db_time).transpose()?;
                 let updated = diesel::update(
                     jobs::extraction_jobs
                         .filter(jobs::id.eq(job_id))
@@ -820,9 +820,9 @@ pub async fn recover_expired_extraction_jobs(
                         .filter(jobs::lease_token.eq(row.lease_token)),
                 )
                 .set((
-                    jobs::status.eq(status_text(transition.status)),
-                    jobs::failure_count.eq(transition.failure_count),
-                    jobs::available_at.eq(db_time(transition.available_at_ms)?),
+                    jobs::status.eq(status_text(transition.status())),
+                    jobs::failure_count.eq(transition.failure_count()),
+                    jobs::available_at.eq(db_time(transition.available_at_ms())?),
                     jobs::finished_at.eq(finished_at),
                     jobs::lease_token.eq(None::<Uuid>),
                     jobs::lease_expires_at.eq(None::<DateTime<Utc>>),

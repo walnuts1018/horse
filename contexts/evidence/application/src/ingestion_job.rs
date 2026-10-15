@@ -297,12 +297,64 @@ where
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FinishedExtractionJobStatus {
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FinishExtractionJob {
-    pub status: ExtractionJobStatus,
+pub struct FinishedExtractionJob {
+    pub status: FinishedExtractionJobStatus,
     pub failure_count: i32,
     pub available_at_ms: i64,
-    pub finished_at_ms: Option<i64>,
+    pub finished_at_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExtractionJobTransition {
+    Retry {
+        failure_count: i32,
+        available_at_ms: i64,
+    },
+    Finished(FinishedExtractionJob),
+}
+
+impl ExtractionJobTransition {
+    pub const fn status(&self) -> ExtractionJobStatus {
+        match self {
+            Self::Retry { .. } => ExtractionJobStatus::Queued,
+            Self::Finished(job) => match job.status {
+                FinishedExtractionJobStatus::Succeeded => ExtractionJobStatus::Succeeded,
+                FinishedExtractionJobStatus::Failed => ExtractionJobStatus::Failed,
+                FinishedExtractionJobStatus::Cancelled => ExtractionJobStatus::Cancelled,
+            },
+        }
+    }
+
+    pub const fn failure_count(&self) -> i32 {
+        match self {
+            Self::Retry { failure_count, .. } => *failure_count,
+            Self::Finished(job) => job.failure_count,
+        }
+    }
+
+    pub const fn available_at_ms(&self) -> i64 {
+        match self {
+            Self::Retry {
+                available_at_ms, ..
+            } => *available_at_ms,
+            Self::Finished(job) => job.available_at_ms,
+        }
+    }
+
+    pub const fn finished_at_ms(&self) -> Option<i64> {
+        match self {
+            Self::Retry { .. } => None,
+            Self::Finished(job) => Some(job.finished_at_ms),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -318,7 +370,7 @@ pub fn finish_extraction_failure(
     retry_delay_ms: i64,
     failure_kind: ExtractionFailureKind,
     max_failures: i32,
-) -> Result<FinishExtractionJob, FinishExtractionJobError> {
+) -> Result<ExtractionJobTransition, FinishExtractionJobError> {
     if job.lease.expires_at_ms() <= now_ms {
         return Err(FinishExtractionJobError::StaleLease);
     }
@@ -344,47 +396,42 @@ pub fn finish_extraction_failure(
     } else {
         job.available_at_ms
     };
-    Ok(FinishExtractionJob {
-        status: if retry {
-            ExtractionJobStatus::Queued
-        } else {
-            ExtractionJobStatus::Failed
-        },
-        failure_count,
-        available_at_ms,
-        finished_at_ms: (!retry).then_some(now_ms),
-    })
+    if retry {
+        Ok(ExtractionJobTransition::Retry {
+            failure_count,
+            available_at_ms,
+        })
+    } else {
+        Ok(ExtractionJobTransition::Finished(FinishedExtractionJob {
+            status: FinishedExtractionJobStatus::Failed,
+            failure_count,
+            available_at_ms,
+            finished_at_ms: now_ms,
+        }))
+    }
 }
 
 pub fn finish_extraction_success(
     job: &RunningJob,
     now_ms: i64,
-) -> Result<FinishExtractionJob, FinishExtractionJobError> {
+) -> Result<ExtractionJobTransition, FinishExtractionJobError> {
     // リース所有者の一致は呼び出し側の条件付き更新で保証し、ここでは有効期限のみ検証する。
     if job.lease.expires_at_ms() <= now_ms {
         return Err(FinishExtractionJobError::StaleLease);
     }
-    Ok(FinishExtractionJob {
-        status: ExtractionJobStatus::Succeeded,
+    Ok(ExtractionJobTransition::Finished(FinishedExtractionJob {
+        status: FinishedExtractionJobStatus::Succeeded,
         failure_count: job.failure_count,
         available_at_ms: job.available_at_ms,
-        finished_at_ms: Some(now_ms),
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RecoverExpiredExtractionJob {
-    pub status: ExtractionJobStatus,
-    pub failure_count: i32,
-    pub available_at_ms: i64,
-    pub finished_at_ms: Option<i64>,
+        finished_at_ms: now_ms,
+    }))
 }
 
 pub fn recover_expired_extraction_job(
     job: &RunningJob,
     now_ms: i64,
     max_failures: i32,
-) -> Result<RecoverExpiredExtractionJob, FinishExtractionJobError> {
+) -> Result<ExtractionJobTransition, FinishExtractionJobError> {
     if job.lease.expires_at_ms() > now_ms {
         return Err(FinishExtractionJobError::StaleLease);
     }
@@ -396,16 +443,19 @@ pub fn recover_expired_extraction_job(
         .checked_add(1)
         .ok_or(FinishExtractionJobError::InvalidCounter)?;
     let retry = failure_count < max_failures;
-    Ok(RecoverExpiredExtractionJob {
-        status: if retry {
-            ExtractionJobStatus::Queued
-        } else {
-            ExtractionJobStatus::Failed
-        },
-        failure_count,
-        available_at_ms: if retry { now_ms } else { job.available_at_ms },
-        finished_at_ms: (!retry).then_some(now_ms),
-    })
+    if retry {
+        Ok(ExtractionJobTransition::Retry {
+            failure_count,
+            available_at_ms: now_ms,
+        })
+    } else {
+        Ok(ExtractionJobTransition::Finished(FinishedExtractionJob {
+            status: FinishedExtractionJobStatus::Failed,
+            failure_count,
+            available_at_ms: job.available_at_ms,
+            finished_at_ms: now_ms,
+        }))
+    }
 }
 
 #[cfg(test)]
@@ -430,10 +480,13 @@ mod tests {
             finish_extraction_failure(&job, 9_000, 30_000, ExtractionFailureKind::SpendCap, 5)
                 .expect("current lease can be retried");
 
-        assert_eq!(transition.status, ExtractionJobStatus::Queued);
-        assert_eq!(transition.failure_count, 1);
-        assert_eq!(transition.available_at_ms, 39_000);
-        assert_eq!(transition.finished_at_ms, None);
+        assert_eq!(
+            transition,
+            ExtractionJobTransition::Retry {
+                failure_count: 1,
+                available_at_ms: 39_000,
+            }
+        );
     }
 
     #[test]
@@ -445,15 +498,37 @@ mod tests {
     }
 
     #[test]
+    fn successful_finish_returns_a_terminal_result_with_completion_time() {
+        let transition = finish_extraction_success(&running_job(), 9_000)
+            .expect("current lease can finish successfully");
+
+        assert_eq!(
+            transition,
+            ExtractionJobTransition::Finished(FinishedExtractionJob {
+                status: FinishedExtractionJobStatus::Succeeded,
+                failure_count: 1,
+                available_at_ms: 0,
+                finished_at_ms: 9_000,
+            })
+        );
+    }
+
+    #[test]
     fn expired_attempts_consume_failure_budget_and_eventually_fail() {
         let mut job = running_job();
         job.failure_count = 4;
         let transition = recover_expired_extraction_job(&job, 10_000, 5)
             .expect("expired lease can be recovered");
 
-        assert_eq!(transition.status, ExtractionJobStatus::Failed);
-        assert_eq!(transition.failure_count, 5);
-        assert_eq!(transition.finished_at_ms, Some(10_000));
+        assert_eq!(
+            transition,
+            ExtractionJobTransition::Finished(FinishedExtractionJob {
+                status: FinishedExtractionJobStatus::Failed,
+                failure_count: 5,
+                available_at_ms: 0,
+                finished_at_ms: 10_000,
+            })
+        );
     }
 
     #[test]
