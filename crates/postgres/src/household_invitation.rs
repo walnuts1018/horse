@@ -251,10 +251,19 @@ pub async fn revoke_invitation(
             use public::{
                 household_invitations as invitations, household_members as members, households,
             };
+            households::table
+                .filter(households::id.eq(household_id))
+                .for_update()
+                .select(households::id)
+                .first::<Uuid>(&mut *conn)
+                .await
+                .optional()?
+                .ok_or(HouseholdInvitationError::HouseholdNotFound)?;
             let actor_role = members::table
                 .filter(members::household_id.eq(household_id))
                 .filter(members::member_id.eq(actor_id))
                 .filter(members::left_at.is_null())
+                .for_share()
                 .select(members::role)
                 .first::<String>(&mut *conn)
                 .await
