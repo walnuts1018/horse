@@ -4,9 +4,7 @@ use bookkeeping_workflows::category::{
     decide_update_category_name,
 };
 use chrono::Utc;
-use diesel::{
-    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
-};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
@@ -32,8 +30,8 @@ pub async fn persist_create_category(
     pool: &PgPool,
     command: CreateCategoryCommand,
 ) -> Result<Category, CategoryPersistenceError> {
-    let decision = decide_create_category(command)
-        .map_err(CategoryPersistenceError::InvalidWorkflow)?;
+    let decision =
+        decide_create_category(command).map_err(CategoryPersistenceError::InvalidWorkflow)?;
     let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
     let household_id = parse_uuid(&decision.household_id, "household_id")?;
     let category_id = parse_uuid(&decision.category_id, "category_id")?;
@@ -90,7 +88,8 @@ pub async fn persist_create_category(
                     events::entity_kind.eq("category"),
                     events::entity_id.eq(category_id),
                     events::revision.eq(1_i64),
-                    events::changed_fields.eq(vec![Some("name".to_owned()), Some("parentId".to_owned())]),
+                    events::changed_fields
+                        .eq(vec![Some("name".to_owned()), Some("parentId".to_owned())]),
                     events::actor_id.eq(actor_id),
                     events::created_at.eq(Utc::now()),
                 ))
@@ -112,8 +111,8 @@ pub async fn persist_update_category_name(
     pool: &PgPool,
     command: UpdateCategoryNameCommand,
 ) -> Result<Category, CategoryPersistenceError> {
-    let decision = decide_update_category_name(command)
-        .map_err(CategoryPersistenceError::InvalidWorkflow)?;
+    let decision =
+        decide_update_category_name(command).map_err(CategoryPersistenceError::InvalidWorkflow)?;
     let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
     let category_id = parse_uuid(&decision.category_id, "category_id")?;
 
@@ -125,7 +124,6 @@ pub async fn persist_update_category_name(
         .transaction::<Category, CategoryPersistenceError, _>(async |conn| {
             use public::categories::dsl as categories;
             use public::household_events::dsl as events;
-            use public::household_members::dsl as members;
 
             let row = categories::categories
                 .filter(categories::id.eq(category_id))
@@ -181,12 +179,9 @@ pub async fn persist_set_category_archived(
     pool: &PgPool,
     command: SetCategoryArchivedCommand,
 ) -> Result<Category, CategoryPersistenceError> {
-    let decision = decide_set_category_archived(
-        command.actor_id,
-        command.category_id,
-        command.archived,
-    )
-    .map_err(CategoryPersistenceError::InvalidWorkflow)?;
+    let decision =
+        decide_set_category_archived(command.actor_id, command.category_id, command.archived)
+            .map_err(CategoryPersistenceError::InvalidWorkflow)?;
     let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
     let category_id = parse_uuid(&decision.category_id, "category_id")?;
 
@@ -198,7 +193,6 @@ pub async fn persist_set_category_archived(
         .transaction::<Category, CategoryPersistenceError, _>(async |conn| {
             use public::categories::dsl as categories;
             use public::household_events::dsl as events;
-            use public::household_members::dsl as members;
 
             let row = categories::categories
                 .filter(categories::id.eq(category_id))

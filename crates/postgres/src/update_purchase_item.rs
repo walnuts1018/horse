@@ -312,11 +312,39 @@ pub async fn persist_update_purchase_item(
                         })
                         .collect::<Result<serde_json::Map<_, _>, _>>()?,
                 );
-                let quantity = decision.quantity.as_ref().map(|value| value.as_ref());
-                let printed = decision
-                    .printed_unit_price
-                    .as_ref()
-                    .map(|value| value.as_ref());
+                let (quantity_numerator, quantity_denominator, quantity_unit) =
+                    match decision.quantity.as_ref() {
+                        None => (locked.7, locked.8, locked.9.clone()),
+                        Some(None) => (None, None, None),
+                        Some(Some(value)) => (
+                            Some(value.numerator.parse().map_err(|_| {
+                                UpdatePurchaseItemPersistenceError::InvalidDecision
+                            })?),
+                            Some(value.denominator.parse().map_err(|_| {
+                                UpdatePurchaseItemPersistenceError::InvalidDecision
+                            })?),
+                            Some(value.unit.clone()),
+                        ),
+                    };
+                let (
+                    printed_unit_price_yen,
+                    printed_unit_price_quantity_numerator,
+                    printed_unit_price_quantity_denominator,
+                    printed_unit_price_unit,
+                ) = match decision.printed_unit_price.as_ref() {
+                    None => (locked.10, locked.11, locked.12, locked.13.clone()),
+                    Some(None) => (None, None, None, None),
+                    Some(Some(value)) => (
+                        Some(value.amount_yen),
+                        Some(value.basis.numerator.parse().map_err(|_| {
+                            UpdatePurchaseItemPersistenceError::InvalidDecision
+                        })?),
+                        Some(value.basis.denominator.parse().map_err(|_| {
+                            UpdatePurchaseItemPersistenceError::InvalidDecision
+                        })?),
+                        Some(value.basis.unit.clone()),
+                    ),
+                };
                 let category_id = match &decision.category_id {
                     Some(Some(value)) => Some(parse_uuid(value, "category_id")?),
                     Some(None) => None,
@@ -336,23 +364,15 @@ pub async fn persist_update_purchase_item(
                         items::allocation_override.eq(decision.allocation_override),
                         items::revision.eq(next_revision),
                         items::field_revisions.eq(field_revisions),
-                        items::quantity_numerator.eq(quantity
-                            .flatten()
-                            .and_then(|value| value.numerator.parse().ok())),
-                        items::quantity_denominator.eq(quantity
-                            .flatten()
-                            .and_then(|value| value.denominator.parse().ok())),
-                        items::quantity_unit.eq(quantity.flatten().map(|value| value.unit.clone())),
-                        items::printed_unit_price_yen
-                            .eq(printed.flatten().map(|value| value.amount_yen)),
-                        items::printed_unit_price_quantity_numerator.eq(printed
-                            .flatten()
-                            .and_then(|value| value.basis.numerator.parse().ok())),
-                        items::printed_unit_price_quantity_denominator.eq(printed
-                            .flatten()
-                            .and_then(|value| value.basis.denominator.parse().ok())),
-                        items::printed_unit_price_unit
-                            .eq(printed.flatten().map(|value| value.basis.unit.clone())),
+                        items::quantity_numerator.eq(quantity_numerator),
+                        items::quantity_denominator.eq(quantity_denominator),
+                        items::quantity_unit.eq(quantity_unit),
+                        items::printed_unit_price_yen.eq(printed_unit_price_yen),
+                        items::printed_unit_price_quantity_numerator
+                            .eq(printed_unit_price_quantity_numerator),
+                        items::printed_unit_price_quantity_denominator
+                            .eq(printed_unit_price_quantity_denominator),
+                        items::printed_unit_price_unit.eq(printed_unit_price_unit),
                         items::updated_at.eq(now),
                     ))
                     .execute(&mut *conn)

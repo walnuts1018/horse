@@ -61,7 +61,11 @@ pub fn decide_create_category(
     validate_id(&command.actor_id).map_err(|_| CategoryError::InvalidActorId)?;
     validate_id(&command.household_id).map_err(|_| CategoryError::InvalidHouseholdId)?;
     validate_id(&command.category_id).map_err(|_| CategoryError::InvalidCategoryId)?;
-    if command.parent_id.as_deref().is_some_and(|id| validate_id(id).is_err()) {
+    if command
+        .parent_id
+        .as_deref()
+        .is_some_and(|id| validate_id(id).is_err())
+    {
         return Err(CategoryError::InvalidParentId);
     }
     let name = validated_name(command.name)?;
@@ -93,7 +97,11 @@ pub fn decide_set_category_archived(
 ) -> Result<SetCategoryArchivedCommand, CategoryError> {
     validate_id(&actor_id).map_err(|_| CategoryError::InvalidActorId)?;
     validate_id(&category_id).map_err(|_| CategoryError::InvalidCategoryId)?;
-    Ok(SetCategoryArchivedCommand { actor_id, category_id, archived })
+    Ok(SetCategoryArchivedCommand {
+        actor_id,
+        category_id,
+        archived,
+    })
 }
 
 fn validated_name(value: String) -> Result<String, CategoryError> {
