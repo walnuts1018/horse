@@ -1,8 +1,8 @@
+use diesel::{ExpressionMethods, dsl::now, result::Error as DieselError};
+use diesel_async::{AsyncConnection, RunQueryDsl};
 use household_workflows::create_household::{
     CreateHouseholdCommand, CreateHouseholdError, decide_create_household,
 };
-use diesel::{ExpressionMethods, dsl::now, result::Error as DieselError};
-use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};

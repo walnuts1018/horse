@@ -688,8 +688,15 @@ async fn sync_posted_purchase_accounting(
         .ok_or(UpdatePurchasePersistenceError::NumericOutOfRange(
             "purchase_total",
         ))?;
-    update_posted_purchase_ledger(conn, household_id, purchase_id, occurred_at, merchant, total)
-        .await?;
+    update_posted_purchase_ledger(
+        conn,
+        household_id,
+        purchase_id,
+        occurred_at,
+        merchant,
+        total,
+    )
+    .await?;
     Ok(())
 }
 

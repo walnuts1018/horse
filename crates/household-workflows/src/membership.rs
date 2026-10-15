@@ -65,7 +65,10 @@ pub fn decide_transfer_owner(
     actor_role: Option<&str>,
     new_owner_role: Option<&str>,
 ) -> Result<MembershipChangeDecision, MembershipError> {
-    if command.actor_id.is_empty() || command.household_id.is_empty() || command.new_owner_id.is_empty() {
+    if command.actor_id.is_empty()
+        || command.household_id.is_empty()
+        || command.new_owner_id.is_empty()
+    {
         return Err(MembershipError::InvalidIdentifier);
     }
     if actor_role != Some("OWNER") || new_owner_role.is_none() {

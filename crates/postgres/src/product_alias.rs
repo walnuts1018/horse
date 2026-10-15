@@ -1,8 +1,5 @@
-use catalog_workflows::{
-    product_alias::{
-        SetProductAliasCommand, SetProductAliasDecision, SetProductAliasError,
-        decide_set_product_alias,
-    },
+use catalog_workflows::product_alias::{
+    SetProductAliasCommand, SetProductAliasDecision, SetProductAliasError, decide_set_product_alias,
 };
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
