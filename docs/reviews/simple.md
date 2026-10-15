@@ -1,6 +1,6 @@
 # Horse コード品質レビュー
 
-対象：[walnuts1018/horse](https://github.com/walnuts1018/horse) の `main` ブランチ（2026年10月15日確認、`1682bd2`）
+対象：[walnuts1018/horse](https://github.com/walnuts1018/horse) の `main` ブランチ（2026年10月15日確認）
 
 ## 総評
 
@@ -33,7 +33,7 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 
 `create()`では入力値の正規化、認可、冪等性確認、会計期間ロック、証憑確認、既定配賦の読込、永続化を専用関数へ分けました。`create()`はこれらを呼び出して既存transaction内の処理順を調整します。通常更新、一括更新、複数明細保存も引き続き責務の整理が必要です。変更時は各ユースケースのtransaction境界、ロック順序、仕訳同期と監査イベントの実行条件を維持する必要があります。
 
-### 2. GraphQLの巨大な一括組み立て処理を見直す
+### 2. GraphQL loaderの未解決課題
 
 優先度：最高 / 改善効果：非常に大きい
 
@@ -44,15 +44,9 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 - [graph/queries.go](https://github.com/walnuts1018/horse/blob/main/internal/graph/queries.go#L15-L75)
 - [graphql/household.graphql](https://github.com/walnuts1018/horse/blob/main/graphql/household.graphql)
 
-`loadHousehold()`は基本情報と詳細データの取得を分け、GraphQLで要求されたmembers、pools、accounts、categories、defaultAllocationだけを読み込みます。Pool variantは設定情報を読み込んだ後にPersonal/Shared型を選び、設定済み・未設定の4型をPostgreSQL 18 testcontainersで確認しています。選択されていないHousehold詳細まで一括取得する問題は改善済みです。この変更を含むcombined focused testもmain上で通過しました。
+未解決のGraphQL課題は、`loadPurchases()`で`items`、`totalYen`、訂正金額などが要求されない場合に明細と訂正aggregateを省けるか判断することです。購入一覧では`paymentAllocations`、証憑情報、明細の配賦とタグを要求fieldに応じて読み込みますが、親field間で必要データを共有する他のqueryの取得範囲は網羅できていません。
 
-`households()`と`viewer()`は所属情報を取得した後、`loadHouseholds()`でHouseholdの基本情報と要求された詳細をまとめて取得し、所属情報の順序に合わせて結果を組み立てます。Node解決は24種類すべてにbatch取得経路があり、Pool Nodeでは必要なPool、既定配賦、funding rule、share、member情報だけをBobで一括取得します。複数親から同じ関連データを参照するクエリを含め、実際のクエリ数と取得範囲は引き続き確認が必要です。
-
-Member、Account、Category、Household、Pool Nodeの複数ID解決では、所属確認と対象データ取得をBobで一括取得するよう変更しました。Pool NodeはHousehold全体を読み込まず、必要なPoolと設定情報だけを取得します。重複IDを含む順序維持、家庭所属の認可、CategoryのParentID mappingをfocused integration testで確認しています。単一LedgerEntry Nodeもbatch loaderへ通し、既存テストでLoanBalanceを含む型を解決できることを確認しました。`nodes(ids:)`で複数のUnmatchedObservation Nodeを取得する経路も、所属家庭、SourceObservation、DocumentConfirmation、必要なCorrectionをまとめて取得するよう変更しました。複合Node IDの重複、順序、未存在行、家庭所属の認可をfocused integration testで確認しました。複数Nodeの解決では、UnmatchedObservationとSettlementが認可用Household一覧を共有します。Settlement Nodeのclosed run取得を一括化しました。未確定periodのpreview計算はSettlement Serviceを個別に呼び出します。Node 24種類のうち22種類は`isBatchLoadedNodeKind`を通り、SettlementとUnmatchedObservationは`nodes()`内の専用batch経路を使います。
-
-`loadPurchases()`のGraphQL表示モデル組み立ては`purchase_graph.go`の`mapPurchases()`へ分離しました。`purchases`では選択fieldに応じて支払・口座と証憑・SourceDocumentを読み込みます。その他のPurchase関連データも要求fieldに応じて絞り込む必要があります。複数親から同じ関連データを参照するqueryを含め、GraphQL loaderの実際のクエリ数と取得範囲は引き続き確認します。
-
-目指すのは「すべてを先読みする巨大なローダー」でも「フィールドごとに1件ずつSQLを実行する構造」でもなく、GraphQLで要求されたデータだけを、親子関係に応じた適切な単位で一括取得する構造です。
+`loadHouseholds()`と`nodes(ids:)`は複数親をまとめて取得しますが、異なるNode型や複数Household詳細を同時に要求した場合のPostgreSQL query数を測定していません。Settlementの未確定previewはNodeごとにServiceを呼び出すため、親数に比例するDBアクセスがないかtestcontainersで確認し、必要ならBob batch queryへ変更します。
 
 ## 4. 購入更新のtransaction責務
 
