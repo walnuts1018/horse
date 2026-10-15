@@ -37,6 +37,12 @@ pub struct SetDefaultAllocationDecision {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetDefaultAllocationResult {
+    pub revision: u64,
+    pub version: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetDefaultAllocationError {
     InvalidActorId,
     InvalidHouseholdId,
@@ -54,13 +60,13 @@ pub trait SetDefaultAllocationOperations {
     async fn persist(
         &mut self,
         command: ValidatedDefaultAllocation,
-    ) -> Result<SetDefaultAllocationDecision, Self::Error>;
+    ) -> Result<SetDefaultAllocationResult, Self::Error>;
 }
 
 pub async fn set_default_allocation<O: SetDefaultAllocationOperations>(
     operations: &mut O,
     command: SetDefaultAllocationCommand,
-) -> Result<SetDefaultAllocationDecision, O::Error> {
+) -> Result<SetDefaultAllocationResult, O::Error> {
     operations
         .persist(validate_default_allocation(command)?).
         await

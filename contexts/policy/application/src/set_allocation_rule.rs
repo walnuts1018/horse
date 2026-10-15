@@ -41,6 +41,12 @@ pub struct SetAllocationRuleDecision {
     pub changed_fields: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetAllocationRuleResult {
+    pub id: String,
+    pub revision: u64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetAllocationRuleError {
     InvalidActorId,
@@ -61,13 +67,13 @@ pub trait SetAllocationRuleOperations {
     async fn persist(
         &mut self,
         command: ValidatedSetAllocationRuleCommand,
-    ) -> Result<SetAllocationRuleDecision, Self::Error>;
+    ) -> Result<SetAllocationRuleResult, Self::Error>;
 }
 
 pub async fn set_allocation_rule<O: SetAllocationRuleOperations>(
     operations: &mut O,
     command: SetAllocationRuleCommand,
-) -> Result<SetAllocationRuleDecision, O::Error> {
+) -> Result<SetAllocationRuleResult, O::Error> {
     operations.persist(validate_set_allocation_rule(command)?).await
 }
 
