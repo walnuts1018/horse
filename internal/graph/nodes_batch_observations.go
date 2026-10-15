@@ -18,7 +18,7 @@ type observationNodeKey struct {
 	reference  string
 }
 
-func (r *queryResolver) loadUnmatchedObservationNodes(ctx context.Context, ids []string) (map[int]model.Node, error) {
+func (r *queryResolver) loadUnmatchedObservationNodes(ctx context.Context, ids []string, households []*model.Household) (map[int]model.Node, error) {
 	result := make(map[int]model.Node)
 	keys := make([]observationNodeKey, 0)
 	indexesByKey := make(map[observationNodeKey][]int)
@@ -46,10 +46,6 @@ func (r *queryResolver) loadUnmatchedObservationNodes(ctx context.Context, ids [
 	}
 	if len(keys) == 0 {
 		return result, nil
-	}
-	households, err := r.householdReferences(ctx)
-	if err != nil {
-		return nil, err
 	}
 	if len(households) == 0 {
 		return result, nil

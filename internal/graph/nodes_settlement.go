@@ -20,7 +20,7 @@ type settlementNodeKey struct {
 	period      string
 }
 
-func (r *queryResolver) loadSettlementNodes(ctx context.Context, nodeIDs []decodedNodeID) ([]model.Node, error) {
+func (r *queryResolver) loadSettlementNodes(ctx context.Context, nodeIDs []decodedNodeID, households []*model.Household) ([]model.Node, error) {
 	result := make([]model.Node, len(nodeIDs))
 	keys := make([]settlementNodeKey, len(nodeIDs))
 	uniqueKeys := make(map[settlementNodeKey]struct{})
@@ -44,10 +44,6 @@ func (r *queryResolver) loadSettlementNodes(ctx context.Context, nodeIDs []decod
 		return result, nil
 	}
 
-	households, err := r.householdReferences(ctx)
-	if err != nil {
-		return nil, err
-	}
 	accessible := make(map[uuid.UUID]struct{}, len(households))
 	for _, household := range households {
 		accessible[mustUUID(household.ID)] = struct{}{}

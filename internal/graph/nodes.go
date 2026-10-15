@@ -96,9 +96,9 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 		}
 	}
 
-	if hasBatchLoadedNode {
+	if hasBatchLoadedNode || hasUnmatchedObservationNode || hasSettlementNode(decoded) {
 		var err error
-		if hasLoadedHouseholdNode {
+		if hasBatchLoadedNode && hasLoadedHouseholdNode {
 			households, err = r.households(ctx)
 		} else {
 			households, err = r.householdReferences(ctx)
@@ -106,6 +106,8 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 		if err != nil {
 			return nil, err
 		}
+	}
+	if hasBatchLoadedNode {
 		resolved, err := r.loadBatchNodesByDomain(ctx, households, idsByKind, indexesByKind)
 		if err != nil {
 			return nil, err
@@ -127,7 +129,7 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 		}
 	}
 	if hasUnmatchedObservationNode {
-		resolved, err := r.loadUnmatchedObservationNodes(ctx, ids)
+		resolved, err := r.loadUnmatchedObservationNodes(ctx, ids, households)
 		if err != nil {
 			return nil, err
 		}
@@ -136,7 +138,7 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 		}
 	}
 	if hasSettlementNode(decoded) {
-		resolved, err := r.loadSettlementNodes(ctx, decoded)
+		resolved, err := r.loadSettlementNodes(ctx, decoded, households)
 		if err != nil {
 			return nil, err
 		}

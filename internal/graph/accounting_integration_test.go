@@ -1264,6 +1264,14 @@ func TestSharedPoolRepaymentSettlesLoanAndJournal(t *testing.T) {
 	if !ok || loadedSettlement.HouseholdID != household.ID || loadedSettlement.Period != settlementData.Period {
 		t.Fatalf("settlement node did not resolve by household and period: %#v", settlementNode)
 	}
+	settlementNodes, err := (&Resolver{DB: db}).Query().Nodes(ctx, []string{settlementNodeID})
+	if err != nil || len(settlementNodes) != 1 {
+		t.Fatalf("settlement batch node lookup failed: nodes=%#v error=%v", settlementNodes, err)
+	}
+	loadedBatchSettlement, ok := settlementNodes[0].(*model.OpenSettlement)
+	if !ok || loadedBatchSettlement.HouseholdID != household.ID || loadedBatchSettlement.Period != settlementData.Period {
+		t.Fatalf("settlement batch node did not resolve by household and period: %#v", settlementNodes[0])
+	}
 	linesByMember := settlementByMember(t, settlementData.Lines)
 	borrowerLine := linesByMember[memberB]
 	if borrowerLine == nil || borrowerLine.MonthlyAdjustmentYen != 5000 || borrowerLine.PaidYen != 5000 || borrowerLine.AmountDueYen != 0 {
