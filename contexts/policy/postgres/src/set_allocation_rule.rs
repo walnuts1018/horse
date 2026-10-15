@@ -71,10 +71,14 @@ async fn persist_validated(
     let household_id = parse_uuid(validated.household_id(), "household_id")?;
     let actor_id = parse_uuid(validated.actor_id(), "actor_id")?;
     let category_id = parse_optional_uuid(validated.target().category_id(), "category_id")?;
-    let product_concept_id =
-        parse_optional_uuid(validated.target().product_concept_id(), "product_concept_id")?;
-    let product_variant_id =
-        parse_optional_uuid(validated.target().product_variant_id(), "product_variant_id")?;
+    let product_concept_id = parse_optional_uuid(
+        validated.target().product_concept_id(),
+        "product_concept_id",
+    )?;
+    let product_variant_id = parse_optional_uuid(
+        validated.target().product_variant_id(),
+        "product_variant_id",
+    )?;
     let pool_ids = validated
         .weights()
         .iter()
