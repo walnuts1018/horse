@@ -29,6 +29,14 @@ pub struct RecordAccountIncomeCommand {
     pub amount: PositiveYen,
     pub description: String,
     pub accounting_period_open: bool,
+    pub statement_source: Option<StatementIncomeSource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatementIncomeSource {
+    pub source_document_id: String,
+    pub source_reference: String,
+    pub statement_account_id: AccountId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +57,30 @@ pub struct RecordAccountIncomeDecision {
     pub description: String,
     pub journal_lines: [AccountIncomeJournalLine; 2],
     pub changed_fields: [&'static str; 3],
+    pub statement_source: Option<StatementIncomeSource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkStatementIncomeCommand {
+    pub source_document_id: String,
+    pub source_reference: String,
+    pub statement_account_id: AccountId,
+    pub income_account_id: AccountId,
+    pub income_amount: PositiveYen,
+    pub statement_amount: i64,
+    pub income_occurred_at: String,
+    pub statement_occurred_at: String,
+    pub statement_kind: String,
+    pub bank_statement: bool,
+    pub statement_has_region: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkStatementIncomeDecision {
+    pub source_document_id: String,
+    pub source_reference: String,
+    pub statement_account_id: AccountId,
+    pub income_account_id: AccountId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +89,10 @@ pub enum AccountIncomeError {
     CardAccountNotAllowed,
     InvalidDescription,
     AmountOutOfRange,
+    InvalidStatementSource,
+    StatementIsNotExternalIncome,
+    StatementIncomeMismatch,
+    StatementAccountMismatch,
 }
 
 pub fn decide_record_account_income(
@@ -68,24 +104,32 @@ pub fn decide_record_account_income(
     if command.amount.value() > 1_000_000_000_000 {
         return Err(AccountIncomeError::AmountOutOfRange);
     }
-    let trimmed_description = command.description.trim();
-    if trimmed_description.len() > 240 {
+    if command.description.len() > 240 {
         return Err(AccountIncomeError::InvalidDescription);
     }
     if command.account_kind == IncomeAccountKind::Card {
         return Err(AccountIncomeError::CardAccountNotAllowed);
     }
-    let description = if trimmed_description.is_empty() {
-        "External income".to_owned()
-    } else {
-        trimmed_description.to_owned()
-    };
+    if let Some(source) = &command.statement_source {
+        if source.source_document_id.is_empty()
+            || source.source_reference.is_empty()
+            || source.source_reference.len() > 256
+        {
+            return Err(AccountIncomeError::InvalidStatementSource);
+        }
+        if command.account_kind != IncomeAccountKind::Bank {
+            return Err(AccountIncomeError::StatementAccountMismatch);
+        }
+        if source.statement_account_id != command.account_id {
+            return Err(AccountIncomeError::StatementAccountMismatch);
+        }
+    }
     Ok(RecordAccountIncomeDecision {
         actor_id: command.actor_id,
         account_id: command.account_id.clone(),
         account_kind: command.account_kind,
         amount: command.amount,
-        description,
+        description: command.description,
         journal_lines: [
             AccountIncomeJournalLine {
                 line_no: 1,
@@ -103,6 +147,38 @@ pub fn decide_record_account_income(
             },
         ],
         changed_fields: ["amountYen", "accountId", "occurredAt"],
+        statement_source: command.statement_source,
+    })
+}
+
+pub fn decide_link_statement_income(
+    command: LinkStatementIncomeCommand,
+) -> Result<LinkStatementIncomeDecision, AccountIncomeError> {
+    if command.source_document_id.is_empty()
+        || command.source_reference.is_empty()
+        || command.source_reference.len() > 256
+    {
+        return Err(AccountIncomeError::InvalidStatementSource);
+    }
+    if !command.bank_statement || !command.statement_has_region {
+        return Err(AccountIncomeError::StatementIsNotExternalIncome);
+    }
+    if command.statement_kind != "EXTERNAL_INCOME" || command.statement_amount <= 0 {
+        return Err(AccountIncomeError::StatementIsNotExternalIncome);
+    }
+    if command.statement_account_id != command.income_account_id {
+        return Err(AccountIncomeError::StatementAccountMismatch);
+    }
+    if command.statement_amount != command.income_amount.value()
+        || command.statement_occurred_at != command.income_occurred_at
+    {
+        return Err(AccountIncomeError::StatementIncomeMismatch);
+    }
+    Ok(LinkStatementIncomeDecision {
+        source_document_id: command.source_document_id,
+        source_reference: command.source_reference,
+        statement_account_id: command.statement_account_id,
+        income_account_id: command.income_account_id,
     })
 }
 
@@ -119,6 +195,7 @@ mod tests {
             amount: PositiveYen::new(500).unwrap(),
             description: String::new(),
             accounting_period_open: true,
+            statement_source: None,
         }
     }
 
