@@ -11,14 +11,14 @@ use axum::{
 };
 use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
+use futures_util::{Stream, stream};
 use horse_auth::{AuthService, Cookie, OidcError, resolve_cookie, revoke_cookie};
 use horse_graphql_api::{Actor, Schema as GraphqlSchema, viewer_query::ViewerIdentity};
-use horse_postgres_common::{PgPool, schema::public::households};
 use horse_object_storage::ObjectStore;
+use horse_postgres_common::{PgPool, schema::public::households};
 use serde_json::{Value, json};
-use std::sync::Arc;
-use futures_util::{Stream, stream};
 use std::convert::Infallible;
+use std::sync::Arc;
 use url::Url;
 
 #[derive(Clone, Default)]
@@ -277,7 +277,11 @@ async fn upload_document(
         return (StatusCode::FORBIDDEN, "request origin rejected").into_response();
     }
     let Some(store) = &state.config.object_store else {
-        return (StatusCode::SERVICE_UNAVAILABLE, "document storage unavailable").into_response();
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "document storage unavailable",
+        )
+            .into_response();
     };
     let cookie = headers
         .get(header::COOKIE)
@@ -315,7 +319,9 @@ async fn upload_document(
                 filename = field.file_name().unwrap_or_default().to_owned();
                 content_type = field.content_type().unwrap_or_default().to_owned();
                 data = match field.bytes().await {
-                    Ok(bytes) if !bytes.is_empty() && bytes.len() <= 20 << 20 => Some(bytes.to_vec()),
+                    Ok(bytes) if !bytes.is_empty() && bytes.len() <= 20 << 20 => {
+                        Some(bytes.to_vec())
+                    }
                     _ => return (StatusCode::BAD_REQUEST, "invalid document size").into_response(),
                 };
             }
@@ -409,7 +415,15 @@ async fn upload_document(
                 "confirmations": [],
                 "hasEvidence": false
             });
-            (if document.duplicate { StatusCode::OK } else { StatusCode::ACCEPTED }, Json(response)).into_response()
+            (
+                if document.duplicate {
+                    StatusCode::OK
+                } else {
+                    StatusCode::ACCEPTED
+                },
+                Json(response),
+            )
+                .into_response()
         }
         Err(error) => {
             tracing::error!(error = ?error, "Document registration failed");
@@ -424,7 +438,9 @@ fn document_mime(filename: &str, declared: &str, data: &[u8]) -> Option<&'static
         Some("message/rfc822")
     } else if declared == "text/csv" && lower.ends_with(".csv") {
         Some("text/csv")
-    } else if data.starts_with(b"%PDF-") && (declared == "application/pdf" || lower.ends_with(".pdf")) {
+    } else if data.starts_with(b"%PDF-")
+        && (declared == "application/pdf" || lower.ends_with(".pdf"))
+    {
         Some("application/pdf")
     } else if data.starts_with(&[0xff, 0xd8, 0xff])
         && (declared == "image/jpeg" || lower.ends_with(".jpg") || lower.ends_with(".jpeg"))
@@ -478,8 +494,8 @@ async fn document_content(
     };
     let document = source_documents::table
         .inner_join(
-            household_members::table.on(household_members::household_id
-                .eq(source_documents::household_id)),
+            household_members::table
+                .on(household_members::household_id.eq(source_documents::household_id)),
         )
         .filter(source_documents::id.eq(document_id))
         .filter(household_members::member_id.eq(principal.member_id))
@@ -550,15 +566,25 @@ async fn retry_document(
         return (StatusCode::BAD_REQUEST, "invalid extraction retry input").into_response();
     }
     if let Some(crop) = input.get("crop") {
-        let valid = ["top", "left", "bottom", "right"]
-            .iter()
-            .all(|key| crop.get(key).and_then(Value::as_f64).is_some_and(f64::is_finite));
+        let valid = ["top", "left", "bottom", "right"].iter().all(|key| {
+            crop.get(key)
+                .and_then(Value::as_f64)
+                .is_some_and(f64::is_finite)
+        });
         let page = crop.get("page").and_then(Value::as_u64).unwrap_or(0);
         let top = crop.get("top").and_then(Value::as_f64).unwrap_or(0.0);
         let left = crop.get("left").and_then(Value::as_f64).unwrap_or(0.0);
         let bottom = crop.get("bottom").and_then(Value::as_f64).unwrap_or(0.0);
         let right = crop.get("right").and_then(Value::as_f64).unwrap_or(0.0);
-        if !valid || page > u64::from(u32::MAX) || top < 0.0 || left < 0.0 || bottom > 1.0 || right > 1.0 || top >= bottom || left >= right {
+        if !valid
+            || page > u64::from(u32::MAX)
+            || top < 0.0
+            || left < 0.0
+            || bottom > 1.0
+            || right > 1.0
+            || top >= bottom
+            || left >= right
+        {
             return (StatusCode::BAD_REQUEST, "invalid extraction crop").into_response();
         }
     }
@@ -572,8 +598,8 @@ async fn retry_document(
     };
     let household_id = source_documents::table
         .inner_join(
-            household_members::table.on(household_members::household_id
-                .eq(source_documents::household_id)),
+            household_members::table
+                .on(household_members::household_id.eq(source_documents::household_id)),
         )
         .filter(source_documents::id.eq(document_id))
         .filter(household_members::member_id.eq(principal.member_id))
@@ -590,7 +616,10 @@ async fn retry_document(
     };
     drop(pooled);
     let mut request = serde_json::Map::new();
-    request.insert("purpose".to_owned(), Value::String("interactive".to_owned()));
+    request.insert(
+        "purpose".to_owned(),
+        Value::String("interactive".to_owned()),
+    );
     if model != "free" {
         request.insert("model".to_owned(), Value::String(model.to_owned()));
     }
@@ -609,7 +638,11 @@ async fn retry_document(
     )
     .await;
     match job {
-        Ok(job_id) => (StatusCode::ACCEPTED, Json(json!({"jobId": job_id, "status": "queued"}))).into_response(),
+        Ok(job_id) => (
+            StatusCode::ACCEPTED,
+            Json(json!({"jobId": job_id, "status": "queued"})),
+        )
+            .into_response(),
         Err(error) => {
             tracing::error!(error = ?error, "Document retry registration failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -664,7 +697,10 @@ async fn events(
         .get("after")
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(0);
-    if let Some(last_event_id) = headers.get("last-event-id").and_then(|value| value.to_str().ok()) {
+    if let Some(last_event_id) = headers
+        .get("last-event-id")
+        .and_then(|value| value.to_str().ok())
+    {
         cursor = last_event_id.parse::<i64>().unwrap_or(cursor);
     }
     if cursor < 0 {
@@ -679,7 +715,10 @@ async fn events(
                 Ok(connection) => connection,
                 Err(_) => {
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                    return Some((Ok(Event::default().comment("keepalive")), (pool, household_id, cursor)));
+                    return Some((
+                        Ok(Event::default().comment("keepalive")),
+                        (pool, household_id, cursor),
+                    ));
                 }
             };
             let events = household_events::table
@@ -695,10 +734,25 @@ async fn events(
                     household_events::changed_fields,
                     household_events::created_at,
                 ))
-                .load::<(i64, String, uuid::Uuid, i64, Vec<Option<String>>, chrono::DateTime<chrono::Utc>)>(&mut *connection)
+                .load::<(
+                    i64,
+                    String,
+                    uuid::Uuid,
+                    i64,
+                    Vec<Option<String>>,
+                    chrono::DateTime<chrono::Utc>,
+                )>(&mut *connection)
                 .await
                 .unwrap_or_default();
-            if let Some((event_cursor, event_type, entity_id, revision, changed_fields, created_at)) = events.first() {
+            if let Some((
+                event_cursor,
+                event_type,
+                entity_id,
+                revision,
+                changed_fields,
+                created_at,
+            )) = events.first()
+            {
                 let event = json!({
                     "cursor": event_cursor,
                     "type": event_type,
@@ -716,13 +770,18 @@ async fn events(
             }
             drop(connection);
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            Some((Ok(Event::default().comment("keepalive")), (pool, household_id, cursor)))
+            Some((
+                Ok(Event::default().comment("keepalive")),
+                (pool, household_id, cursor),
+            ))
         },
     );
     let stream: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
         Box::pin(stream);
     Ok(Sse::new(stream)
-        .keep_alive(axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)))
+        .keep_alive(
+            axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)),
+        )
         .into_response())
 }
 

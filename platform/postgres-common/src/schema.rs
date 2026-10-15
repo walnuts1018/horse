@@ -748,8 +748,7 @@ pub mod public {
             household_id -> Uuid,
             settlement_run_id -> Uuid,
             purchase_id -> Uuid,
-            expected_revision -> Int8,
-            revision -> Int8,
+            purchase_revision -> Int8,
         }
     }
 

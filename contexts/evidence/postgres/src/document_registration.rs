@@ -42,9 +42,13 @@ pub async fn register_document(
             };
             let mut request = command.request.clone();
             if let Some(object) = request.as_object_mut() {
-                object.entry("purpose").or_insert_with(|| command.purpose.clone().into());
+                object
+                    .entry("purpose")
+                    .or_insert_with(|| command.purpose.clone().into());
                 if !model.is_empty() {
-                    object.entry("model").or_insert_with(|| model.clone().into());
+                    object
+                        .entry("model")
+                        .or_insert_with(|| model.clone().into());
                 }
             }
             let inserted_id = diesel::insert_into(source_documents::table)
@@ -119,8 +123,7 @@ pub async fn register_document(
                         household_events::entity_kind.eq("source_document"),
                         household_events::entity_id.eq(document_id),
                         household_events::revision.eq(1_i64),
-                        household_events::changed_fields
-                            .eq(vec![Some("status".to_owned())]),
+                        household_events::changed_fields.eq(vec![Some("status".to_owned())]),
                         household_events::payload.eq(serde_json::json!({"jobId": id})),
                         household_events::actor_id.eq(command.created_by),
                         household_events::created_at.eq(now),
@@ -199,9 +202,13 @@ pub async fn register_document(
                     };
                     let mut request = attachment.request.clone();
                     if let Some(object) = request.as_object_mut() {
-                        object.entry("purpose").or_insert_with(|| attachment.purpose.clone().into());
+                        object
+                            .entry("purpose")
+                            .or_insert_with(|| attachment.purpose.clone().into());
                         if !model.is_empty() {
-                            object.entry("model").or_insert_with(|| model.clone().into());
+                            object
+                                .entry("model")
+                                .or_insert_with(|| model.clone().into());
                         }
                     }
                     diesel::insert_into(extraction_jobs::table)
@@ -344,7 +351,10 @@ fn validate(command: &RegisterDocumentCommand) -> Result<(), RegisterDocumentErr
     if !matches!(command.purpose.as_str(), "interactive" | "background") {
         return Err(RegisterDocumentError::InvalidInput("purpose"));
     }
-    if !matches!(command.source_kind.as_str(), "receipt" | "order" | "email" | "card" | "bank") {
+    if !matches!(
+        command.source_kind.as_str(),
+        "receipt" | "order" | "email" | "card" | "bank"
+    ) {
         return Err(RegisterDocumentError::InvalidInput("source_kind"));
     }
     if command.provider.is_empty() || command.provider.len() > 128 || command.model.len() > 256 {
@@ -355,12 +365,21 @@ fn validate(command: &RegisterDocumentCommand) -> Result<(), RegisterDocumentErr
     }
     for attachment in &command.attachments {
         if attachment.sha256.len() != 64
-            || !attachment.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !attachment
+                .sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
             || attachment.idempotency_key.is_empty()
             || attachment.idempotency_key.len() > 200
-            || !matches!(attachment.source_kind.as_str(), "receipt" | "order" | "email" | "card" | "bank")
+            || !matches!(
+                attachment.source_kind.as_str(),
+                "receipt" | "order" | "email" | "card" | "bank"
+            )
             || !matches!(attachment.purpose.as_str(), "interactive" | "background")
-            || !matches!(attachment.mime_type.as_str(), "application/pdf" | "image/jpeg" | "image/png" | "image/webp")
+            || !matches!(
+                attachment.mime_type.as_str(),
+                "application/pdf" | "image/jpeg" | "image/png" | "image/webp"
+            )
         {
             return Err(RegisterDocumentError::InvalidInput("attachment"));
         }

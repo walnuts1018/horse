@@ -40,10 +40,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mailbox_domain = env::var("MAIL_FORWARDING_MAILBOX_DOMAIN").unwrap_or_default();
     let local_part_prefix =
         env::var("MAIL_FORWARDING_ADDRESS_LOCAL_PART_PREFIX").unwrap_or_default();
+    let recipient_base = env::var("MAILBOX_RECIPIENT_BASE").unwrap_or_default();
+    let (recipient_local_part, recipient_domain) =
+        recipient_base.split_once('@').unwrap_or_default();
+    let mailbox_enabled = [
+        "MAILBOX_IMAPS_ADDRESS",
+        "MAILBOX_IMAPS_SERVER_NAME",
+        "MAILBOX_IMAPS_MAILBOX",
+        "MAILBOX_IMAPS_USERNAME",
+        "MAILBOX_IMAPS_PASSWORD",
+    ]
+    .iter()
+    .all(|key| env::var(key).is_ok_and(|value| !value.is_empty()))
+        && !mailbox_domain.is_empty()
+        && local_part_prefix.ends_with('+')
+        && recipient_local_part == local_part_prefix.trim_end_matches('+')
+        && recipient_domain.eq_ignore_ascii_case(&mailbox_domain);
     let graphql_schema = schema(
         pool.clone(),
         GraphqlConfig {
-            mail_forwarding_enabled: !mailbox_domain.is_empty() && !local_part_prefix.is_empty(),
+            mail_forwarding_enabled: mailbox_enabled,
             mailbox_domain,
             local_part_prefix,
         },

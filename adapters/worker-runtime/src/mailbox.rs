@@ -356,11 +356,18 @@ async fn poll_with_timeout(
         if size > remaining_batch_bytes {
             break;
         }
-        let Some(raw) = fetch_body(&mut session, uid).await? else {
+        let body_limit = config
+            .max_message_bytes
+            .min(remaining_batch_bytes)
+            .saturating_add(1);
+        let Some(raw) = fetch_body(&mut session, uid, body_limit).await? else {
             batch.rejected_uids.push(uid);
             batch.next.uid = uid;
             continue;
         };
+        if raw.len() > remaining_batch_bytes && remaining_batch_bytes < config.max_message_bytes {
+            break;
+        }
         if raw.len() > config.max_message_bytes {
             batch.rejected_uids.push(uid);
             batch.next.uid = uid;
@@ -407,12 +414,16 @@ where
         .ok_or(MailboxError("mailbox message size is unavailable"))
 }
 
-async fn fetch_body<T>(session: &mut async_imap::Session<T>, uid: u32) -> Result<Option<Vec<u8>>, MailboxError>
+async fn fetch_body<T>(
+    session: &mut async_imap::Session<T>,
+    uid: u32,
+    max_bytes: usize,
+) -> Result<Option<Vec<u8>>, MailboxError>
 where
     T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + fmt::Debug,
 {
     let messages = session
-        .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
+        .uid_fetch(uid.to_string(), format!("(UID BODY.PEEK[]<0.{max_bytes}>)"))
         .await
         .map_err(|_| MailboxError("mailbox message fetch failed"))?
         .try_collect::<Vec<Fetch>>()
