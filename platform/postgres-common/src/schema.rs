@@ -284,6 +284,35 @@ pub mod public {
     }
 
     diesel::table! {
+        gemini_quota_cooldowns (project_route, model) {
+            project_route -> Text,
+            model -> Text,
+            blocked_until -> Timestamptz,
+            updated_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
+        gemini_quota_reservation_locks (project_route, model) {
+            project_route -> Text,
+            model -> Text,
+            updated_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
+        gemini_quota_reservations (id) {
+            id -> Uuid,
+            project_route -> Text,
+            model -> Text,
+            reserved_at -> Timestamptz,
+            input_tokens -> Int8,
+            actual_input_tokens -> Nullable<Int8>,
+            settled_at -> Nullable<Timestamptz>,
+        }
+    }
+
+    diesel::table! {
         household_event_stream_cursors (household_id) {
             household_id -> Uuid,
             cursor -> Int8,
@@ -948,6 +977,9 @@ pub mod public {
         extraction_jobs,
         funding_obligations,
         funding_schedules,
+        gemini_quota_cooldowns,
+        gemini_quota_reservation_locks,
+        gemini_quota_reservations,
         household_event_stream_cursors,
         household_events,
         household_invitations,

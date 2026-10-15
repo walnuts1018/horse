@@ -48,6 +48,9 @@ jobs:
       - name: Install tools
         uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
 
+      - name: Install Rust components
+        run: rustup component add --toolchain 1.99.1 rustfmt clippy
+
       - name: Lint GitHub Actions
         run: mise run lint:actions
 

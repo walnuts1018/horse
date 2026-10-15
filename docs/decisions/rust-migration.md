@@ -2,7 +2,7 @@
 
 ## 状態
 
-進行中。Rust WorkspaceへのBackend移行とGo Backendの削除を実施した。Rustのコンパイル、テスト、GraphQL・Workerの動作、DB切替、Kubernetesデプロイの確認が残っている。
+進行中。CLIを除くGoの実行コードをRustへ移し、Go Backendを削除した。Rustのformat、Clippy、workspaceテストは成功し、空のPostgreSQLへ25件のAtlasマイグレーションを適用してDiesel schemaを生成した。本番DBの再作成、Kubernetes切替、稼働確認が残っている。
 
 ## 決定
 
@@ -20,10 +20,9 @@ Application Workflowは業務操作のLoad・Decision・Persistの順序を所�
 
 ## 残作業
 
-- Rust Workspace全体のコンパイル、テスト、lintを通す。
-- Go版とGraphQL・HTTP・Workerの契約を照合し、購読、冪等性、再試行、停止後の回復を確認する。
 - Rust用Atlas設定と新schemaをKubernetesへ反映し、承認済みの本番DB再作成を実施する。
-- Rust APIとWorkerをデプロイし、稼働と主要な家計操作を実環境で確認する。
+- Rust API、Worker、既存のWeb・OCRサービスをデプロイし、稼働状態と主要なAPI経路を確認する。
+- 操作権限の共通契約を定義し、各更新Workflowで同じ契約を検証する。
 
 ## 理由
 
