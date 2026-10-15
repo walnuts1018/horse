@@ -66,10 +66,12 @@ pub async fn create_purchase<O: CreatePurchaseOperations>(
             allocations: item
                 .allocations
                 .iter()
-                .map(|allocation| crate::create_and_post_purchase::RequestedPoolAllocation {
-                    pool_id: allocation.pool_id.clone(),
-                    weight: allocation.weight,
-                })
+                .map(
+                    |allocation| crate::create_and_post_purchase::RequestedPoolAllocation {
+                        pool_id: allocation.pool_id.clone(),
+                        weight: allocation.weight,
+                    },
+                )
                 .collect(),
         })
         .collect::<Vec<_>>();
@@ -79,7 +81,8 @@ pub async fn create_purchase<O: CreatePurchaseOperations>(
         .map_err(CreatePurchaseWorkflowError::Operations)?;
     let purchase = apply_allocation_context(command.purchase, context)
         .map_err(|_| CreatePurchaseWorkflowError::AllocationContextMismatch)?;
-    let decision = decide_create_purchase(purchase).map_err(CreatePurchaseWorkflowError::Decision)?;
+    let decision =
+        decide_create_purchase(purchase).map_err(CreatePurchaseWorkflowError::Decision)?;
     operations
         .persist_create(command.persistence, decision)
         .await

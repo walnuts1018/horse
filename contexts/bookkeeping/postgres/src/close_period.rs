@@ -103,132 +103,16 @@ pub async fn close_period(
         .build_transaction()
         .serializable()
         .run(async |conn| {
-            use public::{accounting_periods, household_members, households, purchases};
-            let household_exists = households::table
-                .filter(households::id.eq(household_id))
-                .select(households::id)
-                .first::<Uuid>(conn)
-                .await
-                .optional()?
-                .is_some();
-            if !household_exists {
-                return Err(ClosePeriodPersistenceError::HouseholdNotFound);
-            }
-            let actor_is_member = household_members::table
-                .filter(household_members::household_id.eq(household_id))
-                .filter(household_members::member_id.eq(actor_id))
-                .filter(household_members::left_at.is_null())
-                .select(household_members::member_id)
-                .first::<Uuid>(conn)
-                .await
-                .optional()?
-                .is_some();
-            if !actor_is_member {
-                return Err(ClosePeriodPersistenceError::HouseholdNotFound);
-            }
-            diesel::insert_into(accounting_periods::table)
-                .values((
-                    accounting_periods::household_id.eq(household_id),
-                    accounting_periods::period_start.eq(period_start),
-                    accounting_periods::status.eq("OPEN"),
-                    accounting_periods::revision.eq(1_i64),
-                ))
-                .on_conflict((
-                    accounting_periods::household_id,
-                    accounting_periods::period_start,
-                ))
-                .do_nothing()
-                .execute(&mut *conn)
-                .await?;
-            let current_period = accounting_periods::table
-                .filter(accounting_periods::household_id.eq(household_id))
-                .filter(accounting_periods::period_start.eq(period_start))
-                .for_update()
-                .select((accounting_periods::status, accounting_periods::revision))
-                .first::<(String, i64)>(conn)
-                .await
-                .optional()?;
-            let (status, revision) = match current_period {
-                Some((status, revision)) if status == "CLOSED" || status == "OPEN" => {
-                    (status, revision)
-                }
-                Some(_) => return Err(ClosePeriodPersistenceError::PeriodNotFound),
-                None => ("OPEN".to_owned(), 1),
-            };
-            let draft_purchases = purchases::table
-                .filter(purchases::household_id.eq(household_id))
-                .filter(purchases::status.eq("DRAFT"))
-                .filter(purchases::occurred_at.ge(period_start_utc(period_start)?))
-                .filter(purchases::occurred_at.lt(period_start_utc(period_end)?))
-                .select(purchases::id)
-                .load::<Uuid>(conn)
-                .await
-                ?;
-            let posted_purchases = purchases::table
-                .filter(purchases::household_id.eq(household_id))
-                .filter(purchases::status.eq("POSTED"))
-                .filter(purchases::occurred_at.ge(period_start_utc(period_start)?))
-                .filter(purchases::occurred_at.lt(period_start_utc(period_end)?))
-                .order(purchases::id.asc())
-                .select((purchases::id, purchases::revision))
-                .load::<(Uuid, i64)>(conn)
-                .await?
-                .into_iter()
-                .map(|(id, revision)| {
-                    Ok(PurchaseSnapshot {
-                        id: bookkeeping_application::PurchaseId::new(id.to_string())
-                            .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
-                        revision: u64::try_from(revision)
-                            .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
-                    })
-                })
-                .collect::<Result<Vec<_>, ClosePeriodPersistenceError>>()?;
-            let previews = super::settlement_preview::calculate_preview_with_connection(
-                conn,
-                &household_id.to_string(),
-                period,
-            )
-            .await
-            .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?;
-            let settlements = previews
-                .into_iter()
-                .map(|line| {
-                    Ok(SettlementInput {
-                        member_id: bookkeeping_application::MemberId::new(line.member_id)
-                            .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
-                        member_name: line.member_name,
-                        scheduled_yen: line.scheduled_yen,
-                        paid_yen: line.paid_yen,
-                        previous_owed_yen: line.carry_yen,
-                        monthly_adjustment_yen: line.monthly_adjustment_yen,
-                        advance_credit_yen: line.advance_credit_yen,
-                    })
-                })
-                .collect::<Result<Vec<_>, ClosePeriodPersistenceError>>()?;
-            let period_model = period_model(period_start, &status, revision)?;
-            let command = ClosePeriodCommand {
-                period: period_model,
-                expected_revision,
-                draft_purchases: draft_purchases
-                    .into_iter()
-                    .map(|id| {
-                        bookkeeping_application::PurchaseId::new(id.to_string())
-                            .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)
-                    })
-                    .collect::<Result<Vec<_>, _>>()?,
-                actor_id: bookkeeping_application::MemberId::new(actor_id.to_string())
-                    .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
-                settlements,
-                purchases: posted_purchases,
-            };
             let mut operations = PgClosePeriodOperations {
                 conn,
                 household_id,
                 period_start,
                 period_end,
+                period: period.to_owned(),
+                expected_revision,
                 actor_id,
             };
-            close_period_workflow(&mut operations, command)
+            close_period_workflow(&mut operations)
                 .await
                 .map_err(|error| match error {
                     bookkeeping_application::close_period::ClosePeriodWorkflowError::Decision(
@@ -252,12 +136,134 @@ struct PgClosePeriodOperations<'a> {
     household_id: Uuid,
     period_start: NaiveDate,
     period_end: NaiveDate,
+    period: String,
+    expected_revision: u64,
     actor_id: Uuid,
 }
 
 impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePeriodOperations<'_> {
     type Error = ClosePeriodPersistenceError;
     type Result = PersistedClosePeriod;
+
+    async fn load(&mut self) -> Result<ClosePeriodCommand, Self::Error> {
+        use public::{accounting_periods, household_members, households, purchases};
+
+        let household_exists = households::table
+            .filter(households::id.eq(self.household_id))
+            .select(households::id)
+            .first::<Uuid>(&mut *self.conn)
+            .await
+            .optional()?
+            .is_some();
+        if !household_exists {
+            return Err(ClosePeriodPersistenceError::HouseholdNotFound);
+        }
+        let actor_is_member = household_members::table
+            .filter(household_members::household_id.eq(self.household_id))
+            .filter(household_members::member_id.eq(self.actor_id))
+            .filter(household_members::left_at.is_null())
+            .select(household_members::member_id)
+            .first::<Uuid>(&mut *self.conn)
+            .await
+            .optional()?
+            .is_some();
+        if !actor_is_member {
+            return Err(ClosePeriodPersistenceError::HouseholdNotFound);
+        }
+        diesel::insert_into(accounting_periods::table)
+            .values((
+                accounting_periods::household_id.eq(self.household_id),
+                accounting_periods::period_start.eq(self.period_start),
+                accounting_periods::status.eq("OPEN"),
+                accounting_periods::revision.eq(1_i64),
+            ))
+            .on_conflict((
+                accounting_periods::household_id,
+                accounting_periods::period_start,
+            ))
+            .do_nothing()
+            .execute(&mut *self.conn)
+            .await?;
+        let current_period = accounting_periods::table
+            .filter(accounting_periods::household_id.eq(self.household_id))
+            .filter(accounting_periods::period_start.eq(self.period_start))
+            .for_update()
+            .select((accounting_periods::status, accounting_periods::revision))
+            .first::<(String, i64)>(&mut *self.conn)
+            .await
+            .optional()?;
+        let (status, revision) = match current_period {
+            Some((status, revision)) if status == "CLOSED" || status == "OPEN" => {
+                (status, revision)
+            }
+            Some(_) => return Err(ClosePeriodPersistenceError::PeriodNotFound),
+            None => ("OPEN".to_owned(), 1),
+        };
+        let draft_purchases = purchases::table
+            .filter(purchases::household_id.eq(self.household_id))
+            .filter(purchases::status.eq("DRAFT"))
+            .filter(purchases::occurred_at.ge(period_start_utc(self.period_start)?))
+            .filter(purchases::occurred_at.lt(period_start_utc(self.period_end)?))
+            .select(purchases::id)
+            .load::<Uuid>(&mut *self.conn)
+            .await?;
+        let posted_purchases = purchases::table
+            .filter(purchases::household_id.eq(self.household_id))
+            .filter(purchases::status.eq("POSTED"))
+            .filter(purchases::occurred_at.ge(period_start_utc(self.period_start)?))
+            .filter(purchases::occurred_at.lt(period_start_utc(self.period_end)?))
+            .order(purchases::id.asc())
+            .select((purchases::id, purchases::revision))
+            .load::<(Uuid, i64)>(&mut *self.conn)
+            .await?
+            .into_iter()
+            .map(|(id, revision)| {
+                Ok(PurchaseSnapshot {
+                    id: bookkeeping_application::PurchaseId::new(id.to_string())
+                        .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
+                    revision: u64::try_from(revision)
+                        .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
+                })
+            })
+            .collect::<Result<Vec<_>, ClosePeriodPersistenceError>>()?;
+        let previews = super::settlement_preview::calculate_preview_with_connection(
+            &mut *self.conn,
+            &self.household_id.to_string(),
+            &self.period,
+        )
+        .await
+        .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?;
+        let settlements = previews
+            .into_iter()
+            .map(|line| {
+                Ok(SettlementInput {
+                    member_id: bookkeeping_application::MemberId::new(line.member_id)
+                        .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
+                    member_name: line.member_name,
+                    scheduled_yen: line.scheduled_yen,
+                    paid_yen: line.paid_yen,
+                    previous_owed_yen: line.carry_yen,
+                    monthly_adjustment_yen: line.monthly_adjustment_yen,
+                    advance_credit_yen: line.advance_credit_yen,
+                })
+            })
+            .collect::<Result<Vec<_>, ClosePeriodPersistenceError>>()?;
+        Ok(ClosePeriodCommand {
+            period: period_model(self.period_start, &status, revision)?,
+            expected_revision: self.expected_revision,
+            draft_purchases: draft_purchases
+                .into_iter()
+                .map(|id| {
+                    bookkeeping_application::PurchaseId::new(id.to_string())
+                        .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+            actor_id: bookkeeping_application::MemberId::new(self.actor_id.to_string())
+                .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
+            settlements,
+            purchases: posted_purchases,
+        })
+    }
 
     async fn persist(
         &mut self,
@@ -310,7 +316,6 @@ async fn persist_close_period_in_transaction(
     if !household_exists {
         return Err(ClosePeriodPersistenceError::HouseholdNotFound);
     }
-
     diesel::insert_into(periods::accounting_periods)
         .values((
             periods::household_id.eq(household_id),

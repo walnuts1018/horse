@@ -339,7 +339,11 @@ pub async fn process(
             transform_page,
         ));
     }
-    let route = selected_route(config, &model);
+    let route = match request.get("projectRoute").and_then(Value::as_str) {
+        Some("free") => "free",
+        Some("paid") => "paid",
+        _ => selected_route(config, &model),
+    };
     let project = if route == "paid" {
         &config.paid_project
     } else {
@@ -368,7 +372,23 @@ pub async fn process(
         .filter(|value| matches!(*value, "low" | "medium" | "high"))
         .unwrap_or("low");
     let started = Instant::now();
-    let candidates = model_candidates(config, &job.source_kind, &model, route);
+    let candidates = if request
+        .get("routePinned")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        vec![(
+            model.clone(),
+            route,
+            request
+                .get("reviewReason")
+                .and_then(Value::as_str)
+                .unwrap_or("initial_extraction"),
+            "always",
+        )]
+    } else {
+        model_candidates(config, &job.source_kind, &model, route)
+    };
     let mut selected = None;
     let mut last_error = None;
     let mut previous_code = String::new();
@@ -957,7 +977,16 @@ pub async fn process(
             "conversationId": request.get("conversationId"),
             "conversation": conversation_after(request, clarification, reply),
         });
-        run_optional_reviews(pool, store, config, job, &model, &document.mime_type, result).await
+        run_optional_reviews(
+            pool,
+            store,
+            config,
+            job,
+            &model,
+            &document.mime_type,
+            result,
+        )
+        .await
     } else {
         let Some(object) = receipt.as_object_mut() else {
             unreachable!()
@@ -998,7 +1027,16 @@ pub async fn process(
             "conversationId": request.get("conversationId"),
             "conversation": conversation_after(request, clarification, reply),
         });
-        run_optional_reviews(pool, store, config, job, &model, &document.mime_type, result).await
+        run_optional_reviews(
+            pool,
+            store,
+            config,
+            job,
+            &model,
+            &document.mime_type,
+            result,
+        )
+        .await
     }
 }
 
@@ -1028,6 +1066,7 @@ async fn run_optional_reviews(
     let quality_job = review_job(
         job,
         &quality_model,
+        "free",
         "medium",
         "evidence_guided_quality_review",
         &guidance,
@@ -1045,6 +1084,7 @@ async fn run_optional_reviews(
         let pro_job = review_job(
             job,
             &config.pro_model,
+            "paid",
             "high",
             "evidence_guided_pro_review",
             &guidance,
@@ -1059,6 +1099,7 @@ async fn run_optional_reviews(
 fn review_job(
     job: &ClaimedExtractionJob,
     model: &str,
+    route: &str,
     thinking_level: &str,
     reason: &str,
     guidance: &str,
@@ -1066,6 +1107,8 @@ fn review_job(
     let mut review = job.clone();
     let mut request = review.request.as_object().cloned().unwrap_or_default();
     request.insert("model".to_owned(), json!(model));
+    request.insert("projectRoute".to_owned(), json!(route));
+    request.insert("routePinned".to_owned(), json!(true));
     request.insert("thinkingLevel".to_owned(), json!(thinking_level));
     request.insert("reviewReason".to_owned(), json!(reason));
     request.insert("reviewGuidance".to_owned(), json!(guidance));

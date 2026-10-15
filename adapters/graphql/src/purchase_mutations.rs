@@ -2,18 +2,15 @@ use async_graphql::{
     ComplexObject, Context, Enum, ID, InputObject, Interface, Result, SimpleObject, Union,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::{
-    create_purchase::{
-        AllocationRuleVersion, CreatePurchaseAllocation, CreatePurchaseCommand, CreatePurchaseItem,
-        CreatePurchasePayment, DatePrecision, Measure, PrintedUnitPrice, PurchaseOccurredAt,
-        PurchaseOrigin as WorkflowPurchaseOrigin, QuantityUnit,
-    },
+use bookkeeping_application::create_purchase::{
+    AllocationRuleVersion, CreatePurchaseAllocation, CreatePurchaseCommand, CreatePurchaseItem,
+    CreatePurchasePayment, DatePrecision, Measure, PrintedUnitPrice, PurchaseOccurredAt,
+    PurchaseOrigin as WorkflowPurchaseOrigin, QuantityUnit,
 };
 use bookkeeping_postgres::{
     create_purchase as postgres_create, post_purchase as postgres_post,
     post_purchase_loader::{self, PostPurchaseLoadError},
-    purchase_command_context,
-    purchase_command_result, purchase_create_and_post,
+    purchase_command_context, purchase_command_result, purchase_create_and_post,
 };
 use horse_postgres_common::PgPool;
 use household_postgres::household_access as postgres_household_access;
@@ -456,17 +453,19 @@ pub async fn create_purchase(
         Err(error) => return Ok(error.into()),
     };
     let pool = ctx.data::<PgPool>()?;
-    let workflow_command = bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowCommand {
-        household_id: parsed.persistence.household_id.clone(),
-        actor_id: parsed.persistence.actor_id.clone(),
-        purchase: parsed.command,
-        persistence: bookkeeping_application::create_and_post_purchase::CreatePurchasePersistence {
-            household_id: parsed.persistence.household_id,
-            actor_id: parsed.persistence.actor_id,
-            idempotency_key: parsed.persistence.idempotency_key,
-            request_fingerprint: parsed.persistence.request_fingerprint,
-        },
-    };
+    let workflow_command =
+        bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowCommand {
+            household_id: parsed.persistence.household_id.clone(),
+            actor_id: parsed.persistence.actor_id.clone(),
+            purchase: parsed.command,
+            persistence:
+                bookkeeping_application::create_and_post_purchase::CreatePurchasePersistence {
+                    household_id: parsed.persistence.household_id,
+                    actor_id: parsed.persistence.actor_id,
+                    idempotency_key: parsed.persistence.idempotency_key,
+                    request_fingerprint: parsed.persistence.request_fingerprint,
+                },
+        };
     let persisted = match postgres_create::create_purchase_workflow(pool, workflow_command).await {
         Ok(value) => value,
         Err(bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowError::Decision(_)) => {

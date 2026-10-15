@@ -94,6 +94,8 @@ pub trait ClosePeriodOperations {
     type Error;
     type Result;
 
+    async fn load(&mut self) -> Result<ClosePeriodCommand, Self::Error>;
+
     async fn persist(&mut self, decision: ClosePeriodDecision)
     -> Result<Self::Result, Self::Error>;
 }
@@ -296,8 +298,11 @@ pub fn decide_close_period(
 
 pub async fn close_period<O: ClosePeriodOperations>(
     operations: &mut O,
-    command: ClosePeriodCommand,
 ) -> Result<O::Result, ClosePeriodWorkflowError<O::Error>> {
+    let command = operations
+        .load()
+        .await
+        .map_err(ClosePeriodWorkflowError::Operations)?;
     let decision = decide_close_period(command).map_err(ClosePeriodWorkflowError::Decision)?;
     operations
         .persist(decision)
