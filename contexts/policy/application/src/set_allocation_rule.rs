@@ -55,6 +55,22 @@ pub enum SetAllocationRuleError {
     InvalidRevision,
 }
 
+pub trait SetAllocationRuleOperations {
+    type Error: From<SetAllocationRuleError>;
+
+    async fn persist(
+        &mut self,
+        command: ValidatedSetAllocationRuleCommand,
+    ) -> Result<SetAllocationRuleDecision, Self::Error>;
+}
+
+pub async fn set_allocation_rule<O: SetAllocationRuleOperations>(
+    operations: &mut O,
+    command: SetAllocationRuleCommand,
+) -> Result<SetAllocationRuleDecision, O::Error> {
+    operations.persist(validate_set_allocation_rule(command)?).await
+}
+
 pub fn validate_set_allocation_rule(
     command: SetAllocationRuleCommand,
 ) -> Result<ValidatedSetAllocationRuleCommand, SetAllocationRuleError> {

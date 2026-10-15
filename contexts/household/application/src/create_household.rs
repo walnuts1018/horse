@@ -20,6 +20,20 @@ pub enum CreateHouseholdError {
     InvalidMemberName,
 }
 
+pub trait CreateHouseholdOperations {
+    type Error: From<CreateHouseholdError>;
+
+    async fn persist(&mut self, decision: CreateHouseholdDecision) -> Result<String, Self::Error>;
+}
+
+pub async fn create_household<O: CreateHouseholdOperations>(
+    operations: &mut O,
+    command: CreateHouseholdCommand,
+) -> Result<String, O::Error> {
+    let decision = decide_create_household(command)?;
+    operations.persist(decision).await
+}
+
 pub fn decide_create_household(
     command: CreateHouseholdCommand,
 ) -> Result<CreateHouseholdDecision, CreateHouseholdError> {

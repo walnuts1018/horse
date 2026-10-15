@@ -5,7 +5,8 @@ use diesel::{
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use household_application::create_household::{
-    CreateHouseholdCommand, CreateHouseholdError, decide_create_household,
+    CreateHouseholdCommand, CreateHouseholdDecision, CreateHouseholdError,
+    CreateHouseholdOperations,
 };
 use household_application::ports::{CreateHouseholdPortError, CreatedHousehold, HouseholdStore};
 use uuid::Uuid;
@@ -95,6 +96,12 @@ pub enum CreateHouseholdPersistenceError {
 impl From<DieselError> for CreateHouseholdPersistenceError {
     fn from(error: DieselError) -> Self {
         Self::Database(error)
+    }
+}
+
+impl From<CreateHouseholdError> for CreateHouseholdPersistenceError {
+    fn from(error: CreateHouseholdError) -> Self {
+        Self::InvalidWorkflow(error)
     }
 }
 
@@ -317,8 +324,19 @@ pub async fn persist_create_household(
     pool: &PgPool,
     command: CreateHouseholdCommand,
 ) -> Result<PersistedHousehold, CreateHouseholdPersistenceError> {
-    let decision = decide_create_household(command)
-        .map_err(CreateHouseholdPersistenceError::InvalidWorkflow)?;
+    let mut operations = PostgresCreateHouseholdOperations { pool };
+    let household_id = household_application::create_household::create_household(
+        &mut operations,
+        command,
+    )
+    .await?;
+    Ok(PersistedHousehold { household_id })
+}
+
+async fn persist_create_household_decision(
+    pool: &PgPool,
+    decision: CreateHouseholdDecision,
+) -> Result<String, CreateHouseholdPersistenceError> {
     let actor_id = Uuid::parse_str(&decision.actor_id)
         .map_err(|_| CreateHouseholdPersistenceError::InvalidUuid)?;
     let household_id = Uuid::new_v4();
@@ -390,11 +408,24 @@ pub async fn persist_create_household(
                 .execute(&mut *conn)
                 .await?;
 
-            Ok(PersistedHousehold {
-                household_id: household_id.to_string(),
-            })
+            Ok(household_id.to_string())
         })
         .await
+}
+
+struct PostgresCreateHouseholdOperations<'a> {
+    pool: &'a PgPool,
+}
+
+impl CreateHouseholdOperations for PostgresCreateHouseholdOperations<'_> {
+    type Error = CreateHouseholdPersistenceError;
+
+    async fn persist(
+        &mut self,
+        decision: CreateHouseholdDecision,
+    ) -> Result<String, Self::Error> {
+        persist_create_household_decision(self.pool, decision).await
+    }
 }
 
 // §4の依存方向に従うAdapter。Application層のHouseholdStore契約をPostgreSQLで実装する。

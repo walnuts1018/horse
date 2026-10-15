@@ -5,8 +5,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use evidence_application::ingestion_job::{
+    ClaimExtractionJob, ClaimExtractionJobOperations, ClaimExtractionJobWorkflowError,
     ExtractionFailureKind, ExtractionJob, ExtractionJobStatus, FinishExtractionJobError,
-    FinishedJob, QueuedJob, RunningJob, ValidLease, claim_extraction_job,
+    FinishedJob, QueuedJob, RunningJob, ValidLease, claim_next_extraction_job,
     finish_extraction_failure, finish_extraction_success, recover_expired_extraction_job,
 };
 
@@ -59,134 +60,191 @@ pub async fn claim_next_extraction_job(
 ) -> Result<Option<ClaimedExtractionJob>, IngestionJobError> {
     let now_ms = now.timestamp_millis();
     let now = db_time(now_ms)?;
+    let lease_token = Uuid::now_v7().to_string();
     let mut pooled = pool
         .get()
         .await
         .map_err(|error| IngestionJobError::Pool(error.to_string()))?;
     (&mut *pooled)
         .transaction::<Option<ClaimedExtractionJob>, IngestionJobError, _>(async move |conn| {
-            use public::extraction_job_attempts::dsl as attempts;
-            use public::extraction_jobs::dsl as jobs;
-
-            let candidate = jobs::extraction_jobs
-                .filter(jobs::failure_count.lt(jobs::max_attempts))
-                .filter(jobs::status.eq("queued"))
-                .filter(jobs::available_at.le(now))
-                .order_by(jobs::available_at.asc())
-                .then_order_by(jobs::id.asc())
-                .for_update()
-                .skip_locked()
-                .select((
-                    jobs::id,
-                    jobs::household_id,
-                    jobs::source_document_id,
-                    jobs::version,
-                    jobs::status,
-                    jobs::provider,
-                    jobs::model,
-                    jobs::request,
-                    jobs::result,
-                    jobs::attempt_count,
-                    jobs::max_attempts,
-                    jobs::failure_count,
-                    jobs::available_at,
-                    jobs::lease_token,
-                    jobs::lease_expires_at,
-                ))
-                .first::<JobRow>(&mut *conn)
-                .await
-                .optional()?;
-            let Some(row) = candidate else {
-                return Ok(None);
-            };
-            use public::source_documents::dsl as documents;
-            let document = documents::source_documents
-                .filter(documents::id.eq(row.source_document_id))
-                .filter(documents::household_id.eq(row.household_id))
-                .select((
-                    documents::sha256,
-                    documents::object_key,
-                    documents::mime_type,
-                    documents::source_kind,
-                    documents::analysis_object_key,
-                    documents::analysis_mime_type,
-                    documents::analysis_transform,
-                    documents::created_by,
-                ))
-                .first::<SourceDocumentRow>(&mut *conn)
-                .await?;
-            let job = row.job()?;
-            let ExtractionJob::Queued(queued) = job else {
-                return Ok(None);
-            };
-            let token = Uuid::now_v7();
-            let transition =
-                claim_extraction_job(&queued, now_ms, token.to_string(), LEASE_DURATION_MS)
-                    .map_err(|_| IngestionJobError::InvalidTransition)?;
-            let changed = diesel::update(
-                jobs::extraction_jobs
-                    .filter(jobs::id.eq(row.id))
-                    .filter(jobs::status.eq(&row.status))
-                    .filter(jobs::attempt_count.eq(row.attempt_count))
-                    .filter(jobs::lease_token.eq(row.lease_token)),
+            let mut operations = PostgresClaimExtractionJobOperations { conn };
+            claim_next_extraction_job(
+                &mut operations,
+                now_ms,
+                lease_token,
+                LEASE_DURATION_MS,
             )
-            .set((
-                jobs::status.eq("running"),
-                jobs::attempt_count.eq(transition.attempt_no),
-                jobs::started_at.eq(Some(now)),
-                jobs::finished_at.eq(None::<DateTime<Utc>>),
-                jobs::lease_token.eq(Some(token)),
-                jobs::lease_expires_at.eq(Some(db_time(transition.lease_expires_at_ms)?)),
-                jobs::error_code.eq(None::<String>),
-                jobs::error_message.eq(None::<String>),
-                jobs::interaction_reply_preview.eq(""),
-                jobs::updated_at.eq(now),
-            ))
-            .execute(&mut *conn)
-            .await?;
-            if changed != 1 {
-                return Ok(None);
-            }
-            diesel::insert_into(attempts::extraction_job_attempts)
-                .values((
-                    attempts::household_id.eq(row.household_id),
-                    attempts::source_document_id.eq(row.source_document_id),
-                    attempts::job_id.eq(row.id),
-                    attempts::attempt_no.eq(transition.attempt_no),
-                    attempts::provider.eq(&row.provider),
-                    attempts::model.eq(&row.model),
-                    attempts::status.eq("running"),
-                    attempts::started_at.eq(now),
-                    attempts::response_metadata.eq(serde_json::json!({})),
-                ))
-                .execute(&mut *conn)
-                .await?;
-            Ok(Some(ClaimedExtractionJob {
-                id: row.id.to_string(),
-                household_id: row.household_id.to_string(),
-                source_document_id: row.source_document_id.to_string(),
-                source_hash: document.sha256,
-                object_key: document.object_key,
-                mime_type: document.mime_type,
-                analysis_object_key: document.analysis_object_key,
-                analysis_mime_type: document.analysis_mime_type,
-                analysis_transform: document
-                    .analysis_transform
-                    .map(serde_json::from_value)
-                    .transpose()
-                    .map_err(|_| IngestionJobError::InvalidAnalysisTransform)?,
-                source_kind: document.source_kind,
-                source_created_by: document.created_by.to_string(),
-                version: row.version,
-                attempt_no: transition.attempt_no,
-                lease_token: token.to_string(),
-                request: row.request,
-                previous_result: row.result,
-                provider: row.provider,
-                model: row.model,
-            }))
+            .await
+            .map_err(|error| match error {
+                ClaimExtractionJobWorkflowError::Operations(error) => error,
+                ClaimExtractionJobWorkflowError::Decision(_) => {
+                    IngestionJobError::InvalidTransition
+                }
+            })
         })
         .await
+}
+
+struct ClaimCandidate {
+    row: JobRow,
+    document: SourceDocumentRow,
+    queued: QueuedJob,
+}
+
+struct PostgresClaimExtractionJobOperations<'a> {
+    conn: &'a mut AsyncPgConnection,
+}
+
+impl ClaimExtractionJobOperations for PostgresClaimExtractionJobOperations<'_> {
+    type Error = IngestionJobError;
+    type Candidate = ClaimCandidate;
+    type Claimed = ClaimedExtractionJob;
+
+    fn queued_job(&self, candidate: &Self::Candidate) -> &QueuedJob {
+        &candidate.queued
+    }
+
+    async fn load_next_candidate(
+        &mut self,
+        now_ms: i64,
+    ) -> Result<Option<Self::Candidate>, Self::Error> {
+        use public::extraction_jobs::dsl as jobs;
+
+        let now = db_time(now_ms)?;
+        let row = jobs::extraction_jobs
+            .filter(jobs::failure_count.lt(jobs::max_attempts))
+            .filter(jobs::status.eq("queued"))
+            .filter(jobs::available_at.le(now))
+            .order_by(jobs::available_at.asc())
+            .then_order_by(jobs::id.asc())
+            .for_update()
+            .skip_locked()
+            .select((
+                jobs::id,
+                jobs::household_id,
+                jobs::source_document_id,
+                jobs::version,
+                jobs::status,
+                jobs::provider,
+                jobs::model,
+                jobs::request,
+                jobs::result,
+                jobs::attempt_count,
+                jobs::max_attempts,
+                jobs::failure_count,
+                jobs::available_at,
+                jobs::lease_token,
+                jobs::lease_expires_at,
+            ))
+            .first::<JobRow>(self.conn)
+            .await
+            .optional()?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let ExtractionJob::Queued(queued) = row.job()? else {
+            return Ok(None);
+        };
+        use public::source_documents::dsl as documents;
+        let document = documents::source_documents
+            .filter(documents::id.eq(row.source_document_id))
+            .filter(documents::household_id.eq(row.household_id))
+            .select((
+                documents::sha256,
+                documents::object_key,
+                documents::mime_type,
+                documents::source_kind,
+                documents::analysis_object_key,
+                documents::analysis_mime_type,
+                documents::analysis_transform,
+                documents::created_by,
+            ))
+            .first::<SourceDocumentRow>(self.conn)
+            .await?;
+        Ok(Some(ClaimCandidate {
+            row,
+            document,
+            queued,
+        }))
+    }
+
+    async fn persist_claim(
+        &mut self,
+        candidate: Self::Candidate,
+        claim: ClaimExtractionJob,
+        now_ms: i64,
+    ) -> Result<Option<Self::Claimed>, Self::Error> {
+        use public::extraction_job_attempts::dsl as attempts;
+        use public::extraction_jobs::dsl as jobs;
+
+        let now = db_time(now_ms)?;
+        let row = candidate.row;
+        let token = parse_uuid(&claim.lease_token, "lease_token")?;
+        let lease_expires_at = db_time(claim.lease_expires_at_ms)?;
+        let changed = diesel::update(
+            jobs::extraction_jobs
+                .filter(jobs::id.eq(row.id))
+                .filter(jobs::status.eq(&row.status))
+                .filter(jobs::attempt_count.eq(row.attempt_count))
+                .filter(jobs::lease_token.eq(row.lease_token)),
+        )
+        .set((
+            jobs::status.eq("running"),
+            jobs::attempt_count.eq(claim.attempt_no),
+            jobs::started_at.eq(Some(now)),
+            jobs::finished_at.eq(None::<DateTime<Utc>>),
+            jobs::lease_token.eq(Some(token)),
+            jobs::lease_expires_at.eq(Some(lease_expires_at)),
+            jobs::error_code.eq(None::<String>),
+            jobs::error_message.eq(None::<String>),
+            jobs::interaction_reply_preview.eq(""),
+            jobs::updated_at.eq(now),
+        ))
+        .execute(self.conn)
+        .await?;
+        if changed != 1 {
+            return Ok(None);
+        }
+        diesel::insert_into(attempts::extraction_job_attempts)
+            .values((
+                attempts::household_id.eq(row.household_id),
+                attempts::source_document_id.eq(row.source_document_id),
+                attempts::job_id.eq(row.id),
+                attempts::attempt_no.eq(claim.attempt_no),
+                attempts::provider.eq(&row.provider),
+                attempts::model.eq(&row.model),
+                attempts::status.eq("running"),
+                attempts::started_at.eq(now),
+                attempts::response_metadata.eq(serde_json::json!({})),
+            ))
+            .execute(self.conn)
+            .await?;
+        let document = candidate.document;
+        Ok(Some(ClaimedExtractionJob {
+            id: row.id.to_string(),
+            household_id: row.household_id.to_string(),
+            source_document_id: row.source_document_id.to_string(),
+            source_hash: document.sha256,
+            object_key: document.object_key,
+            mime_type: document.mime_type,
+            analysis_object_key: document.analysis_object_key,
+            analysis_mime_type: document.analysis_mime_type,
+            analysis_transform: document
+                .analysis_transform
+                .map(serde_json::from_value)
+                .transpose()
+                .map_err(|_| IngestionJobError::InvalidAnalysisTransform)?,
+            source_kind: document.source_kind,
+            source_created_by: document.created_by.to_string(),
+            version: row.version,
+            attempt_no: claim.attempt_no,
+            lease_token: claim.lease_token,
+            request: row.request,
+            previous_result: row.result,
+            provider: row.provider,
+            model: row.model,
+        }))
+    }
 }
 
 pub async fn record_extraction_success(

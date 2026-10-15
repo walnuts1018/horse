@@ -48,6 +48,24 @@ pub enum SetDefaultAllocationError {
     InvalidRevision,
 }
 
+pub trait SetDefaultAllocationOperations {
+    type Error: From<SetDefaultAllocationError>;
+
+    async fn persist(
+        &mut self,
+        command: ValidatedDefaultAllocation,
+    ) -> Result<SetDefaultAllocationDecision, Self::Error>;
+}
+
+pub async fn set_default_allocation<O: SetDefaultAllocationOperations>(
+    operations: &mut O,
+    command: SetDefaultAllocationCommand,
+) -> Result<SetDefaultAllocationDecision, O::Error> {
+    operations
+        .persist(validate_default_allocation(command)?).
+        await
+}
+
 pub fn validate_default_allocation(
     command: SetDefaultAllocationCommand,
 ) -> Result<ValidatedDefaultAllocation, SetDefaultAllocationError> {
