@@ -16,8 +16,8 @@ use std::{env, error::Error, time::Duration};
 use chrono::Utc;
 use evidence_application::ingestion_job::{ExtractionExecutionOutcome, execute_extraction_job};
 use evidence_postgres::ingestion_job::{
-    ClaimedExtractionJob, claim_next_extraction_job, record_extraction_failure,
-    record_extraction_success, recover_expired_extraction_jobs,
+    ClaimedExtractionJob, claim_extraction_job_by_id, claim_next_extraction_job,
+    record_extraction_failure, record_extraction_success, recover_expired_extraction_jobs,
 };
 use horse_postgres_common::connect;
 use mailbox::MailboxConfig;
@@ -107,6 +107,23 @@ impl Worker {
 
     pub async fn is_ready(&self) -> bool {
         self.pool.get().await.is_ok()
+    }
+
+    pub async fn run_notified_job(
+        &self,
+        job_id: &str,
+    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        if !self.config.gemini_enabled() {
+            return Ok(false);
+        }
+        let Some(job) = claim_extraction_job_by_id(&self.pool, job_id, Utc::now())
+            .await
+            .map_err(|error| std::io::Error::other(format!("claim notified extraction job: {error:?}")))?
+        else {
+            return Ok(false);
+        };
+        self.process_one(job).await;
+        Ok(true)
     }
 
     async fn process_one(&self, job: ClaimedExtractionJob) {

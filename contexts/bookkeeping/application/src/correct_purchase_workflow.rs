@@ -1,6 +1,4 @@
-use crate::correct_purchase::{
-    CorrectPurchaseDecision, CorrectPurchaseError, CorrectionCommand,
-};
+use crate::correct_purchase::{CorrectPurchaseDecision, CorrectPurchaseError, CorrectionCommand};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorrectedPurchase {

@@ -10,7 +10,6 @@ use bookkeeping_postgres::{
 };
 use chrono::{Datelike, FixedOffset};
 use horse_postgres_common::PgPool;
-use household_postgres::household_access as postgres_household_access;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -87,9 +86,9 @@ pub async fn record_funding(
         )
         .await?
         .into()),
-        Err(bookkeeping_application::funding_record::RecordFundingWorkflowError::Decision(error)) => {
-            Ok(workflow_error(error).into())
-        }
+        Err(bookkeeping_application::funding_record::RecordFundingWorkflowError::Decision(
+            error,
+        )) => Ok(workflow_error(error).into()),
         Err(bookkeeping_application::funding_record::RecordFundingWorkflowError::Operations(
             postgres_funding::RecordFundingWorkflowAdapterError::Context(error),
         )) => match command_context_error(&error) {
@@ -130,8 +129,6 @@ struct ParsedRecordFunding {
     command: RecordFundingCommand,
     persistence: postgres_funding::PersistRecordFunding,
     household_id: Uuid,
-    member_id: Uuid,
-    pool_id: Uuid,
     source_account_id: Option<Uuid>,
     destination_account_id: Option<Uuid>,
 }
@@ -196,8 +193,6 @@ fn parse_input(
             request_fingerprint,
         },
         household_id,
-        member_id,
-        pool_id,
         source_account_id: source_account_uuid,
         destination_account_id: destination_account_uuid,
     })

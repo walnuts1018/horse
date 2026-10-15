@@ -13,6 +13,7 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::{Stream, stream};
 use horse_auth::{AuthService, Cookie, OidcError, resolve_cookie, revoke_cookie};
+use horse_extraction_queue::ExtractionQueue;
 use horse_graphql_api::{Actor, Schema as GraphqlSchema, viewer_query::ViewerIdentity};
 use horse_object_storage::ObjectStore;
 use horse_postgres_common::{PgPool, schema::public::households};
@@ -28,6 +29,7 @@ pub struct Config {
     pub ocr_endpoint: String,
     pub auth: Option<AuthService>,
     pub object_store: Option<Arc<ObjectStore>>,
+    pub extraction_queue: Option<Arc<ExtractionQueue>>,
 }
 
 #[derive(Clone)]
@@ -496,18 +498,27 @@ async fn upload_document(
             Ok(attachments) => attachments,
             Err(_) => {
                 delete_unreferenced_object(&state.pool, store, &cleanup_object_key).await;
-                if let Some(key) = cleanup_analysis_key.as_deref() { delete_unreferenced_object(&state.pool, store, key).await; }
+                if let Some(key) = cleanup_analysis_key.as_deref() {
+                    delete_unreferenced_object(&state.pool, store, key).await;
+                }
                 return (StatusCode::BAD_REQUEST, "invalid email message").into_response();
             }
         };
         for (index, attachment) in parsed.into_iter().enumerate() {
-            let (attachment_key, attachment_hash) = match store.put(household_id, &attachment.mime_type, &attachment.data).await {
+            let (attachment_key, attachment_hash) = match store
+                .put(household_id, &attachment.mime_type, &attachment.data)
+                .await
+            {
                 Ok(stored) => stored,
                 Err(error) => {
                     tracing::error!(error = ?error, "Email attachment storage write failed");
                     delete_unreferenced_object(&state.pool, store, &cleanup_object_key).await;
-                    if let Some(key) = cleanup_analysis_key.as_deref() { delete_unreferenced_object(&state.pool, store, key).await; }
-                    for key in &cleanup_attachment_keys { delete_unreferenced_object(&state.pool, store, key).await; }
+                    if let Some(key) = cleanup_analysis_key.as_deref() {
+                        delete_unreferenced_object(&state.pool, store, key).await;
+                    }
+                    for key in &cleanup_attachment_keys {
+                        delete_unreferenced_object(&state.pool, store, key).await;
+                    }
                     return StatusCode::BAD_GATEWAY.into_response();
                 }
             };
@@ -556,12 +567,19 @@ async fn upload_document(
     .await;
     match result {
         Ok(document) => {
+            let mut job_ids = document.attachment_job_ids.clone();
+            if let Some(job_id) = document.job_id {
+                job_ids.push(job_id);
+            }
+            publish_jobs(&state, job_ids).await;
             if document.duplicate {
                 delete_unreferenced_object(&state.pool, store, cleanup_object_key.as_str()).await;
                 if let Some(key) = cleanup_analysis_key.as_deref() {
                     delete_unreferenced_object(&state.pool, store, key).await;
                 }
-                for key in &cleanup_attachment_keys { delete_unreferenced_object(&state.pool, store, key).await; }
+                for key in &cleanup_attachment_keys {
+                    delete_unreferenced_object(&state.pool, store, key).await;
+                }
             }
             let response = json!({
                 "id": document.document_id,
@@ -593,7 +611,9 @@ async fn upload_document(
             if let Some(key) = cleanup_analysis_key.as_deref() {
                 delete_unreferenced_object(&state.pool, store, key).await;
             }
-            for key in &cleanup_attachment_keys { delete_unreferenced_object(&state.pool, store, key).await; }
+            for key in &cleanup_attachment_keys {
+                delete_unreferenced_object(&state.pool, store, key).await;
+            }
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
@@ -1174,6 +1194,17 @@ fn pending_document_interaction(
     Some(interaction)
 }
 
+async fn publish_jobs(state: &ApiState, job_ids: Vec<uuid::Uuid>) {
+    let Some(queue) = state.config.extraction_queue.as_ref() else {
+        return;
+    };
+    for job_id in job_ids {
+        if let Err(error) = queue.publish(job_id).await {
+            tracing::warn!(job_id = %job_id, error = %error, "Extraction job notification failed");
+        }
+    }
+}
+
 async fn read_document(
     State(state): State<ApiState>,
     Path(raw_id): Path<String>,
@@ -1354,7 +1385,7 @@ async fn delete_document(
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
     use horse_postgres_common::schema::public::{
-        evidence_links, extraction_jobs, household_members, source_confirmations,
+        correction_evidence_links, evidence_links, extraction_jobs, household_members, source_confirmations,
         source_document_attachments, source_documents,
     };
     let mut pooled = match state.pool.get().await {
@@ -1402,6 +1433,13 @@ async fn delete_document(
             ))
             .get_result::<bool>(conn)
             .await?;
+            let has_correction_evidence = diesel::select(diesel::dsl::exists(
+                correction_evidence_links::table
+                    .filter(correction_evidence_links::household_id.eq(household_id))
+                    .filter(correction_evidence_links::source_document_id.eq(document_id)),
+            ))
+            .get_result::<bool>(conn)
+            .await?;
             let has_confirmation = diesel::select(diesel::dsl::exists(
                 source_confirmations::table
                     .filter(source_confirmations::household_id.eq(household_id))
@@ -1418,7 +1456,7 @@ async fn delete_document(
             ))
             .get_result::<bool>(conn)
             .await?;
-            if has_evidence || has_confirmation || has_attachments {
+            if has_evidence || has_correction_evidence || has_confirmation || has_attachments {
                 return Err(diesel::result::Error::RollbackTransaction);
             }
             let mut metadata = document.3;
@@ -1501,6 +1539,12 @@ async fn delete_document(
             ))
             .get_result::<bool>(conn)
             .await?;
+            let has_correction_evidence = diesel::select(diesel::dsl::exists(
+                correction_evidence_links::table
+                    .filter(correction_evidence_links::source_document_id.eq(document_id)),
+            ))
+            .get_result::<bool>(conn)
+            .await?;
             let has_confirmation = diesel::select(diesel::dsl::exists(
                 source_confirmations::table
                     .filter(source_confirmations::source_document_id.eq(document_id)),
@@ -1516,7 +1560,7 @@ async fn delete_document(
             ))
             .get_result::<bool>(conn)
             .await?;
-            if has_evidence || has_confirmation || has_attachments {
+            if has_evidence || has_correction_evidence || has_confirmation || has_attachments {
                 return Err(diesel::result::Error::RollbackTransaction);
             }
             diesel::delete(source_documents::table.filter(source_documents::id.eq(document_id)))
@@ -1761,11 +1805,14 @@ async fn retry_document(
     )
     .await;
     match job {
-        Ok(job_id) => (
-            StatusCode::ACCEPTED,
-            Json(json!({"jobId": job_id, "status": "queued"})),
-        )
-            .into_response(),
+        Ok(job_id) => {
+            publish_jobs(&state, vec![job_id]).await;
+            (
+                StatusCode::ACCEPTED,
+                Json(json!({"jobId": job_id, "status": "queued"})),
+            )
+                .into_response()
+        }
         Err(error) => {
             tracing::error!(error = ?error, "Document retry registration failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -2173,11 +2220,14 @@ async fn interact_with_document(
     )
     .await;
     match job {
-        Ok(job_id) => (
-            StatusCode::ACCEPTED,
-            Json(json!({"jobId": job_id, "status": "queued"})),
-        )
-            .into_response(),
+        Ok(job_id) => {
+            publish_jobs(&state, vec![job_id]).await;
+            (
+                StatusCode::ACCEPTED,
+                Json(json!({"jobId": job_id, "status": "queued"})),
+            )
+                .into_response()
+        }
         Err(error) => {
             tracing::error!(error = ?error, "Document interaction registration failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -2333,11 +2383,12 @@ async fn document_interaction_events(
     );
     let stream: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
         Box::pin(stream);
-    Sse::new(stream)
+    let response = Sse::new(stream)
         .keep_alive(
             axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)),
         )
-        .into_response()
+        .into_response();
+    event_stream_response(response)
 }
 
 async fn read_purchase_evidence(
@@ -3330,7 +3381,7 @@ async fn events(
     };
     let household_id = query
         .get("householdId")
-        .and_then(|value| uuid::Uuid::parse_str(value).ok())
+        .and_then(|value| decode_household_id(value))
         .ok_or_else(|| (StatusCode::NOT_FOUND, "household not found").into_response())?;
     use horse_postgres_common::schema::public::household_members;
     let mut pooled = state
@@ -3364,6 +3415,7 @@ async fn events(
     if let Some(last_event_id) = headers
         .get("last-event-id")
         .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
     {
         cursor = match last_event_id.parse::<i64>() {
             Ok(cursor) => cursor,
@@ -3450,11 +3502,19 @@ async fn events(
     );
     let stream: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
         Box::pin(stream);
-    Ok(Sse::new(stream)
+    let response = Sse::new(stream)
         .keep_alive(
             axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)),
         )
-        .into_response())
+        .into_response();
+    Ok(event_stream_response(response))
+}
+
+fn event_stream_response(mut response: Response) -> Response {
+    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache, no-transform"));
+    response.headers_mut().insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));
+    response.headers_mut().insert("x-accel-buffering", HeaderValue::from_static("no"));
+    response
 }
 
 async fn ready(State(state): State<ApiState>) -> StatusCode {

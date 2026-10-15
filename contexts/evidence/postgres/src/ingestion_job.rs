@@ -8,6 +8,7 @@ use evidence_application::ingestion_job::{
     ClaimExtractionJob, ClaimExtractionJobOperations, ClaimExtractionJobWorkflowError,
     ExtractionFailureKind, ExtractionJob, ExtractionJobStatus, FinishExtractionJobError,
     FinishedJob, QueuedJob, RunningJob, ValidLease,
+    claim_extraction_job_by_id as claim_extraction_job_by_id_workflow,
     claim_next_extraction_job as claim_next_extraction_job_workflow, finish_extraction_failure,
     finish_extraction_success, recover_expired_extraction_job,
 };
@@ -59,6 +60,23 @@ pub async fn claim_next_extraction_job(
     pool: &PgPool,
     now: DateTime<Utc>,
 ) -> Result<Option<ClaimedExtractionJob>, IngestionJobError> {
+    claim_extraction_job(pool, None, now).await
+}
+
+pub async fn claim_extraction_job_by_id(
+    pool: &PgPool,
+    job_id: &str,
+    now: DateTime<Utc>,
+) -> Result<Option<ClaimedExtractionJob>, IngestionJobError> {
+    parse_uuid(job_id, "job_id")?;
+    claim_extraction_job(pool, Some(job_id), now).await
+}
+
+async fn claim_extraction_job(
+    pool: &PgPool,
+    job_id: Option<&str>,
+    now: DateTime<Utc>,
+) -> Result<Option<ClaimedExtractionJob>, IngestionJobError> {
     let now_ms = now.timestamp_millis();
     let now = db_time(now_ms)?;
     let lease_token = Uuid::now_v7().to_string();
@@ -69,14 +87,25 @@ pub async fn claim_next_extraction_job(
     (&mut *pooled)
         .transaction::<Option<ClaimedExtractionJob>, IngestionJobError, _>(async move |conn| {
             let mut operations = PostgresClaimExtractionJobOperations { conn };
-            claim_next_extraction_job_workflow(
-                &mut operations,
-                now_ms,
-                lease_token,
-                LEASE_DURATION_MS,
-            )
-            .await
-            .map_err(|error| match error {
+            let result = if let Some(job_id) = job_id {
+                claim_extraction_job_by_id_workflow(
+                    &mut operations,
+                    now_ms,
+                    job_id,
+                    lease_token,
+                    LEASE_DURATION_MS,
+                )
+                .await
+            } else {
+                claim_next_extraction_job_workflow(
+                    &mut operations,
+                    now_ms,
+                    lease_token,
+                    LEASE_DURATION_MS,
+                )
+                .await
+            };
+            result.map_err(|error| match error {
                 ClaimExtractionJobWorkflowError::Operations(error) => error,
                 ClaimExtractionJobWorkflowError::Decision(_) => {
                     IngestionJobError::InvalidTransition
@@ -105,14 +134,15 @@ impl ClaimExtractionJobOperations for PostgresClaimExtractionJobOperations<'_> {
         &candidate.queued
     }
 
-    async fn load_next_candidate(
+    async fn load_candidate(
         &mut self,
         now_ms: i64,
+        job_id: Option<&str>,
     ) -> Result<Option<Self::Candidate>, Self::Error> {
         use public::extraction_jobs::dsl as jobs;
 
         let now = db_time(now_ms)?;
-        let row = jobs::extraction_jobs
+        let mut query = jobs::extraction_jobs
             .filter(jobs::failure_count.lt(jobs::max_attempts))
             .filter(jobs::status.eq("queued"))
             .filter(jobs::available_at.le(now))
@@ -120,6 +150,11 @@ impl ClaimExtractionJobOperations for PostgresClaimExtractionJobOperations<'_> {
             .then_order_by(jobs::id.asc())
             .for_update()
             .skip_locked()
+            .into_boxed();
+        if let Some(job_id) = job_id {
+            query = query.filter(jobs::id.eq(parse_uuid(job_id, "job_id")?));
+        }
+        let row = query
             .select((
                 jobs::id,
                 jobs::household_id,

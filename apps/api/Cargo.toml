@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 axum = "0.8.9"
 horse-auth = { path = "../../adapters/identity" }
+horse-extraction-queue = { path = "../../adapters/extraction-queue" }
 horse-graphql-api = { path = "../../adapters/graphql" }
 horse-http-api = { path = "../../adapters/http" }
 horse-object-storage = { path = "../../adapters/object-storage" }

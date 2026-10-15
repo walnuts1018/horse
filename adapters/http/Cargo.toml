@@ -12,6 +12,7 @@ chrono = { workspace = true }
 diesel = { workspace = true, features = ["32-column-tables"] }
 diesel-async = { workspace = true }
 horse-auth = { path = "../identity" }
+horse-extraction-queue = { path = "../extraction-queue" }
 evidence-application = { path = "../../contexts/evidence/application" }
 evidence-postgres = { path = "../../contexts/evidence/postgres" }
 futures-util = { workspace = true }

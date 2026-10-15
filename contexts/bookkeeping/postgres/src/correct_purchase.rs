@@ -8,7 +8,7 @@ use bookkeeping_application::{
         CorrectionPurchaseBurdenSnapshot, CorrectionPurchasePayment,
         CorrectionSettlementAdjustment, CorrectionSettlementPolicy, CorrectionTarget,
         LinkStatementRefundCorrectionCommand, LinkStatementRefundCorrectionError, SignedYenDelta,
-        StatementRefundObservation, calculate_correction_funding_effects, decide_correct_purchase,
+        StatementRefundObservation, calculate_correction_funding_effects,
         decide_link_statement_refund_correction,
     },
 };
@@ -123,10 +123,6 @@ pub async fn correct_purchase(
     if request.idempotency_key.is_empty() || request.idempotency_key.len() > 200 {
         return Err(CorrectPurchasePersistenceError::InvalidIdempotencyKey);
     }
-    let mut conn = pool
-        .get()
-        .await
-        .map_err(|error| CorrectPurchasePersistenceError::Pool(error.to_string()))?;
     let persist_input = PersistCorrectPurchase {
         household_id: request.household_id.clone(),
         actor_id: request.actor_id.clone(),
@@ -138,426 +134,519 @@ pub async fn correct_purchase(
         idempotency_key: request.idempotency_key.clone(),
         request_fingerprint: request.request_fingerprint,
     };
-    let result = (&mut *conn)
-        .transaction::<PersistedCorrectPurchase, CorrectPurchasePersistenceError, _>(async |conn| {
-            use public::{
-                accounting_periods, purchase_allocations, purchase_corrections, purchase_items,
-                purchases,
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|error| CorrectPurchasePersistenceError::Pool(error.to_string()))?;
+    let result = (&mut *pooled)
+        .transaction::<Result<_, CorrectPurchasePersistenceError>, DieselError, _>(async |conn| {
+            let mut operations = PgCorrectPurchaseOperations {
+                conn,
+                request,
+                household_id,
+                purchase_id,
+                actor_id,
+                item_id,
+                persist_input,
+                source_observation: None,
             };
+            let result = bookkeeping_application::correct_purchase_workflow::correct_purchase(
+                &mut operations,
+            )
+            .await
+            .map_err(|error| match error {
+                bookkeeping_application::correct_purchase_workflow::CorrectPurchaseWorkflowError::Operations(error) => error,
+                bookkeeping_application::correct_purchase_workflow::CorrectPurchaseWorkflowError::Decision(_)
+                | bookkeeping_application::correct_purchase_workflow::CorrectPurchaseWorkflowError::InvalidLoadedCorrection => {
+                    CorrectPurchasePersistenceError::InvalidDecision
+                }
+            })?;
+            Ok(PersistedCorrectPurchase {
+                correction_id: result.correction_id,
+                journal_id: result.journal_id,
+                ledger_entry_id: result.ledger_entry_id,
+            })
+        })
+        .await
+        .map_err(CorrectPurchasePersistenceError::Database)?;
+    result
+}
 
-            let (occurred_at_hint, status_hint, legacy_payment_account_id) = purchases::table
-                .filter(purchases::household_id.eq(household_id))
-                .filter(purchases::id.eq(purchase_id))
-                .select((
-                    purchases::occurred_at,
-                    purchases::status,
-                    purchases::payment_account_id,
-                ))
-                .first::<(DateTime<Utc>, String, Option<Uuid>)>(conn)
-                .await
-                .optional()?
-                .ok_or(CorrectPurchasePersistenceError::PurchaseNotFound)?;
-            let japan_offset = FixedOffset::east_opt(9 * 60 * 60)
-                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
-            let original_period = occurred_at_hint
+struct PgCorrectPurchaseOperations<'a> {
+    conn: &'a mut diesel_async::AsyncPgConnection,
+    request: CorrectPurchaseRequest,
+    household_id: Uuid,
+    purchase_id: Uuid,
+    actor_id: Uuid,
+    item_id: Option<Uuid>,
+    persist_input: PersistCorrectPurchase,
+    source_observation: Option<LoadedStatementRefund>,
+}
+
+impl bookkeeping_application::correct_purchase_workflow::CorrectPurchaseOperations
+    for PgCorrectPurchaseOperations<'_>
+{
+    type Error = CorrectPurchasePersistenceError;
+
+    async fn load(
+        &mut self,
+    ) -> Result<
+        bookkeeping_application::correct_purchase_workflow::LoadedPurchaseCorrection,
+        Self::Error,
+    > {
+        let request = &self.request;
+        let household_id = self.household_id;
+        let purchase_id = self.purchase_id;
+        let actor_id = self.actor_id;
+        let item_id = self.item_id;
+        let persist_input = &self.persist_input;
+        let conn = &mut *self.conn;
+        use public::{
+            accounting_periods, purchase_allocations, purchase_corrections, purchase_items,
+            purchases,
+        };
+
+        let (occurred_at_hint, status_hint, legacy_payment_account_id) = purchases::table
+            .filter(purchases::household_id.eq(household_id))
+            .filter(purchases::id.eq(purchase_id))
+            .select((
+                purchases::occurred_at,
+                purchases::status,
+                purchases::payment_account_id,
+            ))
+            .first::<(DateTime<Utc>, String, Option<Uuid>)>(conn)
+            .await
+            .optional()?
+            .ok_or(CorrectPurchasePersistenceError::PurchaseNotFound)?;
+        let japan_offset = FixedOffset::east_opt(9 * 60 * 60)
+            .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
+        let original_period = occurred_at_hint
+            .with_timezone(&japan_offset)
+            .date_naive()
+            .with_day(1)
+            .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
+        let original_status_hint = accounting_periods::table
+            .filter(accounting_periods::household_id.eq(household_id))
+            .filter(accounting_periods::period_start.eq(original_period))
+            .select(accounting_periods::status)
+            .first::<String>(conn)
+            .await
+            .optional()?;
+        let original_status_hint = match original_status_hint.as_deref() {
+            None | Some("OPEN") => AccountingPeriodStatus::Open,
+            Some("CLOSED") => AccountingPeriodStatus::Closed,
+            _ => return Err(CorrectPurchasePersistenceError::InvalidDecision),
+        };
+        let effective_period = if original_status_hint == AccountingPeriodStatus::Closed {
+            Utc::now()
                 .with_timezone(&japan_offset)
                 .date_naive()
                 .with_day(1)
-                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
-            let original_status_hint = accounting_periods::table
-                .filter(accounting_periods::household_id.eq(household_id))
-                .filter(accounting_periods::period_start.eq(original_period))
-                .select(accounting_periods::status)
-                .first::<String>(conn)
-                .await
-                .optional()?;
-            let original_status_hint = match original_status_hint.as_deref() {
-                None | Some("OPEN") => AccountingPeriodStatus::Open,
-                Some("CLOSED") => AccountingPeriodStatus::Closed,
-                _ => return Err(CorrectPurchasePersistenceError::InvalidDecision),
-            };
-            let effective_period = if original_status_hint == AccountingPeriodStatus::Closed {
-                Utc::now()
-                    .with_timezone(&japan_offset)
-                    .date_naive()
-                    .with_day(1)
-                    .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?
-            } else {
-                original_period
-            };
-            let mut period_dates = if original_period <= effective_period {
-                vec![original_period, effective_period]
-            } else {
-                vec![effective_period, original_period]
-            };
-            period_dates.dedup();
-            for period_start in &period_dates {
-                diesel::insert_into(accounting_periods::table)
-                    .values((
-                        accounting_periods::household_id.eq(household_id),
-                        accounting_periods::period_start.eq(period_start),
-                        accounting_periods::status.eq("OPEN"),
-                        accounting_periods::revision.eq(1_i64),
-                    ))
-                    .on_conflict((
-                        accounting_periods::household_id,
-                        accounting_periods::period_start,
-                    ))
-                    .do_nothing()
-                    .execute(&mut *conn)
-                    .await?;
-            }
-            let locked_periods = accounting_periods::table
-                .filter(accounting_periods::household_id.eq(household_id))
-                .filter(accounting_periods::period_start.eq_any(&period_dates))
-                .order(accounting_periods::period_start.asc())
-                .for_update()
-                .select((
+                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?
+        } else {
+            original_period
+        };
+        let mut period_dates = if original_period <= effective_period {
+            vec![original_period, effective_period]
+        } else {
+            vec![effective_period, original_period]
+        };
+        period_dates.dedup();
+        for period_start in &period_dates {
+            diesel::insert_into(accounting_periods::table)
+                .values((
+                    accounting_periods::household_id.eq(household_id),
+                    accounting_periods::period_start.eq(period_start),
+                    accounting_periods::status.eq("OPEN"),
+                    accounting_periods::revision.eq(1_i64),
+                ))
+                .on_conflict((
+                    accounting_periods::household_id,
                     accounting_periods::period_start,
-                    accounting_periods::status,
-                    accounting_periods::revision,
                 ))
-                .load::<(NaiveDate, String, i64)>(conn)
+                .do_nothing()
+                .execute(&mut *conn)
                 .await?;
-            if locked_periods.len() != period_dates.len() {
-                return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed);
-            }
-            let original_status = locked_periods
+        }
+        let locked_periods = accounting_periods::table
+            .filter(accounting_periods::household_id.eq(household_id))
+            .filter(accounting_periods::period_start.eq_any(&period_dates))
+            .order(accounting_periods::period_start.asc())
+            .for_update()
+            .select((
+                accounting_periods::period_start,
+                accounting_periods::status,
+                accounting_periods::revision,
+            ))
+            .load::<(NaiveDate, String, i64)>(conn)
+            .await?;
+        if locked_periods.len() != period_dates.len() {
+            return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed);
+        }
+        let original_status = locked_periods
+            .iter()
+            .find(|(date, _, _)| *date == original_period)
+            .map(|(_, status, _)| status.as_str());
+        let effective_status = locked_periods
+            .iter()
+            .find(|(date, _, _)| *date == effective_period)
+            .map(|(_, status, _)| status.as_str());
+        if original_status
+            != Some(match original_status_hint {
+                AccountingPeriodStatus::Open => "OPEN",
+                AccountingPeriodStatus::Closed => "CLOSED",
+            })
+        {
+            return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed);
+        }
+        match (original_status, effective_status) {
+            (Some("OPEN"), Some("OPEN")) if original_period == effective_period => {}
+            (Some("CLOSED"), Some("OPEN")) if original_period != effective_period => {}
+            _ => return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed),
+        }
+        let period_model = |date: NaiveDate| {
+            locked_periods
                 .iter()
-                .find(|(date, _, _)| *date == original_period)
-                .map(|(_, status, _)| status.as_str());
-            let effective_status = locked_periods
-                .iter()
-                .find(|(date, _, _)| *date == effective_period)
-                .map(|(_, status, _)| status.as_str());
-            if original_status
-                != Some(match original_status_hint {
-                    AccountingPeriodStatus::Open => "OPEN",
-                    AccountingPeriodStatus::Closed => "CLOSED",
+                .find(|(period_start, _, _)| *period_start == date)
+                .and_then(|(_, status, revision)| {
+                    let year_month = YearMonth::new(
+                        u16::try_from(date.year()).ok()?,
+                        u8::try_from(date.month()).ok()?,
+                    )
+                    .ok()?;
+                    let revision = u64::try_from(*revision).ok()?;
+                    match status.as_str() {
+                        "OPEN" => AccountingPeriod::open(year_month, revision).ok(),
+                        "CLOSED" => AccountingPeriod::closed(year_month, revision).ok(),
+                        _ => None,
+                    }
                 })
-            {
-                return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed);
-            }
-            match (original_status, effective_status) {
-                (Some("OPEN"), Some("OPEN")) if original_period == effective_period => {}
-                (Some("CLOSED"), Some("OPEN")) if original_period != effective_period => {}
-                _ => return Err(CorrectPurchasePersistenceError::AccountingPeriodClosed),
-            }
-            let period_model = |date: NaiveDate| {
-                locked_periods
-                    .iter()
-                    .find(|(period_start, _, _)| *period_start == date)
-                    .and_then(|(_, status, revision)| {
-                        let year_month = YearMonth::new(
-                            u16::try_from(date.year()).ok()?,
-                            u8::try_from(date.month()).ok()?,
-                        )
-                        .ok()?;
-                        let revision = u64::try_from(*revision).ok()?;
-                        match status.as_str() {
-                            "OPEN" => AccountingPeriod::open(year_month, revision).ok(),
-                            "CLOSED" => AccountingPeriod::closed(year_month, revision).ok(),
-                            _ => None,
-                        }
-                    })
-            };
-            let original_period_model = period_model(original_period)
-                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
-            let effective_period_model = period_model(effective_period)
-                .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
-            let (occurred_at, status, legacy_payment_account_id) = purchases::table
-                .filter(purchases::household_id.eq(household_id))
-                .filter(purchases::id.eq(purchase_id))
-                .for_update()
-                .select((
-                    purchases::occurred_at,
-                    purchases::status,
-                    purchases::payment_account_id,
-                ))
-                .first::<(DateTime<Utc>, String, Option<Uuid>)>(conn)
-                .await
-                .optional()?
-                .ok_or(CorrectPurchasePersistenceError::PurchaseNotFound)?;
-            if occurred_at != occurred_at_hint || status != status_hint {
-                return Err(CorrectPurchasePersistenceError::InvalidDecision);
-            }
-            validate_actor_membership(conn, household_id, actor_id).await?;
-            if let Some(replay) =
-                find_correct_purchase_replay(conn, household_id, &persist_input).await?
-            {
-                return Ok(replay);
-            }
-            let item_rows = purchase_items::table
-                .filter(purchase_items::household_id.eq(household_id))
-                .filter(purchase_items::purchase_id.eq(purchase_id))
-                .select((purchase_items::id, purchase_items::amount_yen))
-                .load::<(Uuid, i64)>(conn)
-                .await?;
-            let mut purchase_refundable = 0_i64;
-            let mut original_total = 0_i64;
-            let mut item_refundable = BTreeMap::new();
-            for (id, amount) in item_rows {
-                original_total = original_total
-                    .checked_add(amount)
+        };
+        let original_period_model =
+            period_model(original_period).ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
+        let effective_period_model =
+            period_model(effective_period).ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
+        let (occurred_at, status, legacy_payment_account_id) = purchases::table
+            .filter(purchases::household_id.eq(household_id))
+            .filter(purchases::id.eq(purchase_id))
+            .for_update()
+            .select((
+                purchases::occurred_at,
+                purchases::status,
+                purchases::payment_account_id,
+            ))
+            .first::<(DateTime<Utc>, String, Option<Uuid>)>(conn)
+            .await
+            .optional()?
+            .ok_or(CorrectPurchasePersistenceError::PurchaseNotFound)?;
+        if occurred_at != occurred_at_hint || status != status_hint {
+            return Err(CorrectPurchasePersistenceError::InvalidDecision);
+        }
+        validate_actor_membership(conn, household_id, actor_id).await?;
+        if let Some(replay) =
+            find_correct_purchase_replay(conn, household_id, persist_input).await?
+        {
+            return Ok(
+                bookkeeping_application::correct_purchase_workflow::LoadedPurchaseCorrection {
+                    command: None,
+                    replay: Some(
+                        bookkeeping_application::correct_purchase_workflow::CorrectedPurchase {
+                            correction_id: replay.correction_id,
+                            journal_id: replay.journal_id,
+                            ledger_entry_id: replay.ledger_entry_id,
+                        },
+                    ),
+                },
+            );
+        }
+        let item_rows = purchase_items::table
+            .filter(purchase_items::household_id.eq(household_id))
+            .filter(purchase_items::purchase_id.eq(purchase_id))
+            .select((purchase_items::id, purchase_items::amount_yen))
+            .load::<(Uuid, i64)>(conn)
+            .await?;
+        let mut purchase_refundable = 0_i64;
+        let mut original_total = 0_i64;
+        let mut item_refundable = BTreeMap::new();
+        for (id, amount) in item_rows {
+            original_total = original_total
+                .checked_add(amount)
+                .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+            purchase_refundable = purchase_refundable
+                .checked_add(amount)
+                .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+            item_refundable.insert(id, amount);
+        }
+        for (delta, correction_item_id) in purchase_corrections::table
+            .filter(purchase_corrections::household_id.eq(household_id))
+            .filter(purchase_corrections::purchase_id.eq(purchase_id))
+            .select((
+                purchase_corrections::amount_delta_yen,
+                purchase_corrections::item_id,
+            ))
+            .load::<(i64, Option<Uuid>)>(conn)
+            .await?
+        {
+            purchase_refundable = purchase_refundable
+                .checked_add(delta)
+                .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+            if let Some(id) = correction_item_id {
+                let balance = item_refundable
+                    .get_mut(&id)
                     .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
-                purchase_refundable = purchase_refundable
-                    .checked_add(amount)
-                    .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
-                item_refundable.insert(id, amount);
-            }
-            for (delta, correction_item_id) in purchase_corrections::table
-                .filter(purchase_corrections::household_id.eq(household_id))
-                .filter(purchase_corrections::purchase_id.eq(purchase_id))
-                .select((
-                    purchase_corrections::amount_delta_yen,
-                    purchase_corrections::item_id,
-                ))
-                .load::<(i64, Option<Uuid>)>(conn)
-                .await?
-            {
-                purchase_refundable = purchase_refundable
+                *balance = balance
                     .checked_add(delta)
                     .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
-                if let Some(id) = correction_item_id {
-                    let balance = item_refundable
-                        .get_mut(&id)
-                        .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
-                    *balance = balance
-                        .checked_add(delta)
-                        .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
-                }
             }
-            if item_id.is_some_and(|id| !item_refundable.contains_key(&id)) {
-                return Err(CorrectPurchasePersistenceError::HouseholdMismatch);
-            }
-            let allocation_rows = if let Some(item_id) = item_id {
-                purchase_allocations::table
-                    .filter(purchase_allocations::household_id.eq(household_id))
-                    .filter(purchase_allocations::purchase_id.eq(purchase_id))
-                    .filter(purchase_allocations::item_id.eq(item_id))
-                    .select((
-                        purchase_allocations::pool_id,
-                        purchase_allocations::weight,
-                        purchase_allocations::amount_yen,
-                    ))
-                    .load::<(Uuid, i64, i64)>(conn)
-                    .await?
-            } else {
-                purchase_allocations::table
-                    .filter(purchase_allocations::household_id.eq(household_id))
-                    .filter(purchase_allocations::purchase_id.eq(purchase_id))
-                    .select((
-                        purchase_allocations::pool_id,
-                        purchase_allocations::weight,
-                        purchase_allocations::amount_yen,
-                    ))
-                    .load::<(Uuid, i64, i64)>(conn)
-                    .await?
-            };
-            let mut allocation_weights = BTreeMap::<Uuid, i64>::new();
-            for (pool_id, weight, amount) in allocation_rows {
-                let value = if item_id.is_some() { weight } else { amount };
-                let total = allocation_weights.entry(pool_id).or_default();
-                *total = total
-                    .checked_add(value)
-                    .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
-            }
-            let saved_allocations = AllocationShares::new(
-                allocation_weights
-                    .into_iter()
-                    .filter(|(_, weight)| *weight > 0)
-                    .map(|(pool_id, weight)| {
-                        let pool_id = WorkflowPoolId::new(pool_id.to_string())
-                            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
-                        let weight = u64::try_from(weight)
-                            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
-                        AllocationWeight::new(pool_id, weight)
-                            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)
-                    })
-                    .collect::<Result<Vec<_>, _>>()?,
-            )
-            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
-            let requested_allocations = if request.allocations.is_empty() {
-                None
-            } else {
-                Some(
-                    AllocationShares::new(
-                        request
-                            .allocations
-                            .iter()
-                            .map(|(pool_id, weight)| {
-                                let id = WorkflowPoolId::new(pool_id.clone()).map_err(|_| {
-                                    CorrectPurchasePersistenceError::InvalidDecision
-                                })?;
-                                let weight = u64::try_from(*weight).map_err(|_| {
-                                    CorrectPurchasePersistenceError::InvalidDecision
-                                })?;
-                                AllocationWeight::new(id, weight)
-                                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)
-                            })
-                            .collect::<Result<Vec<_>, _>>()?,
-                    )
-                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
-                )
-            };
-            let source_observation = if let Some(document_id) = &request.source_document_id {
-                let document_id = parse_uuid(document_id, "source_document_id")?;
-                let reference = request.source_reference.as_deref().unwrap_or_default();
-                let statement =
-                    load_statement_refund_entry(conn, household_id, document_id, reference).await?;
-                if statement.observation.kind != "REFUND" || statement.observation.amount_yen >= 0 {
-                    return Err(CorrectPurchasePersistenceError::StatementNotRefundable);
-                }
-                Some(statement)
-            } else {
-                None
-            };
-            let amount_delta = request.amount_delta_yen.or_else(|| {
-                source_observation
-                    .as_ref()
-                    .map(|statement| statement.observation.amount_yen)
-            });
-            let delta = SignedYenDelta::new(
-                amount_delta.ok_or(CorrectPurchasePersistenceError::InvalidDecision)?,
-            )
-            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
-            let payment_inputs = if request.payments.is_empty() {
-                use public::purchase_payments;
-                let saved_payments = purchase_payments::table
-                    .filter(purchase_payments::household_id.eq(household_id))
-                    .filter(purchase_payments::purchase_id.eq(purchase_id))
-                    .order(purchase_payments::line_no.asc())
-                    .select((purchase_payments::account_id, purchase_payments::amount_yen))
-                    .load::<(Uuid, i64)>(conn)
-                    .await?;
-                let mut total = 0_i64;
-                let mut weights = Vec::new();
-                for (account_id, amount) in saved_payments {
-                    total = total
-                        .checked_add(amount)
-                        .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
-                    weights.push((account_id.to_string(), amount));
-                }
-                if weights.is_empty() {
-                    if let Some(account_id) = legacy_payment_account_id {
-                        weights.push((account_id.to_string(), original_total));
-                        total = original_total;
-                    }
-                }
-                if !weights.is_empty() && total != original_total {
-                    return Err(CorrectPurchasePersistenceError::InvalidDecision);
-                }
-                if weights.is_empty() {
-                    Vec::new()
-                } else {
-                    let shares = AllocationShares::new(
-                        weights
-                            .into_iter()
-                            .map(|(id, amount)| {
-                                let id = WorkflowPoolId::new(id).map_err(|_| {
-                                    CorrectPurchasePersistenceError::InvalidDecision
-                                })?;
-                                let amount = u64::try_from(amount).map_err(|_| {
-                                    CorrectPurchasePersistenceError::InvalidDecision
-                                })?;
-                                AllocationWeight::new(id, amount)
-                                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)
-                            })
-                            .collect::<Result<Vec<_>, _>>()?,
-                    )
-                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
-                    bookkeeping_domain::allocate(
-                        Yen::new(delta.value().abs())
-                            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
-                        &shares,
-                    )
-                    .into_iter()
-                    .filter(|payment| payment.amount().value() > 0)
-                    .map(|payment| {
-                        Ok((
-                            payment.pool_id().as_str().to_owned(),
-                            payment.amount().value(),
-                        ))
-                    })
-                    .collect::<Result<Vec<_>, CorrectPurchasePersistenceError>>()?
-                }
-            } else {
-                request.payments.clone()
-            };
-            let payments = payment_inputs
-                .iter()
-                .map(|(account_id, amount)| {
-                    let account_id = AccountId::new(account_id.clone())
+        }
+        if item_id.is_some_and(|id| !item_refundable.contains_key(&id)) {
+            return Err(CorrectPurchasePersistenceError::HouseholdMismatch);
+        }
+        let allocation_rows = if let Some(item_id) = item_id {
+            purchase_allocations::table
+                .filter(purchase_allocations::household_id.eq(household_id))
+                .filter(purchase_allocations::purchase_id.eq(purchase_id))
+                .filter(purchase_allocations::item_id.eq(item_id))
+                .select((
+                    purchase_allocations::pool_id,
+                    purchase_allocations::weight,
+                    purchase_allocations::amount_yen,
+                ))
+                .load::<(Uuid, i64, i64)>(conn)
+                .await?
+        } else {
+            purchase_allocations::table
+                .filter(purchase_allocations::household_id.eq(household_id))
+                .filter(purchase_allocations::purchase_id.eq(purchase_id))
+                .select((
+                    purchase_allocations::pool_id,
+                    purchase_allocations::weight,
+                    purchase_allocations::amount_yen,
+                ))
+                .load::<(Uuid, i64, i64)>(conn)
+                .await?
+        };
+        let mut allocation_weights = BTreeMap::<Uuid, i64>::new();
+        for (pool_id, weight, amount) in allocation_rows {
+            let value = if item_id.is_some() { weight } else { amount };
+            let total = allocation_weights.entry(pool_id).or_default();
+            *total = total
+                .checked_add(value)
+                .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+        }
+        let saved_allocations = AllocationShares::new(
+            allocation_weights
+                .into_iter()
+                .filter(|(_, weight)| *weight > 0)
+                .map(|(pool_id, weight)| {
+                    let pool_id = WorkflowPoolId::new(pool_id.to_string())
                         .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
-                    let amount = PositiveYen::new(*amount)
+                    let weight = u64::try_from(weight)
                         .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
-                    Ok(
-                        bookkeeping_application::correct_purchase::CorrectionPayment {
-                            account_id,
-                            amount,
-                        },
-                    )
+                    AllocationWeight::new(pool_id, weight)
+                        .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)
                 })
-                .collect::<Result<Vec<_>, CorrectPurchasePersistenceError>>()?;
-            let item_balance = item_id
-                .map(|id| item_refundable.get(&id).copied())
-                .flatten()
-                .map(Yen::new)
-                .transpose()
-                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
-            let command = CorrectionCommand {
-                purchase_id: PurchaseId::new(purchase_id.to_string())
-                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
-                purchase_lifecycle: match status.as_str() {
-                    "DRAFT" => PurchaseLifecycle::Draft,
-                    "POSTED" => PurchaseLifecycle::Posted,
-                    _ => return Err(CorrectPurchasePersistenceError::InvalidDecision),
-                },
-                target: match item_id {
-                    Some(id) => CorrectionTarget::Item(
-                        ItemId::new(id.to_string())
-                            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
-                    ),
-                    None => CorrectionTarget::Purchase,
-                },
-                amount_delta: delta,
-                reason: request.reason.clone(),
-                original_period: original_period_model.clone(),
-                effective_period: effective_period_model,
-                purchase_refundable: Yen::new(purchase_refundable)
-                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
-                item_refundable: item_balance,
-                saved_allocations,
-                requested_allocations,
-                payments,
-            };
-            let decision = decide_correct_purchase(command)
-                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
-            let persisted =
-                persist_correct_purchase_in_transaction(conn, persist_input.clone(), decision)
-                    .await?;
-            if let (Some(source_document_id), Some(source_reference)) =
-                (&request.source_document_id, &request.source_reference)
-            {
-                persist_statement_refund_confirmation(
-                    conn,
-                    household_id,
-                    actor_id,
-                    parse_uuid(source_document_id, "source_document_id")?,
-                    source_reference,
-                    Uuid::parse_str(&persisted.correction_id)
-                        .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
-                    &source_observation
-                        .as_ref()
-                        .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?
-                        .evidence,
+                .collect::<Result<Vec<_>, _>>()?,
+        )
+        .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+        let requested_allocations = if request.allocations.is_empty() {
+            None
+        } else {
+            Some(
+                AllocationShares::new(
+                    request
+                        .allocations
+                        .iter()
+                        .map(|(pool_id, weight)| {
+                            let id = WorkflowPoolId::new(pool_id.clone())
+                                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+                            let weight = u64::try_from(*weight)
+                                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+                            AllocationWeight::new(id, weight)
+                                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
                 )
-                .await?;
+                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
+            )
+        };
+        let source_observation = if let Some(document_id) = &request.source_document_id {
+            let document_id = parse_uuid(document_id, "source_document_id")?;
+            let reference = request.source_reference.as_deref().unwrap_or_default();
+            let statement =
+                load_statement_refund_entry(conn, household_id, document_id, reference).await?;
+            if statement.observation.kind != "REFUND" || statement.observation.amount_yen >= 0 {
+                return Err(CorrectPurchasePersistenceError::StatementNotRefundable);
             }
-            Ok(persisted)
-        })
+            Some(statement)
+        } else {
+            None
+        };
+        let amount_delta = request.amount_delta_yen.or_else(|| {
+            source_observation
+                .as_ref()
+                .map(|statement| statement.observation.amount_yen)
+        });
+        let delta = SignedYenDelta::new(
+            amount_delta.ok_or(CorrectPurchasePersistenceError::InvalidDecision)?,
+        )
+        .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+        let payment_inputs = if request.payments.is_empty() {
+            use public::purchase_payments;
+            let saved_payments = purchase_payments::table
+                .filter(purchase_payments::household_id.eq(household_id))
+                .filter(purchase_payments::purchase_id.eq(purchase_id))
+                .order(purchase_payments::line_no.asc())
+                .select((purchase_payments::account_id, purchase_payments::amount_yen))
+                .load::<(Uuid, i64)>(conn)
+                .await?;
+            let mut total = 0_i64;
+            let mut weights = Vec::new();
+            for (account_id, amount) in saved_payments {
+                total = total
+                    .checked_add(amount)
+                    .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+                weights.push((account_id.to_string(), amount));
+            }
+            if weights.is_empty() {
+                if let Some(account_id) = legacy_payment_account_id {
+                    weights.push((account_id.to_string(), original_total));
+                    total = original_total;
+                }
+            }
+            if !weights.is_empty() && total != original_total {
+                return Err(CorrectPurchasePersistenceError::InvalidDecision);
+            }
+            if weights.is_empty() {
+                Vec::new()
+            } else {
+                let shares = AllocationShares::new(
+                    weights
+                        .into_iter()
+                        .map(|(id, amount)| {
+                            let id = WorkflowPoolId::new(id)
+                                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+                            let amount = u64::try_from(amount)
+                                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+                            AllocationWeight::new(id, amount)
+                                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                )
+                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+                bookkeeping_domain::allocate(
+                    Yen::new(delta.value().abs())
+                        .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
+                    &shares,
+                )
+                .into_iter()
+                .filter(|payment| payment.amount().value() > 0)
+                .map(|payment| {
+                    Ok((
+                        payment.pool_id().as_str().to_owned(),
+                        payment.amount().value(),
+                    ))
+                })
+                .collect::<Result<Vec<_>, CorrectPurchasePersistenceError>>()?
+            }
+        } else {
+            request.payments.clone()
+        };
+        let payments = payment_inputs
+            .iter()
+            .map(|(account_id, amount)| {
+                let account_id = AccountId::new(account_id.clone())
+                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+                let amount = PositiveYen::new(*amount)
+                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+                Ok(
+                    bookkeeping_application::correct_purchase::CorrectionPayment {
+                        account_id,
+                        amount,
+                    },
+                )
+            })
+            .collect::<Result<Vec<_>, CorrectPurchasePersistenceError>>()?;
+        let item_balance = item_id
+            .map(|id| item_refundable.get(&id).copied())
+            .flatten()
+            .map(Yen::new)
+            .transpose()
+            .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
+        let command = CorrectionCommand {
+            purchase_id: PurchaseId::new(purchase_id.to_string())
+                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
+            purchase_lifecycle: match status.as_str() {
+                "DRAFT" => PurchaseLifecycle::Draft,
+                "POSTED" => PurchaseLifecycle::Posted,
+                _ => return Err(CorrectPurchasePersistenceError::InvalidDecision),
+            },
+            target: match item_id {
+                Some(id) => CorrectionTarget::Item(
+                    ItemId::new(id.to_string())
+                        .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
+                ),
+                None => CorrectionTarget::Purchase,
+            },
+            amount_delta: delta,
+            reason: request.reason.clone(),
+            original_period: original_period_model.clone(),
+            effective_period: effective_period_model,
+            purchase_refundable: Yen::new(purchase_refundable)
+                .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
+            item_refundable: item_balance,
+            saved_allocations,
+            requested_allocations,
+            payments,
+        };
+        self.source_observation = source_observation;
+        Ok(
+            bookkeeping_application::correct_purchase_workflow::LoadedPurchaseCorrection {
+                command: Some(command),
+                replay: None,
+            },
+        )
+    }
+
+    async fn persist(
+        &mut self,
+        decision: CorrectPurchaseDecision,
+    ) -> Result<bookkeeping_application::correct_purchase_workflow::CorrectedPurchase, Self::Error>
+    {
+        let persisted = persist_correct_purchase_in_transaction(
+            &mut *self.conn,
+            self.persist_input.clone(),
+            decision,
+        )
         .await?;
-    Ok(result)
+        if let (Some(source_document_id), Some(source_reference)) = (
+            &self.request.source_document_id,
+            &self.request.source_reference,
+        ) {
+            persist_statement_refund_confirmation(
+                &mut *self.conn,
+                self.household_id,
+                self.actor_id,
+                parse_uuid(source_document_id, "source_document_id")?,
+                source_reference,
+                Uuid::parse_str(&persisted.correction_id)
+                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
+                &self
+                    .source_observation
+                    .as_ref()
+                    .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?
+                    .evidence,
+            )
+            .await?;
+        }
+        Ok(
+            bookkeeping_application::correct_purchase_workflow::CorrectedPurchase {
+                correction_id: persisted.correction_id,
+                journal_id: persisted.journal_id,
+                ledger_entry_id: persisted.ledger_entry_id,
+            },
+        )
+    }
 }
 
 pub async fn link_statement_refund_correction(

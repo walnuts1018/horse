@@ -3,11 +3,11 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
+pub use bookkeeping_application::funding_record::FundingCommandContext;
 use bookkeeping_application::funding_record::{
     FundingAccount, FundingAccountKind, FundingPoolKind,
 };
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
-pub use bookkeeping_application::funding_record::FundingCommandContext;
 
 use crate::{PgPool, schema::public};
 
@@ -38,6 +38,29 @@ pub async fn load_funding_command_context(
     destination_account_id: Option<Uuid>,
     occurred_at: DateTime<Utc>,
 ) -> Result<FundingCommandContext, FundingCommandContextError> {
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|error| FundingCommandContextError::Pool(error.to_string()))?;
+    load_funding_command_context_in_transaction(
+        &mut *pooled,
+        household_id,
+        pool_id,
+        source_account_id,
+        destination_account_id,
+        occurred_at,
+    )
+    .await
+}
+
+pub async fn load_funding_command_context_in_transaction(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    pool_id: Uuid,
+    source_account_id: Option<Uuid>,
+    destination_account_id: Option<Uuid>,
+    occurred_at: DateTime<Utc>,
+) -> Result<FundingCommandContext, FundingCommandContextError> {
     let tokyo_offset =
         FixedOffset::east_opt(9 * 60 * 60).ok_or(FundingCommandContextError::InvalidTokyoOffset)?;
     let period_start = occurred_at
@@ -45,18 +68,13 @@ pub async fn load_funding_command_context(
         .date_naive()
         .with_day(1)
         .ok_or(FundingCommandContextError::InvalidTokyoOffset)?;
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| FundingCommandContextError::Pool(error.to_string()))?;
-
     use public::accounting_periods::dsl as periods;
     use public::pools::dsl as pools;
 
     public::households::table
         .filter(public::households::id.eq(household_id))
         .select(public::households::id)
-        .first::<Uuid>(&mut *pooled)
+        .first::<Uuid>(&mut *conn)
         .await
         .optional()?
         .ok_or(FundingCommandContextError::HouseholdNotFound)?;
@@ -65,7 +83,7 @@ pub async fn load_funding_command_context(
         .filter(pools::household_id.eq(household_id))
         .filter(pools::id.eq(pool_id))
         .select(pools::kind)
-        .first::<String>(&mut *pooled)
+        .first::<String>(&mut *conn)
         .await
         .optional()?
         .ok_or(FundingCommandContextError::PoolNotFound)
@@ -75,7 +93,7 @@ pub async fn load_funding_command_context(
         .filter(periods::household_id.eq(household_id))
         .filter(periods::period_start.eq(period_start))
         .select((periods::status, periods::revision))
-        .first::<(String, i64)>(&mut *pooled)
+        .first::<(String, i64)>(&mut *conn)
         .await
         .optional()?;
     let local_date = occurred_at.with_timezone(&tokyo_offset).date_naive();
@@ -111,9 +129,9 @@ pub async fn load_funding_command_context(
         FundingCommandContextError::InvalidAccountingPeriodStatus(local_date.to_string())
     })?;
 
-    let source_account = load_account(&mut pooled, household_id, source_account_id).await?;
+    let source_account = load_account(&mut *conn, household_id, source_account_id).await?;
     let destination_account =
-        load_account(&mut pooled, household_id, destination_account_id).await?;
+        load_account(&mut *conn, household_id, destination_account_id).await?;
 
     Ok(FundingCommandContext {
         accounting_period,

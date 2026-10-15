@@ -64,9 +64,10 @@ pub trait ClaimExtractionJobOperations {
 
     fn queued_job(&self, candidate: &Self::Candidate) -> &QueuedJob;
 
-    async fn load_next_candidate(
+    async fn load_candidate(
         &mut self,
         now_ms: i64,
+        job_id: Option<&str>,
     ) -> Result<Option<Self::Candidate>, Self::Error>;
 
     async fn persist_claim(
@@ -92,8 +93,41 @@ pub async fn claim_next_extraction_job<O>(
 where
     O: ClaimExtractionJobOperations,
 {
+    claim_eligible_job(operations, now_ms, None, lease_token, lease_duration_ms).await
+}
+
+pub async fn claim_extraction_job_by_id<O>(
+    operations: &mut O,
+    now_ms: i64,
+    job_id: &str,
+    lease_token: impl Into<String>,
+    lease_duration_ms: i64,
+) -> Result<Option<O::Claimed>, ClaimExtractionJobWorkflowError<O::Error>>
+where
+    O: ClaimExtractionJobOperations,
+{
+    claim_eligible_job(
+        operations,
+        now_ms,
+        Some(job_id),
+        lease_token,
+        lease_duration_ms,
+    )
+    .await
+}
+
+async fn claim_eligible_job<O>(
+    operations: &mut O,
+    now_ms: i64,
+    job_id: Option<&str>,
+    lease_token: impl Into<String>,
+    lease_duration_ms: i64,
+) -> Result<Option<O::Claimed>, ClaimExtractionJobWorkflowError<O::Error>>
+where
+    O: ClaimExtractionJobOperations,
+{
     let Some(candidate) = operations
-        .load_next_candidate(now_ms)
+        .load_candidate(now_ms, job_id)
         .await
         .map_err(ClaimExtractionJobWorkflowError::Operations)?
     else {

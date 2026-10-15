@@ -1,6 +1,7 @@
 use std::{env, error::Error, net::SocketAddr, sync::Arc};
 
 use horse_auth::{AuthConfig, AuthService};
+use horse_extraction_queue::ExtractionQueue;
 use horse_graphql_api::{Config as GraphqlConfig, schema};
 use horse_http_api::{Config, router};
 use horse_object_storage::ObjectStore;
@@ -71,6 +72,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             None
         }
     };
+    let extraction_queue = match ExtractionQueue::from_env().await {
+        Ok(queue) => queue.map(Arc::new),
+        Err(error) => {
+            tracing::warn!(error = %error, "Extraction queue is unavailable; database jobs will be recovered by the worker");
+            None
+        }
+    };
     let listener = TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], port))).await?;
     axum::serve(
         listener,
@@ -82,6 +90,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 ocr_endpoint: std::env::var("OCR_URL").unwrap_or_default(),
                 auth,
                 object_store,
+                extraction_queue,
             },
             graphql_schema,
         ),

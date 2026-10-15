@@ -9,8 +9,8 @@ use bookkeeping_application::create_purchase::{
 };
 use bookkeeping_postgres::{
     create_purchase as postgres_create, post_purchase as postgres_post,
-    post_purchase_loader::{self, PostPurchaseLoadError},
-    purchase_command_context, purchase_command_result, purchase_create_and_post,
+    post_purchase_loader::PostPurchaseLoadError, purchase_command_context, purchase_command_result,
+    purchase_create_and_post,
 };
 use horse_postgres_common::PgPool;
 use household_postgres::household_access as postgres_household_access;
