@@ -63,7 +63,7 @@ RUN --mount=type=cache,id=horse-cargo-registry,target=/usr/local/cargo/registry,
     && cp "${CARGO_TARGET_DIR}/release/horse-api" /out/api \
     && cp "${CARGO_TARGET_DIR}/release/horse-worker" /out/worker
 
-FROM docker.io/arigaio/atlas:1.3.0-distroless AS atlas
+FROM docker.io/arigaio/atlas:1.3.4-distroless AS atlas
 
 FROM gcr.io/distroless/base-debian12:nonroot AS go-runtime
 
