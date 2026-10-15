@@ -34,6 +34,7 @@ var ErrUnauthenticated = errors.New("unauthenticated")
 
 const sessionCookie = "horse_session"
 const oidcStateCookie = "horse_oidc_state"
+const oauthInvalidGrantError = "invalid_grant"
 
 type Config struct {
 	IssuerURL      string
@@ -106,11 +107,13 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 	verifier := oauth2.GenerateVerifier()
 	state, err := randomToken(32)
 	if err != nil {
+		s.logOperationalFailure(r.Context(), "generate OIDC state", err)
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
 	nonce, err := randomToken(32)
 	if err != nil {
+		s.logOperationalFailure(r.Context(), "generate OIDC nonce", err)
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
@@ -123,6 +126,7 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 		StateHash: &stateHash, Nonce: &nonce, Verifier: &verifier, RedirectTo: &redirectTo, ExpiresAt: &expiresAt,
 	}).Exec(ctx, bobpgx.NewPool(s.db))
 	if err != nil {
+		s.logOperationalFailure(r.Context(), "store OIDC state", err)
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
@@ -153,12 +157,24 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		models.OidcStates.Columns.ExpiresAt.GT(psql.Arg(time.Now())),
 	))).One(ctx, bobpgx.NewPool(s.db))
 	if err != nil {
-		http.Error(w, "invalid or expired authentication state", http.StatusBadRequest)
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "invalid or expired authentication state", http.StatusBadRequest)
+
+			return
+		}
+		s.logOperationalFailure(r.Context(), "consume OIDC state", err)
+		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
 	nonce, verifier, redirectTo := stateRecord.Nonce, stateRecord.Verifier, stateRecord.RedirectTo
 	token, err := s.oauth.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
+		if isOperationalTokenExchangeError(err) {
+			s.logOperationalFailure(r.Context(), "exchange OIDC authorization code", err)
+			http.Error(w, "authentication unavailable", http.StatusBadGateway)
+
+			return
+		}
 		http.Error(w, "authentication failed", http.StatusUnauthorized)
 		return
 	}
@@ -169,6 +185,12 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 	idToken, err := s.verifier.Verify(ctx, rawIDToken)
 	if err != nil {
+		if isOperationalIDTokenVerificationError(err) {
+			s.logOperationalFailure(r.Context(), "verify OIDC ID token", err)
+			http.Error(w, "authentication unavailable", http.StatusBadGateway)
+
+			return
+		}
 		http.Error(w, "authentication failed", http.StatusUnauthorized)
 		return
 	}
@@ -193,16 +215,19 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		im.OnConflict("oidc_subject").DoUpdate(im.SetCol("display_name").To(psql.Arg(displayName))),
 	).Exec(ctx, bobpgx.NewPool(s.db))
 	if err != nil {
+		s.logOperationalFailure(r.Context(), "store OIDC member", err)
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
 	session, err := randomToken(32)
 	if err != nil {
+		s.logOperationalFailure(r.Context(), "generate OIDC session", err)
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
 	member, err := models.Members.Query(sm.Where(models.Members.Columns.OidcSubject.EQ(psql.Arg(identity.Subject)))).One(ctx, bobpgx.NewPool(s.db))
 	if err != nil {
+		s.logOperationalFailure(r.Context(), "load OIDC member", err)
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
@@ -222,6 +247,7 @@ func (s *Service) Callback(w http.ResponseWriter, r *http.Request) {
 		TokenHash: &tokenHash, MemberID: &member.ID, Expiry: &expiry,
 	}).Exec(ctx, bobpgx.NewPool(s.db))
 	if err != nil {
+		s.logOperationalFailure(r.Context(), "store OIDC session", err)
 		http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 		return
 	}
@@ -244,6 +270,7 @@ func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
 		tokenHash := digest(cookie.Value)
 		_, err := models.OidcSessions.Delete(dm.Where(models.OidcSessions.Columns.TokenHash.EQ(psql.Arg(tokenHash)))).Exec(ctx, bobpgx.NewPool(s.db))
 		if err != nil {
+			s.logOperationalFailure(r.Context(), "delete OIDC session", err)
 			http.Error(w, "authentication unavailable", http.StatusInternalServerError)
 			return
 		}
@@ -287,15 +314,10 @@ func resolveLookupError(operation string, err error) error {
 
 func (s *Service) Me(w http.ResponseWriter, r *http.Request) {
 	principal, err := s.Resolve(r)
-	if err != nil && !errors.Is(err, ErrUnauthenticated) && s.logger != nil {
-		cause := rootError(err)
-		attrs := []any{"error_type", fmt.Sprintf("%T", cause)}
-		if databaseError, ok := errors.AsType[*pgconn.PgError](cause); ok {
-			attrs = append(attrs, "database_code", databaseError.Code)
-		}
-		s.logger.ErrorContext(r.Context(), "authentication resolution failed", attrs...)
+	if err != nil && !errors.Is(err, ErrUnauthenticated) {
+		s.logOperationalFailure(r.Context(), "resolve OIDC session", err)
 	}
-	writeMeResponse(w, principal, err)
+	s.writeMeResponse(w, r, principal, err)
 }
 
 func rootError(err error) error {
@@ -308,7 +330,41 @@ func rootError(err error) error {
 	}
 }
 
-func writeMeResponse(w http.ResponseWriter, principal Principal, err error) {
+func (s *Service) logOperationalFailure(ctx context.Context, operation string, err error) {
+	cause := rootError(err)
+	attrs := []any{"error_type", fmt.Sprintf("%T", cause)}
+	if databaseError, ok := errors.AsType[*pgconn.PgError](err); ok {
+		attrs = append(attrs, "database_code", databaseError.Code)
+	}
+	if retrieveError, ok := errors.AsType[*oauth2.RetrieveError](err); ok && retrieveError.Response != nil {
+		attrs = append(attrs, "provider_status", retrieveError.Response.StatusCode)
+	}
+	logger := s.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.ErrorContext(ctx, operation, attrs...)
+}
+
+func isOperationalTokenExchangeError(err error) bool {
+	retrieveError, ok := errors.AsType[*oauth2.RetrieveError](err)
+	if !ok || retrieveError.Response == nil {
+		return true
+	}
+	status := retrieveError.Response.StatusCode
+	if status == http.StatusRequestTimeout || status == http.StatusTooManyRequests || status >= http.StatusInternalServerError {
+		return true
+	}
+
+	return retrieveError.ErrorCode != oauthInvalidGrantError
+}
+
+func isOperationalIDTokenVerificationError(err error) bool {
+	// go-oidc v3.21.0はRemoteKeySetの鍵取得エラーをこのprefixで%vラップするため、errors.Is/Asでは分類できない。
+	return strings.HasPrefix(err.Error(), "failed to verify signature: fetching keys")
+}
+
+func (s *Service) writeMeResponse(w http.ResponseWriter, r *http.Request, principal Principal, err error) {
 	if err != nil {
 		if errors.Is(err, ErrUnauthenticated) {
 			w.Header().Set("Content-Type", "application/json")
@@ -321,7 +377,8 @@ func writeMeResponse(w http.ResponseWriter, principal Principal, err error) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.MarshalWrite(w, map[string]any{"authenticated": true, "viewer": principal}); err != nil {
-		http.Error(w, "response encoding failed", http.StatusInternalServerError)
+		s.logOperationalFailure(r.Context(), "encode authentication response", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
