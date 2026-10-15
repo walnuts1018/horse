@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bookkeeping_workflows::{
-    MemberFundingBasis, MemberId, MemberWeight, PostingTarget, PurchaseStatus, SettlementPolicy, Side,
+    MemberFundingBasis, MemberId, MemberWeight, PostingTarget, PurchaseStatus, SettlementPolicy,
+    Side,
     bulk_delete_items::{
         BulkDeleteItemCommand, BulkDeleteItemState, BulkDeleteItemTarget, BulkDeleteItemsError,
         BulkDeletePurchaseState, decide_bulk_delete_items,
@@ -630,7 +631,9 @@ async fn sync_posted_accounting(
         .journal_lines()
         .iter()
         .filter(|line| line.side() == Side::Debit)
-        .try_fold(0_i64, |total, line| total.checked_add(line.amount().value()))
+        .try_fold(0_i64, |total, line| {
+            total.checked_add(line.amount().value())
+        })
         .ok_or(BulkDeletePurchaseItemsPersistenceError::NumericOutOfRange(
             "ledger_amount",
         ))?;

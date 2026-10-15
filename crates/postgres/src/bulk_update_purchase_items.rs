@@ -4,7 +4,9 @@ use bookkeeping_workflows::bulk_update_items::{
     BulkUpdateItemPatch, BulkUpdateItemState, BulkUpdateItemTarget, BulkUpdateItemsCommand,
     BulkUpdateItemsError, BulkUpdatePurchaseState, ItemAllocationWeight, decide_bulk_update_items,
 };
-use bookkeeping_workflows::{MemberFundingBasis, MemberId, MemberWeight, PostingTarget, SettlementPolicy};
+use bookkeeping_workflows::{
+    MemberFundingBasis, MemberId, MemberWeight, PostingTarget, SettlementPolicy,
+};
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
@@ -787,7 +789,9 @@ async fn sync_posted_accounting(
         .journal_lines()
         .iter()
         .filter(|line| line.side() == bookkeeping_workflows::Side::Debit)
-        .try_fold(0_i64, |total, line| total.checked_add(line.amount().value()))
+        .try_fold(0_i64, |total, line| {
+            total.checked_add(line.amount().value())
+        })
         .ok_or(BulkUpdatePurchaseItemsPersistenceError::NumericOutOfRange(
             "ledger_amount",
         ))?;

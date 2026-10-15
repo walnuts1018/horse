@@ -565,9 +565,9 @@ async fn sync_posted_purchase_accounting(
             .values((
                 public::journal_entries::household_id.eq(household_id),
                 public::journal_entries::journal_id.eq(journal_id),
-                public::journal_entries::line_no.eq(i32::try_from(line.line_no()).map_err(|_| {
-                    UpdatePurchasePersistenceError::NumericOutOfRange("journal_line_no")
-                })?),
+                public::journal_entries::line_no.eq(i32::try_from(line.line_no()).map_err(
+                    |_| UpdatePurchasePersistenceError::NumericOutOfRange("journal_line_no"),
+                )?),
                 public::journal_entries::account_id.eq(account_id),
                 public::journal_entries::pool_id.eq(pool_id),
                 public::journal_entries::member_id.eq::<Option<Uuid>>(None),
@@ -699,7 +699,9 @@ async fn sync_posted_purchase_accounting(
         .journal_lines()
         .iter()
         .filter(|line| line.side() == bookkeeping_workflows::Side::Debit)
-        .try_fold(0_i64, |total, line| total.checked_add(line.amount().value()))
+        .try_fold(0_i64, |total, line| {
+            total.checked_add(line.amount().value())
+        })
         .ok_or(UpdatePurchasePersistenceError::NumericOutOfRange(
             "purchase_total",
         ))?;

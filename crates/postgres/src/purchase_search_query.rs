@@ -185,7 +185,7 @@ pub async fn purchases(
             ));
         }
         if item_target {
-            if let Some(pattern) = &search {
+            if let Some(pattern) = search.clone() {
                 items = items.filter(
                     purchases::merchant
                         .ilike(pattern.clone())
@@ -200,7 +200,7 @@ pub async fn purchases(
             .await?;
         query = query.filter(purchases::id.eq_any(purchase_ids));
     }
-    if let Some(pattern) = &search {
+    if let Some(pattern) = search.clone() {
         if !item_target {
             query = query.filter(
                 purchases::merchant.ilike(pattern.clone()).or(exists(
