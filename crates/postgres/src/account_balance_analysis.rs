@@ -56,7 +56,7 @@ struct JournalChangeRow {
     source_kind: String,
     source_id: Uuid,
     occurred_at: DateTime<Utc>,
-    amount_yen: i64,
+    amount_yen: i128,
 }
 
 pub async fn account_balance_analysis_for_period(
@@ -120,7 +120,7 @@ pub async fn account_balance_analysis_for_period(
         let amount_yen = signed_amount(&account.1, debit_yen, credit_yen)?;
         match grouped_changes.get_mut(&journal_id) {
             Some(change) => {
-                change.amount_yen = checked_balance_add(change.amount_yen, amount_yen)?;
+                change.amount_yen += i128::from(amount_yen);
             }
             None => {
                 grouped_changes.insert(
@@ -130,7 +130,7 @@ pub async fn account_balance_analysis_for_period(
                         source_kind,
                         source_id,
                         occurred_at,
-                        amount_yen,
+                        amount_yen: i128::from(amount_yen),
                     },
                 );
             }
@@ -143,19 +143,18 @@ pub async fn account_balance_analysis_for_period(
         .filter(|row| row.source_kind == OPENING_BALANCE_SOURCE_KIND && row.source_id == account_id)
         .map(|row| row.occurred_at.clone())
         .min();
-    let mut changes = grouped_changes
-        .into_iter()
-        .map(|(_, row)| row)
-        .filter(|row| {
-            opening_at
-                .as_ref()
-                .is_none_or(|opened_at| row.occurred_at >= *opened_at)
-        })
-        .map(|row| {
-            let amount_yen = row.amount_yen;
-            (row, amount_yen)
-        })
-        .collect::<Vec<_>>();
+    let mut changes = Vec::with_capacity(grouped_changes.len());
+    for (_, row) in grouped_changes {
+        if opening_at
+            .as_ref()
+            .is_some_and(|opened_at| row.occurred_at < *opened_at)
+        {
+            continue;
+        }
+        let amount_yen = i64::try_from(row.amount_yen)
+            .map_err(|_| AccountBalanceAnalysisError::BalanceOverflow)?;
+        changes.push((row, amount_yen));
+    }
     changes.sort_by_key(|(row, _)| {
         (
             row.occurred_at.clone(),
@@ -179,7 +178,9 @@ pub async fn account_balance_analysis_for_period(
                 occurred_at: row.occurred_at,
                 amount_yen,
                 balance_yen: balance,
-                description: if row.source_kind == OPENING_BALANCE_SOURCE_KIND {
+                description: if row.source_kind == OPENING_BALANCE_SOURCE_KIND
+                    && row.source_id == account_id
+                {
                     format!("期首残高: {}", account.0)
                 } else {
                     source_description(&row.source_kind)
@@ -265,6 +266,8 @@ async fn load_descriptions(
     changes: &mut [AccountBalanceChange],
 ) -> Result<(), AccountBalanceAnalysisError> {
     use public::ledger_entries::dsl as ledger_entries;
+    use public::account_incomes::dsl as incomes;
+    use public::account_movements::dsl as movements;
     use public::purchase_corrections::dsl as corrections;
     use public::purchases::dsl as purchases;
     use public::transfers::dsl as transfers;
@@ -318,6 +321,28 @@ async fn load_descriptions(
             .load::<(Uuid, String)>(conn)
             .await?;
         apply_descriptions(changes, "TRANSFER", rows);
+    }
+
+    let movement_ids = ids_for("ACCOUNT_MOVEMENT");
+    if !movement_ids.is_empty() {
+        let rows = movements::account_movements
+            .filter(movements::household_id.eq(household_id))
+            .filter(movements::id.eq_any(&movement_ids))
+            .select((movements::id, movements::description))
+            .load::<(Uuid, String)>(conn)
+            .await?;
+        apply_descriptions(changes, "ACCOUNT_MOVEMENT", rows);
+    }
+
+    let income_ids = ids_for("ACCOUNT_INCOME");
+    if !income_ids.is_empty() {
+        let rows = incomes::account_incomes
+            .filter(incomes::household_id.eq(household_id))
+            .filter(incomes::id.eq_any(&income_ids))
+            .select((incomes::id, incomes::description))
+            .load::<(Uuid, String)>(conn)
+            .await?;
+        apply_descriptions(changes, "ACCOUNT_INCOME", rows);
     }
     Ok(())
 }
