@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { BookOpen, ChevronRight, Plus, Upload, Wallet } from "lucide-react";
+import { BookOpen, Camera, ChevronRight, Plus, Upload, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLazyLoadQuery } from "react-relay";
 
@@ -201,13 +201,27 @@ export function HomePage({
           className="quick-card"
           to="/households/$householdId/imports"
           params={{ householdId: household.id }}
+          search={{ capture: "1" }}
+        >
+          <span className="quick-icon" aria-hidden="true">
+            <Camera />
+          </span>
+          <span>
+            <b>撮影する</b>
+          </span>
+          <ChevronRight aria-hidden="true" />
+        </Link>
+        <Link
+          className="quick-card"
+          to="/households/$householdId/imports"
+          params={{ householdId: household.id }}
           search
         >
           <span className="quick-icon" aria-hidden="true">
             <Upload />
           </span>
           <span>
-            <b>レシートを取り込む</b>
+            <b>ファイルを取り込む</b>
             {pendingImportStatusMessage && <small>{pendingImportStatusMessage}</small>}
           </span>
           <ChevronRight aria-hidden="true" />
