@@ -203,7 +203,12 @@ export function ImportDocumentReview({
             selectStatementRegion(statementSourceReference(entry), entry.region.page);
         }}
       />
-      <DocumentConversation document={document} onError={onError} onUpdated={onInteractionQueued} />
+      <DocumentConversation
+        key={document.id}
+        document={document}
+        onError={onError}
+        onUpdated={onInteractionQueued}
+      />
       {document.result && (
         <EvidenceMatching
           document={document}

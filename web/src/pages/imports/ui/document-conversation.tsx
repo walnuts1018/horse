@@ -9,6 +9,61 @@ import {
 
 import styles from "./document-conversation.module.css";
 
+type PendingMessage = {
+  text: string;
+  conversationLength: number;
+  status: "processing" | "failed";
+};
+
+function pendingMessageStorageKey(documentId: string) {
+  return `document-interaction:${documentId}`;
+}
+
+function readPendingMessage(documentId: string): PendingMessage | null {
+  try {
+    const stored = sessionStorage.getItem(pendingMessageStorageKey(documentId));
+    if (!stored) return null;
+    const value: unknown = JSON.parse(stored);
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("text" in value) ||
+      typeof value.text !== "string" ||
+      !("conversationLength" in value) ||
+      typeof value.conversationLength !== "number" ||
+      !("status" in value) ||
+      (value.status !== "processing" && value.status !== "failed")
+    ) {
+      return null;
+    }
+    return {
+      text: value.text,
+      conversationLength: value.conversationLength,
+      status: value.status,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function storePendingMessage(documentId: string, pendingMessage: PendingMessage) {
+  try {
+    sessionStorage.setItem(pendingMessageStorageKey(documentId), JSON.stringify(pendingMessage));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function clearPendingMessage(documentId: string) {
+  try {
+    sessionStorage.removeItem(pendingMessageStorageKey(documentId));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function DocumentConversation({
   document,
   onError,
@@ -20,11 +75,9 @@ export function DocumentConversation({
 }) {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [pendingMessage, setPendingMessage] = useState<{
-    text: string;
-    conversationLength: number;
-    status: "processing" | "failed";
-  } | null>(null);
+  const [storedPendingMessage, setPendingMessage] = useState<PendingMessage | null>(() =>
+    readPendingMessage(document.id),
+  );
   const sendingRef = useRef(false);
   const messages = document.result?.conversation;
   const hasExtraction = !!document.result?.receipt || !!document.result?.statements?.length;
@@ -34,22 +87,34 @@ export function DocumentConversation({
   const paidModel = selectedModel?.tier === "paid" || document.model === "pro";
   const quotaLimited = isQuotaLimitedExtraction(document);
   const processing = ["queued", "running"].includes(document.status.toLowerCase());
+  const pendingMessageCompleted =
+    !!storedPendingMessage &&
+    !!messages
+      ?.slice(storedPendingMessage.conversationLength)
+      .some((entry) => entry.role === "user" && entry.text === storedPendingMessage.text);
+  const pendingMessage =
+    storedPendingMessage &&
+    !pendingMessageCompleted &&
+    storedPendingMessage.status === "processing" &&
+    document.status.toLowerCase() === "failed"
+      ? { ...storedPendingMessage, status: "failed" as const }
+      : pendingMessageCompleted
+        ? null
+        : storedPendingMessage;
 
   useEffect(() => {
-    if (!pendingMessage) return;
-    if (
-      messages
-        ?.slice(pendingMessage.conversationLength)
-        .some((entry) => entry.role === "user" && entry.text === pendingMessage.text)
-    ) {
-      setPendingMessage(null);
+    if (!storedPendingMessage) return;
+    if (pendingMessageCompleted) {
+      clearPendingMessage(document.id);
     } else if (
-      pendingMessage.status === "processing" &&
+      storedPendingMessage.status === "processing" &&
       document.status.toLowerCase() === "failed"
     ) {
-      setPendingMessage({ ...pendingMessage, status: "failed" });
+      storePendingMessage(document.id, { ...storedPendingMessage, status: "failed" });
+    } else {
+      storePendingMessage(document.id, storedPendingMessage);
     }
-  }, [document.status, messages, pendingMessage]);
+  }, [document.id, document.status, pendingMessageCompleted, storedPendingMessage]);
 
   const send = async (text: string, modelOverride?: string) => {
     const instruction = text.trim();
@@ -67,11 +132,13 @@ export function DocumentConversation({
         }),
       });
       if (!response.ok) throw new Error(`再確認を開始できませんでした (${response.status})`);
-      setPendingMessage({
+      const nextPendingMessage: PendingMessage = {
         text: instruction,
         conversationLength: messages?.length ?? 0,
         status: "processing",
-      });
+      };
+      storePendingMessage(document.id, nextPendingMessage);
+      setPendingMessage(nextPendingMessage);
       if (instruction === message.trim()) setMessage("");
       await onUpdated();
     } catch (reason) {

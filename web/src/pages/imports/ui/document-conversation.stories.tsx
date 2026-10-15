@@ -16,6 +16,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 function FailedConversation() {
+  const [mountKey, setMountKey] = useState(0);
   const [document, setDocument] = useState<DocumentReview>({
     id: "story-document",
     status: "queued",
@@ -24,6 +25,7 @@ function FailedConversation() {
   });
 
   useEffect(() => {
+    sessionStorage.removeItem("document-interaction:story-document");
     const originalFetch = window.fetch;
     window.fetch = async () => new Response(null, { status: 202 });
     return () => {
@@ -33,7 +35,11 @@ function FailedConversation() {
 
   return (
     <div style={{ width: "min(640px, 90vw)" }}>
+      <button type="button" onClick={() => setMountKey((current) => current + 1)}>
+        画面を再読み込み
+      </button>
       <DocumentConversation
+        key={mountKey}
         document={document}
         onError={(message) => window.alert(message)}
         onUpdated={() =>
@@ -61,5 +67,8 @@ export const FailedInstructionCanBeResent: Story = {
         canvas.getByRole("button", { name: "Gemini 3.1 Pro Previewで同じ指示を再送・有料" }),
       ).toBeTruthy();
     });
+    await userEvent.click(canvas.getByRole("button", { name: "画面を再読み込み" }));
+    await expect(canvas.getByText("店名を確認してください")).toBeTruthy();
+    await expect(canvas.getByRole("button", { name: "同じ指示を再送" })).toBeTruthy();
   },
 };

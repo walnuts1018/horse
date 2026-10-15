@@ -3,11 +3,12 @@ import { useCallback, useEffect } from "react";
 import type { UnsavedChangesRegistry } from "../household-route-context";
 
 export function handleUnsavedChangesBeforeUnload(
-  event: Pick<BeforeUnloadEvent, "preventDefault">,
+  event: Pick<BeforeUnloadEvent, "preventDefault" | "returnValue">,
   hasUnsavedChanges: () => boolean,
 ) {
   if (!hasUnsavedChanges()) return;
   event.preventDefault();
+  event.returnValue = "";
 }
 
 export function useUnsavedChanges(registry: UnsavedChangesRegistry) {
