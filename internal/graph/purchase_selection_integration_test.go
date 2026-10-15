@@ -136,6 +136,30 @@ func TestPurchaseSelectionControlsEvidenceLoading(t *testing.T) {
 	}
 }
 
+func TestPurchaseSelectionControlsItemRelationshipLoading(t *testing.T) {
+	ctx := t.Context()
+	for _, test := range []struct {
+		name            string
+		selection       string
+		wantAllocations bool
+		wantItemTags    bool
+	}{
+		{name: "item scalar fields only", selection: "query { purchases { edges { node { items { id } } } } }"},
+		{name: "allocations", selection: "query { purchases { edges { node { items { allocations { amountYen } } } } } }", wantAllocations: true},
+		{name: "tags", selection: "query { purchases { edges { node { items { tags { id } } } } } }", wantItemTags: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			purchaseCtx := purchaseSelectionContext(t, ctx, test.selection)
+			if got := shouldLoadPurchaseItemAllocations(purchaseCtx); got != test.wantAllocations {
+				t.Fatalf("shouldLoadPurchaseItemAllocations() = %t, want %t", got, test.wantAllocations)
+			}
+			if got := shouldLoadPurchaseItemTags(purchaseCtx); got != test.wantItemTags {
+				t.Fatalf("shouldLoadPurchaseItemTags() = %t, want %t", got, test.wantItemTags)
+			}
+		})
+	}
+}
+
 func purchaseSelectionContext(t *testing.T, ctx context.Context, query string) context.Context {
 	t.Helper()
 	doc, err := parser.ParseQuery(&ast.Source{Input: query})

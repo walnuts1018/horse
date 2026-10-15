@@ -430,6 +430,8 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 	loadPaymentAllocations := shouldLoadPurchasePaymentAllocations(ctx)
 	loadEvidence := shouldLoadPurchaseEvidence(ctx)
 	loadSourceKinds := shouldLoadPurchaseSourceKinds(ctx)
+	loadItemAllocations := shouldLoadPurchaseItemAllocations(ctx)
+	loadItemTags := shouldLoadPurchaseItemTags(ctx)
 	if loadPaymentAllocations {
 		if err := purchases.LoadAccount(ctx, executor); err != nil {
 			return nil, err
@@ -480,11 +482,15 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 			return nil, err
 		}
 	}
-	if err := items.LoadItemAllocations(ctx, executor, sm.OrderBy(models.ItemAllocations.Columns.PoolID)); err != nil {
-		return nil, err
+	if loadItemAllocations {
+		if err := items.LoadItemAllocations(ctx, executor, sm.OrderBy(models.ItemAllocations.Columns.PoolID)); err != nil {
+			return nil, err
+		}
 	}
-	if err := items.LoadPurchaseItemTags(ctx, executor, sm.OrderBy(models.PurchaseItemTags.Columns.TagID)); err != nil {
-		return nil, err
+	if loadItemTags {
+		if err := items.LoadPurchaseItemTags(ctx, executor, sm.OrderBy(models.PurchaseItemTags.Columns.TagID)); err != nil {
+			return nil, err
+		}
 	}
 	allocations := make(models.ItemAllocationSlice, 0)
 	itemTags := make(models.PurchaseItemTagSlice, 0)
@@ -492,11 +498,15 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 		allocations = append(allocations, item.R.ItemAllocations...)
 		itemTags = append(itemTags, item.R.PurchaseItemTags...)
 	}
-	if err := allocations.LoadPool(ctx, executor); err != nil {
-		return nil, err
+	if loadItemAllocations {
+		if err := allocations.LoadPool(ctx, executor); err != nil {
+			return nil, err
+		}
 	}
-	if err := itemTags.LoadTag(ctx, executor); err != nil {
-		return nil, err
+	if loadItemTags {
+		if err := itemTags.LoadTag(ctx, executor); err != nil {
+			return nil, err
+		}
 	}
 	if loadPaymentAllocations {
 		if err := payments.LoadAccount(ctx, executor); err != nil {
@@ -538,6 +548,28 @@ func shouldLoadPurchaseSourceKinds(ctx context.Context) bool {
 		return true
 	}
 	return graphql.FieldRequested(ctx, "edges.node.sourceKinds")
+}
+
+func shouldLoadPurchaseItemAllocations(ctx context.Context) bool {
+	if !graphql.HasOperationContext(ctx) {
+		return true
+	}
+	fieldContext := graphql.GetFieldContext(ctx)
+	if fieldContext == nil || fieldContext.Field.Name != "purchases" {
+		return true
+	}
+	return graphql.FieldRequested(ctx, "edges.node.items.allocations")
+}
+
+func shouldLoadPurchaseItemTags(ctx context.Context) bool {
+	if !graphql.HasOperationContext(ctx) {
+		return true
+	}
+	fieldContext := graphql.GetFieldContext(ctx)
+	if fieldContext == nil || fieldContext.Field.Name != "purchases" {
+		return true
+	}
+	return graphql.FieldRequested(ctx, "edges.node.items.tags")
 }
 
 func graphAccount(account *models.Account) *model.Account {
