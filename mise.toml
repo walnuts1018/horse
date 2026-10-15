@@ -8,7 +8,7 @@ golangci-lint = "2.14.0"
 atlas = "1.3.0"
 uv = "0.12.20"
 python = "3.12.14"
-jactionlint = "1.8.2"
+jactionlint = "2.2.0"
 
 [tasks.test]
 description = "Goのテスト"
