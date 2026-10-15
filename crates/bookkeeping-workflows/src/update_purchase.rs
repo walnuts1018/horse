@@ -50,7 +50,7 @@ pub enum UpdatePurchaseError {
     DuplicatePaymentAccount,
     InvalidRevision,
     Conflict,
-    NotDraft,
+    NotEditable,
 }
 
 pub fn decide_update_purchase(
@@ -60,8 +60,8 @@ pub fn decide_update_purchase(
     if command.purchase_id.is_empty() {
         return Err(UpdatePurchaseError::InvalidPurchaseId);
     }
-    if current.status != "DRAFT" {
-        return Err(UpdatePurchaseError::NotDraft);
+    if !matches!(current.status.as_str(), "DRAFT" | "POSTED") {
+        return Err(UpdatePurchaseError::NotEditable);
     }
     if command.base_revision == 0 || command.base_revision > current.revision {
         return Err(UpdatePurchaseError::Conflict);
@@ -184,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_conflicting_fields_and_non_drafts() {
+    fn rejects_conflicting_fields_and_closed_purchases() {
         let command = UpdatePurchaseCommand {
             purchase_id: "purchase".to_owned(),
             base_revision: 2,
@@ -203,7 +203,7 @@ mod tests {
         posted.status = "POSTED".to_owned();
         assert_eq!(
             decide_update_purchase(command, posted),
-            Err(UpdatePurchaseError::NotDraft)
+            Err(UpdatePurchaseError::NotEditable)
         );
     }
 }
