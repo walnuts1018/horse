@@ -120,18 +120,9 @@ pub struct HouseholdInvitationEdge {
 }
 
 #[derive(Clone, Debug, SimpleObject)]
-#[graphql(name = "PageInfo")]
-pub struct HouseholdInvitationPageInfo {
-    has_next_page: bool,
-    has_previous_page: bool,
-    start_cursor: Option<String>,
-    end_cursor: Option<String>,
-}
-
-#[derive(Clone, Debug, SimpleObject)]
 pub struct HouseholdInvitationConnection {
     edges: Vec<HouseholdInvitationEdge>,
-    page_info: HouseholdInvitationPageInfo,
+    page_info: crate::pagination::PageInfo,
     total_count: i32,
 }
 
@@ -426,7 +417,7 @@ pub async fn household_invitations(
         .map_err(|_| crate::internal_error("household invitation count exceeds GraphQL Int"))?;
     Ok(HouseholdInvitationConnection {
         edges,
-        page_info: HouseholdInvitationPageInfo {
+        page_info: crate::pagination::PageInfo {
             has_next_page: page.has_next_page,
             has_previous_page: page.has_previous_page,
             start_cursor,

@@ -1999,6 +1999,7 @@ dependencies = [
 name = "horse-postgres"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "bookkeeping-domain",
  "bookkeeping-workflows",
  "catalog-workflows",

@@ -164,7 +164,7 @@ pub struct EffectiveUnitPrice { pub numerator_yen: String, pub denominator_yen: 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct PurchaseItemAllocation { pub pool_id: ID, pub pool_name: String, pub weight: Long, pub amount_yen: Long }
 #[derive(Clone, Debug, SimpleObject)]
-pub struct PurchaseCorrectionConnection { pub edges: Vec<PurchaseCorrectionEdge>, pub page_info: PurchasePageInfo, pub total_count: i32 }
+pub struct PurchaseCorrectionConnection { pub edges: Vec<PurchaseCorrectionEdge>, pub page_info: crate::pagination::PageInfo, pub total_count: i32 }
 #[derive(Clone, Debug, SimpleObject)]
 pub struct PurchaseCorrectionEdge { pub cursor: String, pub node: PurchaseCorrection }
 #[derive(Clone, Debug, Interface)]
@@ -176,10 +176,6 @@ pub struct PurchaseWideCorrection { pub id: ID, pub amount_delta_yen: Long, pub 
 #[derive(Clone, Debug, SimpleObject)]
 #[graphql(name = "PurchaseItemCorrection")]
 pub struct PurchaseItemCorrection { pub id: ID, pub item_id: ID, pub amount_delta_yen: Long, pub reason: String, pub occurred_at: DateTime, pub settlement_month: crate::policy_mutations::YearMonth, pub payment_allocations: Vec<PurchasePayment> }
-#[derive(Clone, Debug, SimpleObject)]
-#[graphql(name = "PageInfo")]
-pub struct PurchasePageInfo { pub has_next_page: bool, pub has_previous_page: bool, pub start_cursor: Option<String>, pub end_cursor: Option<String> }
-
 #[ComplexObject]
 impl PurchaseObject {
     async fn corrections(&self, ctx: &Context<'_>, first: Option<i32>, after: Option<String>) -> Result<PurchaseCorrectionConnection> {
@@ -222,7 +218,7 @@ impl PurchaseObject {
         let end_cursor = edges.last().map(|edge| edge.cursor.clone());
         Ok(PurchaseCorrectionConnection {
             edges,
-            page_info: PurchasePageInfo {
+            page_info: crate::pagination::PageInfo {
                 has_next_page: projection.has_next_page,
                 has_previous_page: projection.has_previous_page,
                 start_cursor,

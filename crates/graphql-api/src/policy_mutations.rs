@@ -8,7 +8,7 @@ use horse_postgres::{PgPool, policy as postgres_policy, policy_query as postgres
 use policy_workflows::{budget, recurring_expense};
 use uuid::Uuid;
 
-use crate::{Long, MutationErrorCode};
+use crate::{Long, MutationErrorCode, pagination::PageInfo};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Date(pub NaiveDate);
@@ -191,15 +191,6 @@ pub struct RecurringExpenseObject {
 }
 
 #[derive(Clone, Debug, SimpleObject)]
-#[graphql(name = "PageInfo")]
-pub struct PolicyPageInfo {
-    pub has_next_page: bool,
-    pub has_previous_page: bool,
-    pub start_cursor: Option<String>,
-    pub end_cursor: Option<String>,
-}
-
-#[derive(Clone, Debug, SimpleObject)]
 pub struct BudgetEdge {
     pub cursor: String,
     pub node: BudgetObject,
@@ -208,7 +199,7 @@ pub struct BudgetEdge {
 #[derive(Clone, Debug, SimpleObject)]
 pub struct BudgetConnection {
     pub edges: Vec<BudgetEdge>,
-    pub page_info: PolicyPageInfo,
+    pub page_info: PageInfo,
     pub total_count: i32,
 }
 
@@ -221,7 +212,7 @@ pub struct RecurringExpenseEdge {
 #[derive(Clone, Debug, SimpleObject)]
 pub struct RecurringExpenseConnection {
     pub edges: Vec<RecurringExpenseEdge>,
-    pub page_info: PolicyPageInfo,
+    pub page_info: PageInfo,
     pub total_count: i32,
 }
 
@@ -654,7 +645,7 @@ pub async fn graphql_budgets(
     let total_count =
         i32::try_from(page.total_count).map_err(|error| crate::internal_error(error))?;
     Ok(BudgetConnection {
-        page_info: PolicyPageInfo {
+        page_info: PageInfo {
             has_next_page: page.has_next_page,
             has_previous_page: page.has_previous_page,
             start_cursor: edges.first().map(|edge| edge.cursor.clone()),
@@ -702,7 +693,7 @@ pub async fn graphql_recurring_expenses(
     let total_count =
         i32::try_from(page.total_count).map_err(|error| crate::internal_error(error))?;
     Ok(RecurringExpenseConnection {
-        page_info: PolicyPageInfo {
+        page_info: PageInfo {
             has_next_page: page.has_next_page,
             has_previous_page: page.has_previous_page,
             start_cursor: edges.first().map(|edge| edge.cursor.clone()),
