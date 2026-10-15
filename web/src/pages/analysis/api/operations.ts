@@ -30,6 +30,7 @@ export const analysisPurchasePriceObservationsQuery = graphql`
       itemId
       occurredAt
       amountYen
+      remainingRefundableAmountYen
       effectiveUnitPriceNumeratorYen
       effectiveUnitPriceDenominator
       printedUnitPriceYen

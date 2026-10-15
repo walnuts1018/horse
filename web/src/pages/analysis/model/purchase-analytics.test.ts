@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { aggregatePurchaseAnalytics } from "./purchase-analytics";
+import { aggregatePurchaseAnalytics, itemPriceSeries, topPriceItemIDs } from "./purchase-analytics";
 
 describe("aggregatePurchaseAnalytics", () => {
   it("combines monthly server totals by dimension and keeps the latest label", () => {
@@ -42,5 +42,48 @@ describe("aggregatePurchaseAnalytics", () => {
       { month: "2025-05", id: "2025-05", amount: 1500 },
     ]);
     expect(result.rows.item.get("variant\0個")?.amount).toBe(400);
+  });
+});
+
+describe("itemPriceSeries", () => {
+  it("keeps the GraphQL item key separator and unit for price observations", () => {
+    const itemId = "variant-id\0個";
+    const result = itemPriceSeries(
+      [
+        {
+          itemId,
+          occurredAt: "2025-05-01T00:00:00Z",
+          amountYen: "100",
+          remainingRefundableAmountYen: "100",
+          effectiveUnitPriceNumeratorYen: "100",
+          effectiveUnitPriceDenominator: "1",
+          printedUnitPriceYen: null,
+          printedUnitPriceQuantityNumerator: null,
+          printedUnitPriceQuantityDenominator: null,
+          printedUnitPriceUnit: null,
+        },
+      ],
+      itemId,
+      "effective",
+    );
+
+    expect(result.series[0]?.label).toBe("実効単価 · 個");
+    expect(result.series[0]?.points[0]?.value).toBe("100/1");
+  });
+});
+
+describe("topPriceItemIDs", () => {
+  it("selects five real items without letting the correction row consume a slot", () => {
+    const ids = topPriceItemIDs([
+      { id: "__correction__", name: "訂正", amount: 1000, count: 0 },
+      ...Array.from({ length: 6 }, (_, index) => ({
+        id: `item-${index}\0個`,
+        name: `item ${index}`,
+        amount: 100 - index,
+        count: 1,
+      })),
+    ]);
+
+    expect(ids).toEqual(["item-0\0個", "item-1\0個", "item-2\0個", "item-3\0個", "item-4\0個"]);
   });
 });

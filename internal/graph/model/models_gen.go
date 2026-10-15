@@ -1795,6 +1795,7 @@ type PurchasePriceObservation struct {
 	ItemID                              string   `json:"itemId"`
 	OccurredAt                          DateTime `json:"occurredAt"`
 	AmountYen                           Long     `json:"amountYen"`
+	RemainingRefundableAmountYen        Long     `json:"remainingRefundableAmountYen"`
 	EffectiveUnitPriceNumeratorYen      *string  `json:"effectiveUnitPriceNumeratorYen,omitempty"`
 	EffectiveUnitPriceDenominator       *string  `json:"effectiveUnitPriceDenominator,omitempty"`
 	PrintedUnitPriceYen                 *Long    `json:"printedUnitPriceYen,omitempty"`

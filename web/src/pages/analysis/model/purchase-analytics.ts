@@ -14,16 +14,25 @@ export type ItemPriceObservation = {
   itemId: string;
   occurredAt: string;
   amountYen: string;
-  effectiveUnitPriceNumeratorYen: string | null;
-  effectiveUnitPriceDenominator: string | null;
-  printedUnitPriceYen: string | null;
-  printedUnitPriceQuantityNumerator: string | null;
-  printedUnitPriceQuantityDenominator: string | null;
-  printedUnitPriceUnit: string | null;
+  remainingRefundableAmountYen: string;
+  effectiveUnitPriceNumeratorYen: string | null | undefined;
+  effectiveUnitPriceDenominator: string | null | undefined;
+  printedUnitPriceYen: string | null | undefined;
+  printedUnitPriceQuantityNumerator: string | null | undefined;
+  printedUnitPriceQuantityDenominator: string | null | undefined;
+  printedUnitPriceUnit: string | null | undefined;
 };
 export type MonthlyEntry = { month: string; id: string; amount: number };
 
-export function aggregatePurchaseAnalytics(entries: PurchaseAnalyticsEntry[]) {
+export function topPriceItemIDs(rows: Iterable<AnalyticsRow>) {
+  return Array.from(rows)
+    .filter((row) => row.id.includes("\0"))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 5)
+    .map((row) => row.id);
+}
+
+export function aggregatePurchaseAnalytics(entries: readonly PurchaseAnalyticsEntry[]) {
   const rows: Record<PurchaseDimension, Map<string, AnalyticsRow>> = {
     merchant: new Map(),
     item: new Map(),
@@ -79,7 +88,7 @@ export function aggregatePurchaseAnalytics(entries: PurchaseAnalyticsEntry[]) {
 }
 
 export function itemPriceSeries(
-  observations: ItemPriceObservation[],
+  observations: readonly ItemPriceObservation[],
   itemId: string,
   metric: Exclude<ItemMetric, "amount">,
 ) {

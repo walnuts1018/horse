@@ -239,7 +239,6 @@ export function AnalysisPage({ household }: { household: Household }) {
       {dimension === "item" && (
         <ItemPricePanel
           rows={rows}
-          monthly={data?.monthly.item ?? []}
           observations={itemPriceObservations}
           itemMetric={itemMetric}
           setItemMetric={setItemMetric}

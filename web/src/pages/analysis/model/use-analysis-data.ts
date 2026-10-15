@@ -11,7 +11,7 @@ import type {
 } from "../../../shared/api";
 import type { Dimension, ItemMetric } from "./purchase-analytics";
 
-import { aggregatePurchaseAnalytics } from "./purchase-analytics";
+import { aggregatePurchaseAnalytics, topPriceItemIDs } from "./purchase-analytics";
 import {
   analysisPurchasePriceObservationsQuery,
   analysisBudgetsFragment,
@@ -42,10 +42,7 @@ export function useAnalysisData(
     () =>
       itemMetric === "amount"
         ? []
-        : Array.from(purchaseAnalytics.rows.item.values())
-            .sort((a, b) => b.amount - a.amount)
-            .slice(0, 5)
-            .map((row) => row.id),
+        : topPriceItemIDs(purchaseAnalytics.rows.item.values()),
     [itemMetric, purchaseAnalytics.rows.item],
   );
   const priceObservations = useLazyLoadQuery<AnalysisPurchasePriceObservationsQuery>(

@@ -1,13 +1,12 @@
 import type { Dispatch, SetStateAction } from "react";
 
-import type { Purchase } from "../../../shared/api";
-
 import { isOneOf } from "../../../shared/lib";
 import { yen } from "../model/format-yen";
 import {
   formatExactYen,
   itemPriceSeries,
   type AnalyticsRow,
+  type ItemPriceObservation,
   type ItemMetric,
 } from "../model/purchase-analytics";
 
@@ -17,14 +16,12 @@ const format = (value: string) => {
 };
 export function ItemPricePanel({
   rows,
-  data,
-  purchases,
+  observations,
   itemMetric,
   setItemMetric,
 }: {
   rows: AnalyticsRow[];
-  data: ReturnType<typeof import("../model/purchase-analytics").purchaseDimensions> | null;
-  purchases: Purchase[];
+  observations: readonly ItemPriceObservation[];
   itemMetric: ItemMetric;
   setItemMetric: Dispatch<SetStateAction<ItemMetric>>;
 }) {
@@ -60,14 +57,14 @@ export function ItemPricePanel({
           </select>
         </label>
       </div>
-      {rows.slice(0, 5).map((row) => {
-        const matchingPrices = (data?.monthly.item ?? []).filter((entry) => entry.id === row.id);
+      {rows.filter((row) => row.id.includes("\0")).slice(0, 5).map((row) => {
+        const matchingPrices = observations.filter((observation) => observation.itemId === row.id);
         // oxlint-disable-next-line unicorn/no-array-sort
-        const prices = matchingPrices.sort(
+        const prices = [...matchingPrices].sort(
           (left, right) => Date.parse(left.occurredAt) - Date.parse(right.occurredAt),
         );
         const trend =
-          itemMetric === "amount" ? null : itemPriceSeries(purchases, row.id, itemMetric);
+          itemMetric === "amount" ? null : itemPriceSeries(observations, row.id, itemMetric);
         return (
           <div className="price-row" key={row.id}>
             <span>{row.name}</span>
@@ -77,8 +74,8 @@ export function ItemPricePanel({
                 <small>{row.count}件</small>
                 {prices.length > 1 && (
                   <small className="price-change">
-                    初回購入額 {yen(prices[0].amount)}、最新購入額{" "}
-                    {yen(prices[prices.length - 1].amount)}
+                    初回購入額 {yen(Number(prices[0].remainingRefundableAmountYen))}、最新購入額{" "}
+                    {yen(Number(prices[prices.length - 1].remainingRefundableAmountYen))}
                   </small>
                 )}
               </>

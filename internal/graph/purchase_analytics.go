@@ -72,7 +72,7 @@ func (r *queryResolver) purchasePriceObservations(ctx context.Context, household
 			printedUnitPriceQuantityDenominator: row.PrintedUnitPriceQuantityDenominator, printedUnitPriceUnit: row.PrintedUnitPriceUnit,
 		}
 		effectiveNumerator, effectiveDenominator := effectiveUnitPrice(row.AmountYen, measure)
-		observation := &model.PurchasePriceObservation{ItemID: graphqlIDs[row.ItemID], OccurredAt: model.DateTime(timeString(row.OccurredAt)), AmountYen: graphLong(row.AmountYen)}
+		observation := &model.PurchasePriceObservation{ItemID: graphqlIDs[row.ItemID], OccurredAt: model.DateTime(timeString(row.OccurredAt)), AmountYen: graphLong(row.AmountYen), RemainingRefundableAmountYen: graphLong(row.RemainingRefundableAmountYen)}
 		observation.EffectiveUnitPriceNumeratorYen, observation.EffectiveUnitPriceDenominator = effectiveNumerator, effectiveDenominator
 		if row.PrintedUnitPriceYen.Valid {
 			value := graphLong(row.PrintedUnitPriceYen.V)
@@ -96,6 +96,9 @@ func (r *queryResolver) purchasePriceObservations(ctx context.Context, household
 }
 
 func encodeAnalyticsID(dimension, raw string) (string, error) {
+	if raw == "__correction__" {
+		return raw, nil
+	}
 	switch dimension {
 	case "pool":
 		return encodeNodeID(nodeTypePool, raw)

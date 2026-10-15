@@ -1026,6 +1026,7 @@ type ComplexityRoot struct {
 		PrintedUnitPriceQuantityNumerator   func(childComplexity int) int
 		PrintedUnitPriceUnit                func(childComplexity int) int
 		PrintedUnitPriceYen                 func(childComplexity int) int
+		RemainingRefundableAmountYen        func(childComplexity int) int
 	}
 
 	PurchaseQuantity struct {
@@ -5371,6 +5372,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.PurchasePriceObservation.PrintedUnitPriceYen(childComplexity), true
+	case "PurchasePriceObservation.remainingRefundableAmountYen":
+		if e.ComplexityRoot.PurchasePriceObservation.RemainingRefundableAmountYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchasePriceObservation.RemainingRefundableAmountYen(childComplexity), true
 
 	case "PurchaseQuantity.denominator":
 		if e.ComplexityRoot.PurchaseQuantity.Denominator == nil {
@@ -8766,6 +8773,7 @@ type PurchasePriceObservation {
   itemId: String!
   occurredAt: DateTime!
   amountYen: Long!
+  remainingRefundableAmountYen: Long!
   effectiveUnitPriceNumeratorYen: String
   effectiveUnitPriceDenominator: String
   printedUnitPriceYen: Long
@@ -10809,6 +10817,8 @@ func (ec *executionContext) childFields_PurchasePriceObservation(ctx context.Con
 		return ec.fieldContext_PurchasePriceObservation_occurredAt(ctx, field)
 	case "amountYen":
 		return ec.fieldContext_PurchasePriceObservation_amountYen(ctx, field)
+	case "remainingRefundableAmountYen":
+		return ec.fieldContext_PurchasePriceObservation_remainingRefundableAmountYen(ctx, field)
 	case "effectiveUnitPriceNumeratorYen":
 		return ec.fieldContext_PurchasePriceObservation_effectiveUnitPriceNumeratorYen(ctx, field)
 	case "effectiveUnitPriceDenominator":
@@ -28466,6 +28476,29 @@ func (ec *executionContext) _PurchasePriceObservation_amountYen(ctx context.Cont
 	)
 }
 func (ec *executionContext) fieldContext_PurchasePriceObservation_amountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchasePriceObservation", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _PurchasePriceObservation_remainingRefundableAmountYen(ctx context.Context, field graphql.CollectedField, obj *model.PurchasePriceObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchasePriceObservation_remainingRefundableAmountYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.RemainingRefundableAmountYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchasePriceObservation_remainingRefundableAmountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("PurchasePriceObservation", field, false, false, errors.New("field of type Long does not have child fields"))
 }
 
@@ -55243,6 +55276,11 @@ func (ec *executionContext) _PurchasePriceObservation(ctx context.Context, sel a
 			}
 		case "amountYen":
 			out.Values[i] = ec._PurchasePriceObservation_amountYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "remainingRefundableAmountYen":
+			out.Values[i] = ec._PurchasePriceObservation_remainingRefundableAmountYen(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
