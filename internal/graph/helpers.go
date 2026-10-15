@@ -428,16 +428,20 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 	}
 	executor := queryExecutor(db)
 	loadPaymentAllocations := shouldLoadPurchasePaymentAllocations(ctx)
+	loadEvidence := shouldLoadPurchaseEvidence(ctx)
+	loadSourceKinds := shouldLoadPurchaseSourceKinds(ctx)
 	if loadPaymentAllocations {
 		if err := purchases.LoadAccount(ctx, executor); err != nil {
 			return nil, err
 		}
 	}
-	if err := purchases.LoadEvidenceLinks(ctx, executor); err != nil {
-		return nil, err
-	}
-	if err := purchases.LoadDocumentConfirmations(ctx, executor); err != nil {
-		return nil, err
+	if loadEvidence {
+		if err := purchases.LoadEvidenceLinks(ctx, executor); err != nil {
+			return nil, err
+		}
+		if err := purchases.LoadDocumentConfirmations(ctx, executor); err != nil {
+			return nil, err
+		}
 	}
 	if err := purchases.LoadPurchaseItems(ctx, executor, sm.OrderBy(models.PurchaseItems.Columns.CreatedAt), sm.OrderBy(models.PurchaseItems.Columns.ID)); err != nil {
 		return nil, err
@@ -468,11 +472,13 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 	if err != nil {
 		return nil, err
 	}
-	if err := evidenceLinks.LoadSourceDocument(ctx, executor); err != nil {
-		return nil, err
-	}
-	if err := confirmations.LoadSourceDocument(ctx, executor); err != nil {
-		return nil, err
+	if loadSourceKinds {
+		if err := evidenceLinks.LoadSourceDocument(ctx, executor); err != nil {
+			return nil, err
+		}
+		if err := confirmations.LoadSourceDocument(ctx, executor); err != nil {
+			return nil, err
+		}
 	}
 	if err := items.LoadItemAllocations(ctx, executor, sm.OrderBy(models.ItemAllocations.Columns.PoolID)); err != nil {
 		return nil, err
@@ -510,6 +516,28 @@ func shouldLoadPurchasePaymentAllocations(ctx context.Context) bool {
 		return true
 	}
 	return graphql.FieldRequested(ctx, "edges.node.paymentAllocations")
+}
+
+func shouldLoadPurchaseEvidence(ctx context.Context) bool {
+	if !graphql.HasOperationContext(ctx) {
+		return true
+	}
+	fieldContext := graphql.GetFieldContext(ctx)
+	if fieldContext == nil || fieldContext.Field.Name != "purchases" {
+		return true
+	}
+	return graphql.AnyFieldRequested(ctx, "edges.node.hasEvidence", "edges.node.sourceKinds")
+}
+
+func shouldLoadPurchaseSourceKinds(ctx context.Context) bool {
+	if !graphql.HasOperationContext(ctx) {
+		return true
+	}
+	fieldContext := graphql.GetFieldContext(ctx)
+	if fieldContext == nil || fieldContext.Field.Name != "purchases" {
+		return true
+	}
+	return graphql.FieldRequested(ctx, "edges.node.sourceKinds")
 }
 
 func graphAccount(account *models.Account) *model.Account {

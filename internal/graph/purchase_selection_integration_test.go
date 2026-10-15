@@ -112,6 +112,30 @@ func TestLoadPurchasesRespectsPaymentAllocationSelection(t *testing.T) {
 	}
 }
 
+func TestPurchaseSelectionControlsEvidenceLoading(t *testing.T) {
+	ctx := t.Context()
+	for _, test := range []struct {
+		name            string
+		selection       string
+		wantEvidence    bool
+		wantSourceKinds bool
+	}{
+		{name: "no evidence fields", selection: "query { purchases { edges { node { id } } } }"},
+		{name: "has evidence", selection: "query { purchases { edges { node { hasEvidence } } } }", wantEvidence: true},
+		{name: "source kinds", selection: "query { purchases { edges { node { sourceKinds } } } }", wantEvidence: true, wantSourceKinds: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			purchaseCtx := purchaseSelectionContext(t, ctx, test.selection)
+			if got := shouldLoadPurchaseEvidence(purchaseCtx); got != test.wantEvidence {
+				t.Fatalf("shouldLoadPurchaseEvidence() = %t, want %t", got, test.wantEvidence)
+			}
+			if got := shouldLoadPurchaseSourceKinds(purchaseCtx); got != test.wantSourceKinds {
+				t.Fatalf("shouldLoadPurchaseSourceKinds() = %t, want %t", got, test.wantSourceKinds)
+			}
+		})
+	}
+}
+
 func purchaseSelectionContext(t *testing.T, ctx context.Context, query string) context.Context {
 	t.Helper()
 	doc, err := parser.ParseQuery(&ast.Source{Input: query})
