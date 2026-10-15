@@ -9,6 +9,7 @@ pub mod post_purchase_loader;
 pub mod record_repayment;
 pub mod record_transfer;
 pub mod schema;
+pub mod set_default_allocation;
 pub mod update_purchase;
 
 pub type PgPool = Pool<AsyncPgConnection>;
