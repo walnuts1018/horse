@@ -1,6 +1,6 @@
 # Horse コード品質レビュー
 
-対象：[walnuts1018/horse](https://github.com/walnuts1018/horse) の `main` ブランチ（2026年10月14日確認）
+対象：[walnuts1018/horse](https://github.com/walnuts1018/horse) の `main` ブランチ（2026年10月15日確認、`37bbda8`）
 
 ## 総評
 
@@ -25,12 +25,13 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 
 - [purchase/update_item.go — updateItem()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/update_item.go)
 - [purchase/service.go — create()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/service.go#L189-L453)
-- [purchase/correction.go — Correct()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/correction.go#L250-L606)
 - [purchase/update_operations.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/update_operations.go)
 
 `f106383`では`updateItem()`の入力検証、更新対象の取得とロック、計画構築をそれぞれヘルパーへ分離しました。今回、トランザクション内の明細・配賦・支払・購入revisionの更新、履歴と監査イベントの記録、仕訳同期を`applyPurchaseItemUpdatePlan()`へまとめました。適用順序は従来どおりで、既存Integration Testで明細revision、監査イベント、購入revisionを確認します。商品学習の設定解釈や履歴記録も`item_product_learning.go`にあります。
 
-一方、`buildPurchaseItemUpdatePlan()`は商品バリアントや支払情報、配賦ルールなどをDBから取得しながら計画を構築します。DB読み込みと純粋な業務計算の分離は引き続き改善候補です。分離する場合も、競合検出とロック順序を維持する必要があります。
+`Correct()`は入力検証、購入の認可・ロック、冪等性再生、訂正計画の構築、永続化に分かれました。明細更新計画では入力値と計算値の準備をDBアクセスから分離しましたが、配賦計画や支払情報の構築にはDBアクセスが残ります。
+
+購入の`create()`、通常更新、一括更新、複数明細保存は引き続き責務の整理が必要です。共通化済みの計画・適用処理と各ユースケース固有の入力検証、読み込み、ロック、仕訳同期、監査イベントの境界を見直します。変更時は競合検出とロック順序を維持する必要があります。
 
 ### 2. GraphQLの巨大な一括組み立て処理を見直す
 
@@ -49,7 +50,7 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 
 Member、Account、Category、Household、Pool Nodeの複数ID解決では、所属確認と対象データ取得をBobで一括取得するよう変更しました。重複IDを含む順序維持、家庭所属の認可、CategoryのParentID mappingをfocused integration testで確認しています。単一LedgerEntry Nodeもbatch loaderへ通し、既存テストでLoanBalanceを含む型を解決できることを確認しました。`nodes(ids:)`で複数のUnmatchedObservation Nodeを取得する経路も、所属家庭、SourceObservation、DocumentConfirmation、必要なCorrectionをまとめて取得するよう変更しました。複合Node IDの重複、順序、未存在行、家庭所属の認可をfocused integration testで確認しました。複数Nodeの解決では、UnmatchedObservationとSettlementが認可用Household一覧を共有します。Settlement Nodeのclosed run取得を一括化しました。未確定periodのpreview計算はSettlement Serviceを個別に呼び出します。
 
-`loadPurchases()`のGraphQL表示モデル組み立ては`purchase_graph.go`の`mapPurchases()`へ分離しました。DBから関連データをbatch取得する処理と、GraphQLモデルへの変換を個別に追えます。関連データの取得範囲をGraphQL選択fieldに応じて絞る改善と、`loadHousehold()`の表示モデル組み立ての分離は引き続き見直し対象です。
+`loadPurchases()`のGraphQL表示モデル組み立ては`purchase_graph.go`の`mapPurchases()`へ分離しました。`purchases`で`paymentAllocations`が選択された場合に限り、支払と口座を読み込みます。選択fieldに応じた読み込み範囲の絞り込みはこの関連データに限られ、その他のPurchase関連データや`loadHousehold()`の表示モデル組み立ては引き続き見直し対象です。
 
 目指すのは「すべてを先読みする巨大なローダー」でも「フィールドごとに1件ずつSQLを実行する構造」でもなく、GraphQLで要求されたデータだけを、親子関係に応じた適切な単位で一括取得する構造です。
 
@@ -91,7 +92,6 @@ GraphQLなどの公開API
 | 対象 | 確認した問題 | 推奨する改善 |
 | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
 | [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離され、冪等性再生の検索・検証と口座・プール所有者の読込・検証も専用関数へ集約済み。`Do()`には権限確認、ロック、返済情報の読込、記帳処理が残る | 返済情報の読込と記帳順序をさらに整理する |
-| [Geminiクライアント](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/gemini.go#L74-L313) | JSON応答の復号とusage抽出は純粋なdecoderへ分離されたが、HTTPクライアント設定、Prompt、API呼び出し、Quota処理は`ExtractRun()`に残る | Provider、Prompt、Quota処理の責務を整理する |
 
 ### 小さな自前ユーティリティも整理する
 
@@ -147,10 +147,9 @@ Horseで重要なのは、ビジネスルールを読もうとしたときにSQL
 | 順位 | 作業 | 期待できる効果 |
 | -- | ------------------------------------------ | -------------------- |
 | P0 | Purchaseの購入全体と明細の通常・一括・複数明細更新を共通の変更処理へ統合 | 残る重複した業務ロジックを削減 |
-| P0 | `updateItem()`・`create()`・`Correct()`の責務分離 | 最も複雑なコードの理解と保守が容易になる |
+| P0 | Purchaseの`create()`・通常更新・一括更新・複数明細保存の責務整理 | 残る重複した業務ロジックを削減 |
 | P1 | GraphQLの巨大ローダー、残るNode解決の最適化 | 可読性だけでなくDBアクセスも改善 |
-| P1 | Gemini Routerの実行計画とProvider処理を分離 | フォールバックロジックが追いやすくなる |
-| P2 | Transfer・Settlementの残る業務調整を整理する | 複雑な会計処理の理解と拡張が容易になる |
+| P2 | Transferの残る記帳処理を整理する | 複雑な会計処理の理解と拡張が容易になる |
 
 ### リファクタリング時に絶対に守りたいこと
 
