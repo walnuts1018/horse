@@ -4,6 +4,7 @@ import {
   canDeleteDocument,
   canReclassifyAttachment,
   defaultUploadSourceKind,
+  isQuotaLimitedExtraction,
   parseDocumentFilters,
   serializeDocumentFilters,
   uploadSourceKinds,
@@ -83,6 +84,36 @@ describe("保存済み原本の削除", () => {
         ...document,
         attachmentParent: { id: "parent", name: "mail", filename: "mail.eml", index: 0 },
       }),
+    ).toBe(false);
+  });
+});
+
+describe("AIモデルの利用上限", () => {
+  it("上限エラーが返った原本だけPro再抽出の対象にする", () => {
+    expect(
+      isQuotaLimitedExtraction({
+        id: "document-1",
+        status: "QUEUED",
+        errorCode: "rate_limited",
+      }),
+    ).toBe(true);
+    expect(
+      isQuotaLimitedExtraction({
+        id: "document-2",
+        status: "FAILED",
+        errorCode: "quota_reservation_deferred",
+      }),
+    ).toBe(true);
+    expect(isQuotaLimitedExtraction({ id: "document-3", status: "FAILED" })).toBe(false);
+    expect(
+      isQuotaLimitedExtraction({
+        id: "document-4",
+        status: "SUCCEEDED",
+        errorCode: "rate_limited",
+      }),
+    ).toBe(false);
+    expect(
+      isQuotaLimitedExtraction({ id: "document-5", status: "QUEUED", errorCode: "unknown" }),
     ).toBe(false);
   });
 });

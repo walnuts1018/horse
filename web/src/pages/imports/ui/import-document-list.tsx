@@ -5,6 +5,7 @@ import { isOneOf } from "../../../shared/lib/guard";
 import {
   canReclassifyAttachment,
   canDeleteDocument,
+  isQuotaLimitedExtraction,
   isCsvFile,
   isEmailFile,
   receiptDateInputValue,
@@ -295,14 +296,14 @@ export function ImportDocumentList({
               </div>
               <ChevronRight size={15} />
             </button>
-            {document.status.toUpperCase() === "FAILED" && (
+            {(document.status.toUpperCase() === "FAILED" || isQuotaLimitedExtraction(document)) && (
               <button
                 type="button"
                 className="text-button"
                 disabled={pending}
                 onClick={() => onRetryDocument(document)}
               >
-                再抽出
+                {isQuotaLimitedExtraction(document) ? "Proで再抽出" : "再抽出"}
               </button>
             )}
             {canDeleteDocument(document) && (

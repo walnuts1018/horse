@@ -245,7 +245,7 @@ func (s *Service) RegisterDocumentJob(ctx context.Context, executor bob.Executor
 	if model == "" {
 		model = ingestion.ModelSelectionFree
 	}
-	if model != ingestion.ModelSelectionFree && model != ingestion.ModelSelectionPro {
+	if !ingestion.ValidModelSelection(model) {
 		return gofrsuuid.Nil, errors.New("invalid extraction model selection")
 	}
 	jobID, err := gofrsuuid.FromString(uuid.NewV7().String())

@@ -51,6 +51,8 @@ type documentResponse struct {
 	MIMEType         string                    `json:"mimeType"`
 	SourceKind       string                    `json:"sourceKind"`
 	Status           string                    `json:"status"`
+	Model            string                    `json:"model,omitempty"`
+	ErrorCode        string                    `json:"errorCode,omitempty"`
 	JobID            string                    `json:"jobId,omitempty"`
 	Duplicate        bool                      `json:"duplicate"`
 	Result           any                       `json:"result,omitempty"`
@@ -249,12 +251,11 @@ func documentModelSelection(value string) (string, bool) {
 	if value == "" {
 		return ingestion.ModelSelectionFree, true
 	}
-	switch value {
-	case ingestion.ModelSelectionFree, ingestion.ModelSelectionPro:
+	if ingestion.ValidModelSelection(value) {
 		return value, true
-	default:
-		return "", false
 	}
+
+	return "", false
 }
 
 func validDocumentModelSelection(value string) bool {
@@ -288,6 +289,10 @@ func (s *Server) documentResponse(ctx context.Context, exec bob.Executor, docume
 	}
 	result.Status = job.Status
 	result.JobID = job.ID.String()
+	result.Model = extractionJobModel(job)
+	if job.ErrorCode.Valid {
+		result.ErrorCode = job.ErrorCode.V
+	}
 	if job.Result.Valid {
 		var decoded any
 		if err := json.Unmarshal(job.Result.V.Val, &decoded); err == nil {
@@ -295,6 +300,17 @@ func (s *Server) documentResponse(ctx context.Context, exec bob.Executor, docume
 		}
 	}
 	return result, nil
+}
+
+func extractionJobModel(job *models.ExtractionJob) string {
+	var request struct {
+		Model string `json:"model,omitempty"`
+	}
+	if err := stdjson.Unmarshal(job.Request.Val, &request); err != nil || request.Model == "" || !ingestion.ValidModelSelection(request.Model) {
+		return ""
+	}
+
+	return request.Model
 }
 
 func (s *Server) loadDocumentAttachments(ctx context.Context, exec bob.Executor, document *documentResponse) error {
@@ -623,6 +639,10 @@ func (s *Server) documentResponses(ctx context.Context, exec bob.Executor, docum
 		if job := latestJobs[document.ID]; job != nil {
 			response.Status = job.Status
 			response.JobID = job.ID.String()
+			response.Model = extractionJobModel(job)
+			if job.ErrorCode.Valid {
+				response.ErrorCode = job.ErrorCode.V
+			}
 			if job.Result.Valid {
 				var decoded any
 				if err := json.Unmarshal(job.Result.V.Val, &decoded); err == nil {
@@ -1075,7 +1095,8 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "extraction is already running", http.StatusConflict)
 		return
 	}
-	if latestJob != nil && latestJob.Status == documentStatusQueued && (input.SourceKind == nil || input.Crop != nil) {
+	rateLimitedModelRetry := input.Model != nil && input.Crop == nil && input.SourceKind == nil && latestJob != nil && latestJob.Status == documentStatusQueued && isRateLimitedExtractionError(latestJob.ErrorCode)
+	if latestJob != nil && latestJob.Status == documentStatusQueued && !rateLimitedModelRetry && (input.SourceKind == nil || input.Crop != nil) {
 		http.Error(w, "extraction is already queued", http.StatusConflict)
 		return
 	}
@@ -1087,6 +1108,27 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		document.SourceKind = *input.SourceKind
 	}
 	if latestJob != nil && latestJob.Status == documentStatusQueued {
+		if rateLimitedModelRetry {
+			model, _ := documentModelSelection(*input.Model)
+			updatedRequest, err := replaceExtractionJobModel(latestJob.Request.Val, model)
+			if err != nil {
+				http.Error(w, "extraction retry failed", http.StatusInternalServerError)
+
+				return
+			}
+			requestJSON := types.JSON[stdjson.RawMessage]{Val: updatedRequest}
+			noErrorCode := sql.Null[string]{}
+			attempt := int32(0)
+			failureCount := int32(0)
+			now := time.Now().UTC()
+			if err := latestJob.Update(r.Context(), executor, &models.ExtractionJobSetter{
+				Request: &requestJSON, ErrorCode: &noErrorCode, Attempt: &attempt, FailureCount: &failureCount, AvailableAt: &now, UpdatedAt: &now,
+			}); err != nil {
+				http.Error(w, "extraction retry failed", http.StatusInternalServerError)
+
+				return
+			}
+		}
 		if err := tx.Commit(r.Context()); err != nil {
 			http.Error(w, "extraction retry failed", http.StatusInternalServerError)
 			return
@@ -1146,6 +1188,32 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{jobIDJSONKey: jobID.String(), "status": documentStatusQueued})
+}
+
+func isRateLimitedExtractionError(errorCode sql.Null[string]) bool {
+	if !errorCode.Valid {
+		return false
+	}
+	switch errorCode.V {
+	case "rate_limited", "quota_reservation_deferred":
+		return true
+	default:
+		return false
+	}
+}
+
+func replaceExtractionJobModel(request stdjson.RawMessage, model string) (stdjson.RawMessage, error) {
+	var fields map[string]stdjson.RawMessage
+	if err := stdjson.Unmarshal(request, &fields); err != nil || fields == nil {
+		return nil, errors.New("invalid extraction job request")
+	}
+	encodedModel, err := stdjson.Marshal(model)
+	if err != nil {
+		return nil, err
+	}
+	fields["model"] = encodedModel
+
+	return stdjson.Marshal(fields)
 }
 
 func (s *Server) documentContent(w http.ResponseWriter, r *http.Request) {

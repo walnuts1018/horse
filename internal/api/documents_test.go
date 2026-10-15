@@ -18,10 +18,65 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
 	"github.com/stephenafamo/scan"
+	"github.com/walnuts1018/horse/internal/ingestion"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 const testDocumentStore = "Market"
+
+func TestDocumentModelSelectionAcceptsSupportedModels(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		value string
+		want  string
+		valid bool
+	}{
+		{value: "", want: ingestion.ModelSelectionFree, valid: true},
+		{value: ingestion.ModelSelectionFree, want: ingestion.ModelSelectionFree, valid: true},
+		{value: ingestion.ModelSelectionPro, want: ingestion.ModelSelectionPro, valid: true},
+		{value: ingestion.ModelReceipt, want: ingestion.ModelReceipt, valid: true},
+		{value: ingestion.ModelEmail, want: ingestion.ModelEmail, valid: true},
+		{value: ingestion.ModelLite31, want: ingestion.ModelLite31, valid: true},
+		{value: ingestion.ModelPro, want: ingestion.ModelPro, valid: true},
+		{value: "gemini-unsupported", valid: false},
+	} {
+		got, ok := documentModelSelection(test.value)
+		if got != test.want || ok != test.valid || validDocumentModelSelection(test.value) != test.valid {
+			t.Errorf("documentModelSelection(%q) = (%q, %t), want (%q, %t)", test.value, got, ok, test.want, test.valid)
+		}
+	}
+}
+
+func TestRateLimitedExtractionCanBeRetriedWithAnotherModel(t *testing.T) {
+	t.Parallel()
+	for _, code := range []string{"rate_limited", "quota_reservation_deferred"} {
+		if !isRateLimitedExtractionError(sql.Null[string]{V: code, Valid: true}) {
+			t.Errorf("%q was not recognized as rate limited", code)
+		}
+	}
+	for _, code := range []sql.Null[string]{{}, {V: "provider_unavailable", Valid: true}} {
+		if isRateLimitedExtractionError(code) {
+			t.Errorf("%#v was incorrectly recognized as rate limited", code)
+		}
+	}
+
+	request := stdjson.RawMessage(`{"purpose":"interactive","model":"free","crop":{"page":2}}`)
+	updated, err := replaceExtractionJobModel(request, ingestion.ModelPro)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Purpose string           `json:"purpose"`
+		Model   string           `json:"model"`
+		Crop    ingestion.Region `json:"crop"`
+	}
+	if err := stdjson.Unmarshal(updated, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Purpose != "interactive" || decoded.Model != ingestion.ModelPro || decoded.Crop.Page != 2 {
+		t.Fatalf("retry request was not preserved while replacing its model: %#v", decoded)
+	}
+}
 
 func TestDocumentCursorIsBoundToFilters(t *testing.T) {
 	t.Parallel()

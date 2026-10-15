@@ -13,8 +13,12 @@ import { useEvidencePreview } from "../model/evidence-preview";
 import {
   asRecord,
   defaultUploadSourceKind,
+  defaultImportModel,
+  isQuotaLimitedExtraction,
+  importModels,
   isImportModel,
   isSupportedFile,
+  proImportModel,
   withStableEvidenceKeys,
   type DocumentFilters,
   type DocumentReview,
@@ -55,7 +59,7 @@ export function ImportsPage({
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<CameraCaptureHandle>(null);
   const [files, setFiles] = useState<PendingUpload[]>([]);
-  const [importModel, setImportModel] = useState<ImportModel>("free");
+  const [importModel, setImportModel] = useState<ImportModel>(defaultImportModel);
   // 親への未保存通知は effect で状態を push せず、変化したイベントから直接行う
   const onUnsavedChangesRef = useRef(onUnsavedChanges);
   const reportedUnsavedChanges = useRef(false);
@@ -108,6 +112,20 @@ export function ImportsPage({
     loadOlderDocuments,
   } = useImportDocuments(household.id, documentFilters, setMessage);
   const [pending, setPending] = useState(false);
+  const notifiedQuotaLimits = useRef(new Set<string>());
+  useEffect(() => {
+    const limited = documents.find((document) => {
+      const key = `${document.id}:${document.errorCode}`;
+      return isQuotaLimitedExtraction(document) && !notifiedQuotaLimits.current.has(key);
+    });
+    if (!limited) return;
+
+    notifiedQuotaLimits.current.add(`${limited.id}:${limited.errorCode}`);
+    setImportModel(proImportModel);
+    setMessage(
+      "モデルの利用上限に達しました。Gemini 3.1 Pro Previewへ切り替えました。Proで再抽出すると料金が発生します。",
+    );
+  }, [documents]);
   const selectedDocumentID = useRef(selected);
   useEffect(() => {
     selectedDocumentID.current = selected;
@@ -280,7 +298,7 @@ export function ImportsPage({
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(isQuotaLimitedExtraction(document) ? { model: proImportModel } : {}),
       });
       if (!response.ok) throw new Error(`再抽出を開始できませんでした (${response.status})`);
       editedReceiptDocuments.current.delete(document.id);
@@ -504,13 +522,35 @@ export function ImportsPage({
                 if (isImportModel(event.target.value)) setImportModel(event.target.value);
               }}
             >
-              <option value="free">Gemini Flash／Flash-Lite（無料）</option>
-              <option value="pro">Gemini Pro（有料）</option>
+              <optgroup label="無料枠">
+                {importModels
+                  .filter((model) => model.tier === "free")
+                  .map((model) => (
+                    <option key={model.value} value={model.value}>
+                      {model.label} · {model.value}
+                    </option>
+                  ))}
+              </optgroup>
+              <optgroup label="有料">
+                {importModels
+                  .filter((model) => model.tier === "paid")
+                  .map((model) => (
+                    <option key={model.value} value={model.value}>
+                      {model.label} · {model.value}
+                    </option>
+                  ))}
+              </optgroup>
             </select>
             {files.length > 0 && (
               <small aria-live="polite">
-                追加済み: Free {files.filter((file) => file.model === "free").length}件・Pro{" "}
-                {files.filter((file) => file.model === "pro").length}件
+                追加済み:{" "}
+                {importModels
+                  .map((model) => {
+                    const count = files.filter((file) => file.model === model.value).length;
+                    return count > 0 ? `${model.label} ${count}件` : null;
+                  })
+                  .filter((value) => value !== null)
+                  .join("・")}
               </small>
             )}
           </div>

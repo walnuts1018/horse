@@ -82,6 +82,10 @@ func TestGeminiRouterSelectedOptionsUseRequestedModelRoute(t *testing.T) {
 		{name: "free receipt model", selection: ModelSelectionFree, sourceKind: "receipt", mimeType: mimeTypeJPEG, wantModel: "configured-flash", freeOnly: true},
 		{name: "free email model", selection: ModelSelectionFree, sourceKind: "email", mimeType: mimeTypeEmail, wantModel: "configured-lite", freeOnly: true},
 		{name: "paid pro model", selection: ModelSelectionPro, sourceKind: "receipt", mimeType: mimeTypeJPEG, wantModel: "configured-pro", paidOnly: true},
+		{name: "exact receipt model", selection: ModelReceipt, sourceKind: "email", mimeType: mimeTypeEmail, wantModel: ModelReceipt, freeOnly: true},
+		{name: "exact 3.5 flash lite model", selection: ModelEmail, sourceKind: "receipt", mimeType: mimeTypeJPEG, wantModel: ModelEmail, freeOnly: true},
+		{name: "exact 3.1 flash lite model", selection: ModelLite31, sourceKind: "receipt", mimeType: mimeTypeJPEG, wantModel: ModelLite31, freeOnly: true},
+		{name: "exact pro model", selection: ModelPro, sourceKind: "receipt", mimeType: mimeTypeJPEG, wantModel: ModelPro, paidOnly: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -641,7 +645,8 @@ func TestEstimatedGeminiCostUsesProjectTierAndPriceChange(t *testing.T) {
 	after := estimateCostJPY(ProjectPaid, ModelReceipt, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, cutover)
 	proUnderLimit := estimateCostJPY(ProjectPaid, ModelPro, geminiServiceTierStandard, 200_000, 1_000_000, 100, cutover)
 	proOverLimit := estimateCostJPY(ProjectPaid, ModelPro, geminiServiceTierStandard, 200_001, 1_000_000, 100, cutover)
-	if before != 450 || flex != 225 || after != 900 || proUnderLimit != 1240 || proOverLimit != 1880.0004 || estimateCostJPY(ProjectFree, ModelReceipt, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, cutover) != 0 {
+	lite31 := estimateCostJPY(ProjectPaid, ModelLite31, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, cutover)
+	if before != 450 || flex != 225 || after != 900 || proUnderLimit != 1240 || proOverLimit != 1880.0004 || lite31 != 175 || estimateCostJPY(ProjectFree, ModelReceipt, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, cutover) != 0 {
 		t.Fatalf("unexpected estimated prices: before=%f flex=%f after=%f", before, flex, after)
 	}
 }

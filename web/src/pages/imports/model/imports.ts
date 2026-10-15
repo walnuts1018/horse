@@ -52,10 +52,22 @@ export type StatementEntry = {
 };
 export type StatementSourceKind = "card" | "bank";
 export type UploadSourceKind = "receipt" | "order" | "email" | StatementSourceKind;
-export type ImportModel = "free" | "pro";
+export const importModels = [
+  { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash", tier: "free" },
+  { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", tier: "free" },
+  { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", tier: "free" },
+  { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro Preview", tier: "paid" },
+] as const;
+
+export type ImportModel = (typeof importModels)[number]["value"];
+
+export const defaultImportModel: ImportModel = "gemini-3.8-flash";
+export const proImportModel: ImportModel = "gemini-3.1-pro-preview";
+
+const quotaLimitedExtractionErrorCodes = new Set(["rate_limited", "quota_reservation_deferred"]);
 
 export function isImportModel(value: string): value is ImportModel {
-  return value === "free" || value === "pro";
+  return importModels.some((model) => model.value === value);
 }
 
 export function receiptDateInputValue(purchasedAt?: string): string {
@@ -237,6 +249,8 @@ export type DocumentReview = {
     index: number;
   };
   status: string;
+  model?: string;
+  errorCode?: string;
   sourceKind?: string;
   mimeType?: string;
   createdAt?: string;
@@ -279,6 +293,15 @@ export type DocumentReview = {
     statements?: StatementEntry[];
   };
 };
+
+export function isQuotaLimitedExtraction(document: DocumentReview): boolean {
+  const status = document.status.toUpperCase();
+  return (
+    (status === "QUEUED" || status === "FAILED") &&
+    document.errorCode !== undefined &&
+    quotaLimitedExtractionErrorCodes.has(document.errorCode)
+  );
+}
 
 export function purchaseDatePrecisionFor(document: DocumentReview): "DATE_TIME" | "DATE_ONLY" {
   if (document.receiptConfirmationState?.purchaseTime !== undefined) {

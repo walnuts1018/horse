@@ -21,8 +21,18 @@ const (
 
 	ModelReceipt = "gemini-3.8-flash"
 	ModelEmail   = "gemini-3.5-flash-lite"
+	ModelLite31  = "gemini-3.1-flash-lite"
 	ModelPro     = "gemini-3.1-pro-preview"
 )
+
+func ValidModelSelection(selection string) bool {
+	switch selection {
+	case "", ModelSelectionFree, ModelSelectionPro, ModelReceipt, ModelEmail, ModelLite31, ModelPro:
+		return true
+	default:
+		return false
+	}
+}
 
 var ErrGeminiSpendCap = errors.New("gemini spend cap reached")
 
@@ -96,6 +106,16 @@ func (r GeminiRouter) selectedOptions(selection, sourceKind, mimeType, purpose s
 		options.FreeOnly = true
 	case ModelSelectionPro:
 		options = r.ProOptions(purpose, nil)
+		options.ExactModel = true
+		options.Reason = geminiReasonInitialExtraction
+		options.Attempt = attempt
+	case ModelReceipt, ModelEmail, ModelLite31:
+		options.Model = selection
+		options.ExactModel = true
+		options.FreeOnly = true
+	case ModelPro:
+		options = r.ProOptions(purpose, nil)
+		options.Model = selection
 		options.ExactModel = true
 		options.Reason = geminiReasonInitialExtraction
 		options.Attempt = attempt
@@ -524,6 +544,8 @@ func modelPrices(model string, inputTokens int64, at time.Time) (float64, float6
 		return 1.5, 7.5
 	case ModelEmail:
 		return 0.3, 2.5
+	case ModelLite31:
+		return 0.25, 1.5
 	case ModelPro:
 		if inputTokens > 200_000 {
 			return 4, 18
