@@ -7,4 +7,7 @@ edition = "2024"
 axum = "0.8.9"
 diesel = { workspace = true, features = ["32-column-tables"] }
 diesel-async = { workspace = true }
+horse-auth = { path = "../auth" }
 horse-postgres = { path = "../postgres" }
+serde_json = { workspace = true }
+tracing = "0.1"

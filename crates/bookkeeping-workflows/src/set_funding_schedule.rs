@@ -80,7 +80,8 @@ pub fn decide_set_funding_schedule(
     if command.cadence != "MONTHLY" {
         return Err(SetFundingScheduleError::InvalidCadence);
     }
-    let starts_on = parse_date(&command.starts_on).ok_or(SetFundingScheduleError::InvalidStartDate)?;
+    let starts_on =
+        parse_date(&command.starts_on).ok_or(SetFundingScheduleError::InvalidStartDate)?;
     let ends_on = command
         .ends_on
         .as_deref()
@@ -100,12 +101,12 @@ pub fn decide_set_funding_schedule(
         }
         let prior_start = parse_date(&schedule.starts_on)
             .ok_or(SetFundingScheduleError::InvalidExistingSchedule)?;
-        let prior_end = schedule
-            .ends_on
-            .as_deref()
-            .map(parse_date)
-            .transpose()
-            .ok_or(SetFundingScheduleError::InvalidExistingSchedule)?;
+        let prior_end = match schedule.ends_on.as_deref() {
+            Some(value) => {
+                Some(parse_date(value).ok_or(SetFundingScheduleError::InvalidExistingSchedule)?)
+            }
+            None => None,
+        };
         if prior_end.is_some_and(|end| end < prior_start) {
             return Err(SetFundingScheduleError::InvalidExistingSchedule);
         }
@@ -224,7 +225,10 @@ mod tests {
         )
         .expect("valid schedule");
 
-        assert_eq!(decision.prior_updates[0].ends_on.as_deref(), Some("2024-02-29"));
+        assert_eq!(
+            decision.prior_updates[0].ends_on.as_deref(),
+            Some("2024-02-29")
+        );
         assert!(!decision.prior_updates[0].active);
         assert_eq!(decision.changed_fields, ["amountYen", "startsOn", "endsOn"]);
     }
@@ -241,7 +245,10 @@ mod tests {
         )
         .expect("valid schedule");
 
-        assert_eq!(decision.prior_updates[0].ends_on.as_deref(), Some("2024-04-30"));
+        assert_eq!(
+            decision.prior_updates[0].ends_on.as_deref(),
+            Some("2024-04-30")
+        );
         assert!(!decision.prior_updates[0].active);
     }
 

@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{DateTime, NaiveDate, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
@@ -21,7 +21,7 @@ pub struct PersistedFundingSchedule {
     pub starts_on: String,
     pub ends_on: Option<String>,
     pub active: bool,
-    pub created_at: NaiveDateTime,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug)]
@@ -211,7 +211,7 @@ pub async fn persist_set_funding_schedule(
                     starts_on: starts_on.format("%Y-%m-%d").to_string(),
                     ends_on: ends_on.map(|date| date.format("%Y-%m-%d").to_string()),
                     active: true,
-                    created_at: created_at.naive_utc(),
+                    created_at,
                 })
             },
         )
@@ -241,7 +241,10 @@ fn validate_decision(
     Ok(())
 }
 
-fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, SetFundingSchedulePersistenceError> {
+fn parse_uuid(
+    value: &str,
+    field: &'static str,
+) -> Result<Uuid, SetFundingSchedulePersistenceError> {
     Uuid::parse_str(value).map_err(|_| SetFundingSchedulePersistenceError::InvalidUuid(field))
 }
 

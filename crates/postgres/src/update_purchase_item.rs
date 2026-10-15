@@ -37,6 +37,7 @@ pub enum UpdatePurchaseItemPersistenceError {
     MemberNotFound,
     AccountingPeriodClosed,
     ReferenceNotFound(&'static str),
+    InvalidPaymentAllocation,
     PostedAccountingSyncRequired,
     InvalidDecision,
     InvalidWorkflow(UpdatePurchaseItemError),
@@ -145,8 +146,9 @@ pub async fn persist_update_purchase_item(
                         purchases::occurred_at,
                         purchases::merchant,
                         purchases::revision,
+                        purchases::payment_account_id,
                     ))
-                    .first::<(Uuid, String, DateTime<Utc>, String, i64)>(&mut *conn)
+                    .first::<(Uuid, String, DateTime<Utc>, String, i64, Option<Uuid>)>(&mut *conn)
                     .await
                     .optional()?
                     .ok_or(UpdatePurchaseItemPersistenceError::PurchaseNotFound)?;
@@ -294,6 +296,22 @@ pub async fn persist_update_purchase_item(
                 )
                 .map_err(UpdatePurchaseItemPersistenceError::InvalidWorkflow)?;
                 validate_decision(&decision, item_id)?;
+                let next_item_amount = decision.amount_yen.unwrap_or(locked.3);
+                let adjusted_payments = if next_item_amount != locked.3 {
+                    Some(
+                        adjust_purchase_payments(
+                            &mut *conn,
+                            household_id,
+                            observed.1,
+                            locked.3,
+                            next_item_amount,
+                            purchase.5,
+                        )
+                        .await?,
+                    )
+                } else {
+                    None
+                };
                 let next_revision = i64::try_from(decision.revision).map_err(|_| {
                     UpdatePurchaseItemPersistenceError::NumericOutOfRange("revision")
                 })?;
@@ -331,20 +349,21 @@ pub async fn persist_update_purchase_item(
                     printed_unit_price_quantity_numerator,
                     printed_unit_price_quantity_denominator,
                     printed_unit_price_unit,
-                ) = match decision.printed_unit_price.as_ref() {
-                    None => (locked.10, locked.11, locked.12, locked.13.clone()),
-                    Some(None) => (None, None, None, None),
-                    Some(Some(value)) => (
-                        Some(value.amount_yen),
-                        Some(value.basis.numerator.parse().map_err(|_| {
-                            UpdatePurchaseItemPersistenceError::InvalidDecision
-                        })?),
-                        Some(value.basis.denominator.parse().map_err(|_| {
-                            UpdatePurchaseItemPersistenceError::InvalidDecision
-                        })?),
-                        Some(value.basis.unit.clone()),
-                    ),
-                };
+                ) =
+                    match decision.printed_unit_price.as_ref() {
+                        None => (locked.10, locked.11, locked.12, locked.13.clone()),
+                        Some(None) => (None, None, None, None),
+                        Some(Some(value)) => (
+                            Some(value.amount_yen),
+                            Some(value.basis.numerator.parse().map_err(|_| {
+                                UpdatePurchaseItemPersistenceError::InvalidDecision
+                            })?),
+                            Some(value.basis.denominator.parse().map_err(|_| {
+                                UpdatePurchaseItemPersistenceError::InvalidDecision
+                            })?),
+                            Some(value.basis.unit.clone()),
+                        ),
+                    };
                 let category_id = match &decision.category_id {
                     Some(Some(value)) => Some(parse_uuid(value, "category_id")?),
                     Some(None) => None,
@@ -377,6 +396,31 @@ pub async fn persist_update_purchase_item(
                     ))
                     .execute(&mut *conn)
                     .await?;
+
+                if let Some(payments) = adjusted_payments {
+                    diesel::delete(
+                        public::purchase_payments::dsl::purchase_payments
+                            .filter(public::purchase_payments::dsl::household_id.eq(household_id))
+                            .filter(public::purchase_payments::dsl::purchase_id.eq(observed.1)),
+                    )
+                    .execute(&mut *conn)
+                    .await?;
+                    for (index, (account_id, amount_yen)) in payments.iter().enumerate() {
+                        let line_no = i32::try_from(index + 1).map_err(|_| {
+                            UpdatePurchaseItemPersistenceError::NumericOutOfRange("payment_line_no")
+                        })?;
+                        diesel::insert_into(public::purchase_payments::table)
+                            .values((
+                                public::purchase_payments::household_id.eq(household_id),
+                                public::purchase_payments::purchase_id.eq(observed.1),
+                                public::purchase_payments::line_no.eq(line_no),
+                                public::purchase_payments::account_id.eq(account_id),
+                                public::purchase_payments::amount_yen.eq(amount_yen),
+                            ))
+                            .execute(&mut *conn)
+                            .await?;
+                    }
+                }
 
                 if let Some(allocations) = &decision.allocations {
                     validate_pools(&mut *conn, household_id, allocations).await?;
@@ -518,30 +562,35 @@ async fn load_automatic_basis(
     } else {
         None
     };
-    let mut rule_id = None;
-    for condition in [
-        variant_id.map(|id| rules::product_variant_id.eq(Some(id))),
-        concept_id.map(|id| rules::product_concept_id.eq(Some(id))),
-        category_id.map(|id| rules::category_id.eq(Some(id))),
-        (!merchant.trim().is_empty())
-            .then(|| rules::merchant_key.eq(Some(normalize_merchant(merchant)))),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        if let Some(id) = rules::allocation_rules
-            .filter(rules::household_id.eq(household_id))
-            .filter(condition)
-            .select((rules::id, rules::revision))
-            .first::<(Uuid, i64)>(conn)
-            .await
-            .optional()?
-        {
-            rule_id = Some(id);
-            break;
+    macro_rules! find_rule {
+        ($condition:expr) => {
+            rules::allocation_rules
+                .filter(rules::household_id.eq(household_id))
+                .filter($condition)
+                .select((rules::id, rules::revision))
+                .first::<(Uuid, i64)>(conn)
+                .await
+                .optional()?
+        };
+    }
+    let mut rule = None;
+    if let Some(id) = variant_id {
+        rule = find_rule!(rules::product_variant_id.eq(Some(id)));
+    }
+    if rule.is_none() {
+        if let Some(id) = concept_id {
+            rule = find_rule!(rules::product_concept_id.eq(Some(id)));
         }
     }
-    let Some((rule_id, revision)) = rule_id else {
+    if rule.is_none() {
+        if let Some(id) = category_id {
+            rule = find_rule!(rules::category_id.eq(Some(id)));
+        }
+    }
+    if rule.is_none() && !merchant.trim().is_empty() {
+        rule = find_rule!(rules::merchant_key.eq(Some(normalize_merchant(merchant))));
+    }
+    let Some((rule_id, revision)) = rule else {
         return Ok(None);
     };
     let weights = public::allocation_rule_weights::dsl::allocation_rule_weights
@@ -629,6 +678,97 @@ async fn validate_pools(
         ));
     }
     Ok(())
+}
+
+async fn adjust_purchase_payments(
+    conn: &mut crate::AsyncPgConnection,
+    household_id: Uuid,
+    purchase_id: Uuid,
+    old_item_amount: i64,
+    new_item_amount: i64,
+    legacy_account_id: Option<Uuid>,
+) -> Result<Vec<(Uuid, i64)>, UpdatePurchaseItemPersistenceError> {
+    let item_amounts = public::purchase_items::dsl::purchase_items
+        .filter(public::purchase_items::dsl::household_id.eq(household_id))
+        .filter(public::purchase_items::dsl::purchase_id.eq(purchase_id))
+        .select(public::purchase_items::dsl::amount_yen)
+        .load::<i64>(conn)
+        .await?;
+    let current_total = item_amounts
+        .into_iter()
+        .try_fold(0_i64, |total, amount| total.checked_add(amount))
+        .ok_or(UpdatePurchaseItemPersistenceError::InvalidPaymentAllocation)?;
+    let new_total = current_total
+        .checked_sub(old_item_amount)
+        .and_then(|total| total.checked_add(new_item_amount))
+        .ok_or(UpdatePurchaseItemPersistenceError::InvalidPaymentAllocation)?;
+    let rows = public::purchase_payments::dsl::purchase_payments
+        .filter(public::purchase_payments::dsl::household_id.eq(household_id))
+        .filter(public::purchase_payments::dsl::purchase_id.eq(purchase_id))
+        .order(public::purchase_payments::dsl::line_no)
+        .select((
+            public::purchase_payments::dsl::account_id,
+            public::purchase_payments::dsl::amount_yen,
+        ))
+        .load::<(Uuid, i64)>(conn)
+        .await?;
+    let payments = if rows.is_empty() {
+        legacy_account_id
+            .map(|account_id| vec![(account_id, current_total)])
+            .unwrap_or_default()
+    } else {
+        rows
+    };
+    if payments.is_empty() {
+        return Ok(Vec::new());
+    }
+    let paid_total = payments
+        .iter()
+        .try_fold(0_i64, |total, (_, amount)| total.checked_add(*amount))
+        .ok_or(UpdatePurchaseItemPersistenceError::InvalidPaymentAllocation)?;
+    if paid_total != current_total
+        || payments.iter().any(|(_, amount)| *amount <= 0)
+        || new_total < 0
+    {
+        return Err(UpdatePurchaseItemPersistenceError::InvalidPaymentAllocation);
+    }
+    let denominator = u128::try_from(paid_total)
+        .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidPaymentAllocation)?;
+    let target = u128::try_from(new_total)
+        .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidPaymentAllocation)?;
+    let mut apportioned = payments
+        .iter()
+        .enumerate()
+        .map(|(index, (account_id, amount))| {
+            let product = target * (*amount as u128);
+            (
+                *account_id,
+                (product / denominator) as i64,
+                product % denominator,
+                index,
+            )
+        })
+        .collect::<Vec<_>>();
+    let assigned = apportioned
+        .iter()
+        .map(|(_, amount, _, _)| *amount)
+        .sum::<i64>();
+    let remainder = usize::try_from(new_total - assigned)
+        .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidPaymentAllocation)?;
+    let mut priority = (0..apportioned.len()).collect::<Vec<_>>();
+    priority.sort_by_key(|index| {
+        (
+            std::cmp::Reverse(apportioned[*index].2),
+            apportioned[*index].3,
+        )
+    });
+    for index in priority.into_iter().take(remainder) {
+        apportioned[index].1 += 1;
+    }
+    Ok(apportioned
+        .into_iter()
+        .filter_map(|(account_id, amount, _, _)| (amount > 0).then_some((account_id, amount)))
+        .collect())
 }
 
 fn measure(
