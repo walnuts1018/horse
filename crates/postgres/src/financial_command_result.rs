@@ -77,9 +77,7 @@ pub async fn load_transfer_ledger_entry_result(
                 public::ledger_entries::created_at,
                 public::ledger_entries::source_id,
             ))
-            .first::<(Uuid, DateTime<Utc>, String, i64, DateTime<Utc>, Uuid)>(
-                &mut *conn,
-            )
+            .first::<(Uuid, DateTime<Utc>, String, i64, DateTime<Utc>, Uuid)>(&mut *conn)
             .await
             .optional()?
             .ok_or(FinancialCommandResultError::MissingLedgerEntry)?;

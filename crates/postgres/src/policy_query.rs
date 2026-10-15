@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use diesel::{
-    ExpressionMethods, OptionalExtension, PgTextExpressionMethods, QueryDsl, RunQueryDsl,
-    dsl::count, pg::Pg, result::Error as DieselError,
+    BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, dsl::count, pg::Pg,
+    result::Error as DieselError,
 };
 use diesel_async::RunQueryDsl as AsyncRunQueryDsl;
 use policy_workflows::{budget, recurring_expense};
@@ -80,22 +80,28 @@ pub async fn budgets(
         .await
         .map_err(|error| PolicyQueryError::Pool(error.to_string()))?;
     require_member(&mut conn, household_id, actor_id).await?;
-    use public::{budgets::dsl as b, household_members::dsl as members};
+    use public::budgets::dsl as b;
 
-    let base = b::budgets
+    let total_count = b::budgets
         .filter(b::household_id.eq(household_id))
         .filter(b::archived.eq(false))
         .filter(b::starts_on.lt(period_end))
-        .filter(b::ends_on.is_null().or(b::ends_on.ge(period_start)));
-    let total_count = base
-        .clone()
+        .filter(b::ends_on.is_null().or(b::ends_on.ge(period_start)))
         .select(count(b::id))
         .first::<i64>(&mut conn)
         .await?;
-    let mut query = base.into_boxed::<Pg>();
+    let mut query = b::budgets
+        .filter(b::household_id.eq(household_id))
+        .filter(b::archived.eq(false))
+        .filter(b::starts_on.lt(period_end))
+        .filter(b::ends_on.is_null().or(b::ends_on.ge(period_start)))
+        .into_boxed::<Pg>();
     if let Some(cursor_id) = after_id {
         let cursor_name = b::budgets
             .filter(b::household_id.eq(household_id))
+            .filter(b::archived.eq(false))
+            .filter(b::starts_on.lt(period_end))
+            .filter(b::ends_on.is_null().or(b::ends_on.ge(period_start)))
             .filter(b::id.eq(cursor_id))
             .select(b::name)
             .first::<String>(&mut conn)
@@ -104,13 +110,16 @@ pub async fn budgets(
             .ok_or(PolicyQueryError::NotFound)?;
         query = query.filter(
             b::name
-                .gt(&cursor_name)
-                .or(b::name.eq(&cursor_name).and(b::id.gt(cursor_id))),
+                .gt(cursor_name.clone())
+                .or(b::name.eq(cursor_name).and(b::id.gt(cursor_id))),
         );
     }
     if let Some(cursor_id) = before_id {
         let cursor_name = b::budgets
             .filter(b::household_id.eq(household_id))
+            .filter(b::archived.eq(false))
+            .filter(b::starts_on.lt(period_end))
+            .filter(b::ends_on.is_null().or(b::ends_on.ge(period_start)))
             .filter(b::id.eq(cursor_id))
             .select(b::name)
             .first::<String>(&mut conn)
@@ -119,8 +128,8 @@ pub async fn budgets(
             .ok_or(PolicyQueryError::NotFound)?;
         query = query.filter(
             b::name
-                .lt(&cursor_name)
-                .or(b::name.eq(&cursor_name).and(b::id.lt(cursor_id))),
+                .lt(cursor_name.clone())
+                .or(b::name.eq(cursor_name).and(b::id.lt(cursor_id))),
         );
     }
     let query = if backwards {
@@ -195,7 +204,7 @@ pub async fn budget(
         .get()
         .await
         .map_err(|error| PolicyQueryError::Pool(error.to_string()))?;
-    use public::{budgets::dsl as b, household_members::dsl as members};
+    use public::budgets::dsl as b;
     let row = b::budgets
         .filter(b::id.eq(budget_id))
         .select((
@@ -221,6 +230,15 @@ pub async fn budget(
         .ok_or(PolicyQueryError::NotFound)
 }
 
+pub async fn budget_for_current_period(
+    pool: &PgPool,
+    actor_id: Uuid,
+    budget_id: Uuid,
+) -> Result<BudgetReadModel, PolicyQueryError> {
+    let period = Utc::now().with_timezone(&tokyo()).format("%Y-%m").to_string();
+    budget(pool, actor_id, budget_id, &period).await
+}
+
 pub async fn recurring_expenses(
     pool: &PgPool,
     actor_id: Uuid,
@@ -238,24 +256,35 @@ pub async fn recurring_expenses(
         .map_err(|error| PolicyQueryError::Pool(error.to_string()))?;
     require_member(&mut conn, household_id, actor_id).await?;
     use public::recurring_expenses::dsl as e;
-    let base = e::recurring_expenses
+    let total_count = if include_archived {
+        e::recurring_expenses
+            .filter(e::household_id.eq(household_id))
+            .select(count(e::id))
+            .first::<i64>(&mut conn)
+            .await?
+    } else {
+        e::recurring_expenses
+            .filter(e::household_id.eq(household_id))
+            .filter(e::archived.eq(false))
+            .select(count(e::id))
+            .first::<i64>(&mut conn)
+            .await?
+    };
+    let mut query = e::recurring_expenses
         .filter(e::household_id.eq(household_id))
         .into_boxed::<Pg>();
-    let base = if include_archived {
-        base
-    } else {
-        base.filter(e::archived.eq(false))
-    };
-    let total_count = base
-        .clone()
-        .select(count(e::id))
-        .first::<i64>(&mut conn)
-        .await?;
-    let mut query = base;
+    if !include_archived {
+        query = query.filter(e::archived.eq(false));
+    }
     if let Some(cursor_id) = after_id {
-        let cursor_due = e::recurring_expenses
+        let mut cursor_query = e::recurring_expenses
             .filter(e::household_id.eq(household_id))
             .filter(e::id.eq(cursor_id))
+            .into_boxed::<Pg>();
+        if !include_archived {
+            cursor_query = cursor_query.filter(e::archived.eq(false));
+        }
+        let cursor_due = cursor_query
             .select(e::next_due_on)
             .first::<NaiveDate>(&mut conn)
             .await
@@ -268,9 +297,14 @@ pub async fn recurring_expenses(
         );
     }
     if let Some(cursor_id) = before_id {
-        let cursor_due = e::recurring_expenses
+        let mut cursor_query = e::recurring_expenses
             .filter(e::household_id.eq(household_id))
             .filter(e::id.eq(cursor_id))
+            .into_boxed::<Pg>();
+        if !include_archived {
+            cursor_query = cursor_query.filter(e::archived.eq(false));
+        }
+        let cursor_due = cursor_query
             .select(e::next_due_on)
             .first::<NaiveDate>(&mut conn)
             .await
@@ -317,7 +351,7 @@ pub async fn recurring_expenses(
     Ok(Page {
         rows: rows
             .into_iter()
-            .map(TryInto::try_into)
+            .map(recurring_expense_from_row)
             .collect::<Result<Vec<_>, _>>()?,
         total_count,
         has_next_page: if backwards {
@@ -458,9 +492,16 @@ async fn budget_projections(
             }
         }
     }
+    let period_start = start.with_timezone(&tokyo()).date_naive();
+    let period_end = end.with_timezone(&tokyo()).date_naive();
     rows.into_iter()
         .map(|row| {
-            let actual_yen = *actuals.get(&(row.1, row.2)).unwrap_or(&0);
+            let applies_to_period = row.5 < period_end && row.6.is_none_or(|date| date >= period_start);
+            let actual_yen = if applies_to_period {
+                *actuals.get(&(row.1, row.2)).unwrap_or(&0)
+            } else {
+                0
+            };
             let remaining_yen = row
                 .4
                 .checked_sub(actual_yen)
@@ -543,26 +584,24 @@ async fn require_member(
     }
 }
 
-impl TryFrom<RecurringExpenseRow> for recurring_expense::RecurringExpense {
-    type Error = PolicyQueryError;
-
-    fn try_from(row: RecurringExpenseRow) -> Result<Self, Self::Error> {
-        Ok(Self {
-            id: row.0.to_string(),
-            household_id: row.1.to_string(),
-            name: row.2,
-            merchant: row.3,
-            amount_yen: row.4,
-            currency: row.5,
-            category_id: row.6.map(|id| id.to_string()),
-            payment_account_id: row.7.map(|id| id.to_string()),
-            cadence: recurring_expense::Cadence::parse(&row.8)
-                .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?,
-            starts_on: row.9,
-            next_due_on: row.10,
-            ends_on: row.11,
-            archived: row.12,
-            revision: row.13,
-        })
-    }
+fn recurring_expense_from_row(
+    row: RecurringExpenseRow,
+) -> Result<recurring_expense::RecurringExpense, PolicyQueryError> {
+    Ok(recurring_expense::RecurringExpense {
+        id: row.0.to_string(),
+        household_id: row.1.to_string(),
+        name: row.2,
+        merchant: row.3,
+        amount_yen: row.4,
+        currency: row.5,
+        category_id: row.6.map(|id| id.to_string()),
+        payment_account_id: row.7.map(|id| id.to_string()),
+        cadence: recurring_expense::Cadence::parse(&row.8)
+            .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?,
+        starts_on: row.9,
+        next_due_on: row.10,
+        ends_on: row.11,
+        archived: row.12,
+        revision: row.13,
+    })
 }

@@ -5,12 +5,12 @@ use uuid::Uuid;
 
 use bookkeeping_domain::{PoolId, PositiveYen, Yen};
 use bookkeeping_workflows::{
-    MemberId,
-    record_repayment::{Loan as RepaymentLoan, LoanId as RepaymentLoanId, PoolKind as RepaymentPoolKind, RepaymentSource},
-    record_transfer::{
-        AccountingPeriodStatus, PoolKind as TransferPoolKind, TransferAccount,
+    AccountId, MemberId,
+    record_repayment::{
+        Loan as RepaymentLoan, LoanId as RepaymentLoanId, PoolKind as RepaymentPoolKind,
+        RepaymentSource,
     },
-    AccountId,
+    record_transfer::{AccountingPeriodStatus, PoolKind as TransferPoolKind, TransferAccount},
 };
 
 use crate::{PgPool, schema::public};
@@ -62,20 +62,10 @@ pub async fn load_transfer_command_context(
     occurred_at: DateTime<Utc>,
 ) -> Result<TransferCommandContext, FinancialCommandContextError> {
     let (_, period_status) = load_period(pool, household_id, occurred_at).await?;
-    let payment_account = load_transfer_account(
-        pool,
-        household_id,
-        from_member_id,
-        payment_account_id,
-    )
-    .await?;
-    let destination_account = load_transfer_account(
-        pool,
-        household_id,
-        to_member_id,
-        destination_account_id,
-    )
-    .await?;
+    let payment_account =
+        load_transfer_account(pool, household_id, from_member_id, payment_account_id).await?;
+    let destination_account =
+        load_transfer_account(pool, household_id, to_member_id, destination_account_id).await?;
     Ok(TransferCommandContext {
         period_status,
         payment_account,
@@ -120,10 +110,11 @@ pub async fn load_repayment_command_context(
         .load::<i64>(&mut *conn)
         .await?;
     let repaid = repayments.into_iter().try_fold(0_i64, |sum, amount| {
-        sum.checked_add(amount).ok_or(FinancialCommandContextError::InvalidLoan)
+        sum.checked_add(amount)
+            .ok_or(FinancialCommandContextError::InvalidLoan)
     })?;
-    let principal = PositiveYen::new(principal)
-        .map_err(|_| FinancialCommandContextError::InvalidLoan)?;
+    let principal =
+        PositiveYen::new(principal).map_err(|_| FinancialCommandContextError::InvalidLoan)?;
     let repaid = Yen::new(repaid).map_err(|_| FinancialCommandContextError::InvalidLoan)?;
     let loan = RepaymentLoan {
         id: RepaymentLoanId::new(loan_id.to_string())
@@ -134,35 +125,27 @@ pub async fn load_repayment_command_context(
             .map_err(|_| FinancialCommandContextError::InvalidLoan)?,
         principal,
     };
-    let source_account = load_account_details(
-        pool,
-        household_id,
-        from_member_id,
-        payment_account_id,
-    )
-    .await?;
-    let destination_account = load_account_details(
-        pool,
-        household_id,
-        to_member_id,
-        destination_account_id,
-    )
-    .await?;
+    let source_account =
+        load_account_details(pool, household_id, from_member_id, payment_account_id).await?;
+    let destination_account =
+        load_account_details(pool, household_id, to_member_id, destination_account_id).await?;
     let source: Option<RepaymentSource> = source_account
-        .map(|(account_id, pool_id, kind)| -> Result<RepaymentSource, FinancialCommandContextError> {
-            let pool_kind = match kind.as_str() {
-                "PERSONAL" => Ok(RepaymentPoolKind::Personal),
-                "SHARED" => Ok(RepaymentPoolKind::Shared),
-                _ => Err(FinancialCommandContextError::InvalidPoolKind(kind)),
-            }?;
-            Ok(RepaymentSource {
-                account_id: AccountId::new(account_id.to_string())
-                    .map_err(|_| FinancialCommandContextError::InvalidLoan)?,
-                pool_id: PoolId::new(pool_id.to_string())
-                    .map_err(|_| FinancialCommandContextError::InvalidLoan)?,
-                pool_kind,
-            })
-        })
+        .map(
+            |(account_id, pool_id, kind)| -> Result<RepaymentSource, FinancialCommandContextError> {
+                let pool_kind = match kind.as_str() {
+                    "PERSONAL" => Ok(RepaymentPoolKind::Personal),
+                    "SHARED" => Ok(RepaymentPoolKind::Shared),
+                    _ => Err(FinancialCommandContextError::InvalidPoolKind(kind)),
+                }?;
+                Ok(RepaymentSource {
+                    account_id: AccountId::new(account_id.to_string())
+                        .map_err(|_| FinancialCommandContextError::InvalidLoan)?,
+                    pool_id: PoolId::new(pool_id.to_string())
+                        .map_err(|_| FinancialCommandContextError::InvalidLoan)?,
+                    pool_kind,
+                })
+            },
+        )
         .transpose()?;
     let destination_account = destination_account
         .map(|(id, _, _)| AccountId::new(id.to_string()))
@@ -239,7 +222,8 @@ async fn load_transfer_account(
         _ => return Err(FinancialCommandContextError::InvalidPoolKind(kind)),
     };
     Ok(Some(TransferAccount {
-        id: AccountId::new(id.to_string()).map_err(|_| FinancialCommandContextError::InvalidLoan)?,
+        id: AccountId::new(id.to_string())
+            .map_err(|_| FinancialCommandContextError::InvalidLoan)?,
         pool_id: PoolId::new(pool_id.to_string())
             .map_err(|_| FinancialCommandContextError::InvalidLoan)?,
         pool_kind,

@@ -100,6 +100,8 @@ pub enum TransferLedgerEntry {
 #[derive(Clone, Debug, Interface)]
 #[graphql(field(name = "id", ty = "&ID"))]
 pub enum Node {
+    LedgerEntry(LedgerEntry),
+    TransferLedgerEntry(TransferLedgerEntry),
     FundingLedgerEntry(FundingLedgerEntry),
     AdvanceTransferLedgerEntry(AdvanceTransferLedgerEntry),
     LoanTransferLedgerEntry(LoanTransferLedgerEntry),
@@ -119,10 +121,7 @@ pub enum Node {
 )]
 pub enum LedgerEntry {
     FundingLedgerEntry(FundingLedgerEntry),
-    AdvanceTransferLedgerEntry(AdvanceTransferLedgerEntry),
-    LoanTransferLedgerEntry(LoanTransferLedgerEntry),
-    RepaymentTransferLedgerEntry(RepaymentTransferLedgerEntry),
-    GiftTransferLedgerEntry(GiftTransferLedgerEntry),
+    TransferLedgerEntry(TransferLedgerEntry),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -161,32 +160,110 @@ impl TryFrom<TransferLedgerEntryResult> for LedgerEntry {
         };
         match value.kind.as_str() {
             "ADVANCE" => {
-                let (id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member) = common();
-                Ok(Self::AdvanceTransferLedgerEntry(AdvanceTransferLedgerEntry {
-                    id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member,
-                }))
+                let (
+                    id,
+                    occurred_at,
+                    description,
+                    amount_yen,
+                    currency,
+                    created_at,
+                    from_member,
+                    to_member,
+                ) = common();
+                Ok(Self::TransferLedgerEntry(
+                    TransferLedgerEntry::AdvanceTransferLedgerEntry(AdvanceTransferLedgerEntry {
+                        id,
+                        occurred_at,
+                        description,
+                        amount_yen,
+                        currency,
+                        created_at,
+                        from_member,
+                        to_member,
+                    }),
+                ))
             }
             "LOAN" => {
-                let loan = value.loan.ok_or(FundingLedgerEntryMappingError::MissingLoanBalance)?;
-                let (id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member) = common();
-                Ok(Self::LoanTransferLedgerEntry(LoanTransferLedgerEntry {
-                    id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member,
-                    loan: loan_balance(loan)?,
-                }))
+                let loan = value
+                    .loan
+                    .ok_or(FundingLedgerEntryMappingError::MissingLoanBalance)?;
+                let (
+                    id,
+                    occurred_at,
+                    description,
+                    amount_yen,
+                    currency,
+                    created_at,
+                    from_member,
+                    to_member,
+                ) = common();
+                Ok(Self::TransferLedgerEntry(
+                    TransferLedgerEntry::LoanTransferLedgerEntry(LoanTransferLedgerEntry {
+                        id,
+                        occurred_at,
+                        description,
+                        amount_yen,
+                        currency,
+                        created_at,
+                        from_member,
+                        to_member,
+                        loan: loan_balance(loan)?,
+                    }),
+                ))
             }
             "REPAYMENT" => {
-                let loan = value.loan.ok_or(FundingLedgerEntryMappingError::MissingLoanBalance)?;
-                let (id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member) = common();
-                Ok(Self::RepaymentTransferLedgerEntry(RepaymentTransferLedgerEntry {
-                    id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member,
-                    loan: loan_balance(loan)?,
-                }))
+                let loan = value
+                    .loan
+                    .ok_or(FundingLedgerEntryMappingError::MissingLoanBalance)?;
+                let (
+                    id,
+                    occurred_at,
+                    description,
+                    amount_yen,
+                    currency,
+                    created_at,
+                    from_member,
+                    to_member,
+                ) = common();
+                Ok(Self::TransferLedgerEntry(
+                    TransferLedgerEntry::RepaymentTransferLedgerEntry(
+                        RepaymentTransferLedgerEntry {
+                            id,
+                            occurred_at,
+                            description,
+                            amount_yen,
+                            currency,
+                            created_at,
+                            from_member,
+                            to_member,
+                            loan: loan_balance(loan)?,
+                        },
+                    ),
+                ))
             }
             "GIFT" => {
-                let (id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member) = common();
-                Ok(Self::GiftTransferLedgerEntry(GiftTransferLedgerEntry {
-                    id, occurred_at, description, amount_yen, currency, created_at, from_member, to_member,
-                }))
+                let (
+                    id,
+                    occurred_at,
+                    description,
+                    amount_yen,
+                    currency,
+                    created_at,
+                    from_member,
+                    to_member,
+                ) = common();
+                Ok(Self::TransferLedgerEntry(
+                    TransferLedgerEntry::GiftTransferLedgerEntry(GiftTransferLedgerEntry {
+                        id,
+                        occurred_at,
+                        description,
+                        amount_yen,
+                        currency,
+                        created_at,
+                        from_member,
+                        to_member,
+                    }),
+                ))
             }
             _ => Err(FundingLedgerEntryMappingError::InvalidTransferKind),
         }

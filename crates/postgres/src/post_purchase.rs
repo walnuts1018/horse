@@ -55,20 +55,6 @@ pub async fn persist_post_purchase(
     input: PersistPostPurchase,
     decision: PostPurchaseDecision,
 ) -> Result<PersistedPostPurchase, PostPurchasePersistenceError> {
-    if input.idempotency_key.is_empty() || input.idempotency_key.len() > 200 {
-        return Err(PostPurchasePersistenceError::InvalidIdempotencyKey);
-    }
-    let household_id = parse_uuid(&input.household_id, "household_id")?;
-    let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
-    let purchase_id = parse_uuid(decision.purchase_id.as_str(), "purchase_id")?;
-    let expected_revision = i64::try_from(input.expected_revision)
-        .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("expected_revision"))?;
-    let new_revision = i64::try_from(decision.new_revision)
-        .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("new_revision"))?;
-    let journal_id = Uuid::new_v4();
-    let ledger_entry_id = Uuid::new_v4();
-    validate_decision(&decision, expected_revision)?;
-
     let mut pooled = pool
         .get()
         .await
@@ -108,6 +94,7 @@ pub async fn persist_post_purchase_in_transaction(
         let actor_is_member = members::household_members
             .filter(members::household_id.eq(household_id))
             .filter(members::member_id.eq(actor_id))
+            .filter(members::left_at.is_null())
             .select(members::member_id)
             .first::<Uuid>(&mut *conn)
             .await

@@ -20,14 +20,18 @@ pub struct YearMonth(String);
 impl ScalarType for YearMonth {
     fn parse(value: Value) -> InputValueResult<Self> {
         match value {
-            Value::String(value)
-                if value.len() == 7
-                    && value.as_bytes().get(4) == Some(&b'-')
-                    && value[..4].bytes().all(|byte| byte.is_ascii_digit())
-                    && value[5..].bytes().all(|byte| byte.is_ascii_digit())
-                    && NaiveDate::parse_from_str(&format!("{value}-01"), "%Y-%m-%d").is_ok() =>
-            {
-                Ok(Self(value))
+            Value::String(value) => {
+                let bytes = value.as_bytes();
+                if bytes.len() == 7
+                    && bytes[4] == b'-'
+                    && bytes[..4].iter().all(u8::is_ascii_digit)
+                    && bytes[5..].iter().all(u8::is_ascii_digit)
+                    && NaiveDate::parse_from_str(&format!("{value}-01"), "%Y-%m-%d").is_ok()
+                {
+                    Ok(Self(value))
+                } else {
+                    Err(InputValueError::custom("YearMonth must use YYYY-MM"))
+                }
             }
             value => Err(InputValueError::expected_type(value)),
         }
@@ -366,7 +370,7 @@ pub async fn create_budget(
             .await?;
             Ok(CreateBudgetSuccess { result }.into())
         }
-        Err(error) => policy_error(error).map(Into::into).map_or_else(Err, Ok),
+        Err(error) => policy_error(error),
     }
 }
 
@@ -409,7 +413,7 @@ pub async fn update_budget(
             .await?;
             Ok(UpdateBudgetSuccess { result }.into())
         }
-        Err(error) => policy_error(error).map(Into::into).map_or_else(Err, Ok),
+        Err(error) => policy_error(error),
     }
 }
 
@@ -426,9 +430,7 @@ pub async fn archive_budget(
     let household_id = match postgres_policy_query::budget_household_id(pool, budget_id).await {
         Ok(value) => value,
         Err(error) => {
-            return policy_query_error(error)
-                .map(Into::into)
-                .map_or_else(Err, Ok);
+            return policy_query_error(error);
         }
     };
     let command = budget::ArchiveBudgetCommand {
@@ -448,7 +450,7 @@ pub async fn archive_budget(
             .await?;
             Ok(ArchiveBudgetSuccess { result }.into())
         }
-        Err(error) => policy_error(error).map(Into::into).map_or_else(Err, Ok),
+        Err(error) => policy_error(error),
     }
 }
 
@@ -488,7 +490,7 @@ pub async fn create_recurring_expense(
             result: value.into(),
         }
         .into()),
-        Err(error) => policy_error(error).map(Into::into).map_or_else(Err, Ok),
+        Err(error) => policy_error(error),
     }
 }
 
@@ -533,7 +535,7 @@ pub async fn update_recurring_expense(
             result: value.into(),
         }
         .into()),
-        Err(error) => policy_error(error).map(Into::into).map_or_else(Err, Ok),
+        Err(error) => policy_error(error),
     }
 }
 
@@ -554,9 +556,7 @@ pub async fn archive_recurring_expense(
     {
         Ok(value) => value,
         Err(error) => {
-            return policy_query_error(error)
-                .map(Into::into)
-                .map_or_else(Err, Ok);
+            return policy_query_error(error);
         }
     };
     let command = recurring_expense::ArchiveRecurringExpenseCommand {
@@ -571,7 +571,7 @@ pub async fn archive_recurring_expense(
             result: value.into(),
         }
         .into()),
-        Err(error) => policy_error(error).map(Into::into).map_or_else(Err, Ok),
+        Err(error) => policy_error(error),
     }
 }
 
@@ -604,7 +604,7 @@ pub async fn match_recurring_expense(
             result: value.into(),
         }
         .into()),
-        Err(error) => policy_error(error).map(Into::into).map_or_else(Err, Ok),
+        Err(error) => policy_error(error),
     }
 }
 
@@ -833,19 +833,21 @@ fn encode_node_id(kind: &str, raw_id: &str) -> std::result::Result<String, ()> {
     Ok(URL_SAFE_NO_PAD.encode(payload))
 }
 
-fn policy_error(error: postgres_policy::PolicyPersistenceError) -> Option<MutationErrorCode> {
+fn policy_error<T: From<MutationErrorCode>>(
+    error: postgres_policy::PolicyPersistenceError,
+) -> Result<T> {
     use postgres_policy::PolicyPersistenceError as Error;
     match error {
-        Error::InvalidUuid(_) | Error::InvalidWorkflow => Some(MutationErrorCode::BadInput),
-        Error::Conflict => Some(MutationErrorCode::Conflict),
+        Error::InvalidUuid(_) | Error::InvalidWorkflow => Ok(MutationErrorCode::BadInput.into()),
+        Error::Conflict => Ok(MutationErrorCode::Conflict.into()),
         Error::HouseholdNotFound
         | Error::MemberNotFound
         | Error::BudgetNotFound
         | Error::RecurringExpenseNotFound
         | Error::PurchaseNotFound
         | Error::CategoryNotFound
-        | Error::AccountNotFound => Some(MutationErrorCode::NotFound),
-        Error::Pool(_) | Error::Database(_) => None,
+        | Error::AccountNotFound => Ok(MutationErrorCode::NotFound.into()),
+        error @ (Error::Pool(_) | Error::Database(_)) => Err(crate::internal_error(error)),
     }
 }
 
@@ -863,23 +865,24 @@ async fn load_budget_result(
     actor_id: Uuid,
     budget_id: Uuid,
 ) -> Result<BudgetObject> {
-    let now = chrono::Utc::now()
-        .with_timezone(&chrono::FixedOffset::east_opt(9 * 3600).expect("Tokyo offset is valid"));
-    let period = now.format("%Y-%m").to_string();
-    postgres_policy_query::budget(pool, actor_id, budget_id, &period)
+    postgres_policy_query::budget_for_current_period(pool, actor_id, budget_id)
         .await
         .map(Into::into)
         .map_err(crate::internal_error)
 }
 
-fn policy_query_error(error: postgres_policy_query::PolicyQueryError) -> Option<MutationErrorCode> {
+fn policy_query_error<T: From<MutationErrorCode>>(
+    error: postgres_policy_query::PolicyQueryError,
+) -> Result<T> {
     use postgres_policy_query::PolicyQueryError as Error;
     match error {
         Error::InvalidUuid | Error::InvalidPeriod | Error::InvalidPagination => {
-            Some(MutationErrorCode::BadInput)
+            Ok(MutationErrorCode::BadInput.into())
         }
-        Error::NotFound | Error::MemberNotFound => Some(MutationErrorCode::NotFound),
-        Error::Pool(_) | Error::Database(_) | Error::AmountOverflow => None,
+        Error::NotFound | Error::MemberNotFound => Ok(MutationErrorCode::NotFound.into()),
+        error @ (Error::Pool(_) | Error::Database(_) | Error::AmountOverflow) => {
+            Err(crate::internal_error(error))
+        }
     }
 }
 

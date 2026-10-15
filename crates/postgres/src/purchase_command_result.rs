@@ -245,3 +245,22 @@ pub async fn load_purchase_command_result(
         payments: payment_results,
     })
 }
+
+pub async fn load_purchase_household_id(
+    pool: &PgPool,
+    purchase_id: Uuid,
+) -> Result<Option<Uuid>, PurchaseCommandResultError> {
+    use public::purchases::dsl as purchases;
+
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| PurchaseCommandResultError::Pool(error.to_string()))?;
+    purchases::purchases
+        .filter(purchases::id.eq(purchase_id))
+        .select(purchases::household_id)
+        .first::<Uuid>(&mut *conn)
+        .await
+        .optional()
+        .map_err(PurchaseCommandResultError::Database)
+}
