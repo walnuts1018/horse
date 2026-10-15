@@ -5,12 +5,12 @@ use bookkeeping_domain::{AllocationShares, AllocationWeight, Yen};
 use bookkeeping_workflows::{
     AccountId, ItemId, PoolId as WorkflowPoolId, PurchaseId, PurchaseStatus, Side,
     correct_purchase::{
-        CorrectPurchaseDecision, CorrectionCommand, CorrectionFundingEffects,
+        AccountingPeriod, CorrectPurchaseDecision, CorrectionCommand, CorrectionFundingEffects,
         CorrectionFundingRule, CorrectionMemberBurdenSnapshot, CorrectionPaymentFundingSnapshot,
         CorrectionPurchaseBurdenSnapshot, CorrectionPurchasePayment,
         CorrectionSettlementAdjustment, CorrectionSettlementPolicy, CorrectionTarget,
         LinkStatementRefundCorrectionCommand, LinkStatementRefundCorrectionError,
-        AccountingPeriod, OriginalPeriodStatus, SignedYenDelta, StatementRefundObservation,
+        OriginalPeriodStatus, SignedYenDelta, StatementRefundObservation,
         calculate_correction_funding_effects, decide_correct_purchase,
         decide_link_statement_refund_correction,
     },
@@ -609,7 +609,7 @@ pub async fn link_statement_refund_correction(
                         Uuid::now_v7()
                     )),
                     public::source_confirmations::changed_by.eq(actor_id),
-            public::source_confirmations::changed_at.eq(recorded_at),
+                    public::source_confirmations::changed_at.eq(recorded_at),
                 ))
                 .execute(&mut *conn)
                 .await

@@ -1,13 +1,42 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExtractionJobState {
+pub struct QueuedJob {
     pub id: String,
-    pub status: ExtractionJobStatus,
     pub attempt_count: i32,
     pub max_attempts: i32,
     pub failure_count: i32,
     pub available_at_ms: i64,
-    pub lease_token: Option<String>,
-    pub lease_expires_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidLease {
+    pub token: String,
+    pub expires_at_ms: i64,
+}
+
+// 実行中のジョブは必ず有効なリースを持つ。リースなしのRunning状態は型で表現できない。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunningJob {
+    pub id: String,
+    pub attempt_count: i32,
+    pub max_attempts: i32,
+    pub failure_count: i32,
+    pub available_at_ms: i64,
+    pub lease: ValidLease,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FinishedJob {
+    pub id: String,
+    pub finished_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExtractionJob {
+    Queued(QueuedJob),
+    Running(RunningJob),
+    Succeeded(FinishedJob),
+    Failed(FinishedJob),
+    Cancelled(FinishedJob),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +63,7 @@ pub enum ClaimExtractionJobError {
 }
 
 pub fn claim_extraction_job(
-    state: &ExtractionJobState,
+    job: &QueuedJob,
     now_ms: i64,
     lease_token: impl Into<String>,
     lease_duration_ms: i64,
@@ -42,17 +71,16 @@ pub fn claim_extraction_job(
     if lease_duration_ms <= 0 {
         return Err(ClaimExtractionJobError::InvalidLease);
     }
-    if state.attempt_count < 0 || state.max_attempts <= 0 || state.failure_count < 0 {
+    if job.attempt_count < 0 || job.max_attempts <= 0 || job.failure_count < 0 {
         return Err(ClaimExtractionJobError::InvalidCounter);
     }
-    match state.status {
-        ExtractionJobStatus::Queued if state.available_at_ms <= now_ms => {}
-        _ => return Err(ClaimExtractionJobError::InvalidState),
-    }
-    if state.failure_count >= state.max_attempts {
+    if job.available_at_ms > now_ms {
         return Err(ClaimExtractionJobError::InvalidState);
     }
-    let attempt_no = state
+    if job.failure_count >= job.max_attempts {
+        return Err(ClaimExtractionJobError::InvalidState);
+    }
+    let attempt_no = job
         .attempt_count
         .checked_add(1)
         .ok_or(ClaimExtractionJobError::InvalidCounter)?;
@@ -93,30 +121,24 @@ pub enum FinishExtractionJobError {
 }
 
 pub fn finish_extraction_failure(
-    state: &ExtractionJobState,
-    lease_token: &str,
+    job: &RunningJob,
     now_ms: i64,
     retry_delay_ms: i64,
     failure_kind: ExtractionFailureKind,
     max_failures: i32,
 ) -> Result<FinishExtractionJob, FinishExtractionJobError> {
-    if state.status != ExtractionJobStatus::Running
-        || state.lease_token.as_deref() != Some(lease_token)
-        || !state
-            .lease_expires_at_ms
-            .is_some_and(|expires_at| expires_at > now_ms)
-    {
+    if job.lease.expires_at_ms <= now_ms {
         return Err(FinishExtractionJobError::StaleLease);
     }
-    if state.failure_count < 0 || max_failures <= 0 {
+    if job.failure_count < 0 || max_failures <= 0 {
         return Err(FinishExtractionJobError::InvalidCounter);
     }
     if retry_delay_ms < 0 {
         return Err(FinishExtractionJobError::InvalidRetryDelay);
     }
     let failure_count = match failure_kind {
-        ExtractionFailureKind::SpendCap => state.failure_count,
-        ExtractionFailureKind::Retryable | ExtractionFailureKind::Permanent => state
+        ExtractionFailureKind::SpendCap => job.failure_count,
+        ExtractionFailureKind::Retryable | ExtractionFailureKind::Permanent => job
             .failure_count
             .checked_add(1)
             .ok_or(FinishExtractionJobError::InvalidCounter)?,
@@ -128,7 +150,7 @@ pub fn finish_extraction_failure(
             .checked_add(retry_delay_ms)
             .ok_or(FinishExtractionJobError::InvalidRetryDelay)?
     } else {
-        state.available_at_ms
+        job.available_at_ms
     };
     Ok(FinishExtractionJob {
         status: if retry {
@@ -143,22 +165,17 @@ pub fn finish_extraction_failure(
 }
 
 pub fn finish_extraction_success(
-    state: &ExtractionJobState,
-    lease_token: &str,
+    job: &RunningJob,
     now_ms: i64,
 ) -> Result<FinishExtractionJob, FinishExtractionJobError> {
-    if state.status != ExtractionJobStatus::Running
-        || state.lease_token.as_deref() != Some(lease_token)
-        || !state
-            .lease_expires_at_ms
-            .is_some_and(|expires_at| expires_at > now_ms)
-    {
+    // リース所有者の一致は呼び出し側の条件付き更新で保証し、ここでは有効期限のみ検証する。
+    if job.lease.expires_at_ms <= now_ms {
         return Err(FinishExtractionJobError::StaleLease);
     }
     Ok(FinishExtractionJob {
         status: ExtractionJobStatus::Succeeded,
-        failure_count: state.failure_count,
-        available_at_ms: state.available_at_ms,
+        failure_count: job.failure_count,
+        available_at_ms: job.available_at_ms,
         finished_at_ms: Some(now_ms),
     })
 }
@@ -172,21 +189,17 @@ pub struct RecoverExpiredExtractionJob {
 }
 
 pub fn recover_expired_extraction_job(
-    state: &ExtractionJobState,
+    job: &RunningJob,
     now_ms: i64,
     max_failures: i32,
 ) -> Result<RecoverExpiredExtractionJob, FinishExtractionJobError> {
-    if state.status != ExtractionJobStatus::Running
-        || !state
-            .lease_expires_at_ms
-            .is_some_and(|expires_at| expires_at <= now_ms)
-    {
+    if job.lease.expires_at_ms > now_ms {
         return Err(FinishExtractionJobError::StaleLease);
     }
-    if state.failure_count < 0 || max_failures <= 0 {
+    if job.failure_count < 0 || max_failures <= 0 {
         return Err(FinishExtractionJobError::InvalidCounter);
     }
-    let failure_count = state
+    let failure_count = job
         .failure_count
         .checked_add(1)
         .ok_or(FinishExtractionJobError::InvalidCounter)?;
@@ -198,7 +211,7 @@ pub fn recover_expired_extraction_job(
             ExtractionJobStatus::Failed
         },
         failure_count,
-        available_at_ms: if retry { now_ms } else { state.available_at_ms },
+        available_at_ms: if retry { now_ms } else { job.available_at_ms },
         finished_at_ms: (!retry).then_some(now_ms),
     })
 }

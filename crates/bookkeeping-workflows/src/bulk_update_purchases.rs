@@ -33,10 +33,10 @@ pub fn decide_bulk_update_purchases(
     if targets.len() > 100 {
         return Err(BulkUpdatePurchasesError::TooManyTargets);
     }
-    let mut purchase_ids = BTreeSet::new();
+    let mut purchase_ids = BTreeSet::<String>::new();
     let mut decisions = Vec::with_capacity(targets.len());
     for target in targets {
-        if !purchase_ids.insert(target.command.purchase_id.as_str()) {
+        if !purchase_ids.insert(target.command.purchase_id.as_str().to_owned()) {
             return Err(BulkUpdatePurchasesError::DuplicatePurchase);
         }
         decisions.push(

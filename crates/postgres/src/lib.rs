@@ -37,6 +37,7 @@ pub mod ledger_query;
 pub mod loan_balance_query;
 pub mod mail_forwarding;
 pub mod monthly_spending_query;
+pub mod node_query;
 pub mod policy;
 pub mod policy_query;
 pub mod pool_mutations;
@@ -61,9 +62,9 @@ pub mod settlement_preview;
 pub mod settlement_query;
 pub mod shared_draft;
 pub mod statement_refund_correction_query;
-pub mod unmatched_observations_query;
 pub mod statement_transfer;
 pub mod tag;
+pub mod unmatched_observations_query;
 pub mod update_purchase;
 pub mod update_purchase_item;
 

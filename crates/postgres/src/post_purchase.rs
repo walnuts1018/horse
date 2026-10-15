@@ -271,10 +271,7 @@ pub async fn persist_post_purchase_in_transaction(
         let amount = i64::try_from(line.amount().value())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal amount"))?;
         let (account_id, pool_id) = match line.target() {
-            PostingTarget::Account(id) => (
-                Some(parse_uuid(id.as_str(), "account_id")?),
-                None,
-            ),
+            PostingTarget::Account(id) => (Some(parse_uuid(id.as_str(), "account_id")?), None),
             PostingTarget::Pool(id) => (None, Some(parse_uuid(id.as_str(), "pool_id")?)),
         };
         diesel::insert_into(public::journal_entries::table)

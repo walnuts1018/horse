@@ -449,9 +449,11 @@ mod tests {
         let mut base = base();
         base.from_member_id = member("to");
         base.to_member_id = member("from");
-        let decision =
-            decide_record_transfer(RecordTransferCommand::Repayment { base, loan: loan_basis() })
-                .unwrap();
+        let decision = decide_record_transfer(RecordTransferCommand::Repayment {
+            base,
+            loan: loan_basis(),
+        })
+        .unwrap();
         assert_eq!(decision.loan_id.as_ref().unwrap().as_str(), "loan-1");
         assert_eq!(
             decision

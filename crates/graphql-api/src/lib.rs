@@ -7,8 +7,8 @@ use horse_postgres::{PgPool, mail_forwarding as postgres_mail_forwarding};
 use household_workflows::mail_forwarding;
 use uuid::Uuid;
 
-pub mod account_balances;
 pub mod account_balance_analysis;
+pub mod account_balances;
 pub mod account_creation;
 pub mod account_history;
 pub mod account_mutations;
@@ -28,6 +28,7 @@ pub mod ledger_entry;
 pub mod ledger_query;
 pub mod member_pool;
 pub mod monthly_spending_query;
+pub mod node_query;
 pub mod pagination;
 pub mod policy_mutations;
 pub mod pool_mutations;
@@ -36,14 +37,14 @@ pub mod purchase_bulk_mutations;
 pub mod purchase_correction_query;
 pub mod purchase_corrections_mutations;
 pub mod purchase_defaults_query;
-pub mod purchases_query;
 pub mod purchase_edit_mutations;
 pub mod purchase_mutations;
+pub mod purchases_query;
 pub mod scalars;
 pub mod settlement_mutations;
-pub mod statement_refund_correction_query;
 pub mod shared_purchase_draft;
 pub mod statement_link_mutations;
+pub mod statement_refund_correction_query;
 pub mod unmatched_observations_query;
 pub mod viewer_query;
 pub use scalars::{DateTime, Long};
@@ -72,6 +73,18 @@ pub struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
+    async fn node(&self, ctx: &Context<'_>, id: ID) -> Result<Option<ledger_entry::Node>> {
+        node_query::graphql_node(ctx, id).await
+    }
+
+    async fn nodes(
+        &self,
+        ctx: &Context<'_>,
+        ids: Vec<ID>,
+    ) -> Result<Vec<Option<ledger_entry::Node>>> {
+        node_query::graphql_nodes(ctx, ids).await
+    }
+
     async fn viewer(&self, ctx: &Context<'_>) -> Result<viewer_query::Viewer> {
         viewer_query::graphql_viewer(ctx).await
     }
