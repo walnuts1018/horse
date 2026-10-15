@@ -299,6 +299,24 @@ func (s *Server) documentResponse(ctx context.Context, exec bob.Executor, docume
 			result.Result = decoded
 		}
 	}
+	if result.Result == nil {
+		previous, lookupErr := models.ExtractionJobs.Query(
+			sm.Where(psql.And(
+				models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)),
+				models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
+			)),
+			sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(), sm.Limit(1),
+		).One(ctx, exec)
+		if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+			return documentResponse{}, lookupErr
+		}
+		if lookupErr == nil && previous.Result.Valid {
+			var decoded any
+			if err := json.Unmarshal(previous.Result.V.Val, &decoded); err == nil {
+				result.Result = decoded
+			}
+		}
+	}
 	return result, nil
 }
 
@@ -629,9 +647,15 @@ func (s *Server) documentResponses(ctx context.Context, exec bob.Executor, docum
 		return nil, err
 	}
 	latestJobs := make(map[gofrsuuid.UUID]*models.ExtractionJob, len(documentsByID))
+	latestSuccessfulJobs := make(map[gofrsuuid.UUID]*models.ExtractionJob, len(documentsByID))
 	for _, job := range jobs {
 		if _, exists := latestJobs[job.SourceDocumentID]; !exists {
 			latestJobs[job.SourceDocumentID] = job
+		}
+		if job.Status == "succeeded" {
+			if _, exists := latestSuccessfulJobs[job.SourceDocumentID]; !exists {
+				latestSuccessfulJobs[job.SourceDocumentID] = job
+			}
 		}
 	}
 	for _, document := range documents {
@@ -643,12 +667,14 @@ func (s *Server) documentResponses(ctx context.Context, exec bob.Executor, docum
 			if job.ErrorCode.Valid {
 				response.ErrorCode = job.ErrorCode.V
 			}
-			if job.Result.Valid {
-				var decoded any
-				if err := json.Unmarshal(job.Result.V.Val, &decoded); err == nil {
-					response.Result = decoded
-				}
-			}
+			response.Result = extractionResult(job, latestSuccessfulJobs[document.ID])
+		}
+	}
+
+	for _, document := range documents {
+		response := responseByID[document.ID]
+		if response.Result == nil {
+			response.Result = extractionResult(nil, latestSuccessfulJobs[document.ID])
 		}
 	}
 
@@ -729,6 +755,19 @@ func (s *Server) documentResponses(ctx context.Context, exec bob.Executor, docum
 	}
 
 	return responses, nil
+}
+
+func extractionResult(latest, latestSuccessful *models.ExtractionJob) any {
+	for _, job := range []*models.ExtractionJob{latest, latestSuccessful} {
+		if job == nil || !job.Result.Valid {
+			continue
+		}
+		var decoded any
+		if err := json.Unmarshal(job.Result.V.Val, &decoded); err == nil {
+			return decoded
+		}
+	}
+	return nil
 }
 
 func (s *Server) documents(w http.ResponseWriter, r *http.Request) {

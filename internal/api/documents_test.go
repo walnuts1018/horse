@@ -78,6 +78,20 @@ func TestRateLimitedExtractionCanBeRetriedWithAnotherModel(t *testing.T) {
 	}
 }
 
+func TestExtractionResultKeepsLastSuccessfulConversationAfterFailure(t *testing.T) {
+	t.Parallel()
+
+	previousResult := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(`{"conversationId":"conversation-1","conversation":[{"role":"user","text":"金額を確認してください"}]}`)}
+	previous := &models.ExtractionJob{Status: "succeeded", Result: sql.Null[types.JSON[stdjson.RawMessage]]{V: previousResult, Valid: true}}
+	latest := &models.ExtractionJob{Status: "failed"}
+
+	got := extractionResult(latest, previous)
+	decoded, ok := got.(map[string]any)
+	if !ok || decoded["conversationId"] != "conversation-1" {
+		t.Fatalf("failed continuation hid the saved conversation: %#v", got)
+	}
+}
+
 func TestDocumentCursorIsBoundToFilters(t *testing.T) {
 	t.Parallel()
 
