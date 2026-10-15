@@ -1,6 +1,6 @@
 # Horse コード品質レビュー
 
-対象：[walnuts1018/horse](https://github.com/walnuts1018/horse) の `main` ブランチ（2026年10月15日確認、`862ec56`）
+対象：[walnuts1018/horse](https://github.com/walnuts1018/horse) の `main` ブランチ（2026年10月15日確認、`1682bd2`）
 
 ## 総評
 
@@ -44,11 +44,11 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 - [graph/queries.go](https://github.com/walnuts1018/horse/blob/main/internal/graph/queries.go#L15-L75)
 - [graphql/household.graphql](https://github.com/walnuts1018/horse/blob/main/graphql/household.graphql)
 
-`loadHousehold()`は基本情報と詳細データの取得を分け、GraphQLで要求されたmembers、pools、accounts、categories、defaultAllocationだけを読み込みます。選択されていないHousehold詳細まで一括取得する問題は改善済みです。
+`loadHousehold()`は基本情報と詳細データの取得を分け、GraphQLで要求されたmembers、pools、accounts、categories、defaultAllocationだけを読み込みます。Pool variantは設定情報を読み込んだ後にPersonal/Shared型を選び、設定済み・未設定の4型をPostgreSQL 18 testcontainersで確認しています。選択されていないHousehold詳細まで一括取得する問題は改善済みです。この変更を含むcombined focused testもmain上で通過しました。
 
-一方、`households()`と`viewer()`は所属情報を取得した後、`loadHouseholds()`でHouseholdの基本情報と要求された詳細をまとめて取得し、所属情報の順序に合わせて結果を組み立てます。resolverの選択fieldに応じた専用loaderを各フィールドに用意しておらず、Household以外の親子関係を含む要求を汎用的にbatchする仕組みもありません。特にNode解決や複数親から同じ関連データを参照するクエリについて、クエリ数と取得範囲を確認し、必要ならBobの一括取得を使うbatch loaderを追加する余地があります。
+`households()`と`viewer()`は所属情報を取得した後、`loadHouseholds()`でHouseholdの基本情報と要求された詳細をまとめて取得し、所属情報の順序に合わせて結果を組み立てます。Node解決は24種類すべてにbatch取得経路があり、Pool Nodeでは必要なPool、既定配賦、funding rule、share、member情報だけをBobで一括取得します。複数親から同じ関連データを参照するクエリを含め、実際のクエリ数と取得範囲は引き続き確認が必要です。
 
-Member、Account、Category、Household、Pool Nodeの複数ID解決では、所属確認と対象データ取得をBobで一括取得するよう変更しました。重複IDを含む順序維持、家庭所属の認可、CategoryのParentID mappingをfocused integration testで確認しています。単一LedgerEntry Nodeもbatch loaderへ通し、既存テストでLoanBalanceを含む型を解決できることを確認しました。`nodes(ids:)`で複数のUnmatchedObservation Nodeを取得する経路も、所属家庭、SourceObservation、DocumentConfirmation、必要なCorrectionをまとめて取得するよう変更しました。複合Node IDの重複、順序、未存在行、家庭所属の認可をfocused integration testで確認しました。複数Nodeの解決では、UnmatchedObservationとSettlementが認可用Household一覧を共有します。Settlement Nodeのclosed run取得を一括化しました。未確定periodのpreview計算はSettlement Serviceを個別に呼び出します。
+Member、Account、Category、Household、Pool Nodeの複数ID解決では、所属確認と対象データ取得をBobで一括取得するよう変更しました。Pool NodeはHousehold全体を読み込まず、必要なPoolと設定情報だけを取得します。重複IDを含む順序維持、家庭所属の認可、CategoryのParentID mappingをfocused integration testで確認しています。単一LedgerEntry Nodeもbatch loaderへ通し、既存テストでLoanBalanceを含む型を解決できることを確認しました。`nodes(ids:)`で複数のUnmatchedObservation Nodeを取得する経路も、所属家庭、SourceObservation、DocumentConfirmation、必要なCorrectionをまとめて取得するよう変更しました。複合Node IDの重複、順序、未存在行、家庭所属の認可をfocused integration testで確認しました。複数Nodeの解決では、UnmatchedObservationとSettlementが認可用Household一覧を共有します。Settlement Nodeのclosed run取得を一括化しました。未確定periodのpreview計算はSettlement Serviceを個別に呼び出します。Node 24種類のうち22種類は`isBatchLoadedNodeKind`を通り、SettlementとUnmatchedObservationは`nodes()`内の専用batch経路を使います。
 
 `loadPurchases()`のGraphQL表示モデル組み立ては`purchase_graph.go`の`mapPurchases()`へ分離しました。`purchases`で`paymentAllocations`が選択された場合に限り、支払と口座を読み込みます。選択fieldに応じた読み込み範囲の絞り込みはこの関連データに限られ、その他のPurchase関連データや`loadHousehold()`の表示モデル組み立ては引き続き見直し対象です。
 
