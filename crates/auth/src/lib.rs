@@ -5,6 +5,10 @@ use horse_postgres::schema::public::{members, oidc_sessions};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+mod oidc;
+
+pub use oidc::{AuthConfig, AuthService, Cookie, LoginStart, OidcError, OidcResult};
+
 pub const SESSION_COOKIE_NAME: &str = "horse_session";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +60,29 @@ pub async fn resolve_session(
         subject,
         display_name,
     }))
+}
+
+pub async fn revoke_cookie(
+    pool: &Pool<AsyncPgConnection>,
+    cookie_header: &str,
+) -> Result<(), ResolveError> {
+    let Some(token) = cookie_value(cookie_header, SESSION_COOKIE_NAME) else {
+        return Ok(());
+    };
+    if token.is_empty() {
+        return Ok(());
+    }
+
+    let token_hash = Sha256::digest(token.as_bytes()).to_vec();
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| ResolveError::Pool(error.to_string()))?;
+    diesel::delete(oidc_sessions::table.filter(oidc_sessions::token_hash.eq(token_hash)))
+        .execute(&mut conn)
+        .await
+        .map_err(ResolveError::Database)?;
+    Ok(())
 }
 
 fn cookie_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {

@@ -2,6 +2,34 @@
 
 pub mod public {
     diesel::table! {
+        account_incomes (id) {
+            id -> Uuid,
+            household_id -> Uuid,
+            journal_id -> Uuid,
+            account_id -> Uuid,
+            occurred_at -> Timestamptz,
+            amount_yen -> Int8,
+            description -> Text,
+            created_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
+        account_movements (id) {
+            id -> Uuid,
+            household_id -> Uuid,
+            journal_id -> Uuid,
+            kind -> Text,
+            occurred_at -> Timestamptz,
+            from_account_id -> Uuid,
+            to_account_id -> Uuid,
+            amount_yen -> Int8,
+            description -> Text,
+            created_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
         accounting_periods (household_id, period_start) {
             household_id -> Uuid,
             period_start -> Date,
@@ -195,6 +223,7 @@ pub mod public {
             request -> Jsonb,
             result -> Nullable<Jsonb>,
             attempt_count -> Int4,
+            failure_count -> Int4,
             max_attempts -> Int4,
             available_at -> Timestamptz,
             started_at -> Nullable<Timestamptz>,
@@ -348,6 +377,16 @@ pub mod public {
             member_id -> Uuid,
             expiry -> Timestamptz,
             created_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
+        oidc_states (state_hash) {
+            state_hash -> Bytea,
+            nonce -> Text,
+            verifier -> Text,
+            redirect_to -> Text,
+            expires_at -> Timestamptz,
         }
     }
 
@@ -741,6 +780,8 @@ pub mod public {
     }
 
     diesel::joinable!(accounting_periods -> households (household_id));
+    diesel::joinable!(account_incomes -> households (household_id));
+    diesel::joinable!(account_movements -> households (household_id));
     diesel::joinable!(accounts -> households (household_id));
     diesel::joinable!(allocation_defaults -> households (household_id));
     diesel::joinable!(allocation_rules -> households (household_id));
@@ -759,6 +800,8 @@ pub mod public {
     diesel::joinable!(source_documents -> households (household_id));
 
     diesel::allow_tables_to_appear_in_same_query!(
+        account_incomes,
+        account_movements,
         accounting_periods,
         accounts,
         allocation_defaults,
@@ -784,6 +827,7 @@ pub mod public {
         mailbox_cursors,
         members,
         oidc_sessions,
+        oidc_states,
         pool_funding_rules,
         pool_funding_shares,
         pools,

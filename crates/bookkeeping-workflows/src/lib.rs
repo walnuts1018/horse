@@ -4,10 +4,17 @@ use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId, PositiveYen
 
 pub mod close_period;
 pub mod correct_purchase;
+pub mod account_income;
+pub mod account_movement;
+pub mod create_account;
+pub mod create_pool;
 pub mod create_purchase;
 pub mod record_repayment;
 pub mod record_transfer;
+pub mod set_allocation_rule;
 pub mod set_default_allocation;
+pub mod set_funding_schedule;
+pub mod ingestion_job;
 pub mod update_purchase;
 pub mod update_purchase_item;
 

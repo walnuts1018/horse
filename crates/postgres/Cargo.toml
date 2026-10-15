@@ -10,4 +10,6 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 bookkeeping-domain = { path = "../bookkeeping-domain" }
 bookkeeping-workflows = { path = "../bookkeeping-workflows" }
+household-workflows = { path = "../household-workflows" }
+catalog-workflows = { path = "../catalog-workflows" }
 serde_json = { workspace = true }

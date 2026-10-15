@@ -114,8 +114,8 @@ pub fn validate_set_allocation_rule(
         }
         let pool_id = PoolId::new(weight.pool_id.clone())
             .map_err(|_| SetAllocationRuleError::InvalidPoolId)?;
-        let value = u64::try_from(weight.weight)
-            .map_err(|_| SetAllocationRuleError::NonPositiveWeight)?;
+        let value =
+            u64::try_from(weight.weight).map_err(|_| SetAllocationRuleError::NonPositiveWeight)?;
         shares.push(
             AllocationWeight::new(pool_id, value)
                 .map_err(|_| SetAllocationRuleError::NonPositiveWeight)?,
@@ -181,7 +181,10 @@ fn normalize_merchant(value: &str) -> String {
 mod tests {
     use super::*;
 
-    fn command(target: AllocationRuleTarget, weights: Vec<AllocationRuleWeight>) -> SetAllocationRuleCommand {
+    fn command(
+        target: AllocationRuleTarget,
+        weights: Vec<AllocationRuleWeight>,
+    ) -> SetAllocationRuleCommand {
         SetAllocationRuleCommand {
             actor_id: "actor".to_owned(),
             household_id: "household".to_owned(),
@@ -225,8 +228,8 @@ mod tests {
         ))
         .expect("valid rule");
         assert_eq!(validated.target.merchant.as_deref(), Some("foo bar"));
-        let decision = decide_set_allocation_rule(validated, Some(("rule".to_owned(), 3)))
-            .expect("decision");
+        let decision =
+            decide_set_allocation_rule(validated, Some(("rule".to_owned(), 3))).expect("decision");
         assert_eq!(decision.revision, 4);
         assert_eq!(decision.rule_id.as_deref(), Some("rule"));
         assert_eq!(decision.changed_fields, ["allocations", "merchant"]);

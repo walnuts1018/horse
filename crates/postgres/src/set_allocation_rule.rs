@@ -4,7 +4,9 @@ use bookkeeping_workflows::set_allocation_rule::{
     AllocationRuleTarget, SetAllocationRuleCommand, SetAllocationRuleDecision,
     SetAllocationRuleError, decide_set_allocation_rule, validate_set_allocation_rule,
 };
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError};
+use diesel::{
+    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
+};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
@@ -129,7 +131,13 @@ pub async fn persist_set_allocation_rule(
                     product_variant_id,
                 )
                 .await?;
-                let current = existing.map(|(id, revision)| (id.to_string(), revision));
+                let current = existing
+                    .map(|(id, revision)| {
+                        u64::try_from(revision)
+                            .map(|revision| (id.to_string(), revision))
+                            .map_err(|_| SetAllocationRulePersistenceError::InvalidDecision)
+                    })
+                    .transpose()?;
                 let decision = decide_set_allocation_rule(validated, current)
                     .map_err(SetAllocationRulePersistenceError::InvalidWorkflow)?;
                 validate_decision(
@@ -153,9 +161,9 @@ pub async fn persist_set_allocation_rule(
                         .set((rules::revision.eq(revision), rules::updated_at.eq(now)))
                         .execute(&mut *conn)
                         .await?;
-                    diesel::delete(weights::allocation_rule_weights.filter(
-                        weights::rule_id.eq(rule_id),
-                    ))
+                    diesel::delete(
+                        weights::allocation_rule_weights.filter(weights::rule_id.eq(rule_id)),
+                    )
                     .execute(&mut *conn)
                     .await?;
                 } else {
@@ -190,17 +198,15 @@ pub async fn persist_set_allocation_rule(
                     .values((
                         events::household_id.eq(household_id),
                         events::event_type.eq("allocation.rule.updated"),
-                        events::entity_kind.eq("allocationRule"),
+                        events::entity_kind.eq("allocation_rule"),
                         events::entity_id.eq(rule_id),
                         events::revision.eq(revision),
-                        events::changed_fields.eq(
-                            decision
-                                .changed_fields
-                                .iter()
-                                .cloned()
-                                .map(Some)
-                                .collect::<Vec<_>>(),
-                        ),
+                        events::changed_fields.eq(decision
+                            .changed_fields
+                            .iter()
+                            .cloned()
+                            .map(Some)
+                            .collect::<Vec<_>>()),
                         events::actor_id.eq(actor_id),
                     ))
                     .execute(&mut *conn)
@@ -323,14 +329,51 @@ fn validate_decision(
     product_concept_id: Option<Uuid>,
     product_variant_id: Option<Uuid>,
 ) -> Result<(), SetAllocationRulePersistenceError> {
+    let selected_targets = [
+        decision.target.category_id.is_some(),
+        decision.target.merchant.is_some(),
+        decision.target.product_concept_id.is_some(),
+        decision.target.product_variant_id.is_some(),
+    ]
+    .into_iter()
+    .filter(|selected| *selected)
+    .count();
+    let target_field = if decision.target.product_variant_id.is_some() {
+        "productVariantId"
+    } else if decision.target.product_concept_id.is_some() {
+        "productConceptId"
+    } else if decision.target.category_id.is_some() {
+        "categoryId"
+    } else {
+        "merchant"
+    };
     if parse_uuid(&decision.actor_id, "actor_id")? != actor_id
         || parse_uuid(&decision.household_id, "household_id")? != household_id
         || decision.weights.is_empty()
-        || decision.changed_fields.len() != 2
+        || selected_targets != 1
+        || decision.changed_fields != ["allocations", target_field]
         || decision.weights.iter().any(|weight| weight.weight <= 0)
-        || decision.target.category_id.as_deref().map(|id| parse_uuid(id, "category_id")).transpose()? != category_id
-        || decision.target.product_concept_id.as_deref().map(|id| parse_uuid(id, "product_concept_id")).transpose()? != product_concept_id
-        || decision.target.product_variant_id.as_deref().map(|id| parse_uuid(id, "product_variant_id")).transpose()? != product_variant_id
+        || decision
+            .target
+            .category_id
+            .as_deref()
+            .map(|id| parse_uuid(id, "category_id"))
+            .transpose()?
+            != category_id
+        || decision
+            .target
+            .product_concept_id
+            .as_deref()
+            .map(|id| parse_uuid(id, "product_concept_id"))
+            .transpose()?
+            != product_concept_id
+        || decision
+            .target
+            .product_variant_id
+            .as_deref()
+            .map(|id| parse_uuid(id, "product_variant_id"))
+            .transpose()?
+            != product_variant_id
     {
         return Err(SetAllocationRulePersistenceError::InvalidDecision);
     }

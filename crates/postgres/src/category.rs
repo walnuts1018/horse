@@ -1,4 +1,4 @@
-use bookkeeping_workflows::category::{
+use catalog_workflows::category::{
     Category, CategoryError, CreateCategoryCommand, SetCategoryArchivedCommand,
     UpdateCategoryNameCommand, decide_create_category, decide_set_category_archived,
     decide_update_category_name,
@@ -32,13 +32,13 @@ pub async fn persist_create_category(
 ) -> Result<Category, CategoryPersistenceError> {
     let decision =
         decide_create_category(command).map_err(CategoryPersistenceError::InvalidWorkflow)?;
-    let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
-    let household_id = parse_uuid(&decision.household_id, "household_id")?;
-    let category_id = parse_uuid(&decision.category_id, "category_id")?;
+    let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+    let household_id = parse_uuid(decision.household_id.as_str(), "household_id")?;
+    let category_id = parse_uuid(decision.category_id.as_str(), "category_id")?;
     let parent_id = decision
         .parent_id
-        .as_deref()
-        .map(|value| parse_uuid(value, "parent_id"))
+        .as_ref()
+        .map(|value| parse_uuid(value.as_str(), "parent_id"))
         .transpose()?;
 
     let mut pooled = pool
@@ -76,7 +76,7 @@ pub async fn persist_create_category(
                     categories::id.eq(category_id),
                     categories::household_id.eq(household_id),
                     categories::parent_id.eq(parent_id),
-                    categories::name.eq(&decision.name),
+                    categories::name.eq(decision.name.as_str()),
                 ))
                 .execute(&mut *conn)
                 .await?;
@@ -100,7 +100,7 @@ pub async fn persist_create_category(
                 id: category_id.to_string(),
                 household_id: household_id.to_string(),
                 parent_id: parent_id.map(|id| id.to_string()),
-                name: decision.name.clone(),
+                name: decision.name.as_str().to_owned(),
                 archived: false,
             })
         })
@@ -113,8 +113,8 @@ pub async fn persist_update_category_name(
 ) -> Result<Category, CategoryPersistenceError> {
     let decision =
         decide_update_category_name(command).map_err(CategoryPersistenceError::InvalidWorkflow)?;
-    let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
-    let category_id = parse_uuid(&decision.category_id, "category_id")?;
+    let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+    let category_id = parse_uuid(decision.category_id.as_str(), "category_id")?;
 
     let mut pooled = pool
         .get()
@@ -140,13 +140,13 @@ pub async fn persist_update_category_name(
                 .ok_or(CategoryPersistenceError::CategoryNotFound)?;
             require_member(conn, row.0, actor_id).await?;
 
-            if row.2 != decision.name {
+            if row.2 != decision.name.as_str() {
                 diesel::update(
                     categories::categories
                         .filter(categories::id.eq(category_id))
                         .filter(categories::household_id.eq(row.0)),
                 )
-                .set(categories::name.eq(&decision.name))
+                .set(categories::name.eq(decision.name.as_str()))
                 .execute(&mut *conn)
                 .await?;
                 diesel::insert_into(events::household_events)
@@ -168,7 +168,7 @@ pub async fn persist_update_category_name(
                 id: category_id.to_string(),
                 household_id: row.0.to_string(),
                 parent_id: row.1.map(|id| id.to_string()),
-                name: decision.name.clone(),
+                name: decision.name.as_str().to_owned(),
                 archived: row.3,
             })
         })
@@ -179,11 +179,10 @@ pub async fn persist_set_category_archived(
     pool: &PgPool,
     command: SetCategoryArchivedCommand,
 ) -> Result<Category, CategoryPersistenceError> {
-    let decision =
-        decide_set_category_archived(command.actor_id, command.category_id, command.archived)
-            .map_err(CategoryPersistenceError::InvalidWorkflow)?;
-    let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
-    let category_id = parse_uuid(&decision.category_id, "category_id")?;
+    let decision = decide_set_category_archived(command)
+        .map_err(CategoryPersistenceError::InvalidWorkflow)?;
+    let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+    let category_id = parse_uuid(decision.category_id.as_str(), "category_id")?;
 
     let mut pooled = pool
         .get()

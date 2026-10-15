@@ -1,4 +1,4 @@
-use bookkeeping_workflows::create_household::{
+use household_workflows::create_household::{
     CreateHouseholdCommand, CreateHouseholdError, decide_create_household,
 };
 use diesel::{ExpressionMethods, dsl::now, result::Error as DieselError};

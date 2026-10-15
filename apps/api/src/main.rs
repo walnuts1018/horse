@@ -1,6 +1,7 @@
 use std::{env, error::Error, net::SocketAddr};
 
-use horse_http_api::router;
+use horse_auth::{AuthConfig, AuthService};
+use horse_http_api::{Config, router};
 use horse_postgres::connect;
 use tokio::net::TcpListener;
 
@@ -12,8 +13,32 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(8080);
     let pool = connect(database_url).await?;
+    let public_origin = env::var("PUBLIC_ORIGIN").unwrap_or_default();
+    let frontend_origin = env::var("FRONTEND_ORIGIN").unwrap_or_default();
+    let auth = AuthService::new(
+        pool.clone(),
+        AuthConfig {
+            issuer_url: env::var("OIDC_ISSUER_URL").unwrap_or_default(),
+            client_id: env::var("OIDC_CLIENT_ID").unwrap_or_default(),
+            client_secret: env::var("OIDC_CLIENT_SECRET").unwrap_or_default(),
+            redirect_url: env::var("OIDC_REDIRECT_URL").unwrap_or_default(),
+            public_origin: public_origin.clone(),
+            frontend_origin: frontend_origin.clone(),
+        },
+    )
+    .await?;
     let listener = TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], port))).await?;
-    axum::serve(listener, router(pool))
+    axum::serve(
+        listener,
+        router(
+            pool,
+            Config {
+                public_origin,
+                frontend_origin,
+                auth,
+            },
+        ),
+    )
         .with_graceful_shutdown(shutdown_signal())
         .await?;
     Ok(())
