@@ -2007,7 +2007,7 @@ dependencies = [
  "csv",
  "futures-util",
  "hex",
- "hmac 0.12.1",
+ "hmac 0.13.0",
  "horse-gemini-developer-api",
  "horse-postgres",
  "mail-parser",
