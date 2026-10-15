@@ -45,16 +45,28 @@ self.addEventListener("fetch", (event) => {
   )
     return;
   event.respondWith(
-    caches.open(CACHE_NAME).then(async (cache) => {
+    (async () => {
       try {
         const response = await fetch(request);
-        if (response.ok && response.type === "basic") await cache.put(request, response.clone());
+        if (response.ok && response.type === "basic") {
+          try {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(request, response.clone());
+          } catch {
+            // Cache Storageが利用できない場合もオンライン応答を返す。
+          }
+        }
         return response;
       } catch {
-        const cached = await cache.match(request);
+        let cached;
+        try {
+          cached = await caches.match(request);
+        } catch {
+          cached = undefined;
+        }
         if (cached) return cached;
         throw new Error("Static resource is unavailable offline");
       }
-    }),
+    })(),
   );
 });
