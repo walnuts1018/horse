@@ -22,8 +22,16 @@ pub struct UpdatePurchaseItemCommand {
     pub category_id: Option<String>,
     pub product_variant_id_set: bool,
     pub product_variant_id: Option<String>,
+    pub product_learning: Option<ProductLearning>,
     pub allocations_set: bool,
     pub allocations: Vec<ItemAllocationWeight>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProductLearning {
+    ItemOnly,
+    VariantName(String),
+    MerchantAlias,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +86,7 @@ pub struct UpdatePurchaseItemDecision {
     pub printed_unit_price: Option<Option<PrintedUnitPrice>>,
     pub category_id: Option<Option<String>>,
     pub product_variant_id: Option<Option<String>>,
+    pub product_learning: Option<ProductLearning>,
     pub allocation_override: bool,
     pub allocations: Option<Vec<ItemAllocation>>,
     pub allocation_rule_id: Option<String>,
@@ -101,6 +110,9 @@ pub enum UpdatePurchaseItemError {
     DuplicateAllocationPool,
     InvalidAllocationVersion,
     InvalidRevision,
+    ProductLearningRequiresVariantChange,
+    ProductLearningRequiresLinkedVariant,
+    InvalidLearnedVariantName,
     Conflict,
     ClosedPurchase,
 }
@@ -205,6 +217,22 @@ pub fn decide_update_purchase_item(
     {
         return Err(UpdatePurchaseItemError::ExtraneousChangedValue);
     }
+    if let Some(learning) = &command.product_learning {
+        if !has("productVariantId") {
+            return Err(UpdatePurchaseItemError::ProductLearningRequiresVariantChange);
+        }
+        if !matches!(learning, &ProductLearning::ItemOnly)
+            && command.product_variant_id.as_ref().is_none_or(String::is_empty)
+        {
+            return Err(UpdatePurchaseItemError::ProductLearningRequiresLinkedVariant);
+        }
+        if let ProductLearning::VariantName(name) = learning {
+            let trimmed = name.trim();
+            if trimmed.is_empty() || name.len() > 240 {
+                return Err(UpdatePurchaseItemError::InvalidLearnedVariantName);
+            }
+        }
+    }
 
     let amount_yen = command.amount_yen.unwrap_or(current.amount_yen);
     let allocations_changed = command.allocations_set
@@ -273,6 +301,7 @@ pub fn decide_update_purchase_item(
         product_variant_id: command
             .product_variant_id_set
             .then_some(command.product_variant_id),
+        product_learning: command.product_learning,
         allocation_override,
         allocations,
         allocation_rule_id,
@@ -363,6 +392,7 @@ mod tests {
             category_id: None,
             product_variant_id_set: false,
             product_variant_id: None,
+            product_learning: None,
             allocations_set: false,
             allocations: Vec::new(),
         }

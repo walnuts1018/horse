@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use bookkeeping_workflows::update_purchase_item::{
-    AllocationBasis, ItemAllocationWeight, PurchaseItemState, UpdatePurchaseItemCommand,
+    AllocationBasis, ItemAllocationWeight, ProductLearning, PurchaseItemState, UpdatePurchaseItemCommand,
     UpdatePurchaseItemDecision, UpdatePurchaseItemError, decide_update_purchase_item,
 };
 use bookkeeping_workflows::{
@@ -43,6 +43,7 @@ pub enum UpdatePurchaseItemPersistenceError {
     ReferenceNotFound(&'static str),
     InvalidPaymentAllocation,
     InvalidFundingSnapshot,
+    MerchantRequired,
     InvalidDecision,
     InvalidWorkflow(UpdatePurchaseItemError),
 }
@@ -439,6 +440,21 @@ pub async fn persist_update_purchase_item(
                     ))
                     .execute(&mut *conn)
                     .await?;
+
+                persist_product_learning(
+                    &mut *conn,
+                    household_id,
+                    actor_id,
+                    observed.1,
+                    item_id,
+                    &locked.2,
+                    locked.5,
+                    product_variant_id,
+                    command.product_variant_id_set,
+                    &purchase.3,
+                    decision.product_learning.as_ref(),
+                )
+                .await?;
 
                 if let Some(payments) = adjusted_payments {
                     diesel::delete(
@@ -1250,6 +1266,143 @@ fn accounting_period(
 }
 
 fn normalize_merchant(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+async fn persist_product_learning(
+    conn: &mut crate::AsyncPgConnection,
+    household_id: Uuid,
+    actor_id: Uuid,
+    purchase_id: Uuid,
+    item_id: Uuid,
+    raw_name: &str,
+    previous_variant_id: Option<Uuid>,
+    variant_id: Option<Uuid>,
+    variant_changed: bool,
+    merchant: &str,
+    learning: Option<&ProductLearning>,
+) -> Result<(), UpdatePurchaseItemPersistenceError> {
+    use public::household_events::dsl as events;
+    use public::product_aliases::dsl as aliases;
+    use public::product_corrections::dsl as corrections;
+    use public::product_variants::dsl as variants;
+
+    if let (Some(ProductLearning::VariantName(name)), Some(variant_id)) = (learning, variant_id) {
+        let name = name.trim();
+        let normalized_name = normalize_product_name(name);
+        if normalized_name.is_empty() || name.len() > 240 {
+            return Err(UpdatePurchaseItemPersistenceError::InvalidDecision);
+        }
+        let revision = diesel::update(
+            variants::product_variants
+                .filter(variants::household_id.eq(household_id))
+                .filter(variants::id.eq(variant_id)),
+        )
+        .set((
+            variants::name.eq(name),
+            variants::normalized_name.eq(normalized_name),
+            variants::revision.eq(variants::revision + 1),
+            variants::updated_at.eq(now),
+        ))
+        .returning(variants::revision)
+        .get_result::<i64>(conn)
+        .await?;
+        diesel::insert_into(events::household_events)
+            .values((
+                events::household_id.eq(household_id),
+                events::event_type.eq("product.variant.renamed"),
+                events::entity_kind.eq("product_variant"),
+                events::entity_id.eq(variant_id),
+                events::revision.eq(revision),
+                events::changed_fields.eq(vec![Some("name".to_owned())]),
+                events::actor_id.eq(actor_id),
+            ))
+            .execute(conn)
+            .await?;
+    }
+
+    if !variant_changed {
+        return Ok(());
+    }
+    let Some(variant_id) = variant_id else {
+        return Ok(());
+    };
+    let merchant_key = normalize_merchant(merchant);
+    let scope = match learning {
+        Some(ProductLearning::VariantName(_)) => "VARIANT_NAME",
+        Some(ProductLearning::MerchantAlias) => "MERCHANT_ALIAS",
+        Some(ProductLearning::ItemOnly) | None => "ITEM_ONLY",
+    };
+    if scope == "MERCHANT_ALIAS" {
+        if merchant_key.is_empty() {
+            return Err(UpdatePurchaseItemPersistenceError::MerchantRequired);
+        }
+        let normalized_alias = normalize_product_name(raw_name);
+        let alias = diesel::insert_into(aliases::product_aliases)
+            .values((
+                aliases::id.eq(Uuid::now_v7()),
+                aliases::household_id.eq(household_id),
+                aliases::variant_id.eq(variant_id),
+                aliases::merchant_key.eq(&merchant_key),
+                aliases::alias_text.eq(raw_name),
+                aliases::normalized_alias.eq(normalized_alias),
+            ))
+            .on_conflict((
+                aliases::household_id,
+                aliases::merchant_key,
+                aliases::normalized_alias,
+            ))
+            .do_update()
+            .set((
+                aliases::variant_id.eq(variant_id),
+                aliases::alias_text.eq(raw_name),
+                aliases::revision.eq(aliases::revision + 1),
+                aliases::updated_at.eq(now),
+            ))
+            .returning((aliases::id, aliases::revision))
+            .get_result::<(Uuid, i64)>(conn)
+            .await?;
+        diesel::insert_into(events::household_events)
+            .values((
+                events::household_id.eq(household_id),
+                events::event_type.eq("product.alias.learned"),
+                events::entity_kind.eq("product_alias"),
+                events::entity_id.eq(alias.0),
+                events::revision.eq(alias.1),
+                events::changed_fields.eq(vec![
+                    Some("alias".to_owned()),
+                    Some("variantId".to_owned()),
+                    Some("merchant".to_owned()),
+                ]),
+                events::actor_id.eq(actor_id),
+            ))
+            .execute(conn)
+            .await?;
+    }
+
+    diesel::insert_into(corrections::product_corrections)
+        .values((
+            corrections::id.eq(Uuid::now_v7()),
+            corrections::household_id.eq(household_id),
+            corrections::purchase_id.eq(purchase_id),
+            corrections::item_id.eq(item_id),
+            corrections::raw_name.eq(raw_name),
+            corrections::previous_product_variant_id.eq(previous_variant_id),
+            corrections::product_variant_id.eq(variant_id),
+            corrections::learning_scope.eq(scope),
+            corrections::merchant_key.eq(merchant_key),
+            corrections::actor_id.eq(actor_id),
+        ))
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+fn normalize_product_name(value: &str) -> String {
     value
         .split_whitespace()
         .collect::<Vec<_>>()
