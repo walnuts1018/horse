@@ -8,7 +8,9 @@ use bookkeeping_workflows::{
         CorrectionMemberBurdenSnapshot, CorrectionPaymentFundingSnapshot,
         CorrectionPurchaseBurdenSnapshot, CorrectionPurchasePayment,
         CorrectionSettlementAdjustment, CorrectionSettlementPolicy, CorrectionTarget,
-        calculate_correction_funding_effects,
+        LinkStatementRefundCorrectionCommand, LinkStatementRefundCorrectionError,
+        StatementRefundObservation, calculate_correction_funding_effects,
+        decide_link_statement_refund_correction,
     },
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
@@ -38,6 +40,15 @@ pub struct PersistedCorrectPurchase {
     pub ledger_entry_id: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct LinkStatementRefundCorrection {
+    pub household_id: String,
+    pub actor_id: String,
+    pub correction_id: String,
+    pub source_document_id: String,
+    pub source_reference: String,
+}
+
 #[derive(Debug)]
 pub enum CorrectPurchasePersistenceError {
     Pool(String),
@@ -54,12 +65,160 @@ pub enum CorrectPurchasePersistenceError {
     HouseholdMismatch,
     InvalidDecision,
     InvalidFundingSnapshot,
+    SourceDocumentNotFound,
+    StatementAlreadyConfirmed,
+    StatementExtractionUnavailable,
+    StatementReferenceNotFound,
+    RefundDoesNotMatchCorrection,
+    MemberNotFound,
+    CorrectionNotFound,
 }
 
 impl From<DieselError> for CorrectPurchasePersistenceError {
     fn from(error: DieselError) -> Self {
         Self::Database(error)
     }
+}
+
+pub async fn link_statement_refund_correction(
+    pool: &PgPool,
+    input: LinkStatementRefundCorrection,
+) -> Result<String, CorrectPurchasePersistenceError> {
+    let household_id = parse_uuid(&input.household_id, "household_id")?;
+    let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
+    let correction_id = parse_uuid(&input.correction_id, "correction_id")?;
+    let source_document_id = parse_uuid(&input.source_document_id, "source_document_id")?;
+    if input.source_reference.is_empty() || input.source_reference.len() > 256 {
+        return Err(CorrectPurchasePersistenceError::InvalidDecision);
+    }
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|error| CorrectPurchasePersistenceError::Pool(error.to_string()))?;
+
+    (&mut *pooled)
+        .transaction::<String, CorrectPurchasePersistenceError, _>(async |conn| {
+            use public::evidence_links::dsl as evidence;
+            use public::household_members::dsl as members;
+            use public::purchase_corrections::dsl as corrections;
+            use public::source_confirmations::dsl as confirmations;
+
+            let is_member = members::household_members
+                .filter(members::household_id.eq(household_id))
+                .filter(members::member_id.eq(actor_id))
+                .filter(members::left_at.is_null())
+                .select(members::member_id)
+                .first::<Uuid>(&mut *conn)
+                .await
+                .optional()?
+                .is_some();
+            if !is_member {
+                return Err(CorrectPurchasePersistenceError::MemberNotFound);
+            }
+
+            let current_statement = load_statement_refund_entry(
+                &mut *conn,
+                household_id,
+                source_document_id,
+                &input.source_reference,
+            )
+            .await?;
+            let correction = corrections::purchase_corrections
+                .filter(corrections::household_id.eq(household_id))
+                .filter(corrections::id.eq(correction_id))
+                .for_update()
+                .select((corrections::purchase_id, corrections::amount_delta_yen))
+                .first::<(Uuid, i64)>(&mut *conn)
+                .await
+                .optional()?
+                .ok_or(CorrectPurchasePersistenceError::CorrectionNotFound)?;
+            let linked = evidence::evidence_links
+                .filter(evidence::household_id.eq(household_id))
+                .filter(evidence::correction_id.eq(Some(correction_id)))
+                .for_update()
+                .select((
+                    evidence::source_document_id,
+                    evidence::source_reference,
+                    evidence::observation,
+                ))
+                .first::<(Uuid, String, serde_json::Value)>(&mut *conn)
+                .await
+                .optional()?
+                .ok_or(CorrectPurchasePersistenceError::RefundDoesNotMatchCorrection)?;
+            let linked_document_exists = public::source_documents::table
+                .filter(public::source_documents::household_id.eq(household_id))
+                .filter(public::source_documents::id.eq(linked.0))
+                .select(public::source_documents::id)
+                .first::<Uuid>(&mut *conn)
+                .await
+                .optional()?
+                .is_some();
+            if !linked_document_exists {
+                return Err(CorrectPurchasePersistenceError::RefundDoesNotMatchCorrection);
+            }
+            let linked_confirmation = confirmations::source_confirmations
+                .filter(confirmations::household_id.eq(household_id))
+                .filter(confirmations::source_document_id.eq(linked.0))
+                .filter(confirmations::source_reference.eq(&linked.1))
+                .order_by(confirmations::changed_at.desc())
+                .select((confirmations::correction_id, confirmations::status))
+                .first::<(Option<Uuid>, String)>(&mut *conn)
+                .await
+                .optional()?;
+            if !linked_confirmation.is_some_and(|(linked_id, status)| {
+                linked_id == Some(correction_id) && status == "confirmed"
+            }) {
+                return Err(CorrectPurchasePersistenceError::RefundDoesNotMatchCorrection);
+            }
+            let linked_statement = parse_linked_refund_observation(&linked.2, &linked.1)?;
+            let decision = decide_link_statement_refund_correction(
+                LinkStatementRefundCorrectionCommand {
+                    source_document_id: source_document_id.to_string(),
+                    source_reference: input.source_reference.clone(),
+                    current_statement,
+                    correction_id: correction_id.to_string(),
+                    correction_amount_delta_yen: correction.1,
+                    linked_source_document_id: linked.0.to_string(),
+                    linked_source_reference: linked.1,
+                    linked_statement,
+                },
+            )
+            .map_err(map_link_refund_error)?;
+
+            let already_confirmed = confirmations::source_confirmations
+                .filter(confirmations::household_id.eq(household_id))
+                .filter(confirmations::source_document_id.eq(source_document_id))
+                .filter(confirmations::source_reference.eq(&decision.source_reference))
+                .filter(confirmations::status.eq("confirmed"))
+                .select(confirmations::id)
+                .first::<Uuid>(&mut *conn)
+                .await
+                .optional()?
+                .is_some();
+            if already_confirmed {
+                return Err(CorrectPurchasePersistenceError::StatementAlreadyConfirmed);
+            }
+            diesel::insert_into(public::source_confirmations::table)
+                .values((
+                    public::source_confirmations::id.eq(Uuid::now_v7()),
+                    public::source_confirmations::household_id.eq(household_id),
+                    public::source_confirmations::source_document_id.eq(source_document_id),
+                    public::source_confirmations::observation_id.eq(None::<Uuid>),
+                    public::source_confirmations::source_reference.eq(&decision.source_reference),
+                    public::source_confirmations::entity_kind.eq("purchase_correction"),
+                    public::source_confirmations::entity_id.eq(correction_id),
+                    public::source_confirmations::status.eq("confirmed"),
+                    public::source_confirmations::idempotency_key
+                        .eq(format!("purchase-correction-confirmation:{}", Uuid::now_v7())),
+                    public::source_confirmations::changed_by.eq(actor_id),
+                    public::source_confirmations::changed_at.eq(now),
+                ))
+                .execute(&mut *conn)
+                .await
+                .map_err(map_confirmation_insert_error)?;
+            Ok(correction.0.to_string())
+        })
+        .await
 }
 
 pub async fn persist_correct_purchase(
@@ -393,6 +552,152 @@ pub async fn persist_correct_purchase(
 
 fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, CorrectPurchasePersistenceError> {
     Uuid::parse_str(value).map_err(|_| CorrectPurchasePersistenceError::InvalidUuid(field))
+}
+
+async fn load_statement_refund_entry(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    document_id: Uuid,
+    source_reference: &str,
+) -> Result<StatementRefundObservation, CorrectPurchasePersistenceError> {
+    use public::extraction_jobs::dsl as jobs;
+    use public::source_confirmations::dsl as confirmations;
+    use public::source_documents::dsl as documents;
+
+    let source_kind = documents::source_documents
+        .filter(documents::household_id.eq(household_id))
+        .filter(documents::id.eq(document_id))
+        .for_update()
+        .select(documents::source_kind)
+        .first::<String>(conn)
+        .await
+        .optional()?
+        .ok_or(CorrectPurchasePersistenceError::SourceDocumentNotFound)?;
+    if source_kind != "bank" && source_kind != "card" {
+        return Err(CorrectPurchasePersistenceError::StatementReferenceNotFound);
+    }
+    let confirmed = confirmations::source_confirmations
+        .filter(confirmations::household_id.eq(household_id))
+        .filter(confirmations::source_document_id.eq(document_id))
+        .filter(confirmations::source_reference.eq(source_reference))
+        .filter(confirmations::status.eq("confirmed"))
+        .select(confirmations::id)
+        .first::<Uuid>(conn)
+        .await
+        .optional()?
+        .is_some();
+    if confirmed {
+        return Err(CorrectPurchasePersistenceError::StatementAlreadyConfirmed);
+    }
+    let result = jobs::extraction_jobs
+        .filter(jobs::household_id.eq(household_id))
+        .filter(jobs::source_document_id.eq(document_id))
+        .filter(jobs::status.eq("succeeded"))
+        .order_by(jobs::version.desc())
+        .select(jobs::result)
+        .first::<Option<serde_json::Value>>(conn)
+        .await
+        .optional()?
+        .flatten()
+        .ok_or(CorrectPurchasePersistenceError::StatementExtractionUnavailable)?;
+    let statements = result
+        .get("statements")
+        .and_then(serde_json::Value::as_array)
+        .ok_or(CorrectPurchasePersistenceError::StatementExtractionUnavailable)?;
+    for statement in statements {
+        let row = statement.get("row").and_then(serde_json::Value::as_i64);
+        let reference = statement
+            .get("sourceReference")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .or_else(|| row.map(|row| format!("row:{row}")));
+        if reference.as_deref() != Some(source_reference) {
+            continue;
+        }
+        return statement_observation(statement, source_reference);
+    }
+    Err(CorrectPurchasePersistenceError::StatementReferenceNotFound)
+}
+
+fn parse_linked_refund_observation(
+    value: &serde_json::Value,
+    source_reference: &str,
+) -> Result<StatementRefundObservation, CorrectPurchasePersistenceError> {
+    let statement = value
+        .get("statement")
+        .ok_or(CorrectPurchasePersistenceError::RefundDoesNotMatchCorrection)?;
+    let row = statement.get("row").and_then(serde_json::Value::as_i64);
+    let reference = statement
+        .get("sourceReference")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .or_else(|| row.map(|row| format!("row:{row}")))
+        .ok_or(CorrectPurchasePersistenceError::RefundDoesNotMatchCorrection)?;
+    let observation = statement_observation(statement, &reference)?;
+    if reference != source_reference || observation.source_reference != source_reference {
+        return Err(CorrectPurchasePersistenceError::RefundDoesNotMatchCorrection);
+    }
+    Ok(observation)
+}
+
+fn statement_observation(
+    value: &serde_json::Value,
+    source_reference: &str,
+) -> Result<StatementRefundObservation, CorrectPurchasePersistenceError> {
+    let kind = value
+        .get("kind")
+        .and_then(serde_json::Value::as_str)
+        .ok_or(CorrectPurchasePersistenceError::StatementReferenceNotFound)?
+        .to_owned();
+    let occurred_at = value
+        .get("occurredAt")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .ok_or(CorrectPurchasePersistenceError::StatementReferenceNotFound)?;
+    let occurred_at_unix_nanos = i128::from(occurred_at.timestamp()) * 1_000_000_000
+        + i128::from(occurred_at.timestamp_subsec_nanos());
+    let merchant = value
+        .get("merchant")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    let amount_yen = value
+        .get("amount")
+        .and_then(serde_json::Value::as_i64)
+        .ok_or(CorrectPurchasePersistenceError::StatementReferenceNotFound)?;
+    Ok(StatementRefundObservation {
+        source_reference: source_reference.to_owned(),
+        kind,
+        occurred_at_unix_nanos,
+        merchant,
+        amount_yen,
+    })
+}
+
+fn map_link_refund_error(
+    error: LinkStatementRefundCorrectionError,
+) -> CorrectPurchasePersistenceError {
+    match error {
+        LinkStatementRefundCorrectionError::InvalidSource => {
+            CorrectPurchasePersistenceError::StatementReferenceNotFound
+        }
+        LinkStatementRefundCorrectionError::RefundDoesNotMatchCorrection => {
+            CorrectPurchasePersistenceError::RefundDoesNotMatchCorrection
+        }
+    }
+}
+
+fn map_confirmation_insert_error(error: DieselError) -> CorrectPurchasePersistenceError {
+    if matches!(
+        &error,
+        DieselError::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _)
+    ) {
+        CorrectPurchasePersistenceError::StatementAlreadyConfirmed
+    } else {
+        CorrectPurchasePersistenceError::Database(error)
+    }
 }
 
 fn parse_period(value: &str) -> Result<NaiveDate, CorrectPurchasePersistenceError> {
