@@ -12,6 +12,7 @@ pub mod account_creation;
 pub mod account_mutations;
 pub mod category;
 pub mod funding;
+pub mod household_membership;
 pub mod ledger_entry;
 pub mod member_pool;
 pub mod scalars;
@@ -200,6 +201,30 @@ impl MutationRoot {
     ) -> Result<funding::RecordFundingResult> {
         funding::record_funding(ctx, input).await
     }
+
+    async fn leave_household(
+        &self,
+        ctx: &Context<'_>,
+        input: household_membership::LeaveHouseholdInput,
+    ) -> Result<household_membership::LeaveHouseholdResult> {
+        household_membership::leave_household(ctx, input).await
+    }
+
+    async fn remove_household_member(
+        &self,
+        ctx: &Context<'_>,
+        input: household_membership::RemoveHouseholdMemberInput,
+    ) -> Result<household_membership::RemoveHouseholdMemberResult> {
+        household_membership::remove_household_member(ctx, input).await
+    }
+
+    async fn transfer_household_owner(
+        &self,
+        ctx: &Context<'_>,
+        input: household_membership::TransferHouseholdOwnerInput,
+    ) -> Result<household_membership::TransferHouseholdOwnerResult> {
+        household_membership::transfer_household_owner(ctx, input).await
+    }
 }
 
 async fn issue_or_rotate(
@@ -361,6 +386,9 @@ pub enum MutationError {
     RecordExternalIncomeUserError(account_mutations::RecordExternalIncomeUserError),
     CreateAccountUserError(account_creation::CreateAccountUserError),
     RecordFundingUserError(funding::RecordFundingUserError),
+    LeaveHouseholdUserError(household_membership::LeaveHouseholdUserError),
+    RemoveHouseholdMemberUserError(household_membership::RemoveHouseholdMemberUserError),
+    TransferHouseholdOwnerUserError(household_membership::TransferHouseholdOwnerUserError),
 }
 
 #[derive(Clone, Debug, SimpleObject)]
