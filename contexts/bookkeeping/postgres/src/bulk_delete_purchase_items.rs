@@ -219,6 +219,9 @@ pub async fn persist_bulk_delete_purchase_items(
                     if locked.0 != household_id || locked.1 != *occurred_at {
                         return Err(BulkDeletePurchaseItemsPersistenceError::InvalidDecision);
                     }
+                    if !matches!(locked.2.as_str(), "DRAFT" | "POSTED") {
+                        return Err(BulkDeletePurchaseItemsPersistenceError::InvalidDecision);
+                    }
                     locked_purchases.insert(*id, (locked.1, locked.2, locked.3, locked.4, locked.5));
                 }
                 target_rows.sort_by_key(|row| row.id);
@@ -241,7 +244,7 @@ pub async fn persist_bulk_delete_purchase_items(
                 }
                 let mut purchase_states = Vec::with_capacity(purchase_ids.len());
                 for purchase_id in &purchase_ids {
-                    let (_, status, revision, _, _) = locked_purchases.get(purchase_id).ok_or(BulkDeletePurchaseItemsPersistenceError::PurchaseNotFound)?;
+                    let (_, _, revision, _, _) = locked_purchases.get(purchase_id).ok_or(BulkDeletePurchaseItemsPersistenceError::PurchaseNotFound)?;
                     let rows = items::purchase_items
                         .filter(items::household_id.eq(household_id))
                         .filter(items::purchase_id.eq(purchase_id))
@@ -269,7 +272,6 @@ pub async fn persist_bulk_delete_purchase_items(
                     }
                     purchase_states.push(BulkDeletePurchaseState {
                         purchase_id: purchase_id.to_string(),
-                        status: status.clone(),
                         revision: u64::try_from(*revision).map_err(|_| BulkDeletePurchaseItemsPersistenceError::NumericOutOfRange("purchase_revision"))?,
                         item_count: rows.len(),
                         items: states,

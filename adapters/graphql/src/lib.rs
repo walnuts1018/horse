@@ -1190,6 +1190,17 @@ pub enum MutationError {
     SetAllocationRuleUserError(pool_mutations::SetAllocationRuleUserError),
     SetFundingScheduleUserError(pool_mutations::SetFundingScheduleUserError),
     ClosePeriodUserError(settlement_mutations::ClosePeriodUserError),
+    CorrectPurchaseUserError(purchase_corrections_mutations::CorrectPurchaseUserError),
+    LinkStatementAccountMovementUserError(
+        statement_link_mutations::LinkStatementAccountMovementUserError,
+    ),
+    LinkStatementAccountIncomeUserError(
+        statement_link_mutations::LinkStatementAccountIncomeUserError,
+    ),
+    LinkStatementTransferUserError(statement_link_mutations::LinkStatementTransferUserError),
+    LinkStatementRefundCorrectionUserError(
+        statement_link_mutations::LinkStatementRefundCorrectionUserError,
+    ),
     SharedPurchaseDraftUserError(shared_purchase_draft::SharedPurchaseDraftUserError),
     UpdateSharedPurchaseDraftConflict(shared_purchase_draft::UpdateSharedPurchaseDraftConflict),
     BulkUpdatePurchasesUserError(purchase_bulk_mutations::BulkUpdatePurchasesUserError),

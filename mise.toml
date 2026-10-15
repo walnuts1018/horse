@@ -1,18 +1,24 @@
 [tools]
-go = "1.27.2"
 rust = "1.99.0"
 "cargo:diesel_cli" = { version = "2.3.14", default-features = false, features = ["postgres", "pq-sys/bundled"] }
 node = "24.22.0"
 pnpm = "12.11.2"
-golangci-lint = "2.14.0"
 atlas = "1.3.4"
 uv = "0.13.1"
 python = "3.13.16"
 jactionlint = "2.2.0"
 
 [tasks.test]
-description = "Goのテスト"
-run = "go test ./... -v"
+description = "Rust workspaceのテスト"
+run = "cargo test --workspace"
+
+[tasks.build]
+description = "Rust workspaceのビルド"
+run = "cargo build --workspace"
+
+[tasks.lint]
+description = "Rust workspaceの静的解析"
+run = "cargo clippy --workspace --all-targets -- -D warnings"
 
 [tasks."rust:fmt:check"]
 description = "Rustコードの整形検査"
@@ -37,14 +43,6 @@ run = "diesel print-schema --database-url \"$RUST_DATABASE_URL\" --schema public
 [tasks."rust:db:migrate"]
 description = "Rust用Atlasマイグレーション"
 run = "atlas migrate apply --config file://atlas-rust.hcl --env rust"
-
-[tasks.lint]
-description = "Goの静的解析"
-run = "golangci-lint run ./..."
-
-[tasks."lint:changed"]
-description = "変更したGoコードの静的解析"
-run = "golangci-lint run --new-from-rev=${LINT_BASE_REV:-HEAD^} ./..."
 
 [tasks."lint:actions"]
 description = "GitHub Actionsの静的解析"
@@ -110,35 +108,18 @@ run = "mise exec -- web/node_modules/.bin/oxfmt --check 'graphql/**/*.graphql'"
 
 [tasks.api]
 description = "APIの起動"
-run = "go run ./cmd/api"
-
-[tasks."api:rust"]
-description = "Rust APIの起動"
 run = "cargo run -p horse-api"
 
 [tasks.worker]
 description = "取り込みワーカーの起動"
-run = "go run ./cmd/worker"
+run = "cargo run -p horse-worker"
 
 [tasks."hash:migrations"]
-description = "Atlasマイグレーションのチェックサム"
-run = "atlas migrate hash --dir file://migrations"
-
-[tasks."hash:migrations:rust"]
-description = "Rust用Atlasマイグレーションのチェックサム"
 run = "atlas migrate hash --dir file://rust-migrations"
 
 [tasks."db:migrate"]
-description = "PostgreSQLマイグレーション"
-run = "atlas migrate apply --env kubernetes"
-
-[tasks."db:generate"]
-description = "Bobのモデル生成"
-run = "go tool bobgen-sql -c bobgen.yaml"
-
-[tasks."generate:graphql"]
-description = "GraphQLコードとRelayアーティファクトの生成"
-run = ["mise run web:relay", "go tool gqlgen generate"]
+description = "Rust用PostgreSQLマイグレーション"
+run = "atlas migrate apply --config file://atlas-rust.hcl --env rust"
 
 [tasks."ocr:lock"]
 description = "OCRサービスの依存関係固定"

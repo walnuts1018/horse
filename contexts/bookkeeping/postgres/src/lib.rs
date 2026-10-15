@@ -31,6 +31,7 @@ pub mod purchase_corrections;
 pub mod purchase_create_and_post;
 pub mod purchase_defaults_query;
 pub mod purchase_search_query;
+pub mod purchase_history;
 pub mod record_repayment;
 pub mod record_transfer;
 pub mod save_purchase_item_edits;

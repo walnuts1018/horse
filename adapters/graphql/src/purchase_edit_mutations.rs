@@ -955,7 +955,7 @@ fn bulk_delete_persistence_error(
 fn update_item_workflow_error_code(error: UpdatePurchaseItemError) -> MutationErrorCode {
     use UpdatePurchaseItemError as E;
     match error {
-        E::Conflict | E::ClosedPurchase => MutationErrorCode::Conflict,
+        E::Conflict => MutationErrorCode::Conflict,
         _ => MutationErrorCode::BadInput,
     }
 }
@@ -966,7 +966,7 @@ fn bulk_update_workflow_error_code(
     use bookkeeping_application::bulk_update_items::BulkUpdateItemsError as E;
     match error {
         E::MissingItem => MutationErrorCode::NotFound,
-        E::Conflict | E::ClosedPurchase => MutationErrorCode::Conflict,
+        E::Conflict => MutationErrorCode::Conflict,
         _ => MutationErrorCode::BadInput,
     }
 }
@@ -977,9 +977,7 @@ fn bulk_delete_workflow_error_code(
     use bookkeeping_application::bulk_delete_items::BulkDeleteItemsError as E;
     match error {
         E::MissingItem => MutationErrorCode::NotFound,
-        E::Conflict | E::ClosedPurchase | E::CorrectedItem | E::LastItem => {
-            MutationErrorCode::Conflict
-        }
+        E::Conflict | E::CorrectedItem | E::LastItem => MutationErrorCode::Conflict,
         _ => MutationErrorCode::BadInput,
     }
 }

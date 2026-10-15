@@ -40,7 +40,6 @@ pub struct BulkUpdateItemsCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BulkUpdatePurchaseState {
     pub purchase_id: String,
-    pub status: String,
     pub revision: u64,
 }
 
@@ -104,7 +103,6 @@ pub enum BulkUpdateItemsError {
     MissingItem,
     InvalidRevision,
     Conflict,
-    ClosedPurchase,
     InvalidAmount,
     InvalidAllocation,
     DuplicateAllocationPool,
@@ -144,9 +142,6 @@ pub fn decide_bulk_update_items(
     for purchase in purchases {
         Uuid::parse_str(&purchase.purchase_id)
             .map_err(|_| BulkUpdateItemsError::InvalidPurchaseId)?;
-        if !matches!(purchase.status.as_str(), "DRAFT" | "POSTED") {
-            return Err(BulkUpdateItemsError::ClosedPurchase);
-        }
         purchases_by_id.insert(purchase.purchase_id.clone(), purchase);
     }
     let mut items_by_id = BTreeMap::new();
@@ -181,9 +176,9 @@ pub fn decide_bulk_update_items(
         if item.revision != target.base_revision {
             return Err(BulkUpdateItemsError::Conflict);
         }
-        let purchase = purchases_by_id
-            .get(&item.purchase_id)
-            .ok_or(BulkUpdateItemsError::MissingItem)?;
+        if !purchases_by_id.contains_key(&item.purchase_id) {
+            return Err(BulkUpdateItemsError::MissingItem);
+        }
         let revision = item
             .revision
             .checked_add(1)
@@ -255,7 +250,6 @@ pub fn decide_bulk_update_items(
             allocation_rule_version: item.allocation_rule_version,
             changed_fields,
         });
-        let _ = purchase;
     }
     if target_ids.len() != decisions.len() {
         return Err(BulkUpdateItemsError::MissingItem);

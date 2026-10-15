@@ -2884,6 +2884,7 @@ name = "horse-worker-runtime"
 version = "0.1.0"
 dependencies = [
  "async-imap",
+ "bookkeeping-postgres",
  "chrono",
  "csv",
  "diesel",

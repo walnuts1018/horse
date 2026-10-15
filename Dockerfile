@@ -21,25 +21,6 @@ COPY web/ ./
 COPY graphql/ /src/graphql/
 RUN pnpm build
 
-FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine AS api-build
-
-WORKDIR /src
-
-ENV CGO_ENABLED=0
-
-COPY go.mod go.sum ./
-RUN --mount=type=cache,id=horse-go-mod,target=/go/pkg/mod,sharing=locked \
-    go mod download
-
-ARG TARGETOS
-ARG TARGETARCH
-RUN --mount=type=bind,source=.,target=/src,ro \
-    --mount=type=cache,id=horse-go-mod,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,id=horse-go-build,target=/root/.cache/go-build,sharing=locked \
-    mkdir -p /out \
-    && GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags='-s -w' -o /out/api ./cmd/api \
-    && GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags='-s -w' -o /out/worker ./cmd/worker
-
 FROM rust:1.99.0-bookworm AS rust-build
 
 WORKDIR /src
@@ -67,41 +48,9 @@ RUN --mount=type=cache,id=horse-cargo-registry,target=/usr/local/cargo/registry,
 
 FROM docker.io/arigaio/atlas:1.3.4-distroless AS atlas
 
-FROM gcr.io/distroless/base-debian12:nonroot AS go-runtime
-
-WORKDIR /app
-
-COPY --from=api-build --chown=65532:65532 /out/api ./api
-COPY --from=api-build --chown=65532:65532 /out/worker ./worker
-COPY --from=atlas --chown=65532:65532 --chmod=0555 /atlas /usr/local/bin/atlas
-COPY --chown=65532:65532 atlas.hcl ./atlas.hcl
-COPY --chown=65532:65532 migrations/ ./migrations/
-
-USER 65532:65532
-
-EXPOSE 8080 8081
-
-CMD ["/app/api"]
-
 FROM debian:bookworm-slim AS rust-runtime-base
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libpq5 && rm -rf /var/lib/apt/lists/*
-
-FROM rust-runtime-base AS rust-runtime
-
-WORKDIR /app
-
-COPY --from=rust-build --chown=65532:65532 /out/api ./api
-COPY --from=rust-build --chown=65532:65532 /out/worker ./worker
-COPY --from=atlas --chown=65532:65532 --chmod=0555 /atlas /usr/local/bin/atlas
-COPY --chown=65532:65532 atlas-rust.hcl ./atlas-rust.hcl
-COPY --chown=65532:65532 rust-migrations/ ./rust-migrations/
-
-USER 65532:65532
-
-EXPOSE 8080 8081
-
-CMD ["/app/api"]
 
 FROM gcr.io/distroless/nodejs24-debian13:nonroot AS web-runtime
 
@@ -118,3 +67,19 @@ USER 10001:10001
 EXPOSE 3000
 
 CMD [".output/server/index.mjs"]
+
+FROM rust-runtime-base AS rust-runtime
+
+WORKDIR /app
+
+COPY --from=rust-build --chown=65532:65532 /out/api ./api
+COPY --from=rust-build --chown=65532:65532 /out/worker ./worker
+COPY --from=atlas --chown=65532:65532 --chmod=0555 /atlas /usr/local/bin/atlas
+COPY --chown=65532:65532 atlas-rust.hcl ./atlas-rust.hcl
+COPY --chown=65532:65532 rust-migrations/ ./rust-migrations/
+
+USER 65532:65532
+
+EXPOSE 8080 8081
+
+CMD ["/app/api"]

@@ -9,15 +9,27 @@ use uuid::Uuid;
 use crate::ledger_entry::{self, LedgerEntry};
 
 pub async fn graphql_node(ctx: &Context<'_>, global_id: ID) -> Result<Option<ledger_entry::Node>> {
+    graphql_node_with_households(ctx, global_id, None).await
+}
+
+async fn graphql_node_with_households(
+    ctx: &Context<'_>,
+    global_id: ID,
+    known_households: Option<&[Uuid]>,
+) -> Result<Option<ledger_entry::Node>> {
     let decoded = decode_relay_id(&global_id)?;
     match decoded.type_name.as_str() {
         "UnmatchedObservation" => {
             let (document_id, source_reference) = decode_unmatched_payload(&decoded.payload)?;
-            let actor = crate::actor(ctx)?;
-            let household_ids =
-                postgres_query::active_household_ids(ctx.data::<PgPool>()?, actor.0)
-                    .await
-                    .map_err(crate::internal_error)?;
+            let household_ids = match known_households {
+                Some(household_ids) => household_ids.to_vec(),
+                None => {
+                    let actor = crate::actor(ctx)?;
+                    postgres_query::active_household_ids(ctx.data::<PgPool>()?, actor.0)
+                        .await
+                        .map_err(crate::internal_error)?
+                }
+            };
             for household_id in household_ids {
                 if let Some(node) =
                     crate::unmatched_observations_query::resolve_unmatched_observation(
@@ -50,11 +62,15 @@ pub async fn graphql_node(ctx: &Context<'_>, global_id: ID) -> Result<Option<led
             if !is_supported_node_type(type_name) {
                 return Ok(None);
             }
-            let actor = crate::actor(ctx)?;
-            let household_ids =
-                postgres_query::active_household_ids(ctx.data::<PgPool>()?, actor.0)
-                    .await
-                    .map_err(crate::internal_error)?;
+            let household_ids = match known_households {
+                Some(household_ids) => household_ids.to_vec(),
+                None => {
+                    let actor = crate::actor(ctx)?;
+                    postgres_query::active_household_ids(ctx.data::<PgPool>()?, actor.0)
+                        .await
+                        .map_err(crate::internal_error)?
+                }
+            };
             for household_id in household_ids {
                 match resolve_graphql_node(ctx, household_id, type_name, id).await {
                     Ok(node) => return Ok(Some(node)),
@@ -178,6 +194,9 @@ fn is_supported_node_type(type_name: &str) -> bool {
         "AccountOpeningBalance"
             | "AccountMovement"
             | "AccountIncome"
+            | "Account"
+            | "Category"
+            | "Member"
             | "Purchase"
             | "PurchaseCorrection"
             | "LedgerEntry"
@@ -232,9 +251,16 @@ pub async fn graphql_nodes(
     ctx: &Context<'_>,
     global_ids: Vec<ID>,
 ) -> Result<Vec<Option<ledger_entry::Node>>> {
+    if global_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let actor = crate::actor(ctx)?;
+    let household_ids = postgres_query::active_household_ids(ctx.data::<PgPool>()?, actor.0)
+        .await
+        .map_err(crate::internal_error)?;
     let mut result = Vec::with_capacity(global_ids.len());
     for global_id in global_ids {
-        result.push(graphql_node(ctx, global_id).await?);
+        result.push(graphql_node_with_households(ctx, global_id, Some(&household_ids)).await?);
     }
     Ok(result)
 }
@@ -255,6 +281,13 @@ pub(crate) async fn resolve_graphql_node(
     }
 
     match type_name {
+        "Account" | "Category" | "Member" => {
+            crate::household_lifecycle::resolve_household_node(
+                pool, actor.0, household_id, type_name, id,
+            )
+            .await?
+            .ok_or_else(|| Error::new("not found"))
+        }
         "AccountOpeningBalance" => {
             let account = postgres_query::load_account_opening_balance_node(pool, household_id, id)
                 .await

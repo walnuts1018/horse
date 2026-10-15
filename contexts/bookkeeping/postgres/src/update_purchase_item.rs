@@ -288,7 +288,6 @@ pub async fn persist_update_purchase_item_in_transaction(
         .unwrap_or((None, default_version));
     let current = PurchaseItemState {
         revision: to_u64(locked.0, "item_revision")?,
-        status: purchase.1.clone(),
         name: locked.2.clone(),
         amount_yen: locked.3,
         category_id: locked.4.map(|id| id.to_string()),

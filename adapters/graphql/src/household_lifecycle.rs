@@ -573,6 +573,36 @@ pub(crate) async fn load_household_graphql(
         .and_then(map_household)
 }
 
+pub(crate) async fn resolve_household_node(
+    pool: &PgPool,
+    actor_id: Uuid,
+    household_id: Uuid,
+    type_name: &str,
+    id: Uuid,
+) -> Result<Option<crate::ledger_entry::Node>> {
+    let household = load_household_graphql(pool, actor_id, household_id).await?;
+    let global_id = crate::node_query::encode_global_node_id(type_name, id);
+    let node = match type_name {
+        "Account" => household
+            .accounts
+            .into_iter()
+            .find(|value| value.id == global_id)
+            .map(crate::ledger_entry::Node::Account),
+        "Category" => household
+            .categories
+            .into_iter()
+            .find(|value| value.id == global_id)
+            .map(crate::ledger_entry::Node::Category),
+        "Member" => household
+            .members
+            .into_iter()
+            .find(|value| value.id == global_id)
+            .map(crate::ledger_entry::Node::Member),
+        _ => None,
+    };
+    Ok(node)
+}
+
 fn map_invitation(
     value: postgres_invitation::InvitationStateDto,
     now: chrono::DateTime<Utc>,

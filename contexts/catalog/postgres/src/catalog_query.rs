@@ -347,7 +347,7 @@ async fn load_purchase_stats(
         let rows = purchases::table
             .filter(purchases::household_id.eq(household_id))
             .filter(purchases::id.eq_any(ids))
-            .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+            .filter(purchases::status.eq("POSTED"))
             .select((
                 purchases::id,
                 purchases::created_by,

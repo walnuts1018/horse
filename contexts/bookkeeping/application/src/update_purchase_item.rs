@@ -53,7 +53,6 @@ pub struct ItemAllocation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PurchaseItemState {
     pub revision: u64,
-    pub status: String,
     pub name: String,
     pub amount_yen: i64,
     pub category_id: Option<String>,
@@ -111,7 +110,6 @@ pub enum UpdatePurchaseItemError {
     ProductLearningRequiresLinkedVariant,
     InvalidLearnedVariantName,
     Conflict,
-    ClosedPurchase,
 }
 
 pub fn decide_update_purchase_item(
@@ -122,9 +120,6 @@ pub fn decide_update_purchase_item(
 ) -> Result<UpdatePurchaseItemDecision, UpdatePurchaseItemError> {
     if command.item_id.is_empty() {
         return Err(UpdatePurchaseItemError::InvalidItemId);
-    }
-    if !matches!(current.status.as_str(), "DRAFT" | "POSTED") {
-        return Err(UpdatePurchaseItemError::ClosedPurchase);
     }
     if command.base_revision == 0 || command.base_revision > current.revision {
         return Err(UpdatePurchaseItemError::Conflict);
@@ -365,7 +360,6 @@ mod tests {
     fn state() -> PurchaseItemState {
         PurchaseItemState {
             revision: 2,
-            status: "DRAFT".to_owned(),
             name: "商品".to_owned(),
             amount_yen: 4,
             category_id: None,

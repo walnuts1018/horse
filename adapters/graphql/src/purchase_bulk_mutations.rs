@@ -423,13 +423,20 @@ fn update_item_persistence_error(
 ) -> Option<MutationErrorCode> {
     use bookkeeping_postgres::update_purchase_item::UpdatePurchaseItemPersistenceError as E;
     match error {
-        E::InvalidUuid(_) | E::NumericOutOfRange(_) | E::InvalidDecision => Some(MutationErrorCode::BadInput),
-        E::PurchaseNotFound | E::ItemNotFound | E::HouseholdMismatch | E::MemberNotFound | E::ReferenceNotFound(_) => Some(MutationErrorCode::NotFound),
+        E::InvalidUuid(_) | E::NumericOutOfRange(_) | E::InvalidDecision => {
+            Some(MutationErrorCode::BadInput)
+        }
+        E::PurchaseNotFound
+        | E::ItemNotFound
+        | E::HouseholdMismatch
+        | E::MemberNotFound
+        | E::ReferenceNotFound(_) => Some(MutationErrorCode::NotFound),
         E::AccountingPeriodClosed | E::InvalidFundingSnapshot => Some(MutationErrorCode::Conflict),
         E::InvalidPaymentAllocation | E::MerchantRequired => Some(MutationErrorCode::BadInput),
         E::InvalidWorkflow(error) => Some(match error {
-            bookkeeping_application::update_purchase_item::UpdatePurchaseItemError::Conflict
-            | bookkeeping_application::update_purchase_item::UpdatePurchaseItemError::ClosedPurchase => MutationErrorCode::Conflict,
+            bookkeeping_application::update_purchase_item::UpdatePurchaseItemError::Conflict => {
+                MutationErrorCode::Conflict
+            }
             _ => MutationErrorCode::BadInput,
         }),
         E::Pool(_) | E::Database(_) => None,

@@ -197,6 +197,9 @@ pub async fn persist_bulk_update_purchase_items(
                     if row.0 != household_id || row.1 != *occurred_at || row.4 != *merchant {
                         return Err(BulkUpdatePurchaseItemsPersistenceError::InvalidDecision);
                     }
+                    if !matches!(row.2.as_str(), "DRAFT" | "POSTED") {
+                        return Err(BulkUpdatePurchaseItemsPersistenceError::InvalidDecision);
+                    }
                     locked_purchases.insert(*id, row);
                 }
                 let mut locked_rows = BTreeMap::new();
@@ -282,7 +285,6 @@ pub async fn persist_bulk_update_purchase_items(
                 }
                 let purchase_states = locked_purchases.iter().map(|(id, row)| Ok(BulkUpdatePurchaseState {
                     purchase_id: id.to_string(),
-                    status: row.2.clone(),
                     revision: u64::try_from(row.3).map_err(|_| BulkUpdatePurchaseItemsPersistenceError::NumericOutOfRange("purchase_revision"))?,
                 })).collect::<Result<Vec<_>, BulkUpdatePurchaseItemsPersistenceError>>()?;
                 let decision = decide_bulk_update_items(BulkUpdateItemsCommand { targets: targets.clone(), patch: patch.clone() }, purchase_states, item_states)

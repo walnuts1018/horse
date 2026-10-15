@@ -1,26 +1,15 @@
+use bookkeeping_domain::{ItemId, PurchaseId};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct ItemId(Uuid);
-
-impl ItemId {
-    fn new(value: &str) -> Result<Self, BulkDeleteItemsError> {
-        Uuid::parse_str(value)
-            .map(Self)
-            .map_err(|_| BulkDeleteItemsError::InvalidItemId)
-    }
+fn item_id(value: &str) -> Result<ItemId, BulkDeleteItemsError> {
+    Uuid::parse_str(value).map_err(|_| BulkDeleteItemsError::InvalidItemId)?;
+    ItemId::new(value).map_err(|_| BulkDeleteItemsError::InvalidItemId)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PurchaseId(Uuid);
-
-impl PurchaseId {
-    fn new(value: &str) -> Result<Self, BulkDeleteItemsError> {
-        Uuid::parse_str(value)
-            .map(Self)
-            .map_err(|_| BulkDeleteItemsError::InvalidPurchaseId)
-    }
+fn purchase_id(value: &str) -> Result<PurchaseId, BulkDeleteItemsError> {
+    Uuid::parse_str(value).map_err(|_| BulkDeleteItemsError::InvalidPurchaseId)?;
+    PurchaseId::new(value).map_err(|_| BulkDeleteItemsError::InvalidPurchaseId)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,7 +34,6 @@ pub struct BulkDeleteItemState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BulkDeletePurchaseState {
     pub purchase_id: String,
-    pub status: String,
     pub revision: u64,
     pub item_count: usize,
     pub items: Vec<BulkDeleteItemState>,
@@ -69,7 +57,6 @@ pub enum BulkDeleteItemsError {
     MissingItem,
     InvalidRevision,
     Conflict,
-    ClosedPurchase,
     CorrectedItem,
     LastItem,
     InvalidAmount,
@@ -89,7 +76,7 @@ pub fn decide_bulk_delete_items(
     let target_ids = command
         .targets
         .iter()
-        .map(|target| ItemId::new(&target.item_id))
+        .map(|target| item_id(&target.item_id))
         .collect::<Result<Vec<_>, _>>()?;
     let mut seen = BTreeSet::new();
     for (target, item_id) in command.targets.iter().zip(&target_ids) {
@@ -103,20 +90,17 @@ pub fn decide_bulk_delete_items(
 
     let purchase_ids = purchases
         .iter()
-        .map(|purchase| PurchaseId::new(&purchase.purchase_id))
+        .map(|purchase| purchase_id(&purchase.purchase_id))
         .collect::<Result<Vec<_>, _>>()?;
     for purchase in &purchases {
         for item in &purchase.items {
-            ItemId::new(&item.item_id)?;
+            item_id(&item.item_id)?;
         }
     }
 
     let mut decisions = Vec::with_capacity(purchases.len());
     let mut consumed = BTreeSet::<String>::new();
     for (purchase, purchase_id) in purchases.into_iter().zip(purchase_ids) {
-        if !matches!(purchase.status.as_str(), "DRAFT" | "POSTED") {
-            return Err(BulkDeleteItemsError::ClosedPurchase);
-        }
         let mut deleted_item_ids = Vec::new();
         let mut deleted_amount_yen = 0_i64;
         for item in &purchase.items {
@@ -151,7 +135,7 @@ pub fn decide_bulk_delete_items(
             .checked_add(1)
             .ok_or(BulkDeleteItemsError::RevisionOverflow)?;
         decisions.push(BulkDeletePurchaseDecision {
-            purchase_id: purchase_id.0.to_string(),
+            purchase_id: purchase_id.as_str().to_owned(),
             purchase_revision,
             deleted_item_ids,
             deleted_amount_yen,

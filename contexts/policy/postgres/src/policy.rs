@@ -905,7 +905,7 @@ pub async fn persist_match_recurring_expense(
                     .await
                     .optional()?
                     .ok_or(PolicyPersistenceError::PurchaseNotFound)?;
-                if purchase_status != "POSTED" && purchase_status != "CLOSED" {
+                if purchase_status != "POSTED" {
                     return Err(PolicyPersistenceError::Conflict);
                 }
                 let already_matched = diesel::select(diesel::dsl::exists(

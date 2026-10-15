@@ -449,7 +449,7 @@ async fn budget_projections(
         .filter(purchases::household_id.eq_any(&household_ids))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .select((purchases::id, purchases::household_id))
         .load::<(Uuid, Uuid)>(conn)
         .await?;
