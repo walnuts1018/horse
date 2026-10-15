@@ -1,0 +1,10 @@
+[package]
+name = "horse-worker"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+horse-worker-runtime = { path = "../../crates/worker-runtime" }
+tokio = { workspace = true }
+tracing-subscriber = { workspace = true }
+

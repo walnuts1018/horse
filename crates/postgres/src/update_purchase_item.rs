@@ -259,6 +259,7 @@ pub async fn persist_update_purchase_item(
                     })
                     .collect::<Vec<_>>();
                 let (allocation_rule_id, allocation_rule_version) = existing_allocations
+                    .as_slice()
                     .first()
                     .map(|row| (row.2.map(|id| id.to_string()), row.3))
                     .unwrap_or((None, default_version));
@@ -269,8 +270,13 @@ pub async fn persist_update_purchase_item(
                     amount_yen: locked.3,
                     category_id: locked.4.map(|id| id.to_string()),
                     product_variant_id: locked.5.map(|id| id.to_string()),
-                    quantity: measure(locked.7, locked.8, locked.9)?,
-                    printed_unit_price: printed_price(locked.10, locked.11, locked.12, locked.13)?,
+                    quantity: measure(locked.7, locked.8, locked.9.clone())?,
+                    printed_unit_price: printed_price(
+                        locked.10,
+                        locked.11,
+                        locked.12,
+                        locked.13.clone(),
+                    )?,
                     allocation_override: locked.6,
                     allocation_rule_id,
                     allocation_rule_version: to_u64(
@@ -379,12 +385,8 @@ pub async fn persist_update_purchase_item(
                         None => (locked.7, locked.8, locked.9.clone()),
                         Some(None) => (None, None, None),
                         Some(Some(value)) => (
-                            Some(value.numerator.parse().map_err(|_| {
-                                UpdatePurchaseItemPersistenceError::InvalidDecision
-                            })?),
-                            Some(value.denominator.parse().map_err(|_| {
-                                UpdatePurchaseItemPersistenceError::InvalidDecision
-                            })?),
+                            Some(value.numerator),
+                            Some(value.denominator),
                             Some(value.unit.clone()),
                         ),
                     };
@@ -399,12 +401,8 @@ pub async fn persist_update_purchase_item(
                         Some(None) => (None, None, None, None),
                         Some(Some(value)) => (
                             Some(value.amount_yen),
-                            Some(value.basis.numerator.parse().map_err(|_| {
-                                UpdatePurchaseItemPersistenceError::InvalidDecision
-                            })?),
-                            Some(value.basis.denominator.parse().map_err(|_| {
-                                UpdatePurchaseItemPersistenceError::InvalidDecision
-                            })?),
+                            Some(value.basis.numerator),
+                            Some(value.basis.denominator),
                             Some(value.basis.unit.clone()),
                         ),
                     };
@@ -1140,7 +1138,7 @@ async fn sync_posted_accounting(
 fn funding_basis(
     rows: Vec<(Uuid, i32, i64, Option<String>)>,
 ) -> Result<MemberFundingBasis, UpdatePurchaseItemPersistenceError> {
-    let Some((_, version, _, policy)) = rows.first() else {
+    let Some((_, version, _, policy)) = rows.as_slice().first() else {
         return Err(UpdatePurchaseItemPersistenceError::InvalidFundingSnapshot);
     };
     if rows
@@ -1192,13 +1190,16 @@ fn measure(
     numerator: Option<i64>,
     denominator: Option<i64>,
     unit: Option<String>,
-) -> Result<Option<bookkeeping_workflows::Measure>, UpdatePurchaseItemPersistenceError> {
+) -> Result<
+    Option<bookkeeping_workflows::create_purchase::Measure>,
+    UpdatePurchaseItemPersistenceError,
+> {
     match (numerator, denominator, unit) {
         (None, None, None) => Ok(None),
         (Some(numerator), Some(denominator), Some(unit)) => {
-            Ok(Some(bookkeeping_workflows::Measure {
-                numerator: numerator.to_string(),
-                denominator: denominator.to_string(),
+            Ok(Some(bookkeeping_workflows::create_purchase::Measure {
+                numerator,
+                denominator,
                 unit,
             }))
         }
@@ -1220,9 +1221,9 @@ fn printed_price(
         (Some(amount_yen), Some(numerator), Some(denominator), Some(unit)) => Ok(Some(
             bookkeeping_workflows::update_purchase_item::PrintedUnitPrice {
                 amount_yen,
-                basis: bookkeeping_workflows::Measure {
-                    numerator: numerator.to_string(),
-                    denominator: denominator.to_string(),
+                basis: bookkeeping_workflows::create_purchase::Measure {
+                    numerator,
+                    denominator,
                     unit,
                 },
             },

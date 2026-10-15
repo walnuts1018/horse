@@ -18,6 +18,7 @@ pub enum PolicyPersistenceError {
     MemberNotFound,
     BudgetNotFound,
     RecurringExpenseNotFound,
+    PurchaseNotFound,
     Conflict,
     CategoryNotFound,
     AccountNotFound,
@@ -69,7 +70,6 @@ pub async fn persist_create_budget(
         .transaction::<budget::Budget, PolicyPersistenceError, _>(async |conn| {
             use public::{
                 budgets::dsl as budgets, categories::dsl as categories,
-                household_events::dsl as events, household_members::dsl as members,
                 households::dsl as households,
             };
             let found = households::households
@@ -157,7 +157,6 @@ pub async fn persist_update_budget(
         .transaction::<budget::Budget, PolicyPersistenceError, _>(async |conn| {
             use public::{
                 budgets::dsl as budgets, categories::dsl as categories,
-                household_events::dsl as events, household_members::dsl as members,
             };
             let row = budgets::budgets
                 .filter(budgets::id.eq(id))
@@ -287,8 +286,7 @@ pub async fn persist_archive_budget(
     (&mut *pooled)
         .transaction::<budget::Budget, PolicyPersistenceError, _>(async |conn| {
             use public::{
-                budgets::dsl as budgets, household_events::dsl as events,
-                household_members::dsl as members,
+                budgets::dsl as budgets,
             };
             let row = budgets::budgets
                 .filter(budgets::id.eq(id))
@@ -421,7 +419,6 @@ pub async fn persist_create_recurring_expense(
             async |conn| {
                 use public::{
                     accounts::dsl as accounts, categories::dsl as categories,
-                    household_events::dsl as events, household_members::dsl as members,
                     households::dsl as households, recurring_expenses::dsl as expenses,
                 };
                 let found = households::households
@@ -813,6 +810,159 @@ pub async fn persist_archive_recurring_expense(
                     next_due_on: row.8,
                     ends_on: row.9,
                     archived,
+                    revision,
+                })
+            },
+        )
+        .await
+}
+
+pub async fn persist_match_recurring_expense(
+    pool: &PgPool,
+    command: recurring_expense::MatchRecurringExpenseCommand,
+) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
+    let decision = recurring_expense::decide_match(command)
+        .map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
+    let actor = parse_uuid(&decision.actor_id, "actor_id")?;
+    let household = parse_uuid(&decision.household_id, "household_id")?;
+    let id = parse_uuid(&decision.id, "expense_id")?;
+    let purchase_id = parse_uuid(&decision.purchase_id, "purchase_id")?;
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|error| PolicyPersistenceError::Pool(error.to_string()))?;
+    (&mut *pooled)
+        .transaction::<recurring_expense::RecurringExpense, PolicyPersistenceError, _>(
+            async |conn| {
+                use public::{
+                    households::dsl as households, purchases::dsl as purchases,
+                    recurring_expense_matches::dsl as matches, recurring_expenses::dsl as expenses,
+                };
+                let found = households::households
+                    .filter(households::id.eq(household))
+                    .for_update()
+                    .select(households::id)
+                    .first::<Uuid>(conn)
+                    .await
+                    .optional()?
+                    .is_some();
+                if !found {
+                    return Err(PolicyPersistenceError::HouseholdNotFound);
+                }
+                require_member(conn, household, actor).await?;
+                let row = expenses::recurring_expenses
+                    .filter(expenses::id.eq(id))
+                    .filter(expenses::household_id.eq(household))
+                    .for_update()
+                    .select((
+                        expenses::household_id,
+                        expenses::name,
+                        expenses::merchant,
+                        expenses::amount_yen,
+                        expenses::currency,
+                        expenses::category_id,
+                        expenses::payment_account_id,
+                        expenses::cadence,
+                        expenses::starts_on,
+                        expenses::next_due_on,
+                        expenses::ends_on,
+                        expenses::archived,
+                        expenses::revision,
+                    ))
+                    .first::<(
+                        Uuid,
+                        String,
+                        String,
+                        i64,
+                        String,
+                        Option<Uuid>,
+                        Option<Uuid>,
+                        String,
+                        NaiveDate,
+                        NaiveDate,
+                        Option<NaiveDate>,
+                        bool,
+                        i64,
+                    )>(conn)
+                    .await
+                    .optional()?
+                    .ok_or(PolicyPersistenceError::RecurringExpenseNotFound)?;
+                if row.11 || row.12 != decision.expected_revision {
+                    return Err(PolicyPersistenceError::Conflict);
+                }
+                let purchase_status = purchases::purchases
+                    .filter(purchases::id.eq(purchase_id))
+                    .filter(purchases::household_id.eq(household))
+                    .for_update()
+                    .select(purchases::status)
+                    .first::<String>(conn)
+                    .await
+                    .optional()?
+                    .ok_or(PolicyPersistenceError::PurchaseNotFound)?;
+                if purchase_status != "POSTED" && purchase_status != "CLOSED" {
+                    return Err(PolicyPersistenceError::Conflict);
+                }
+                let already_matched = diesel::select(diesel::dsl::exists(
+                    matches::recurring_expense_matches
+                        .filter(matches::household_id.eq(household))
+                        .filter(matches::purchase_id.eq(purchase_id)),
+                ))
+                .first::<bool>(conn)
+                .await?;
+                if already_matched {
+                    return Err(PolicyPersistenceError::Conflict);
+                }
+                diesel::insert_into(matches::recurring_expense_matches)
+                    .values((
+                        matches::household_id.eq(household),
+                        matches::recurring_expense_id.eq(id),
+                        matches::due_on.eq(row.9),
+                        matches::purchase_id.eq(purchase_id),
+                        matches::matched_by.eq(actor),
+                    ))
+                    .execute(&mut *conn)
+                    .await?;
+                let cadence = recurring_expense::Cadence::parse(&row.7)
+                    .map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
+                let next_due = recurring_expense::next_due_on(row.8, row.9, cadence)
+                    .map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
+                let revision = row.12 + 1;
+                diesel::update(
+                    expenses::recurring_expenses
+                        .filter(expenses::id.eq(id))
+                        .filter(expenses::household_id.eq(household)),
+                )
+                .set((
+                    expenses::next_due_on.eq(next_due),
+                    expenses::revision.eq(revision),
+                    expenses::updated_at.eq(now),
+                ))
+                .execute(&mut *conn)
+                .await?;
+                record_event(
+                    conn,
+                    household,
+                    id,
+                    "recurring_expense.matched",
+                    revision,
+                    vec!["nextDueOn"],
+                    actor,
+                )
+                .await?;
+                Ok(recurring_expense::RecurringExpense {
+                    id: id.to_string(),
+                    household_id: household.to_string(),
+                    name: row.1,
+                    merchant: row.2,
+                    amount_yen: row.3,
+                    currency: row.4,
+                    category_id: row.5.map(|value| value.to_string()),
+                    payment_account_id: row.6.map(|value| value.to_string()),
+                    cadence,
+                    starts_on: row.8,
+                    next_due_on: next_due,
+                    ends_on: row.10,
+                    archived: row.11,
                     revision,
                 })
             },

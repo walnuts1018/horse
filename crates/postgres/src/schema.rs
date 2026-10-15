@@ -248,6 +248,7 @@ pub mod public {
             lease_expires_at -> Nullable<Timestamptz>,
             error_code -> Nullable<Text>,
             error_message -> Nullable<Text>,
+            interaction_reply_preview -> Text,
             created_at -> Timestamptz,
             updated_at -> Timestamptz,
         }
@@ -293,6 +294,17 @@ pub mod public {
             changed_fields -> Array<Nullable<Text>>,
             actor_id -> Uuid,
             created_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
+        household_mail_forwardings (id) {
+            id -> Uuid,
+            household_id -> Uuid,
+            token_hash -> Bytea,
+            created_by -> Uuid,
+            created_at -> Timestamptz,
+            revoked_at -> Nullable<Timestamptz>,
         }
     }
 
@@ -364,6 +376,7 @@ pub mod public {
             household_id -> Uuid,
             source_kind -> Text,
             source_id -> Uuid,
+            idempotency_key -> Text,
             occurred_at -> Timestamptz,
             created_by -> Uuid,
             created_at -> Timestamptz,
@@ -380,6 +393,8 @@ pub mod public {
             occurred_at -> Timestamptz,
             description -> Text,
             amount_yen -> Int8,
+            from_member_id -> Nullable<Uuid>,
+            pool_id -> Nullable<Uuid>,
             created_at -> Timestamptz,
         }
     }
@@ -668,6 +683,28 @@ pub mod public {
     }
 
     diesel::table! {
+        recurring_expense_matches (household_id, recurring_expense_id, due_on) {
+            household_id -> Uuid,
+            recurring_expense_id -> Uuid,
+            due_on -> Date,
+            purchase_id -> Uuid,
+            matched_by -> Uuid,
+            created_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
+        shared_purchase_drafts (id) {
+            id -> Uuid,
+            household_id -> Uuid,
+            revision -> Int8,
+            payload -> Jsonb,
+            created_at -> Timestamptz,
+            updated_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
         settlement_adjustments (id) {
             id -> Uuid,
             household_id -> Uuid,
@@ -771,6 +808,9 @@ pub mod public {
             source_kind -> Text,
             original_filename -> Text,
             metadata -> Jsonb,
+            analysis_object_key -> Nullable<Text>,
+            analysis_mime_type -> Nullable<Text>,
+            analysis_transform -> Nullable<Jsonb>,
             created_by -> Uuid,
             created_at -> Timestamptz,
         }
@@ -862,6 +902,9 @@ pub mod public {
     diesel::joinable!(categories -> households (household_id));
     diesel::joinable!(budgets -> households (household_id));
     diesel::joinable!(recurring_expenses -> households (household_id));
+    diesel::joinable!(recurring_expense_matches -> households (household_id));
+    diesel::joinable!(shared_purchase_drafts -> households (household_id));
+    diesel::joinable!(household_mail_forwardings -> households (household_id));
     diesel::joinable!(evidence_links -> households (household_id));
     diesel::joinable!(household_events -> households (household_id));
     diesel::joinable!(household_invitations -> households (household_id));
@@ -898,6 +941,7 @@ pub mod public {
         funding_schedules,
         household_events,
         household_invitations,
+        household_mail_forwardings,
         household_members,
         households,
         idempotency_records,
@@ -926,6 +970,8 @@ pub mod public {
         purchases,
         purchase_item_tags,
         recurring_expenses,
+        recurring_expense_matches,
+        shared_purchase_drafts,
         settlement_adjustments,
         settlement_run_adjustments,
         settlement_run_lines,

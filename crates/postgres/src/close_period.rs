@@ -5,7 +5,8 @@ use bookkeeping_workflows::close_period::{
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
 use diesel::{
-    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, dsl::now,
+    result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;

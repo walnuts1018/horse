@@ -9,7 +9,7 @@ use openidconnect::{
     AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce,
     OAuth2TokenResponse, PkceCodeChallenge, RedirectUrl, Scope, TokenResponse,
     core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
-    reqwest,
+    EndpointMaybeSet, EndpointNotSet, EndpointSet, TokenUrl, reqwest,
 };
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
@@ -21,6 +21,15 @@ use crate::SESSION_COOKIE_NAME;
 const STATE_COOKIE_NAME: &str = "horse_oidc_state";
 const STATE_LIFETIME: ChronoDuration = ChronoDuration::minutes(10);
 const SESSION_LIFETIME: ChronoDuration = ChronoDuration::hours(24);
+
+type OidcClient = CoreClient<
+    EndpointSet,
+    EndpointNotSet,
+    EndpointNotSet,
+    EndpointNotSet,
+    EndpointSet,
+    EndpointMaybeSet,
+>;
 
 #[derive(Clone)]
 pub struct AuthConfig {
@@ -35,7 +44,7 @@ pub struct AuthConfig {
 #[derive(Clone)]
 pub struct AuthService {
     pool: Pool<AsyncPgConnection>,
-    client: CoreClient,
+    client: OidcClient,
     http_client: reqwest::Client,
     config: AuthConfig,
     secure_cookie: bool,
@@ -117,10 +126,18 @@ impl AuthService {
         let provider = CoreProviderMetadata::discover_async(issuer, &http_client)
             .await
             .map_err(|error| OidcError::Provider(error.to_string()))?;
+        let token_url = provider
+            .token_endpoint()
+            .cloned()
+            .ok_or_else(|| OidcError::Provider("provider has no token endpoint".to_owned()))?;
         let client = CoreClient::from_provider_metadata(
             provider,
             ClientId::new(config.client_id.clone()),
             Some(ClientSecret::new(config.client_secret.clone())),
+        )
+        .set_token_uri(
+            TokenUrl::new(token_url.to_string())
+                .map_err(|error| OidcError::Provider(error.to_string()))?,
         )
         .set_redirect_uri(
             RedirectUrl::new(config.redirect_url.clone())
@@ -225,7 +242,6 @@ impl AuthService {
         let token = self
             .client
             .exchange_code(AuthorizationCode::new(code.to_owned()))
-            .map_err(|error| OidcError::Provider(error.to_string()))?
             .set_pkce_verifier(openidconnect::PkceCodeVerifier::new(verifier));
         let token = token
             .request_async(&self.http_client)
@@ -234,7 +250,7 @@ impl AuthService {
         let id_token = token.id_token().ok_or(OidcError::AuthenticationFailed)?;
         let nonce = Nonce::new(nonce);
         let claims = id_token
-            .claims(&self.client.id_token_verifier(), Some(&nonce))
+            .claims(&self.client.id_token_verifier(), &nonce)
             .map_err(|_| OidcError::AuthenticationFailed)?;
         let subject = claims.subject().as_str().to_owned();
         if subject.is_empty() {

@@ -14,3 +14,4 @@ household-workflows = { path = "../household-workflows" }
 catalog-workflows = { path = "../catalog-workflows" }
 policy-workflows = { path = "../policy-workflows" }
 serde_json = { workspace = true }
+sha2 = { workspace = true }

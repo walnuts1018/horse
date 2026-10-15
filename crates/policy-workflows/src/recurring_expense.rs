@@ -90,6 +90,15 @@ pub struct ArchiveRecurringExpenseCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MatchRecurringExpenseCommand {
+    pub actor_id: String,
+    pub household_id: String,
+    pub id: String,
+    pub purchase_id: String,
+    pub expected_revision: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecurringExpenseDecision {
     pub actor_id: String,
     pub id: String,
@@ -107,6 +116,15 @@ pub struct RecurringExpenseDecision {
     pub archived: Option<bool>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MatchRecurringExpenseDecision {
+    pub actor_id: String,
+    pub household_id: String,
+    pub id: String,
+    pub purchase_id: String,
+    pub expected_revision: i64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecurringExpenseError {
     InvalidActorId,
@@ -120,6 +138,57 @@ pub enum RecurringExpenseError {
     InvalidCadence,
     InvalidDateRange,
     InvalidRevision,
+    InvalidPurchaseId,
+}
+
+pub fn decide_match(
+    command: MatchRecurringExpenseCommand,
+) -> Result<MatchRecurringExpenseDecision, RecurringExpenseError> {
+    identity(&command.actor_id, Some(&command.household_id), &command.id)?;
+    if command.purchase_id.trim().is_empty() {
+        return Err(RecurringExpenseError::InvalidPurchaseId);
+    }
+    if command.expected_revision <= 0 {
+        return Err(RecurringExpenseError::InvalidRevision);
+    }
+    Ok(MatchRecurringExpenseDecision {
+        actor_id: command.actor_id,
+        household_id: command.household_id,
+        id: command.id,
+        purchase_id: command.purchase_id,
+        expected_revision: command.expected_revision,
+    })
+}
+
+pub fn next_due_on(
+    starts_on: NaiveDate,
+    due_on: NaiveDate,
+    cadence: Cadence,
+) -> Result<NaiveDate, RecurringExpenseError> {
+    use chrono::Datelike;
+    let next = match cadence {
+        Cadence::Weekly => due_on.checked_add_days(chrono::Days::new(7)),
+        Cadence::Monthly => due_on
+            .with_day(1)
+            .and_then(|date| date.checked_add_months(chrono::Months::new(1)))
+            .and_then(|month_start| {
+                let last_day = month_start
+                    .checked_add_months(chrono::Months::new(1))?
+                    .pred_opt()?
+                    .day();
+                month_start.with_day(starts_on.day().min(last_day))
+            }),
+        Cadence::Yearly => NaiveDate::from_ymd_opt(due_on.year() + 1, starts_on.month(), 1)
+            .and_then(|year_start| {
+                let last_day = year_start
+                    .checked_add_months(chrono::Months::new(1))?
+                    .pred_opt()?
+                    .day();
+                year_start.with_day(starts_on.day().min(last_day))
+            }),
+    }
+    .ok_or(RecurringExpenseError::InvalidDateRange)?;
+    Ok(next)
 }
 
 pub fn decide_create(

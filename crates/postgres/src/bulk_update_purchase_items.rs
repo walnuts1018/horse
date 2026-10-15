@@ -260,7 +260,7 @@ pub async fn persist_bulk_update_purchase_items(
                         let variant_id = if patch.product_variant_id_set { patch.product_variant_id.as_deref().map(|id| parse_uuid(id, "product_variant_id")).transpose()? } else { row.5 };
                         let basis = load_automatic_basis(&mut *conn, household_id, category_id, variant_id, &purchase.4).await?;
                         basis.unwrap_or(load_default_basis(&mut *conn, household_id, default_version).await?)
-                    } else if let Some((_, _, rule_id, version)) = current_allocations.first() {
+                    } else if let Some((_, _, rule_id, version)) = current_allocations.as_slice().first() {
                         (current_allocations.iter().map(|(pool_id, weight, _, _)| ItemAllocationWeight { pool_id: pool_id.to_string(), weight: *weight }).collect(), rule_id.map(|id| id.to_string()), *version)
                     } else {
                         load_default_basis(&mut *conn, household_id, default_version).await?
@@ -823,7 +823,7 @@ fn period_start(
 fn funding_basis(
     rows: Vec<(Uuid, i32, i64, Option<String>)>,
 ) -> Result<MemberFundingBasis, BulkUpdatePurchaseItemsPersistenceError> {
-    let Some((_, version, _, policy)) = rows.first() else {
+    let Some((_, version, _, policy)) = rows.as_slice().first() else {
         return Err(BulkUpdatePurchaseItemsPersistenceError::InvalidDecision);
     };
     if rows.iter().any(|(_, other_version, _, other_policy)| {

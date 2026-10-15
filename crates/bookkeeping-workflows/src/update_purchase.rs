@@ -199,10 +199,10 @@ mod tests {
             Err(UpdatePurchaseError::Conflict)
         );
 
-        let mut posted = current();
-        posted.status = "POSTED".to_owned();
+        let mut closed = current();
+        closed.status = "CLOSED".to_owned();
         assert_eq!(
-            decide_update_purchase(command, posted),
+            decide_update_purchase(command, closed),
             Err(UpdatePurchaseError::NotEditable)
         );
     }

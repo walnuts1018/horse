@@ -669,7 +669,7 @@ fn collect_bases<K: Ord + Copy>(
 fn funding_basis(
     rows: Vec<(Uuid, i32, i64, Option<String>)>,
 ) -> Result<MemberFundingBasis, BulkDeletePurchaseItemsPersistenceError> {
-    let Some((_, version, _, policy)) = rows.first() else {
+    let Some((_, version, _, policy)) = rows.as_slice().first() else {
         return Err(BulkDeletePurchaseItemsPersistenceError::InvalidFundingSnapshot);
     };
     if rows.iter().any(|(_, other_version, _, other_policy)| {

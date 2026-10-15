@@ -112,7 +112,7 @@ pub fn decide_bulk_delete_items(
     }
 
     let mut decisions = Vec::with_capacity(purchases.len());
-    let mut consumed = BTreeSet::new();
+    let mut consumed = BTreeSet::<String>::new();
     for (purchase, purchase_id) in purchases.into_iter().zip(purchase_ids) {
         if !matches!(purchase.status.as_str(), "DRAFT" | "POSTED") {
             return Err(BulkDeleteItemsError::ClosedPurchase);
@@ -127,7 +127,7 @@ pub fn decide_bulk_delete_items(
             else {
                 continue;
             };
-            consumed.insert(item.item_id.as_str());
+            consumed.insert(item.item_id.clone());
             if target.base_revision != item.revision {
                 return Err(BulkDeleteItemsError::Conflict);
             }

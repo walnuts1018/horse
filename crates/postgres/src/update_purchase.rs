@@ -732,7 +732,7 @@ async fn update_posted_purchase_ledger(
 fn funding_basis(
     rows: Vec<(Uuid, i32, i64, Option<String>)>,
 ) -> Result<MemberFundingBasis, UpdatePurchasePersistenceError> {
-    let Some((_, version, _, policy)) = rows.first() else {
+    let Some((_, version, _, policy)) = rows.as_slice().first() else {
         return Err(UpdatePurchasePersistenceError::InvalidFundingSnapshot);
     };
     if rows

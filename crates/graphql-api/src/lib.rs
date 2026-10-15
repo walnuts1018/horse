@@ -1,0 +1,318 @@
+use async_graphql::{
+    Context, EmptySubscription, Enum, Error, ID, Interface, Object, Result,
+    Schema as GraphqlSchema, SimpleObject, Union,
+};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use chrono::{DateTime, Utc};
+use horse_postgres::{PgPool, mail_forwarding as postgres_mail_forwarding};
+use household_workflows::mail_forwarding;
+use uuid::Uuid;
+
+pub type Schema = GraphqlSchema<QueryRoot, MutationRoot, EmptySubscription>;
+
+#[derive(Clone, Debug)]
+pub struct Config {
+    pub mailbox_domain: String,
+    pub local_part_prefix: String,
+    pub mail_forwarding_enabled: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Actor(pub Uuid);
+
+pub fn schema(pool: PgPool, config: Config) -> Schema {
+    GraphqlSchema::build(QueryRoot, MutationRoot, EmptySubscription)
+        .data(pool)
+        .data(config)
+        .register_output_type::<MutationError>()
+        .finish()
+}
+
+pub struct QueryRoot;
+
+#[Object]
+impl QueryRoot {
+    async fn household_mail_forwarding(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+    ) -> Result<Option<HouseholdMailForwardingStatus>> {
+        let actor = actor(ctx)?;
+        let household_id = decode_household_id(&household_id)?;
+        match postgres_mail_forwarding::active(
+            ctx.data::<PgPool>()?,
+            mail_forwarding::Command {
+                actor_id: actor.0.to_string(),
+                household_id: household_id.to_string(),
+            },
+        )
+        .await
+        {
+            Ok(status) => Ok(Some(status.into())),
+            Err(postgres_mail_forwarding::MailForwardingError::ForwardingNotFound) => Ok(None),
+            Err(postgres_mail_forwarding::MailForwardingError::HouseholdNotFound) => Ok(None),
+            Err(error) => Err(internal_error(error)),
+        }
+    }
+}
+
+pub struct MutationRoot;
+
+#[Object]
+impl MutationRoot {
+    async fn issue_household_mail_forwarding(
+        &self,
+        ctx: &Context<'_>,
+        input: HouseholdMailForwardingInput,
+    ) -> Result<IssueHouseholdMailForwardingResult> {
+        let config = ctx.data::<Config>()?;
+        if !config.mail_forwarding_enabled {
+            return Ok(HouseholdMailForwardingUserError::disabled(
+                "メール転送先の発行は現在利用できません。",
+            )
+            .into());
+        }
+        let actor = actor(ctx)?;
+        match issue_or_rotate(ctx, actor, input, false).await {
+            Ok(address) => Ok(IssueHouseholdMailForwardingSuccess { result: address }.into()),
+            Err(error) => Ok(error.into()),
+        }
+    }
+
+    async fn rotate_household_mail_forwarding(
+        &self,
+        ctx: &Context<'_>,
+        input: HouseholdMailForwardingInput,
+    ) -> Result<RotateHouseholdMailForwardingResult> {
+        let config = ctx.data::<Config>()?;
+        if !config.mail_forwarding_enabled {
+            return Ok(HouseholdMailForwardingUserError::disabled(
+                "メール転送先の交換は現在利用できません。",
+            )
+            .into());
+        }
+        let actor = actor(ctx)?;
+        match issue_or_rotate(ctx, actor, input, true).await {
+            Ok(address) => Ok(RotateHouseholdMailForwardingSuccess { result: address }.into()),
+            Err(error) => Ok(error.into()),
+        }
+    }
+
+    async fn revoke_household_mail_forwarding(
+        &self,
+        ctx: &Context<'_>,
+        input: HouseholdMailForwardingInput,
+    ) -> Result<RevokeHouseholdMailForwardingResult> {
+        let actor = actor(ctx)?;
+        let household_id = match decode_household_id(&input.household_id) {
+            Ok(value) => value,
+            Err(_) => return Ok(bad_input_error().into()),
+        };
+        match postgres_mail_forwarding::revoke(
+            ctx.data::<PgPool>()?,
+            mail_forwarding::Command {
+                actor_id: actor.0.to_string(),
+                household_id: household_id.to_string(),
+            },
+        )
+        .await
+        {
+            Ok(status) => Ok(RevokeHouseholdMailForwardingSuccess {
+                result: status.into(),
+            }
+            .into()),
+            Err(error) => match mutation_user_error(&error) {
+                Some(error) => Ok(error.into()),
+                None => Err(internal_error(error)),
+            },
+        }
+    }
+}
+
+async fn issue_or_rotate(
+    ctx: &Context<'_>,
+    actor: Actor,
+    input: HouseholdMailForwardingInput,
+    rotate: bool,
+) -> Result<HouseholdMailForwardingAddress, HouseholdMailForwardingUserError> {
+    let household_id = decode_household_id(&input.household_id).map_err(|_| bad_input_error())?;
+    let config = ctx.data::<Config>().map_err(|_| bad_input_error())?;
+    let command = mail_forwarding::IssueCommand {
+        command: mail_forwarding::Command {
+            actor_id: actor.0.to_string(),
+            household_id: household_id.to_string(),
+        },
+        mailbox_domain: config.mailbox_domain.clone(),
+        local_part_prefix: config.local_part_prefix.clone(),
+    };
+    let result = if rotate {
+        postgres_mail_forwarding::rotate(
+            ctx.data::<PgPool>().map_err(|_| bad_input_error())?,
+            command,
+        )
+        .await
+    } else {
+        postgres_mail_forwarding::issue(
+            ctx.data::<PgPool>().map_err(|_| bad_input_error())?,
+            command,
+        )
+        .await
+    };
+    result
+        .map(|address| HouseholdMailForwardingAddress {
+            address: address.address,
+            status: HouseholdMailForwardingStatus {
+                created_at: address.created_at,
+                active: true,
+            },
+        })
+        .map_err(|error| mutation_user_error(&error).unwrap_or_else(bad_input_error))
+}
+
+fn actor(ctx: &Context<'_>) -> Result<Actor> {
+    ctx.data::<Actor>()
+        .copied()
+        .map_err(|_| Error::new("authentication required"))
+}
+
+fn decode_household_id(id: &ID) -> Result<Uuid> {
+    let bytes = URL_SAFE_NO_PAD
+        .decode(id.as_str())
+        .map_err(|_| Error::new("invalid Household node ID"))?;
+    let separator = bytes
+        .iter()
+        .position(|byte| *byte == b':')
+        .ok_or_else(|| Error::new("invalid Household node ID"))?;
+    let (kind, payload_with_separator) = bytes.split_at(separator);
+    let payload = &payload_with_separator[1..];
+    if kind != b"Household" || payload.len() != 16 {
+        return Err(Error::new("invalid Household node ID"));
+    }
+    let id = Uuid::from_slice(payload).map_err(|_| Error::new("invalid Household node ID"))?;
+    if id.is_nil() {
+        return Err(Error::new("invalid Household node ID"));
+    }
+    Ok(id)
+}
+
+fn mutation_user_error(
+    error: &postgres_mail_forwarding::MailForwardingError,
+) -> Option<HouseholdMailForwardingUserError> {
+    use postgres_mail_forwarding::MailForwardingError as E;
+    match error {
+        E::InvalidUuid(_) | E::Workflow(_) => Some(bad_input_error()),
+        E::ForwardingNotFound | E::HouseholdNotFound => Some(HouseholdMailForwardingUserError {
+            code: MutationErrorCode::NotFound,
+            message: "対象が見つかりません。".to_owned(),
+        }),
+        E::Conflict => Some(HouseholdMailForwardingUserError {
+            code: MutationErrorCode::Conflict,
+            message: "最新の状態を読み込んでから再試行してください。".to_owned(),
+        }),
+        E::Pool(_) | E::Database(_) => None,
+    }
+}
+
+fn bad_input_error() -> HouseholdMailForwardingUserError {
+    HouseholdMailForwardingUserError {
+        code: MutationErrorCode::BadInput,
+        message: "入力を確認してください。".to_owned(),
+    }
+}
+
+fn internal_error(error: impl std::fmt::Debug) -> Error {
+    tracing::error!(error = ?error, "household mail forwarding GraphQL operation failed");
+    Error::new("internal server error")
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct HouseholdMailForwardingStatus {
+    created_at: DateTime<Utc>,
+    active: bool,
+}
+
+impl From<mail_forwarding::Status> for HouseholdMailForwardingStatus {
+    fn from(value: mail_forwarding::Status) -> Self {
+        Self {
+            created_at: value.created_at,
+            active: value.active,
+        }
+    }
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct HouseholdMailForwardingAddress {
+    address: String,
+    status: HouseholdMailForwardingStatus,
+}
+
+#[derive(Clone, Debug, async_graphql::InputObject)]
+pub struct HouseholdMailForwardingInput {
+    household_id: ID,
+}
+
+#[derive(Clone, Copy, Debug, Enum, Eq, PartialEq)]
+pub enum MutationErrorCode {
+    BadInput,
+    Conflict,
+    NotFound,
+    MailForwardingDisabled,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct HouseholdMailForwardingUserError {
+    code: MutationErrorCode,
+    message: String,
+}
+
+impl HouseholdMailForwardingUserError {
+    fn disabled(message: &str) -> Self {
+        Self {
+            code: MutationErrorCode::MailForwardingDisabled,
+            message: message.to_owned(),
+        }
+    }
+}
+
+#[derive(Interface)]
+#[graphql(
+    field(name = "code", ty = "&MutationErrorCode"),
+    field(name = "message", ty = "&String")
+)]
+pub enum MutationError {
+    HouseholdMailForwardingUserError(HouseholdMailForwardingUserError),
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct IssueHouseholdMailForwardingSuccess {
+    result: HouseholdMailForwardingAddress,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct RotateHouseholdMailForwardingSuccess {
+    result: HouseholdMailForwardingAddress,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct RevokeHouseholdMailForwardingSuccess {
+    result: HouseholdMailForwardingStatus,
+}
+
+#[derive(Union)]
+pub enum IssueHouseholdMailForwardingResult {
+    Success(IssueHouseholdMailForwardingSuccess),
+    UserError(HouseholdMailForwardingUserError),
+}
+
+#[derive(Union)]
+pub enum RotateHouseholdMailForwardingResult {
+    Success(RotateHouseholdMailForwardingSuccess),
+    UserError(HouseholdMailForwardingUserError),
+}
+
+#[derive(Union)]
+pub enum RevokeHouseholdMailForwardingResult {
+    Success(RevokeHouseholdMailForwardingSuccess),
+    UserError(HouseholdMailForwardingUserError),
+}
+

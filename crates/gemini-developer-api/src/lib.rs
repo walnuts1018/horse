@@ -3,10 +3,10 @@
 //! 接続先とAPIキーの送信方法は固定し、Vertex AIや任意のHTTP接続先を受け付けない。
 //! 入力DTOと応答DTOはドメイン型から分離し、機密内容をDebug出力しない。
 
-use std::{fmt, pin::Pin, str::FromStr, time::Duration};
+use std::{fmt, pin::Pin, time::Duration};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use eventsource_stream::{Eventsource, EventStreamError};
+use eventsource_stream::{EventStreamError, Eventsource};
 use futures_util::{Stream, StreamExt};
 use reqwest::{Client as HttpClient, StatusCode, header, header::HeaderValue};
 use serde::{Deserialize, Serialize, Serializer};
@@ -68,6 +68,9 @@ impl GeminiDeveloperApi {
             input,
             store: false,
             stream: false,
+            system_instruction: None,
+            response_format: None,
+            generation_config: None,
         };
         let response = self
             .http
@@ -92,6 +95,46 @@ impl GeminiDeveloperApi {
             input,
             store: false,
             stream: true,
+            system_instruction: None,
+            response_format: None,
+            generation_config: None,
+        };
+        let response = self
+            .http
+            .post(format!("{API_ROOT}/interactions"))
+            .header("x-goog-api-key", self.api_key.0.clone())
+            .json(&request)
+            .send()
+            .await
+            .map_err(classify_transport)?;
+
+        event_stream(response).await
+    }
+
+    /// JSONスキーマを指定したストリーミングInteractionを作成する。
+    pub async fn create_stream_with_schema(
+        &self,
+        model: &str,
+        input: InteractionsInput,
+        system_instruction: &str,
+        response_schema: serde_json::Value,
+        thinking_level: &str,
+        max_output_tokens: u32,
+    ) -> Result<InteractionEventStream, Error> {
+        let request = CreateInteractionRequest {
+            model,
+            input,
+            store: false,
+            stream: true,
+            system_instruction: Some(system_instruction),
+            response_format: Some(serde_json::json!({
+                "mime_type": "application/json",
+                "schema": response_schema,
+            })),
+            generation_config: Some(serde_json::json!({
+                "thinking_level": thinking_level.to_ascii_uppercase(),
+                "max_output_tokens": max_output_tokens,
+            })),
         };
         let response = self
             .http
@@ -153,6 +196,12 @@ struct CreateInteractionRequest<'a> {
     input: InteractionsInput,
     store: bool,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system_instruction: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_format: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    generation_config: Option<serde_json::Value>,
 }
 
 /// Interactions APIが受け付けるテキスト、content block、複数turnの履歴。
@@ -305,7 +354,8 @@ pub enum Error {
     InvalidConfiguration,
     InvalidResponse,
     RateLimited { retry_after: Option<Duration> },
-    UsageQuotaExceeded,
+    UsageQuotaExceeded { retry_after: Option<Duration> },
+    SpendCapExceeded,
     TemporaryFailure,
     RemoteApiFailure,
     Api { status: u16 },
@@ -314,12 +364,11 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidConfiguration => {
-                f.write_str("Gemini API client configuration is invalid")
-            }
+            Self::InvalidConfiguration => f.write_str("Gemini API client configuration is invalid"),
             Self::InvalidResponse => f.write_str("Gemini API returned an invalid response"),
             Self::RateLimited { .. } => f.write_str("Gemini API rate limit was reached"),
-            Self::UsageQuotaExceeded => f.write_str("Gemini API usage quota was exceeded"),
+            Self::UsageQuotaExceeded { .. } => f.write_str("Gemini API usage quota was exceeded"),
+            Self::SpendCapExceeded => f.write_str("Gemini API project spend cap was reached"),
             Self::TemporaryFailure => f.write_str("Gemini API is temporarily unavailable"),
             Self::RemoteApiFailure => f.write_str("Gemini API reported a stream failure"),
             Self::Api { status } => write!(f, "Gemini API request failed with status {status}"),
@@ -355,20 +404,21 @@ async fn event_stream(response: reqwest::Response) -> Result<InteractionEventStr
         return Err(Error::InvalidResponse);
     }
 
-    let stream = response.bytes_stream().eventsource().map(|event| match event {
-        Ok(event) => parse_interaction_event(event),
-        Err(EventStreamError::Transport(_)) => Err(Error::TemporaryFailure),
-        Err(EventStreamError::Parser(_)) | Err(EventStreamError::Utf8(_)) => {
-            Err(Error::InvalidResponse)
-        }
-    });
+    let stream = response
+        .bytes_stream()
+        .eventsource()
+        .map(|event| match event {
+            Ok(event) => parse_interaction_event(event),
+            Err(EventStreamError::Transport(_)) => Err(Error::TemporaryFailure),
+            Err(EventStreamError::Parser(_)) | Err(EventStreamError::Utf8(_)) => {
+                Err(Error::InvalidResponse)
+            }
+        });
 
     Ok(Box::pin(stream))
 }
 
-fn parse_interaction_event(
-    event: eventsource_stream::Event,
-) -> Result<InteractionEvent, Error> {
+fn parse_interaction_event(event: eventsource_stream::Event) -> Result<InteractionEvent, Error> {
     let payload: serde_json::Value =
         serde_json::from_str(&event.data).map_err(|_| Error::InvalidResponse)?;
     let event_type = payload
@@ -394,20 +444,22 @@ fn parse_interaction_event(
 }
 
 async fn classify_status(status: StatusCode, response: reqwest::Response) -> Error {
-    if status == StatusCode::TOO_MANY_REQUESTS {
-        let retry_after = response
-            .headers()
-            .get(header::RETRY_AFTER)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<u64>().ok())
-            .map(Duration::from_secs);
+    let retry_after = response
+        .headers()
+        .get(header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_secs);
+    let body = response.bytes().await.unwrap_or_default();
+    let provider_error = serde_json::from_slice::<serde_json::Value>(&body).ok();
+    if provider_error.as_ref().is_some_and(is_spend_cap_error) {
+        return Error::SpendCapExceeded;
+    }
 
-        let body = response.bytes().await.unwrap_or_default();
-        let is_quota = serde_json::from_slice::<serde_json::Value>(&body)
-            .ok()
-            .is_some_and(has_quota_reason);
+    if status == StatusCode::TOO_MANY_REQUESTS {
+        let is_quota = provider_error.as_ref().is_some_and(has_quota_reason);
         return if is_quota {
-            Error::UsageQuotaExceeded
+            Error::UsageQuotaExceeded { retry_after }
         } else {
             Error::RateLimited { retry_after }
         };
@@ -420,6 +472,35 @@ async fn classify_status(status: StatusCode, response: reqwest::Response) -> Err
             status: status.as_u16(),
         }
     }
+}
+
+fn is_spend_cap_error(value: &serde_json::Value) -> bool {
+    let Some(error) = value.get("error").and_then(serde_json::Value::as_object) else {
+        return false;
+    };
+    let mut classification = String::new();
+    if let Some(status) = error.get("status").and_then(serde_json::Value::as_str) {
+        classification.push_str(status);
+        classification.push(' ');
+    }
+    if let Some(message) = error.get("message").and_then(serde_json::Value::as_str) {
+        classification.push_str(message);
+        classification.push(' ');
+    }
+    if let Some(details) = error.get("details").and_then(serde_json::Value::as_array) {
+        for detail in details {
+            if let Some(reason) = detail.get("reason").and_then(serde_json::Value::as_str) {
+                classification.push_str(reason);
+                classification.push(' ');
+            }
+        }
+    }
+    let normalized = classification.replace(['_', '-'], " ").to_ascii_lowercase();
+    normalized.contains("spend cap")
+        || normalized.contains("spending cap")
+        || normalized.contains("spending limit")
+        || normalized.contains("billing limit")
+        || normalized.contains("budget exceeded")
 }
 
 fn has_quota_reason(value: &serde_json::Value) -> bool {

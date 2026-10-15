@@ -1,6 +1,7 @@
 use chrono::Utc;
 use diesel::{
-    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
+    BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, dsl::now,
+    result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use household_workflows::membership::{
@@ -72,7 +73,7 @@ pub async fn leave_household(
                 .get_result::<i64>(&mut *conn)
                 .await?;
             let referenced = has_active_funding_reference(conn, household_id, member_id).await?;
-            let decision = decide_leave_household(
+            let _decision = decide_leave_household(
                 command.clone(),
                 Some(&role),
                 usize::try_from(owners).unwrap_or(0),

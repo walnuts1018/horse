@@ -328,7 +328,7 @@ pub async fn persist_record_account_movement(
                 ))
                 .execute(&mut *conn)
                 .await?;
-            account_movement_result(row)
+            Ok(account_movement_result(row))
         })
         .await
 }

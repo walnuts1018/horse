@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
+use diesel::{
+    ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, result::Error as DieselError,
+};
 use diesel_async::RunQueryDsl;
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -272,14 +274,7 @@ async fn load_descriptions(
     use public::purchases::dsl as purchases;
     use public::transfers::dsl as transfers;
 
-    let ids_for = |kind: &str| {
-        changes
-            .iter()
-            .filter(|change| change.source_kind == kind)
-            .map(|change| change.source_id)
-            .collect::<Vec<_>>()
-    };
-    let purchase_ids = ids_for("PURCHASE");
+    let purchase_ids = source_ids(changes, "PURCHASE");
     if !purchase_ids.is_empty() {
         let rows = purchases::purchases
             .filter(purchases::household_id.eq(household_id))
@@ -290,7 +285,7 @@ async fn load_descriptions(
         apply_descriptions(changes, "PURCHASE", rows);
     }
 
-    let correction_ids = ids_for("CORRECTION");
+    let correction_ids = source_ids(changes, "CORRECTION");
     if !correction_ids.is_empty() {
         let rows = corrections::purchase_corrections
             .filter(corrections::household_id.eq(household_id))
@@ -301,7 +296,7 @@ async fn load_descriptions(
         apply_descriptions(changes, "CORRECTION", rows);
     }
 
-    let funding_ids = ids_for("FUNDING");
+    let funding_ids = source_ids(changes, "FUNDING");
     if !funding_ids.is_empty() {
         let rows = ledger_entries::ledger_entries
             .filter(ledger_entries::household_id.eq(household_id))
@@ -312,7 +307,7 @@ async fn load_descriptions(
         apply_descriptions(changes, "FUNDING", rows);
     }
 
-    let transfer_ids = ids_for("TRANSFER");
+    let transfer_ids = source_ids(changes, "TRANSFER");
     if !transfer_ids.is_empty() {
         let rows = transfers::transfers
             .filter(transfers::household_id.eq(household_id))
@@ -323,7 +318,7 @@ async fn load_descriptions(
         apply_descriptions(changes, "TRANSFER", rows);
     }
 
-    let movement_ids = ids_for("ACCOUNT_MOVEMENT");
+    let movement_ids = source_ids(changes, "ACCOUNT_MOVEMENT");
     if !movement_ids.is_empty() {
         let rows = movements::account_movements
             .filter(movements::household_id.eq(household_id))
@@ -334,7 +329,7 @@ async fn load_descriptions(
         apply_descriptions(changes, "ACCOUNT_MOVEMENT", rows);
     }
 
-    let income_ids = ids_for("ACCOUNT_INCOME");
+    let income_ids = source_ids(changes, "ACCOUNT_INCOME");
     if !income_ids.is_empty() {
         let rows = incomes::account_incomes
             .filter(incomes::household_id.eq(household_id))
@@ -345,6 +340,14 @@ async fn load_descriptions(
         apply_descriptions(changes, "ACCOUNT_INCOME", rows);
     }
     Ok(())
+}
+
+fn source_ids(changes: &[AccountBalanceChange], source_kind: &str) -> Vec<Uuid> {
+    changes
+        .iter()
+        .filter(|change| change.source_kind == source_kind)
+        .map(|change| change.source_id)
+        .collect()
 }
 
 fn apply_descriptions(

@@ -1,5 +1,6 @@
 use bookkeeping_domain::{
-    SettlementError, SettlementInput as DomainSettlementInput, calculate_settlement,
+    SettlementError, SettlementInput as DomainSettlementInput,
+    calculate_settlement as calculate_domain_settlement,
 };
 
 use crate::{MemberId, PurchaseId};
@@ -250,7 +251,7 @@ pub fn decide_close_period(
     let mut settlements = command
         .settlements
         .into_iter()
-        .map(calculate_settlement)
+        .map(calculate_close_settlement)
         .collect::<Result<Vec<_>, _>>()?;
     settlements.sort_by(|left, right| left.member_id.cmp(&right.member_id));
     if settlements
@@ -300,14 +301,14 @@ pub fn decide_close_period(
     })
 }
 
-fn calculate_settlement(input: SettlementInput) -> Result<SettlementLine, ClosePeriodError> {
+fn calculate_close_settlement(input: SettlementInput) -> Result<SettlementLine, ClosePeriodError> {
     if input.member_id.as_str().is_empty() {
         return Err(ClosePeriodError::EmptyMemberId);
     }
     if input.member_name.is_empty() {
         return Err(ClosePeriodError::EmptyMemberName);
     }
-    let amounts = calculate_settlement(DomainSettlementInput {
+    let amounts = calculate_domain_settlement(DomainSettlementInput {
         scheduled_yen: input.scheduled_yen,
         paid_yen: input.paid_yen,
         previous_owed_yen: input.previous_owed_yen,

@@ -1,5 +1,5 @@
 use bookkeeping_workflows::account_card_last4::{
-    SetCardLast4Command, SetCardLast4Decision, SetCardLast4Error, decide_set_card_last4,
+    SetCardLast4Command, SetCardLast4Error, decide_set_card_last4,
 };
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,

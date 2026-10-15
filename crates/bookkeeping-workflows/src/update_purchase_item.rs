@@ -320,17 +320,12 @@ fn validate_optional_id(value: Option<&str>) -> Result<(), UpdatePurchaseItemErr
 }
 
 fn validate_measure(measure: &Measure) -> Result<(), UpdatePurchaseItemError> {
-    let numerator = measure.numerator.parse::<i64>();
-    let denominator = measure.denominator.parse::<i64>();
-    let (Ok(numerator), Ok(denominator)) = (numerator, denominator) else {
-        return Err(UpdatePurchaseItemError::InvalidMeasure);
-    };
+    let numerator = measure.numerator;
+    let denominator = measure.denominator;
     if numerator <= 0
         || numerator > MAX_MEASURE_NUMERATOR
         || denominator <= 0
         || denominator > MAX_MEASURE_DENOMINATOR
-        || numerator.to_string() != measure.numerator
-        || denominator.to_string() != measure.denominator
         || gcd(numerator, denominator) != 1
         || measure.unit.trim().is_empty()
         || measure.unit.len() > 32
@@ -448,8 +443,8 @@ mod tests {
         invalid.amount_yen = None;
         invalid.quantity_set = true;
         invalid.quantity = Some(Measure {
-            numerator: "2".to_owned(),
-            denominator: "4".to_owned(),
+            numerator: 2,
+            denominator: 4,
             unit: "個".to_owned(),
         });
         assert_eq!(

@@ -5,11 +5,11 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use diesel::dsl::select;
+use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
 use horse_auth::{AuthService, Cookie, OidcError, revoke_cookie, resolve_cookie};
-use horse_postgres::PgPool;
-use serde_json::{Value, json};
+use horse_postgres::{PgPool, schema::public::households};
+use serde_json::json;
 use url::Url;
 
 #[derive(Clone, Default)]
@@ -127,8 +127,12 @@ async fn ready(State(state): State<ApiState>) -> StatusCode {
         return StatusCode::SERVICE_UNAVAILABLE;
     };
 
-    match select(1_i32).get_result::<i32>(&mut connection).await {
-        Ok(1) => StatusCode::OK,
+    match households::table
+        .count()
+        .get_result::<i64>(&mut connection)
+        .await
+    {
+        Ok(_) => StatusCode::OK,
         _ => StatusCode::SERVICE_UNAVAILABLE,
     }
 }

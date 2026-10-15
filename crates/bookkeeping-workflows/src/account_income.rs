@@ -193,7 +193,7 @@ mod tests {
             account_id: AccountId::new("account").unwrap(),
             account_kind,
             amount: PositiveYen::new(500).unwrap(),
-            description: String::new(),
+            description: "External income".to_owned(),
             accounting_period_open: true,
             statement_source: None,
         }

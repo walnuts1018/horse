@@ -63,7 +63,7 @@ pub async fn persist_create_account(
             let local = occurred_at.with_timezone(&tokyo_offset);
             let period_start = NaiveDate::from_ymd_opt(local.year(), local.month(), 1)
                 .ok_or(CreateAccountPersistenceError::InvalidOpeningDate)?;
-            Ok((opening.amount_yen, occurred_at, period_start))
+            Ok::<_, CreateAccountPersistenceError>((opening.amount_yen, occurred_at, period_start))
         })
         .transpose()?;
     let account_id = Uuid::now_v7();

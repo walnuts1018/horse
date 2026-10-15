@@ -1,0 +1,13 @@
+[package]
+name = "horse-graphql-api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-graphql = { version = "7", features = ["chrono"] }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+horse-postgres = { path = "../postgres" }
+household-workflows = { path = "../household-workflows" }
+uuid = { version = "1", features = ["std"] }
+tracing = "0.1"
