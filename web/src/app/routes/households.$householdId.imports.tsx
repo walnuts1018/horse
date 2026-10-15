@@ -1,5 +1,5 @@
 import { createFileRoute, useLocation } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
 import { ImportsPage, parseDocumentFilters, serializeDocumentFilters } from "../../pages/imports";
 import { useHouseholdRouteContext } from "../household-route-context";
@@ -14,12 +14,25 @@ function HouseholdImports() {
   const navigate = Route.useNavigate();
   const filterLocation = useLocation();
   const documentFilters = useMemo(() => parseDocumentFilters(search), [search]);
+  const handleCaptureHandled = useCallback(
+    () =>
+      void navigate({
+        search: (previous) => {
+          const next = { ...previous };
+          delete next.capture;
+          return next;
+        },
+      }),
+    [navigate],
+  );
   const { household, navigateToPage, refreshHousehold, reportUnsavedChanges, showNotice } =
     useHouseholdRouteContext();
   if (!household) return null;
   return (
     <ImportsPage
       household={household}
+      captureRequested={search.capture === "1"}
+      onCaptureHandled={handleCaptureHandled}
       documentFilters={documentFilters}
       filterLocation={filterLocation}
       onApplyDocumentFilters={(filters) =>

@@ -44,6 +44,7 @@ const noCompletedReceipts = new Set<string>();
 export function ImportsPage({
   household,
   captureRequested,
+  onCaptureHandled,
   documentFilters,
   filterLocation,
   onApplyDocumentFilters,
@@ -52,6 +53,7 @@ export function ImportsPage({
 }: {
   household: Household;
   captureRequested: boolean;
+  onCaptureHandled: () => void;
   documentFilters: DocumentFilters;
   filterLocation: object;
   onApplyDocumentFilters: (filters: DocumentFilters) => void;
@@ -62,9 +64,12 @@ export function ImportsPage({
   const cameraRef = useRef<CameraCaptureHandle>(null);
   useEffect(() => {
     if (!captureRequested) return;
-    const frame = window.requestAnimationFrame(() => cameraRef.current?.open());
+    const frame = window.requestAnimationFrame(() => {
+      cameraRef.current?.open();
+      onCaptureHandled();
+    });
     return () => window.cancelAnimationFrame(frame);
-  }, [captureRequested]);
+  }, [captureRequested, onCaptureHandled]);
   const [files, setFiles] = useState<PendingUpload[]>([]);
   const [importModel, setImportModel] = useState<ImportModel>(defaultImportModel);
   // 親への未保存通知は effect で状態を push せず、変化したイベントから直接行う
