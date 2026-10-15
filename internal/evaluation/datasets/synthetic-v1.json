@@ -3,6 +3,7 @@
   "cases": [
     {
       "id": "synthetic-two-line-receipt",
+      "sourceKind": "receipt",
       "expected": {
         "currency": "JPY",
         "total": 330,

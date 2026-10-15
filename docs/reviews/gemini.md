@@ -12,4 +12,6 @@ Gemini Batch APIのクライアント、job状態管理、結果取得経路は�
 
 ## 3. source kindごとの精度評価
 
-source kindごとにモデルの精度と費用を比較する評価が未整備です。既存の[オフライン評価器](../../internal/evaluation)を使い、税率混在、値引、ポイント、商品名の読取精度と推定費用を比較してから、既定モデルやsource kindごとの自動振り分けを変更してください。
+オフライン評価器はケースの`sourceKind`ごとに、モデル別の品目検出precision・recall、印字金額一致率、税額整合率、商品名正規化一致率、証跡precision、推定費用、平均レイテンシを集計します。`mise run evaluation:run`で出力JSONの`sourceKinds`を確認できます。Gemini APIは呼び出しません。
+
+同梱fixtureは人工的なレシート1件のみで、source kind間やモデル間を比較できるだけのデータがありません。税率混在、値引、ポイント、異なる入力source kindの合成fixtureと各モデルの保存済み実行結果を追加して評価する必要があります。現在のfixtureから既定モデルやsource kindごとの自動振り分けを変更する根拠は得られません。

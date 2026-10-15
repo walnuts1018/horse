@@ -111,6 +111,26 @@ func TestScoreReportsAccuracyCostAndLatencyPerModel(t *testing.T) {
 	}
 }
 
+func TestScoreReportsAccuracyAndCostBySourceKindAndModel(t *testing.T) {
+	t.Parallel()
+	expected := ingestion.Receipt{Items: []ingestion.Item{{PrintedName: appleItemName, Name: appleItemName, PrintedAmount: 120}}}
+	incorrect := ingestion.Receipt{Items: []ingestion.Item{{PrintedName: appleItemName, Name: appleItemName, PrintedAmount: 100}}}
+	metrics := Score(Dataset{Version: "synthetic-v1", Cases: []Case{
+		{ID: "receipt-case", SourceKind: "receipt", Expected: expected, Runs: []ingestion.ExtractionRun{{Model: "shared-model", Receipt: &expected, PriceEstimateStatus: "estimated_paid", EstimatedJPY: 2}}},
+		{ID: "email-case", SourceKind: "email", Expected: expected, Runs: []ingestion.ExtractionRun{{Model: "shared-model", Receipt: &incorrect, PriceEstimateStatus: "estimated_paid", EstimatedJPY: 1}}},
+	}})
+	if len(metrics.SourceKinds) != 2 || metrics.SourceKinds[0].SourceKind != "email" || metrics.SourceKinds[1].SourceKind != "receipt" {
+		t.Fatalf("source kinds were not returned in sorted order: %+v", metrics.SourceKinds)
+	}
+	email, receipt := metrics.SourceKinds[0].Models[0], metrics.SourceKinds[1].Models[0]
+	if email.Model != "shared-model" || email.PrintedAmountExactRate != 0 || email.EstimatedCostJPY != 1 || email.ScoredRuns != 1 {
+		t.Fatalf("unexpected email metrics: %+v", email)
+	}
+	if receipt.Model != "shared-model" || receipt.PrintedAmountExactRate != 1 || receipt.EstimatedCostJPY != 2 || receipt.ScoredRuns != 1 {
+		t.Fatalf("unexpected receipt metrics: %+v", receipt)
+	}
+}
+
 func TestDuplicatePrecisionRequiresTheExpectedRepeatedLine(t *testing.T) {
 	t.Parallel()
 	expected := []ingestion.Item{{PrintedName: appleItemName, PrintedAmount: 100}, {PrintedName: appleItemName, PrintedAmount: 100}}
