@@ -25,7 +25,9 @@ Horseの原本だけを復元する必要がある場合は、infra側のSeaweed
 
 ## 公開probe
 
-Blackbox exporterは`https://horse.walnuts.dev/healthz`を30秒間隔で確認します。`target="horse"`のprobeが5分間連続で失敗すると`HorsePublicProbeFailed` alertを発火します。2026年10月15日にHorseのAPI、Worker、Web PodがReadyであることと、公開`/`・`/healthz`がHTTP200を返すことを確認しました。アラートの強制発火とAlertmanagerへの配送は未検証です。
+2026年10月15日にHorseのAPI、Worker、Web PodがReadyであることと、公開`/`・`/healthz`がHTTP200を返すことを確認しました。2026年10月16日の確認では、公開probe用の`ServiceMonitor`と`PrometheusRule`が削除済みのkube-prometheus-stack向けに残っており、現在のVictoriaMetrics・Cortex構成ではHorseのprobeを収集・評価していません。
+
+`HorsePublicProbeFailed`はCortex Ruler用ルールへ移行されていません。Cortex Alertmanagerにもtenant別のreceiver設定がなく、Rulerからの通知要求は`the Alertmanager is not configured`で失敗します。Horseの公開probeと障害通知は未構成です。
 
 ## Gemini APIの課金
 
