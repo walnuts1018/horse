@@ -128,10 +128,10 @@ pub async fn persist_post_purchase_in_transaction(
     }
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
-    let purchase_id = parse_uuid(decision.purchase_id.as_str(), "purchase_id")?;
+    let purchase_id = parse_uuid(decision.purchase_id().as_str(), "purchase_id")?;
     let expected_revision = i64::try_from(input.expected_revision)
         .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("expected_revision"))?;
-    let new_revision = i64::try_from(decision.new_revision)
+    let new_revision = i64::try_from(decision.new_revision())
         .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("new_revision"))?;
     let journal_id = Uuid::new_v4();
     let ledger_entry_id = Uuid::new_v4();
@@ -265,7 +265,7 @@ pub async fn persist_post_purchase_in_transaction(
         .execute(&mut *conn)
         .await?;
 
-    for line in &decision.journal_lines {
+    for line in &decision.journal_lines() {
         let line_no = i32::try_from(line.line_no())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal line_no"))?;
         let amount = i64::try_from(line.amount().value())
@@ -301,7 +301,7 @@ pub async fn persist_post_purchase_in_transaction(
             .await?;
     }
 
-    for snapshot in &decision.member_burden_snapshots {
+    for snapshot in &decision.member_burden_snapshots() {
         let amount = snapshot.amount.value();
         let rule_version = i32::try_from(snapshot.funding_rule_version)
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("funding_rule_version"))?;
@@ -328,7 +328,7 @@ pub async fn persist_post_purchase_in_transaction(
             .await?;
     }
 
-    for snapshot in &decision.payment_funding_snapshots {
+    for snapshot in &decision.payment_funding_snapshots() {
         let line_no = i32::try_from(snapshot.line_no)
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("payment line_no"))?;
         let rule_version = i32::try_from(snapshot.funding_rule_version)
@@ -372,7 +372,7 @@ pub async fn persist_post_purchase_in_transaction(
         .execute(&mut *conn)
         .await?;
 
-    for event in &decision.events {
+    for event in &decision.events() {
         let event_revision = i64::try_from(event.revision)
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("event revision"))?;
         let changed_fields = event
@@ -411,21 +411,21 @@ fn validate_decision(
     decision: &PostPurchaseDecision,
     expected_revision: i64,
 ) -> Result<(), PostPurchasePersistenceError> {
-    if decision.new_status != bookkeeping_workflows::PurchaseStatus::Posted
-        || decision.events.is_empty()
-        || expected_revision.checked_add(1) != i64::try_from(decision.new_revision).ok()
+    if decision.new_status() != bookkeeping_workflows::PurchaseStatus::Posted
+        || decision.events().is_empty()
+        || expected_revision.checked_add(1) != i64::try_from(decision.new_revision()).ok()
     {
         return Err(PostPurchasePersistenceError::InvalidDecision);
     }
-    for event in &decision.events {
-        if event.entity_id != decision.purchase_id || event.revision != decision.new_revision {
+    for event in &decision.events() {
+        if event.entity_id != decision.purchase_id() || event.revision != decision.new_revision() {
             return Err(PostPurchasePersistenceError::InvalidDecision);
         }
     }
     let mut lines = BTreeSet::new();
     let mut debit = 0_i64;
     let mut credit = 0_i64;
-    for line in &decision.journal_lines {
+    for line in &decision.journal_lines() {
         let number = i32::try_from(line.line_no())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal line_no"))?;
         if number <= 0 || !lines.insert(number) {
@@ -545,7 +545,7 @@ async fn validate_household_references(
     let mut account_ids = BTreeSet::new();
     let mut member_ids = BTreeSet::from([actor_id]);
     let mut item_ids = BTreeSet::new();
-    for line in &decision.journal_lines {
+    for line in &decision.journal_lines() {
         match line.target() {
             PostingTarget::Pool(id) => {
                 pool_ids.insert(parse_uuid(id.as_str(), "pool_id")?);
@@ -555,13 +555,13 @@ async fn validate_household_references(
             }
         }
     }
-    for snapshot in &decision.member_burden_snapshots {
+    for snapshot in &decision.member_burden_snapshots() {
         item_ids.insert(parse_uuid(snapshot.item_id.as_str(), "item_id")?);
         pool_ids.insert(parse_uuid(snapshot.pool_id.as_str(), "pool_id")?);
         member_ids.insert(parse_uuid(snapshot.member_id.as_str(), "member_id")?);
     }
     let mut account_pool_pairs = BTreeSet::new();
-    for snapshot in &decision.payment_funding_snapshots {
+    for snapshot in &decision.payment_funding_snapshots() {
         let account_id = parse_uuid(snapshot.account_id.as_str(), "account_id")?;
         let pool_id = parse_uuid(snapshot.pool_id.as_str(), "pool_id")?;
         account_ids.insert(account_id);
@@ -718,7 +718,7 @@ async fn validate_payment_rows(
     }
 
     let mut snapshots_by_payment = BTreeMap::<(i32, Uuid), (BTreeSet<Uuid>, i64)>::new();
-    for snapshot in &decision.payment_funding_snapshots {
+    for snapshot in &decision.payment_funding_snapshots() {
         let line_no = i32::try_from(snapshot.line_no)
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("payment line_no"))?;
         let account_id = parse_uuid(snapshot.account_id.as_str(), "account_id")?;
@@ -807,7 +807,7 @@ async fn validate_member_burden_snapshots(
 
     let mut snapshots = BTreeMap::<(Uuid, Uuid), i64>::new();
     let mut snapshot_members = BTreeSet::new();
-    for snapshot in &decision.member_burden_snapshots {
+    for snapshot in &decision.member_burden_snapshots() {
         let item_id = parse_uuid(snapshot.item_id.as_str(), "item_id")?;
         let pool_id = parse_uuid(snapshot.pool_id.as_str(), "pool_id")?;
         let member_id = parse_uuid(snapshot.member_id.as_str(), "member_id")?;
@@ -848,7 +848,7 @@ fn validate_journal_rows(
                 ))?;
     }
     let mut actual_credits = BTreeMap::<Uuid, i64>::new();
-    for line in &decision.journal_lines {
+    for line in &decision.journal_lines() {
         let amount = i64::try_from(line.amount().value())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal amount"))?;
         let id = match line.side() {

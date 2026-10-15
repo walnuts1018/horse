@@ -26,14 +26,7 @@ pub async fn graphql_node(ctx: &Context<'_>, global_id: ID) -> Result<Option<led
                     )
                     .await?
                 {
-                    return Ok(Some(match node {
-                        crate::unmatched_observations_query::Observation::UnmatchedObservation(
-                            value,
-                        ) => ledger_entry::Node::UnmatchedObservation(value),
-                        crate::unmatched_observations_query::Observation::ConfirmedObservation(
-                            value,
-                        ) => ledger_entry::Node::ConfirmedObservation(value),
-                    }));
+                    return Ok(Some(ledger_entry::Node::Observation(node)));
                 }
             }
             Ok(None)

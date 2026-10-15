@@ -609,7 +609,7 @@ pub async fn link_statement_refund_correction(
                         Uuid::now_v7()
                     )),
                     public::source_confirmations::changed_by.eq(actor_id),
-                    public::source_confirmations::changed_at.eq(now),
+            public::source_confirmations::changed_at.eq(recorded_at),
                 ))
                 .execute(&mut *conn)
                 .await
@@ -709,7 +709,7 @@ async fn persist_statement_refund_confirmation(
                 Uuid::now_v7()
             )),
             source_confirmations::changed_by.eq(actor_id),
-            source_confirmations::changed_at.eq(now),
+            source_confirmations::changed_at.eq(recorded_at),
         ))
         .execute(&mut *conn)
         .await
@@ -727,7 +727,7 @@ async fn persist_statement_refund_confirmation(
             evidence_links::evidence_region.eq(region),
             evidence_links::observation.eq(observation.clone()),
             evidence_links::created_by.eq(actor_id),
-            evidence_links::created_at.eq(now),
+            evidence_links::created_at.eq(recorded_at),
             evidence_links::purchase_id.eq(None::<Uuid>),
             evidence_links::correction_id.eq(Some(correction_id)),
             evidence_links::transfer_id.eq(None::<Uuid>),
@@ -881,9 +881,9 @@ async fn persist_correct_purchase_in_transaction(
             journals::household_id.eq(household_id),
             journals::source_kind.eq(SOURCE_KIND),
             journals::source_id.eq(correction_id),
-            journals::occurred_at.eq(now),
+            journals::occurred_at.eq(recorded_at),
             journals::created_by.eq(actor_id),
-            journals::created_at.eq(now),
+            journals::created_at.eq(recorded_at),
         ))
         .execute(&mut *conn)
         .await?;
@@ -939,7 +939,7 @@ async fn persist_correct_purchase_in_transaction(
             public::purchase_corrections::effective_period_start.eq(effective_period),
             public::purchase_corrections::journal_id.eq(journal_id),
             public::purchase_corrections::created_by.eq(actor_id),
-            public::purchase_corrections::created_at.eq(now),
+            public::purchase_corrections::created_at.eq(recorded_at),
         ))
         .execute(&mut *conn)
         .await?;
@@ -1009,10 +1009,10 @@ async fn persist_correct_purchase_in_transaction(
             ledger::journal_id.eq(journal_id),
             ledger::source_kind.eq(SOURCE_KIND),
             ledger::source_id.eq(correction_id),
-            ledger::occurred_at.eq(now),
+            ledger::occurred_at.eq(recorded_at),
             ledger::description.eq(&decision.reason),
             ledger::amount_yen.eq(amount_yen),
-            ledger::created_at.eq(now),
+            ledger::created_at.eq(recorded_at),
         ))
         .execute(&mut *conn)
         .await?;
@@ -1038,7 +1038,7 @@ async fn persist_correct_purchase_in_transaction(
                 .map(|field| Some((*field).to_owned()))
                 .collect::<Vec<_>>()),
             events::actor_id.eq(actor_id),
-            events::created_at.eq(now),
+            events::created_at.eq(recorded_at),
         ))
         .execute(&mut *conn)
         .await?;
@@ -1659,7 +1659,7 @@ async fn persist_settlement_adjustments(
                 public::settlement_adjustments::source_kind.eq(SOURCE_KIND),
                 public::settlement_adjustments::source_id.eq(correction_id),
                 public::settlement_adjustments::amount_yen.eq(adjustment.amount),
-                public::settlement_adjustments::created_at.eq(now),
+                public::settlement_adjustments::created_at.eq(recorded_at),
             ))
             .execute(&mut *conn)
             .await?;

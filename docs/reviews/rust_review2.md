@@ -184,69 +184,6 @@ DMMF\_%E6%9B%B8%E7%B1%8D%E5%85%A8%E7%AB%A0%E5%88%86%E6%9E%90\_%E8%A8%AD%E8%A8%88
 
 構造の改善だけでなく、実際の整合性リスクや細部の型設計にも修正候補があります。
 
-### P1-1. CreatePurchase の冪等性判定順序
-
-該当：[postgres/src/create_purchase.rs L112–151](https://github.com/walnuts1018/horse/blob/a3603e2/crates/postgres/src/create_purchase.rs#L112-L151)
-
-現在は、Household の `default_allocation_version` がリクエストの値と一致することを確認した後、既存の冪等性キーを検索しています。
-
-そのため、初回リクエストが成功した後に負担ルールが変更されると、同じリクエストを再送しただけなのに `AllocationRuleMismatch` が返り得ます。
-
-これは現行コードから確認できる具体的な問題です。
-
-認証・認可とリクエスト識別を行った後、新しい業務判断を実行する前に、過去の成功結果を返せるか判定する構造へ変更したいです。
-
-冪等性は技術的な付属機能というだけではなく、Workflow を安全に再実行できるという契約の一部として扱うべきです。
-
-### P1-2. 訂正の会計計上日と記録日時が混在している
-
-該当：[postgres/src/correct_purchase.rs L370–380, L505–515](https://github.com/walnuts1018/horse/blob/a3603e2/crates/postgres/src/correct_purchase.rs#L370-L380)
-
-訂正には `effective_period` がある一方、Journal と Ledger Entry の `occurred_at` には現在時刻が使用されています。
-
-会計上の計上月を `effective_period` で決める要件なら、`occurred_at` に基づく集計との間で不整合が生じる可能性があります。
-
-ここは値の意味から整理するのがよいです。
-
-```
-pub struct AccountingDate(NaiveDate);
-pub struct RecordedAt(DateTime<Utc>);
-pub struct AccountingPeriod(YearMonth);
-```
-
-`AccountingDate` はどの会計期間に属するかを決める日付、`RecordedAt` はシステムが変更を受け付けた日時です。
-
-どちらも必要ですが、同じ意味として扱うべきではありません。
-
-### P1-3. Domain Event の revision が一貫していない
-
-該当：[postgres/src/category.rs L160–189](https://github.com/walnuts1018/horse/blob/a3603e2/crates/postgres/src/category.rs#L160-L189)
-
-Category の更新・アーカイブ操作で、イベントの `revision` に固定値 `1` が保存されています。
-
-この値が集約の改訂番号を意味するのであれば、2回目以降の変更でも同じ revision になってしまいます。
-
-ここは、`EventId`、`AggregateRevision`、必要なら `EventSequence` を別の意味として定義するべきです。
-
-また、現行の `DomainEvent` は次のような汎用メタデータ形式です。
-
-```
-pub struct DomainEvent {
-    pub event_type: &'static str,
-    pub entity_id: PurchaseId,
-    pub revision: u64,
-    pub changed_fields: Vec<&'static str>,
-}
-```
-
-これは変更通知の DTO としては使えますが、ドメイン上の事実を表す型としては弱いです。
-
-例えば `PurchasePosted`、`PurchaseCorrected`、`AccountingPeriodClosed` など、意味のある型付きイベントを先に定義し、配送・変更通知用の DTO へ変換したいです。
-
-DMMF 第3章 §3.4 と第13章 §13.3.6 は、Workflow の出力イベントと、他 BC に公開する契約を区別するうえで重要です。
-
-DMMF\_%E6%9B%B8%E7%B1%8D%E5%85%A8%E7%AB%A0%E5%88%86%E6%9E%90\_%E8%A8%AD%E8%A8%88%E8%AD%B0%E8%AB%96%E7%94%A8.md
-
 ### P1-4. MemberId を PoolId として扱って配分している
 
 該当：[bookkeeping-workflows/src/lib.rs L540–574](https://github.com/walnuts1018/horse/blob/a3603e2/crates/bookkeeping-workflows/src/lib.rs#L540-L574)
@@ -584,10 +521,7 @@ GraphQL・DB・非同期配送で別々の公開契約を定義
 | 一部 Rust ファイルの module 登録漏れ | 確認対象の `lib.rs` では登録が追加済み |
 | Create+Post の同一 Transaction 化 | `purchase_create_and_post.rs` で改善済み |
 | 締め後訂正が `POSTED` 以外を拒否 | `Draft` のみ拒否する形へ変更済み。ただし状態モデルは未整理 |
-| CreatePurchase 冪等性の判定順序 | 問題が残る |
-| 訂正日時と計上月の混在 | 設計上のリスクが残る |
 | Domain と Workflow の型の配置 | 問題が残る |
-| Event Revision の意味 | 改善余地が残る |
 
 したがって、古いレビューの修正項目を機械的に繰り返す必要はありません。現在は一段深い設計整理へ進める状況です。
 
