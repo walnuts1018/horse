@@ -66,6 +66,31 @@
   list-style: none;
 }
 
+.extractionDiff .diffRow {
+  grid-template-columns: auto minmax(5rem, auto) minmax(0, 1fr);
+}
+
+.extractionDiff .diffStatus {
+  color: var(--text-muted, #5f6672);
+  font-size: 0.75rem;
+}
+
+.extractionDiff .diffRow[data-status="added"] .diffStatus {
+  color: var(--text-success, #16803c);
+}
+
+.extractionDiff .diffRow[data-status="removed"] .diffStatus {
+  color: var(--text-danger, #b42318);
+}
+
+.extractionDiff .diffRowLabel {
+  overflow-wrap: anywhere;
+}
+
+.extractionDiff .diffFields {
+  grid-column: 1 / -1;
+}
+
 .userMessage,
 .assistantMessage {
   max-width: 48rem;

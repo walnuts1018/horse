@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
-  compareReceiptExtractions,
+  compareExtractions,
+  type ExtractionRowChange,
   readReceiptExtractionSnapshot,
   storeReceiptExtractionSnapshot,
 } from "../model/extraction-diff";
@@ -32,6 +33,32 @@ function withConversationKeys(messages: ConversationMessage[] = []) {
     occurrences.set(identity, occurrence + 1);
     return { ...entry, key: `${identity}-${occurrence}` };
   });
+}
+
+function renderExtractionRows(rows: ExtractionRowChange[]) {
+  const statusLabels = {
+    changed: "変更",
+    added: "追加",
+    removed: "削除",
+    "unmatched-current": "今回・照合なし",
+    "unmatched-previous": "前回・照合なし",
+  };
+  return rows.map((row) => (
+    <li className={styles.diffRow} data-status={row.status} key={row.id}>
+      <span className={styles.diffStatus}>{statusLabels[row.status]}</span>
+      <span className={styles.diffRowLabel}>{row.label}</span>
+      <ul className={styles.diffFields}>
+        {row.changes.map((change) => (
+          <li key={`${row.id}-${change.label}`}>
+            <span>{change.label}</span>
+            <del>{change.before}</del>
+            <span aria-hidden="true">→</span>
+            <ins>{change.after}</ins>
+          </li>
+        ))}
+      </ul>
+    </li>
+  ));
 }
 
 function pendingMessageStorageKey(documentId: string) {
@@ -111,16 +138,18 @@ export function DocumentConversation({
   const extractionDiff =
     previousExtraction &&
     document.jobId &&
+    document.jobId !== previousExtraction.jobId &&
     document.jobId === previousExtraction.nextJobId &&
     document.status.toLowerCase() === "succeeded"
-      ? compareReceiptExtractions(previousExtraction.receipt, document.result?.receipt)
+      ? compareExtractions(previousExtraction, document.result ?? {})
       : null;
   const hasExtractionDiff = Boolean(
     extractionDiff &&
     (extractionDiff.receiptChanges.length > 0 ||
       extractionDiff.itemChanges.length > 0 ||
       extractionDiff.taxChanges.length > 0 ||
-      extractionDiff.paymentChanges.length > 0),
+      extractionDiff.paymentChanges.length > 0 ||
+      extractionDiff.statementChanges.length > 0),
   );
   const pendingMessageCompleted =
     !!storedPendingMessage &&
@@ -180,11 +209,16 @@ export function DocumentConversation({
         conversationLength: messages?.length ?? 0,
         status: "processing",
       };
-      if (document.jobId && document.result?.receipt && nextJobId) {
+      if (
+        document.jobId &&
+        (document.result?.receipt || document.result?.statements?.length) &&
+        nextJobId
+      ) {
         storeReceiptExtractionSnapshot(document.id, {
           jobId: document.jobId,
           nextJobId,
           receipt: document.result.receipt,
+          statements: document.result.statements,
         });
       }
       storePendingMessage(document.id, nextPendingMessage);
@@ -215,25 +249,10 @@ export function DocumentConversation({
                 <ins>{change.after}</ins>
               </li>
             ))}
-            {[
-              ...extractionDiff.itemChanges,
-              ...extractionDiff.taxChanges,
-              ...extractionDiff.paymentChanges,
-            ].map((row) => (
-              <li key={row.label}>
-                <span>{row.label}</span>
-                <ul>
-                  {row.changes.map((change) => (
-                    <li key={`${row.label}-${change.label}`}>
-                      <span>{change.label}</span>
-                      <del>{change.before}</del>
-                      <span aria-hidden="true">→</span>
-                      <ins>{change.after}</ins>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
+            {renderExtractionRows(extractionDiff.itemChanges)}
+            {renderExtractionRows(extractionDiff.taxChanges)}
+            {renderExtractionRows(extractionDiff.paymentChanges)}
+            {renderExtractionRows(extractionDiff.statementChanges)}
           </ul>
         </details>
       )}

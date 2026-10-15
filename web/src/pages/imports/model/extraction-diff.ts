@@ -1,9 +1,15 @@
-import type { DocumentReview } from "./imports";
+import type { DocumentReview, ExtractedItem, StatementEntry } from "./imports";
+
+type ExtractionReceipt = NonNullable<NonNullable<DocumentReview["result"]>["receipt"]>;
+type ExtractionItem = NonNullable<ExtractionReceipt["items"]>[number];
+type ExtractionTax = NonNullable<ExtractionReceipt["taxGroups"]>[number];
+type ExtractionPayment = NonNullable<ExtractionReceipt["payments"]>[number];
 
 export type ReceiptExtractionSnapshot = {
   jobId: string;
   nextJobId: string;
-  receipt: NonNullable<DocumentReview["result"]>["receipt"];
+  receipt?: ExtractionReceipt;
+  statements?: StatementEntry[];
 };
 
 export type ExtractionFieldChange = {
@@ -12,11 +18,19 @@ export type ExtractionFieldChange = {
   after: string;
 };
 
+export type ExtractionRowChange = {
+  id: string;
+  status: "changed" | "added" | "removed" | "unmatched-current" | "unmatched-previous";
+  label: string;
+  changes: ExtractionFieldChange[];
+};
+
 export type ExtractionDiff = {
   receiptChanges: ExtractionFieldChange[];
-  itemChanges: Array<{ label: string; changes: ExtractionFieldChange[] }>;
-  taxChanges: Array<{ label: string; changes: ExtractionFieldChange[] }>;
-  paymentChanges: Array<{ label: string; changes: ExtractionFieldChange[] }>;
+  itemChanges: ExtractionRowChange[];
+  taxChanges: ExtractionRowChange[];
+  paymentChanges: ExtractionRowChange[];
+  statementChanges: ExtractionRowChange[];
 };
 
 function value(raw: unknown): string {
@@ -42,78 +56,225 @@ function fields<T extends Record<string, unknown>>(
   });
 }
 
-function changedRows<T extends Record<string, unknown>>(
+function matchRows<T extends Record<string, unknown>>(
   before: T[] | undefined,
   after: T[] | undefined,
+  identities: (entry: T) => string[],
   label: (entry: T, index: number) => string,
   definitions: Array<{ key: keyof T; label: string; format?: (value: unknown) => string }>,
-) {
-  const rows = [];
-  for (let index = 0; index < Math.max(before?.length ?? 0, after?.length ?? 0); index += 1) {
-    const previous = before?.[index];
-    const next = after?.[index];
-    const changes = fields(previous, next, definitions);
-    if (changes.length) rows.push({ label: label(next ?? previous!, index), changes });
-  }
+): ExtractionRowChange[] {
+  const previous = before ?? [];
+  const current = after ?? [];
+  const canConfirmAdditionsAndRemovals = [...previous, ...current].every(
+    (entry) => identities(entry).length > 0,
+  );
+  const previousCounts = countIdentities(previous, identities);
+  const currentCounts = countIdentities(current, identities);
+  const previousIndices = new Map(
+    previous.flatMap((entry, index) => {
+      return identities(entry).flatMap((key) =>
+        previousCounts.get(key) === 1 ? [[key, index] as const] : [],
+      );
+    }),
+  );
+  const matchedPrevious = new Set<number>();
+  const rows: ExtractionRowChange[] = [];
+  current.forEach((entry, index) => {
+    const matchingIndices = new Set(
+      identities(entry)
+        .filter((key) => currentCounts.get(key) === 1 && previousCounts.get(key) === 1)
+        .map((key) => previousIndices.get(key))
+        .filter((previousIndex): previousIndex is number => previousIndex !== undefined),
+    );
+    const previousIndex = matchingIndices.size === 1 ? [...matchingIndices][0] : undefined;
+    if (previousIndex === undefined || matchedPrevious.has(previousIndex)) {
+      const key = identities(entry).join("|") || "unmatched";
+      const status = canConfirmAdditionsAndRemovals ? "added" : "unmatched-current";
+      rows.push({
+        id: `${status}-${index}-${key}`,
+        status,
+        label: label(entry, index),
+        changes: fields(undefined, entry, definitions),
+      });
+      return;
+    }
+    matchedPrevious.add(previousIndex);
+    const changes = fields(previous[previousIndex], entry, definitions);
+    if (!changes.length) return;
+    rows.push({
+      id: `changed-${previousIndex}`,
+      status: "changed",
+      label: label(entry, index),
+      changes,
+    });
+  });
+  previous.forEach((entry, index) => {
+    if (matchedPrevious.has(index)) return;
+    const key = identities(entry).join("|") || "unmatched";
+    const status = canConfirmAdditionsAndRemovals ? "removed" : "unmatched-previous";
+    rows.push({
+      id: `${status}-${index}-${key}`,
+      status,
+      label: label(entry, index),
+      changes: fields(entry, undefined, definitions),
+    });
+  });
   return rows;
+}
+
+function countIdentities<T>(entries: T[], identities: (entry: T) => string[]) {
+  const counts = new Map<string, number>();
+  entries.forEach((entry) => {
+    for (const key of new Set(identities(entry))) counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  return counts;
+}
+
+function itemIdentities(item: ExtractionItem): string[] {
+  const identities = item.key && !/^item-\d+$/.test(item.key) ? [`key:${item.key}`] : [];
+  if (!item.region) return identities;
+  const { page, top, left, bottom, right } = item.region;
+  identities.push(`region:${page}:${top}:${left}:${bottom}:${right}`);
+  return identities;
+}
+
+function statementIdentities(entry: StatementEntry): string[] {
+  return [entry.sourceReference ? `source:${entry.sourceReference}` : `row:${entry.row}`];
+}
+
+function taxIdentities(tax: ExtractionTax): string[] {
+  return tax.id ? [`tax:${tax.id}`] : [];
+}
+
+function paymentIdentities(payment: ExtractionPayment): string[] {
+  if (!payment.method && !payment.cardLast4) return [];
+  return [
+    ...(payment.cardLast4 ? [`card:${payment.cardLast4}`] : []),
+    `payment:${JSON.stringify([payment.method, payment.cardLast4 ?? ""])}`,
+  ];
+}
+
+function statementKind(kind: string): string {
+  const labels: Record<string, string> = {
+    ACCOUNT_TRANSFER: "口座振替",
+    CARD_BILL_PAYMENT: "カード引落し",
+    CARD_PURCHASE: "カード利用",
+    EXTERNAL_INCOME: "入金",
+    REFUND: "返金",
+  };
+  return labels[kind] ?? kind;
+}
+
+function statementDate(raw: unknown): string {
+  if (typeof raw !== "string") return "未設定";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 const yenField = (amount: unknown) => yen(amount);
 
-export function compareReceiptExtractions(
-  before: ReceiptExtractionSnapshot["receipt"],
-  after: ReceiptExtractionSnapshot["receipt"],
+function emptyDiff(): ExtractionDiff {
+  return {
+    receiptChanges: [],
+    itemChanges: [],
+    taxChanges: [],
+    paymentChanges: [],
+    statementChanges: [],
+  };
+}
+
+export function compareExtractions(
+  before: Pick<ReceiptExtractionSnapshot, "receipt" | "statements">,
+  after: Pick<ReceiptExtractionSnapshot, "receipt" | "statements">,
 ): ExtractionDiff {
-  if (!before || !after) {
-    return { receiptChanges: [], itemChanges: [], taxChanges: [], paymentChanges: [] };
+  if (!before.receipt && !before.statements && !after.receipt && !after.statements) {
+    return emptyDiff();
   }
-  const itemsBefore = before.items ?? [];
-  const itemsAfter = after.items ?? [];
-  const taxesBefore = before.taxGroups ?? [];
-  const taxesAfter = after.taxGroups ?? [];
-  const paymentsBefore = before.payments ?? [];
-  const paymentsAfter = after.payments ?? [];
+  const previousReceipt = before.receipt;
+  const currentReceipt = after.receipt;
+  const itemDefinitions = [
+    { key: "name", label: "品目名" },
+    { key: "grossAmount", label: "金額", format: yenField },
+    { key: "categoryHint", label: "カテゴリ" },
+    { key: "taxGroup", label: "税区分" },
+  ] satisfies Array<{
+    key: keyof ExtractedItem;
+    label: string;
+    format?: (value: unknown) => string;
+  }>;
+  const taxDefinitions = [
+    { key: "numerator", label: "税率分子" },
+    { key: "denominator", label: "税率分母" },
+    { key: "basis", label: "計算対象" },
+    { key: "rounding", label: "端数処理" },
+    { key: "printedSubtotal", label: "印字小計", format: yenField },
+    { key: "printedTax", label: "印字税額", format: yenField },
+  ] satisfies Array<{
+    key: keyof ExtractionTax;
+    label: string;
+    format?: (value: unknown) => string;
+  }>;
+  const paymentDefinitions = [
+    { key: "method", label: "支払方法" },
+    { key: "cardLast4", label: "カード番号下4桁" },
+    { key: "amount", label: "支払額", format: yenField },
+  ] satisfies Array<{
+    key: keyof ExtractionPayment;
+    label: string;
+    format?: (value: unknown) => string;
+  }>;
+  const statementDefinitions = [
+    { key: "merchant", label: "加盟店" },
+    { key: "amount", label: "金額", format: yenField },
+    { key: "occurredAt", label: "日時", format: statementDate },
+    { key: "kind", label: "種別", format: (kind) => statementKind(value(kind)) },
+    { key: "transactionId", label: "取引ID" },
+    { key: "orderId", label: "注文ID" },
+    { key: "cardLast4", label: "カード番号下4桁" },
+  ] satisfies Array<{
+    key: keyof StatementEntry;
+    label: string;
+    format?: (value: unknown) => string;
+  }>;
 
   return {
-    receiptChanges: fields({ total: before.total }, { total: after.total }, [
-      { key: "total", label: "合計", format: yenField },
-    ]),
-    itemChanges: changedRows(
-      itemsBefore,
-      itemsAfter,
+    receiptChanges: fields(
+      previousReceipt ? { total: previousReceipt.total } : undefined,
+      currentReceipt ? { total: currentReceipt.total } : undefined,
+      [{ key: "total", label: "合計", format: yenField }],
+    ),
+    itemChanges: matchRows(
+      previousReceipt?.items,
+      currentReceipt?.items,
+      itemIdentities,
       (item, index) => `明細${index + 1}・${item.name || item.printedName || "品目"}`,
-      [
-        { key: "name", label: "品目名" },
-        { key: "grossAmount", label: "金額", format: yenField },
-        {
-          key: "categoryHint",
-          label: "カテゴリ",
-        },
-        { key: "taxGroup", label: "税区分" },
-      ],
+      itemDefinitions,
     ),
-    taxChanges: changedRows(
-      taxesBefore,
-      taxesAfter,
+    taxChanges: matchRows(
+      previousReceipt?.taxGroups,
+      currentReceipt?.taxGroups,
+      taxIdentities,
       (tax, index) => `税${index + 1}・${tax.id || "区分"}`,
-      [
-        { key: "numerator", label: "税率分子" },
-        { key: "denominator", label: "税率分母" },
-        { key: "basis", label: "計算対象" },
-        { key: "rounding", label: "端数処理" },
-        { key: "printedSubtotal", label: "印字小計", format: yenField },
-        { key: "printedTax", label: "印字税額", format: yenField },
-      ],
+      taxDefinitions,
     ),
-    paymentChanges: changedRows(
-      paymentsBefore,
-      paymentsAfter,
+    paymentChanges: matchRows(
+      previousReceipt?.payments,
+      currentReceipt?.payments,
+      paymentIdentities,
       (payment, index) => `支払${index + 1}・${payment.method || "方法"}`,
-      [
-        { key: "method", label: "支払方法" },
-        { key: "cardLast4", label: "カード番号下4桁" },
-        { key: "amount", label: "支払額", format: yenField },
-      ],
+      paymentDefinitions,
+    ),
+    statementChanges: matchRows(
+      before.statements,
+      after.statements,
+      statementIdentities,
+      (entry) => `取引明細 行${entry.row}・${entry.merchant || statementKind(entry.kind)}`,
+      statementDefinitions,
     ),
   };
 }
@@ -135,7 +296,9 @@ function isReceiptExtractionSnapshot(raw: unknown): raw is ReceiptExtractionSnap
   if (typeof raw !== "object" || raw === null) return false;
   if (!("jobId" in raw) || typeof raw.jobId !== "string") return false;
   if (!("nextJobId" in raw) || typeof raw.nextJobId !== "string") return false;
-  return "receipt" in raw && typeof raw.receipt === "object" && raw.receipt !== null;
+  const receipt = "receipt" in raw && typeof raw.receipt === "object" && raw.receipt !== null;
+  const statements = "statements" in raw && Array.isArray(raw.statements);
+  return receipt || statements;
 }
 
 export function storeReceiptExtractionSnapshot(
