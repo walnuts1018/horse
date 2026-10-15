@@ -1,5 +1,5 @@
 [workspace]
-members = ["apps/api", "crates/auth", "crates/bookkeeping-domain", "crates/bookkeeping-workflows", "crates/catalog-workflows", "crates/policy-workflows", "crates/household-workflows", "crates/http-api", "crates/postgres"]
+members = ["apps/api", "crates/auth", "crates/bookkeeping-domain", "crates/bookkeeping-workflows", "crates/catalog-workflows", "crates/gemini-developer-api", "crates/policy-workflows", "crates/household-workflows", "crates/http-api", "crates/postgres"]
 resolver = "3"
 
 [workspace.dependencies]
