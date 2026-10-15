@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use bookkeeping_application::update_purchase_item::{
-    AllocationBasis, ItemAllocationWeight, ProductLearning, PurchaseItemState,
+    AllocationBasis, ItemAllocationWeight, OptionalValueChange, ProductLearning, PurchaseItemState,
     UpdatePurchaseItemCommand, UpdatePurchaseItemDecision, UpdatePurchaseItemError,
     decide_update_purchase_item,
 };
@@ -329,25 +329,19 @@ pub async fn persist_update_purchase_item_in_transaction(
         allocations: current_allocations,
     };
     let default_basis = load_default_basis(&mut *conn, household_id, default_version).await?;
-    let target_category_id = if command.category_id_set {
-        command
-            .category_id
-            .as_deref()
-            .map(|id| parse_uuid(id, "category_id"))
-            .transpose()?
-    } else {
-        locked.4
+    let target_category_id = match &command.category_id {
+        OptionalValueChange::Unchanged => locked.4,
+        OptionalValueChange::Set(id) => Some(parse_uuid(id, "category_id")?),
+        OptionalValueChange::Clear => None,
     };
-    let target_variant_id = if command.product_variant_id_set {
-        command
-            .product_variant_id
-            .as_deref()
-            .map(|id| parse_uuid(id, "product_variant_id"))
-            .transpose()?
-    } else {
-        locked.5
+    let target_variant_id = match &command.product_variant_id {
+        OptionalValueChange::Unchanged => locked.5,
+        OptionalValueChange::Set(id) => Some(parse_uuid(id, "product_variant_id")?),
+        OptionalValueChange::Clear => None,
     };
-    let automatic_basis = if command.category_id_set || command.product_variant_id_set {
+    let category_changed = !matches!(&command.category_id, OptionalValueChange::Unchanged);
+    let variant_changed = !matches!(&command.product_variant_id, OptionalValueChange::Unchanged);
+    let automatic_basis = if category_changed || variant_changed {
         load_automatic_basis(
             &mut *conn,
             household_id,
@@ -362,18 +356,14 @@ pub async fn persist_update_purchase_item_in_transaction(
     validate_references(
         &mut *conn,
         household_id,
-        command
-            .category_id_set
-            .then_some(command.category_id.as_deref())
-            .flatten()
-            .map(|id| parse_uuid(id, "category_id"))
-            .transpose()?,
-        command
-            .product_variant_id_set
-            .then_some(command.product_variant_id.as_deref())
-            .flatten()
-            .map(|id| parse_uuid(id, "product_variant_id"))
-            .transpose()?,
+        match &command.category_id {
+            OptionalValueChange::Set(id) => Some(parse_uuid(id, "category_id")?),
+            OptionalValueChange::Unchanged | OptionalValueChange::Clear => None,
+        },
+        match &command.product_variant_id {
+            OptionalValueChange::Set(id) => Some(parse_uuid(id, "product_variant_id")?),
+            OptionalValueChange::Unchanged | OptionalValueChange::Clear => None,
+        },
     )
     .await?;
     let decision =
@@ -481,7 +471,7 @@ pub async fn persist_update_purchase_item_in_transaction(
             raw_name: &locked.2,
             previous_variant_id: locked.5,
             variant_id: product_variant_id,
-            variant_changed: command.product_variant_id_set,
+            variant_changed,
             merchant: &purchase.3,
             learning: decision.product_learning.as_ref(),
         },

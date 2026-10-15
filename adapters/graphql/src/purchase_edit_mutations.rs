@@ -8,8 +8,8 @@ use bookkeeping_application::{
     bulk_update_items::{BulkUpdateItemPatch, BulkUpdateItemTarget, ItemAllocationWeight},
     update_purchase::{UpdatePurchaseCommand, UpdatePurchaseDraft, UpdatePurchasePayment},
     update_purchase_item::{
-        ItemAllocationWeight as UpdateItemAllocationWeight, PrintedUnitPrice, ProductLearning,
-        UpdatePurchaseItemCommand, UpdatePurchaseItemError,
+        ItemAllocationWeight as UpdateItemAllocationWeight, OptionalValueChange, PrintedUnitPrice,
+        ProductLearning, UpdatePurchaseItemCommand, UpdatePurchaseItemError, ValueChange,
     },
 };
 use bookkeeping_postgres::{
@@ -532,68 +532,38 @@ pub(crate) fn item_update_command(
     item_id: Uuid,
     base_revision: u64,
 ) -> std::result::Result<UpdatePurchaseItemCommand, ()> {
-    let mut changed_fields = Vec::new();
     let name = match input.name {
-        MaybeUndefined::Undefined => None,
+        MaybeUndefined::Undefined => ValueChange::Unchanged,
         MaybeUndefined::Null => return Err(()),
-        MaybeUndefined::Value(value) => {
-            changed_fields.push("name".to_owned());
-            Some(value)
-        }
+        MaybeUndefined::Value(value) => ValueChange::Set(value),
     };
     let amount_yen = match input.amount_yen {
-        MaybeUndefined::Undefined => None,
+        MaybeUndefined::Undefined => ValueChange::Unchanged,
         MaybeUndefined::Null => return Err(()),
+        MaybeUndefined::Value(value) => ValueChange::Set(value.0),
+    };
+    let quantity = match input.quantity {
+        MaybeUndefined::Undefined => OptionalValueChange::Unchanged,
+        MaybeUndefined::Null => OptionalValueChange::Clear,
+        MaybeUndefined::Value(value) => OptionalValueChange::Set(parse_measure(value)?),
+    };
+    let printed_unit_price = match input.printed_unit_price {
+        MaybeUndefined::Undefined => OptionalValueChange::Unchanged,
+        MaybeUndefined::Null => OptionalValueChange::Clear,
+        MaybeUndefined::Value(value) => OptionalValueChange::Set(parse_printed_unit_price(value)?),
+    };
+    let category_id = match input.category_id {
+        MaybeUndefined::Undefined => OptionalValueChange::Unchanged,
+        MaybeUndefined::Null => OptionalValueChange::Clear,
         MaybeUndefined::Value(value) => {
-            changed_fields.push("amountYen".to_owned());
-            Some(value.0)
+            OptionalValueChange::Set(decode_node_id(&value, "Category")?.to_string())
         }
     };
-    let (quantity_set, quantity) = match input.quantity {
-        MaybeUndefined::Undefined => (false, None),
-        MaybeUndefined::Null => {
-            changed_fields.push("quantity".to_owned());
-            (true, None)
-        }
+    let product_variant_id = match input.product_variant_id {
+        MaybeUndefined::Undefined => OptionalValueChange::Unchanged,
+        MaybeUndefined::Null => OptionalValueChange::Clear,
         MaybeUndefined::Value(value) => {
-            changed_fields.push("quantity".to_owned());
-            (true, Some(parse_measure(value)?))
-        }
-    };
-    let (printed_unit_price_set, printed_unit_price) = match input.printed_unit_price {
-        MaybeUndefined::Undefined => (false, None),
-        MaybeUndefined::Null => {
-            changed_fields.push("printedUnitPrice".to_owned());
-            (true, None)
-        }
-        MaybeUndefined::Value(value) => {
-            changed_fields.push("printedUnitPrice".to_owned());
-            (true, Some(parse_printed_unit_price(value)?))
-        }
-    };
-    let (category_id_set, category_id) = match input.category_id {
-        MaybeUndefined::Undefined => (false, None),
-        MaybeUndefined::Null => {
-            changed_fields.push("categoryId".to_owned());
-            (true, None)
-        }
-        MaybeUndefined::Value(value) => {
-            changed_fields.push("categoryId".to_owned());
-            (true, Some(decode_node_id(&value, "Category")?.to_string()))
-        }
-    };
-    let (product_variant_id_set, product_variant_id) = match input.product_variant_id {
-        MaybeUndefined::Undefined => (false, None),
-        MaybeUndefined::Null => {
-            changed_fields.push("productVariantId".to_owned());
-            (true, None)
-        }
-        MaybeUndefined::Value(value) => {
-            changed_fields.push("productVariantId".to_owned());
-            (
-                true,
-                Some(decode_node_id(&value, "ProductVariant")?.to_string()),
-            )
+            OptionalValueChange::Set(decode_node_id(&value, "ProductVariant")?.to_string())
         }
     };
     let product_learning = match input.product_learning {
@@ -611,41 +581,31 @@ pub(crate) fn item_update_command(
             ProductLearningConfigurationInput::MerchantAlias(false) => return Err(()),
         }),
     };
-    let (allocations_set, allocations) = match input.allocations {
-        MaybeUndefined::Undefined => (false, Vec::new()),
+    let allocations = match input.allocations {
+        MaybeUndefined::Undefined => ValueChange::Unchanged,
         MaybeUndefined::Null => return Err(()),
-        MaybeUndefined::Value(values) => {
-            changed_fields.push("allocations".to_owned());
-            (
-                true,
-                values
-                    .into_iter()
-                    .map(|value| {
-                        Ok(UpdateItemAllocationWeight {
-                            pool_id: decode_node_id(&value.pool_id, "Pool")?.to_string(),
-                            weight: value.weight.0,
-                        })
+        MaybeUndefined::Value(values) => ValueChange::Set(
+            values
+                .into_iter()
+                .map(|value| {
+                    Ok(UpdateItemAllocationWeight {
+                        pool_id: decode_node_id(&value.pool_id, "Pool")?.to_string(),
+                        weight: value.weight.0,
                     })
-                    .collect::<std::result::Result<Vec<_>, ()>>()?,
-            )
-        }
+                })
+                .collect::<std::result::Result<Vec<_>, ()>>()?,
+        ),
     };
     Ok(UpdatePurchaseItemCommand {
         item_id: item_id.to_string(),
         base_revision,
-        changed_fields,
         name,
         amount_yen,
-        quantity_set,
         quantity,
-        printed_unit_price_set,
         printed_unit_price,
-        category_id_set,
         category_id,
-        product_variant_id_set,
         product_variant_id,
         product_learning,
-        allocations_set,
         allocations,
     })
 }

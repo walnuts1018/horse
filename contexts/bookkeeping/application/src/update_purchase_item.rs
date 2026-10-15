@@ -8,20 +8,27 @@ use crate::create_purchase::Measure;
 pub struct UpdatePurchaseItemCommand {
     pub item_id: String,
     pub base_revision: u64,
-    pub changed_fields: Vec<String>,
-    pub name: Option<String>,
-    pub amount_yen: Option<i64>,
-    pub quantity_set: bool,
-    pub quantity: Option<Measure>,
-    pub printed_unit_price_set: bool,
-    pub printed_unit_price: Option<PrintedUnitPrice>,
-    pub category_id_set: bool,
-    pub category_id: Option<String>,
-    pub product_variant_id_set: bool,
-    pub product_variant_id: Option<String>,
+    pub name: ValueChange<String>,
+    pub amount_yen: ValueChange<i64>,
+    pub quantity: OptionalValueChange<Measure>,
+    pub printed_unit_price: OptionalValueChange<PrintedUnitPrice>,
+    pub category_id: OptionalValueChange<String>,
+    pub product_variant_id: OptionalValueChange<String>,
     pub product_learning: Option<ProductLearning>,
-    pub allocations_set: bool,
-    pub allocations: Vec<ItemAllocationWeight>,
+    pub allocations: ValueChange<Vec<ItemAllocationWeight>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValueChange<T> {
+    Unchanged,
+    Set(T),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OptionalValueChange<T> {
+    Unchanged,
+    Set(T),
+    Clear,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,9 +103,6 @@ pub struct UpdatePurchaseItemDecision {
 pub enum UpdatePurchaseItemError {
     InvalidItemId,
     InvalidChangedFields,
-    DuplicateChangedField,
-    MissingChangedValue,
-    ExtraneousChangedValue,
     InvalidName,
     InvalidAmount,
     InvalidMeasure,
@@ -124,30 +128,35 @@ pub fn decide_update_purchase_item(
     if command.base_revision == 0 || command.base_revision > current.revision {
         return Err(UpdatePurchaseItemError::Conflict);
     }
-    if command.changed_fields.is_empty() {
+    let mut changed_fields = Vec::new();
+    if !matches!(&command.name, ValueChange::Unchanged) {
+        changed_fields.push("name");
+    }
+    if !matches!(&command.amount_yen, ValueChange::Unchanged) {
+        changed_fields.push("amountYen");
+    }
+    if !matches!(&command.quantity, OptionalValueChange::Unchanged) {
+        changed_fields.push("quantity");
+    }
+    if !matches!(&command.printed_unit_price, OptionalValueChange::Unchanged) {
+        changed_fields.push("printedUnitPrice");
+    }
+    if !matches!(&command.category_id, OptionalValueChange::Unchanged) {
+        changed_fields.push("categoryId");
+    }
+    if !matches!(&command.product_variant_id, OptionalValueChange::Unchanged) {
+        changed_fields.push("productVariantId");
+    }
+    if !matches!(&command.allocations, ValueChange::Unchanged) {
+        changed_fields.push("allocations");
+    }
+    if changed_fields.is_empty() {
         return Err(UpdatePurchaseItemError::InvalidChangedFields);
     }
-
-    let allowed = [
-        "name",
-        "amountYen",
-        "quantity",
-        "printedUnitPrice",
-        "categoryId",
-        "productVariantId",
-        "allocations",
-    ];
-    let mut seen = BTreeSet::new();
-    for field in &command.changed_fields {
-        if !allowed.contains(&field.as_str()) {
-            return Err(UpdatePurchaseItemError::InvalidChangedFields);
-        }
-        if !seen.insert(field.as_str()) {
-            return Err(UpdatePurchaseItemError::DuplicateChangedField);
-        }
+    for field in &changed_fields {
         if current
             .field_revisions
-            .get(field)
+            .get(*field)
             .copied()
             .unwrap_or_default()
             > command.base_revision
@@ -156,61 +165,41 @@ pub fn decide_update_purchase_item(
         }
     }
 
-    let has = |field: &str| command.changed_fields.iter().any(|value| value == field);
-    for (field, supplied) in [
-        ("name", command.name.is_some()),
-        ("amountYen", command.amount_yen.is_some()),
-        ("quantity", command.quantity_set),
-        ("printedUnitPrice", command.printed_unit_price_set),
-        ("categoryId", command.category_id_set),
-        ("productVariantId", command.product_variant_id_set),
-        ("allocations", command.allocations_set),
-    ] {
-        if has(field) && !supplied {
-            return Err(UpdatePurchaseItemError::MissingChangedValue);
-        }
-        if !has(field) && supplied {
-            return Err(UpdatePurchaseItemError::ExtraneousChangedValue);
-        }
-    }
-
-    let name = command.name.map(|value| value.trim().to_owned());
+    let name = match &command.name {
+        ValueChange::Unchanged => None,
+        ValueChange::Set(value) => Some(value.trim().to_owned()),
+    };
     if name
         .as_ref()
         .is_some_and(|value| value.is_empty() || value.chars().count() > 240)
     {
         return Err(UpdatePurchaseItemError::InvalidName);
     }
-    if command
-        .amount_yen
-        .is_some_and(|amount| !(0..=bookkeeping_domain::MAX_YEN).contains(&amount))
+    let amount_yen_change = match &command.amount_yen {
+        ValueChange::Unchanged => None,
+        ValueChange::Set(amount) => Some(*amount),
+    };
+    if amount_yen_change.is_some_and(|amount| !(0..=bookkeeping_domain::MAX_YEN).contains(&amount))
     {
         return Err(UpdatePurchaseItemError::InvalidAmount);
     }
-    if command.printed_unit_price_set
-        && let Some(price) = &command.printed_unit_price
+    if let OptionalValueChange::Set(price) = &command.printed_unit_price
         && !(0..=bookkeeping_domain::MAX_YEN).contains(&price.amount_yen)
     {
         return Err(UpdatePurchaseItemError::InvalidMeasure);
     }
-    validate_optional_id(command.category_id.as_deref())?;
-    validate_optional_id(command.product_variant_id.as_deref())?;
-    if (!command.category_id_set && command.category_id.is_some())
-        || (!command.product_variant_id_set && command.product_variant_id.is_some())
-        || (!command.quantity_set && command.quantity.is_some())
-        || (!command.printed_unit_price_set && command.printed_unit_price.is_some())
-    {
-        return Err(UpdatePurchaseItemError::ExtraneousChangedValue);
+    if let OptionalValueChange::Set(value) = &command.category_id {
+        validate_optional_id(Some(value))?;
+    }
+    if let OptionalValueChange::Set(value) = &command.product_variant_id {
+        validate_optional_id(Some(value))?;
     }
     if let Some(learning) = &command.product_learning {
-        if !has("productVariantId") {
+        if matches!(&command.product_variant_id, OptionalValueChange::Unchanged) {
             return Err(UpdatePurchaseItemError::ProductLearningRequiresVariantChange);
         }
         if !matches!(learning, &ProductLearning::ItemOnly)
-            && command
-                .product_variant_id
-                .as_ref()
-                .is_none_or(String::is_empty)
+            && !matches!(&command.product_variant_id, OptionalValueChange::Set(value) if !value.is_empty())
         {
             return Err(UpdatePurchaseItemError::ProductLearningRequiresLinkedVariant);
         }
@@ -222,20 +211,23 @@ pub fn decide_update_purchase_item(
         }
     }
 
-    let amount_yen = command.amount_yen.unwrap_or(current.amount_yen);
-    let allocations_changed = command.allocations_set
+    let amount_yen = amount_yen_change.unwrap_or(current.amount_yen);
+    let allocations_changed = !matches!(&command.allocations, ValueChange::Unchanged)
         || amount_yen != current.amount_yen
-        || (command.category_id_set || command.product_variant_id_set)
+        || (!matches!(&command.category_id, OptionalValueChange::Unchanged)
+            || !matches!(&command.product_variant_id, OptionalValueChange::Unchanged))
             && !current.allocation_override;
-    let allocation_override = current.allocation_override || command.allocations_set;
+    let allocation_override =
+        current.allocation_override || !matches!(&command.allocations, ValueChange::Unchanged);
     let (allocations, allocation_rule_id, allocation_rule_version) = if allocations_changed {
-        let basis = if command.allocations_set {
+        let basis = if let ValueChange::Set(weights) = &command.allocations {
             AllocationBasis {
-                weights: command.allocations.clone(),
+                weights: weights.clone(),
                 rule_id: None,
                 rule_version: default_basis.rule_version,
             }
-        } else if (command.category_id_set || command.product_variant_id_set)
+        } else if (!matches!(&command.category_id, OptionalValueChange::Unchanged)
+            || !matches!(&command.product_variant_id, OptionalValueChange::Unchanged))
             && !current.allocation_override
         {
             automatic_basis.unwrap_or_else(|| default_basis.clone())
@@ -274,21 +266,33 @@ pub fn decide_update_purchase_item(
         .checked_add(1)
         .ok_or(UpdatePurchaseItemError::InvalidRevision)?;
     let mut field_revisions = current.field_revisions;
-    for field in &command.changed_fields {
-        field_revisions.insert(field.clone(), revision);
+    for field in &changed_fields {
+        field_revisions.insert((*field).to_owned(), revision);
     }
     Ok(UpdatePurchaseItemDecision {
         revision,
         name,
-        amount_yen: command.amount_yen,
-        quantity: command.quantity_set.then_some(command.quantity),
-        printed_unit_price: command
-            .printed_unit_price_set
-            .then_some(command.printed_unit_price),
-        category_id: command.category_id_set.then_some(command.category_id),
-        product_variant_id: command
-            .product_variant_id_set
-            .then_some(command.product_variant_id),
+        amount_yen: amount_yen_change,
+        quantity: match command.quantity {
+            OptionalValueChange::Unchanged => None,
+            OptionalValueChange::Set(value) => Some(Some(value)),
+            OptionalValueChange::Clear => Some(None),
+        },
+        printed_unit_price: match command.printed_unit_price {
+            OptionalValueChange::Unchanged => None,
+            OptionalValueChange::Set(value) => Some(Some(value)),
+            OptionalValueChange::Clear => Some(None),
+        },
+        category_id: match command.category_id {
+            OptionalValueChange::Unchanged => None,
+            OptionalValueChange::Set(value) => Some(Some(value)),
+            OptionalValueChange::Clear => Some(None),
+        },
+        product_variant_id: match command.product_variant_id {
+            OptionalValueChange::Unchanged => None,
+            OptionalValueChange::Set(value) => Some(Some(value)),
+            OptionalValueChange::Clear => Some(None),
+        },
         product_learning: command.product_learning,
         allocation_override,
         allocations,
@@ -296,7 +300,7 @@ pub fn decide_update_purchase_item(
         allocation_rule_version,
         allocations_changed,
         field_revisions,
-        changed_fields: command.changed_fields,
+        changed_fields: changed_fields.into_iter().map(str::to_owned).collect(),
     })
 }
 
@@ -339,20 +343,14 @@ mod tests {
         UpdatePurchaseItemCommand {
             item_id: "item".to_owned(),
             base_revision: 1,
-            changed_fields: vec!["amountYen".to_owned()],
-            name: None,
-            amount_yen: Some(5),
-            quantity_set: false,
-            quantity: None,
-            printed_unit_price_set: false,
-            printed_unit_price: None,
-            category_id_set: false,
-            category_id: None,
-            product_variant_id_set: false,
-            product_variant_id: None,
+            name: ValueChange::Unchanged,
+            amount_yen: ValueChange::Set(5),
+            quantity: OptionalValueChange::Unchanged,
+            printed_unit_price: OptionalValueChange::Unchanged,
+            category_id: OptionalValueChange::Unchanged,
+            product_variant_id: OptionalValueChange::Unchanged,
             product_learning: None,
-            allocations_set: false,
-            allocations: Vec::new(),
+            allocations: ValueChange::Unchanged,
         }
     }
 
