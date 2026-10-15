@@ -98,6 +98,27 @@ func TestServiceUpdatePersistsRevisionEventAndRejectsClosedPeriod(t *testing.T) 
 	if updated.Merchant != updatedMerchant || updated.Revision != 2 {
 		t.Fatalf("purchase after update has merchant %q and revision %d; want %q and 2", updated.Merchant, updated.Revision, updatedMerchant)
 	}
+	bulkMerchant := "After bulk update"
+	bulkResult, err := service.BulkUpdate(ctx, BulkUpdateCommand{
+		ActorID: memberID.String(),
+		Targets: []BulkUpdateTarget{{
+			PurchaseID: purchaseID.String(), BaseRevision: updated.Revision,
+			Merchant: &bulkMerchant, ChangedFields: []string{updateFieldMerchant},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bulkResult.PurchaseIDs) != 1 || bulkResult.PurchaseIDs[0] != purchaseID.String() {
+		t.Fatalf("BulkUpdate returned purchase IDs %v; want [%s]", bulkResult.PurchaseIDs, purchaseID)
+	}
+	updated, err = models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Merchant != bulkMerchant || updated.Revision != 3 {
+		t.Fatalf("purchase after bulk update has merchant %q and revision %d; want %q and 3", updated.Merchant, updated.Revision, bulkMerchant)
+	}
 	events, err := models.HouseholdEvents.Query(sm.Where(psql.And(
 		models.HouseholdEvents.Columns.HouseholdID.EQ(psql.Arg(householdID)),
 		models.HouseholdEvents.Columns.EntityID.EQ(psql.Arg(purchaseID)),
@@ -105,8 +126,14 @@ func TestServiceUpdatePersistsRevisionEventAndRejectsClosedPeriod(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 1 || events[0].Type != "purchase.updated" || events[0].Revision != updated.Revision {
-		t.Fatalf("purchase events after update = %#v; want one purchase.updated event at revision 2", events)
+	seenRevisions := make(map[int64]bool, len(events))
+	for _, event := range events {
+		if event.Type == "purchase.updated" {
+			seenRevisions[event.Revision] = true
+		}
+	}
+	if len(events) != 2 || !seenRevisions[2] || !seenRevisions[updated.Revision] {
+		t.Fatalf("purchase events after updates = %#v; want purchase.updated events at revisions 2 and 3", events)
 	}
 
 	period, closed := "2026-10", "CLOSED"
@@ -128,7 +155,7 @@ func TestServiceUpdatePersistsRevisionEventAndRejectsClosedPeriod(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Merchant != updatedMerchant || updated.Revision != 2 {
-		t.Fatalf("purchase after failed update has merchant %q and revision %d; want %q and 2", updated.Merchant, updated.Revision, updatedMerchant)
+	if updated.Merchant != bulkMerchant || updated.Revision != 3 {
+		t.Fatalf("purchase after failed update has merchant %q and revision %d; want %q and 3", updated.Merchant, updated.Revision, bulkMerchant)
 	}
 }

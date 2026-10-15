@@ -3,7 +3,6 @@ package purchase
 import (
 	"context"
 	"database/sql"
-	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -13,9 +12,7 @@ import (
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
-	"github.com/stephenafamo/bob/dialect/psql/um"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
-	"github.com/stephenafamo/bob/types"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/inputvalidation"
 	"github.com/walnuts1018/horse/internal/application/txcleanup"
@@ -42,14 +39,14 @@ type BulkUpdateResult struct {
 }
 
 type bulkUpdateTargetState struct {
-	command        BulkUpdateTarget
-	id             gofrsuuid.UUID
-	observedHouse  gofrsuuid.UUID
-	observedAt     time.Time
-	targetAt       time.Time
-	purchase       *models.Purchase
-	payments       []Payment
-	updatePayments bool
+	command       BulkUpdateTarget
+	id            gofrsuuid.UUID
+	observedHouse gofrsuuid.UUID
+	observedAt    time.Time
+	targetAt      time.Time
+	purchase      *models.Purchase
+	plan          purchaseUpdatePlan
+	payments      []Payment
 }
 
 func (s *Service) BulkUpdate(ctx context.Context, command BulkUpdateCommand) (BulkUpdateResult, error) {
@@ -134,43 +131,17 @@ func (s *Service) BulkUpdate(ctx context.Context, command BulkUpdateCommand) (Bu
 		if purchase.Status != draftStatus && purchase.Status != postedStatus {
 			return BulkUpdateResult{}, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
 		}
-		if target.command.BaseRevision > purchase.Revision {
-			return BulkUpdateResult{}, ErrConflict
-		}
-		conflict, err := purchaseUpdateValuesConflict(purchase.FieldRevisions.Val, target.command.BaseRevision, target.command.ChangedFields)
+		target.plan, err = planPurchaseUpdate(
+			purchase, target.observedAt, target.command.BaseRevision, target.command.ChangedFields,
+			target.command.OccurredAt, target.command.DatePrecision, target.command.Merchant,
+		)
 		if err != nil {
 			return BulkUpdateResult{}, err
 		}
-		if conflict {
-			return BulkUpdateResult{}, ErrConflict
-		}
-		target.updatePayments = slices.Contains(target.command.ChangedFields, updateFieldPaymentAllocations)
-		if target.updatePayments {
+		if target.plan.updatesPayments {
 			payments := *target.command.PaymentAllocations
-			items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(target.id)))).All(ctx, executor)
-			if err != nil {
+			if err := validatePurchaseUpdatePaymentAmounts(ctx, executor, purchase, purchase.Status, payments); err != nil {
 				return BulkUpdateResult{}, err
-			}
-			var total int64
-			for _, item := range items {
-				var ok bool
-				total, ok = checkedAdd(total, item.AmountYen)
-				if !ok {
-					return BulkUpdateResult{}, fmt.Errorf("%w: purchase total is too large", ErrBadInput)
-				}
-			}
-			if purchase.Status == postedStatus {
-				var paid int64
-				for _, payment := range payments {
-					var ok bool
-					paid, ok = checkedAdd(paid, payment.AmountYen)
-					if !ok {
-						return BulkUpdateResult{}, fmt.Errorf("%w: payment total is too large", ErrBadInput)
-					}
-				}
-				if paid != total {
-					return BulkUpdateResult{}, fmt.Errorf("%w: payment allocations must equal purchase total", ErrBadInput)
-				}
 			}
 			target.payments, err = validatePayments(ctx, tx, householdID, payments)
 			if err != nil {
@@ -183,32 +154,7 @@ func (s *Service) BulkUpdate(ctx context.Context, command BulkUpdateCommand) (Bu
 	for index := range targets {
 		target := prepared[targets[index].id]
 		purchase := target.purchase
-		newRevision := purchase.Revision + 1
-		fieldRevisions, err := purchaseUpdateFieldRevisions(purchase.FieldRevisions.Val, target.command.ChangedFields, newRevision)
-		if err != nil {
-			return BulkUpdateResult{}, err
-		}
-		if target.command.OccurredAt != nil {
-			purchase.OccurredAt = target.targetAt
-		}
-		if target.command.DatePrecision != nil {
-			purchase.DatePrecision = *target.command.DatePrecision
-		}
-		if target.command.Merchant != nil {
-			purchase.Merchant = strings.TrimSpace(*target.command.Merchant)
-		}
-		paymentAccountID := purchase.PaymentAccountID
-		if target.updatePayments {
-			paymentAccountID = sql.Null[gofrsuuid.UUID]{}
-			if err := replaceUpdatePayments(ctx, executor, purchase, target.payments); err != nil {
-				return BulkUpdateResult{}, err
-			}
-		}
-		fieldValue := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(fieldRevisions)}
-		if _, err := models.Purchases.Update((&models.PurchaseSetter{
-			OccurredAt: &purchase.OccurredAt, DatePrecision: &purchase.DatePrecision, Merchant: &purchase.Merchant, PaymentAccountID: &paymentAccountID,
-			Revision: &newRevision, FieldRevisions: &fieldValue,
-		}).UpdateMod(), um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(target.id))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
+		if err := applyPurchaseUpdatePlan(ctx, executor, purchase, target.plan, target.payments); err != nil {
 			return BulkUpdateResult{}, err
 		}
 		if purchase.Status == postedStatus {
@@ -216,7 +162,7 @@ func (s *Service) BulkUpdate(ctx context.Context, command BulkUpdateCommand) (Bu
 				return BulkUpdateResult{}, err
 			}
 		}
-		if err := insertPurchaseUpdateEvent(ctx, executor, householdID, actorID, target.id, newRevision, target.command.ChangedFields); err != nil {
+		if err := insertPurchaseUpdateEvent(ctx, executor, householdID, actorID, target.id, target.plan.revision, target.command.ChangedFields); err != nil {
 			return BulkUpdateResult{}, err
 		}
 	}

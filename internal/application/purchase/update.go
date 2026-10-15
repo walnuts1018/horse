@@ -42,6 +42,14 @@ type purchaseUpdateValidationInput struct {
 	paymentAllocations *[]Payment
 }
 
+type purchaseUpdatePlan struct {
+	revision          int64
+	fieldRevisions    []byte
+	paymentAccountID  sql.Null[gofrsuuid.UUID]
+	updatesPayments   bool
+	accountingChanged bool
+}
+
 func validatePurchaseUpdateFields(input purchaseUpdateValidationInput) error {
 	if len(input.changedFields) == 0 {
 		return fmt.Errorf("%w: patch must contain a field", ErrBadInput)
@@ -142,85 +150,26 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 	if status != draftStatus && status != postedStatus {
 		return UpdateResult{}, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
 	}
-	if command.BaseRevision > purchase.Revision {
-		return UpdateResult{}, ErrConflict
-	}
-	conflict, err := purchaseUpdateValuesConflict(purchase.FieldRevisions.Val, command.BaseRevision, command.ChangedFields)
+	plan, err := planPurchaseUpdate(purchase, observed.OccurredAt, command.BaseRevision, command.ChangedFields, command.OccurredAt, command.DatePrecision, command.Merchant)
 	if err != nil {
 		return UpdateResult{}, err
 	}
-	if conflict {
-		return UpdateResult{}, ErrConflict
-	}
-	newRevision := purchase.Revision + 1
-	updatedFields, err := purchaseUpdateFieldRevisions(purchase.FieldRevisions.Val, command.ChangedFields, newRevision)
-	if err != nil {
-		return UpdateResult{}, err
-	}
-
-	updatePayments := slices.Contains(command.ChangedFields, updateFieldPaymentAllocations)
-	paymentAccountID := purchase.PaymentAccountID
-	if updatePayments {
-		paymentAccountID = sql.Null[gofrsuuid.UUID]{}
-	}
-	if command.OccurredAt != nil {
-		purchase.OccurredAt = *command.OccurredAt
-	}
-	if command.DatePrecision != nil {
-		purchase.DatePrecision = *command.DatePrecision
-	}
-	if command.Merchant != nil {
-		merchant := strings.TrimSpace(*command.Merchant)
-		purchase.Merchant = merchant
-	}
-	purchaseAccountingChanged := updatePayments || !purchase.OccurredAt.Equal(observed.OccurredAt)
 	if accountingChanged != nil {
-		*accountingChanged = *accountingChanged || purchaseAccountingChanged
+		*accountingChanged = *accountingChanged || plan.accountingChanged
 	}
-	if updatePayments {
-		payments := *command.PaymentAllocations
-		var total int64
-		items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
+	purchaseAccountingChanged := plan.accountingChanged
+	var payments []Payment
+	if plan.updatesPayments {
+		payments = *command.PaymentAllocations
+		if err := validatePurchaseUpdatePaymentAmounts(ctx, executor, purchase, status, payments); err != nil {
+			return UpdateResult{}, err
+		}
+		payments, err = validatePayments(ctx, tx, purchase.HouseholdID, payments)
 		if err != nil {
 			return UpdateResult{}, err
 		}
-		for _, item := range items {
-			var ok bool
-			total, ok = checkedAdd(total, item.AmountYen)
-			if !ok {
-				return UpdateResult{}, fmt.Errorf("%w: purchase total is too large", ErrBadInput)
-			}
-		}
-		if status == postedStatus {
-			var paid int64
-			for _, payment := range payments {
-				var ok bool
-				paid, ok = checkedAdd(paid, payment.AmountYen)
-				if !ok {
-					return UpdateResult{}, fmt.Errorf("%w: payment total is too large", ErrBadInput)
-				}
-			}
-			if paid != total {
-				return UpdateResult{}, fmt.Errorf("%w: payment allocations must equal purchase total", ErrBadInput)
-			}
-		}
-		validated, err := validatePayments(ctx, tx, purchase.HouseholdID, payments)
-		if err != nil {
-			return UpdateResult{}, err
-		}
-		if err := replaceUpdatePayments(ctx, executor, purchase, validated); err != nil {
-			return UpdateResult{}, err
-		}
 	}
-
-	fieldRevisions := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(updatedFields)}
-	if _, err := models.Purchases.Update((&models.PurchaseSetter{
-		OccurredAt: &purchase.OccurredAt, DatePrecision: &purchase.DatePrecision, Merchant: &purchase.Merchant, PaymentAccountID: &paymentAccountID,
-		Revision: &newRevision, FieldRevisions: &fieldRevisions,
-	}).UpdateMod(),
-		um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID))),
-		um.SetCol("updated_at").To(psql.F("now")),
-	).Exec(ctx, executor); err != nil {
+	if err := applyPurchaseUpdatePlan(ctx, executor, purchase, plan, payments); err != nil {
 		return UpdateResult{}, err
 	}
 	if status == postedStatus && !deferAccountingSync {
@@ -238,7 +187,7 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 			}
 		}
 	}
-	if err := insertPurchaseUpdateEvent(ctx, executor, purchase.HouseholdID, actorUUID, purchaseUUID, newRevision, command.ChangedFields); err != nil {
+	if err := insertPurchaseUpdateEvent(ctx, executor, purchase.HouseholdID, actorUUID, purchaseUUID, plan.revision, command.ChangedFields); err != nil {
 		return UpdateResult{}, err
 	}
 	if ownsTransaction {
@@ -247,6 +196,81 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 		}
 	}
 	return UpdateResult{PurchaseID: command.PurchaseID}, nil
+}
+
+func planPurchaseUpdate(purchase *models.Purchase, accountingBaseline time.Time, baseRevision int64, changedFields []string, occurredAt *time.Time, datePrecision, merchant *string) (purchaseUpdatePlan, error) {
+	if baseRevision > purchase.Revision {
+		return purchaseUpdatePlan{}, ErrConflict
+	}
+	conflict, err := purchaseUpdateValuesConflict(purchase.FieldRevisions.Val, baseRevision, changedFields)
+	if err != nil {
+		return purchaseUpdatePlan{}, err
+	}
+	if conflict {
+		return purchaseUpdatePlan{}, ErrConflict
+	}
+	revision := purchase.Revision + 1
+	fieldRevisions, err := purchaseUpdateFieldRevisions(purchase.FieldRevisions.Val, changedFields, revision)
+	if err != nil {
+		return purchaseUpdatePlan{}, err
+	}
+	updatesPayments := slices.Contains(changedFields, updateFieldPaymentAllocations)
+	paymentAccountID := purchase.PaymentAccountID
+	if updatesPayments {
+		paymentAccountID = sql.Null[gofrsuuid.UUID]{}
+	}
+	if occurredAt != nil {
+		purchase.OccurredAt = *occurredAt
+	}
+	if datePrecision != nil {
+		purchase.DatePrecision = *datePrecision
+	}
+	if merchant != nil {
+		purchase.Merchant = strings.TrimSpace(*merchant)
+	}
+	return purchaseUpdatePlan{
+		revision: revision, fieldRevisions: fieldRevisions, paymentAccountID: paymentAccountID,
+		updatesPayments: updatesPayments, accountingChanged: updatesPayments || !purchase.OccurredAt.Equal(accountingBaseline),
+	}, nil
+}
+
+func validatePurchaseUpdatePaymentAmounts(ctx context.Context, executor bob.Executor, purchase *models.Purchase, status string, payments []Payment) error {
+	total, err := purchaseItemsTotal(ctx, executor, purchase.ID)
+	if err != nil {
+		return err
+	}
+	if status != postedStatus {
+		return nil
+	}
+	var paid int64
+	for _, payment := range payments {
+		var ok bool
+		paid, ok = checkedAdd(paid, payment.AmountYen)
+		if !ok {
+			return fmt.Errorf("%w: payment total is too large", ErrBadInput)
+		}
+	}
+	if paid != total {
+		return fmt.Errorf("%w: payment allocations must equal purchase total", ErrBadInput)
+	}
+	return nil
+}
+
+func applyPurchaseUpdatePlan(ctx context.Context, executor bob.Executor, purchase *models.Purchase, plan purchaseUpdatePlan, payments []Payment) error {
+	if plan.updatesPayments {
+		if err := replaceUpdatePayments(ctx, executor, purchase, payments); err != nil {
+			return err
+		}
+	}
+	fieldRevisions := types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(plan.fieldRevisions)}
+	_, err := models.Purchases.Update((&models.PurchaseSetter{
+		OccurredAt: &purchase.OccurredAt, DatePrecision: &purchase.DatePrecision, Merchant: &purchase.Merchant, PaymentAccountID: &plan.paymentAccountID,
+		Revision: &plan.revision, FieldRevisions: &fieldRevisions,
+	}).UpdateMod(),
+		um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchase.ID))),
+		um.SetCol("updated_at").To(psql.F("now")),
+	).Exec(ctx, executor)
+	return err
 }
 
 func updatePostedPurchaseLedgerEntries(ctx context.Context, executor bob.Executor, purchase *models.Purchase, total int64) error {
