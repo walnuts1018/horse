@@ -4,8 +4,9 @@ use diesel::{
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use household_workflows::membership::{
-    LeaveHouseholdCommand, MembershipChange, MembershipError, TransferOwnerCommand,
-    decide_leave_household, decide_transfer_owner,
+    LeaveHouseholdCommand, MembershipChange, MembershipError, RemoveHouseholdMemberCommand,
+    TransferOwnerCommand, decide_leave_household, decide_remove_household_member,
+    decide_transfer_owner,
 };
 use uuid::Uuid;
 
@@ -96,6 +97,89 @@ pub async fn leave_household(
                 member_id,
                 member_id,
                 "household.member.left",
+                vec![Some("members".to_owned())],
+            )
+            .await?;
+            Ok(PersistedMembershipChange {
+                household_id: household.to_string(),
+            })
+        })
+        .await
+}
+
+pub async fn remove_household_member(
+    pool: &PgPool,
+    command: RemoveHouseholdMemberCommand,
+) -> Result<PersistedMembershipChange, HouseholdMembershipError> {
+    let household_id = parse_uuid(&command.household_id, "household_id")?;
+    let actor_id = parse_uuid(&command.actor_id, "actor_id")?;
+    let member_id = parse_uuid(&command.member_id, "member_id")?;
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|error| HouseholdMembershipError::Pool(error.to_string()))?;
+    (&mut *pooled)
+        .transaction::<PersistedMembershipChange, HouseholdMembershipError, _>(async |conn| {
+            use public::{household_members as members, households};
+            let household = households::table
+                .filter(households::id.eq(household_id))
+                .for_update()
+                .select(households::id)
+                .first::<Uuid>(&mut *conn)
+                .await
+                .optional()?
+                .ok_or(HouseholdMembershipError::HouseholdNotFound)?;
+            let actor_role = members::table
+                .filter(members::household_id.eq(household_id))
+                .filter(members::member_id.eq(actor_id))
+                .filter(members::left_at.is_null())
+                .select(members::role)
+                .first::<String>(&mut *conn)
+                .await
+                .optional()?;
+            let target_role = members::table
+                .filter(members::household_id.eq(household_id))
+                .filter(members::member_id.eq(member_id))
+                .filter(members::left_at.is_null())
+                .for_update()
+                .select(members::role)
+                .first::<String>(&mut *conn)
+                .await
+                .optional()?;
+            let owners = members::table
+                .filter(members::household_id.eq(household_id))
+                .filter(members::left_at.is_null())
+                .filter(members::role.eq("OWNER"))
+                .count()
+                .get_result::<i64>(&mut *conn)
+                .await?;
+            let referenced = has_active_funding_reference(conn, household_id, member_id).await?;
+            decide_remove_household_member(
+                command,
+                actor_role.as_deref(),
+                target_role.as_deref(),
+                usize::try_from(owners).unwrap_or(0),
+                referenced,
+            )
+            .map_err(map_workflow_error)?;
+            let affected = diesel::update(
+                members::table
+                    .filter(members::household_id.eq(household_id))
+                    .filter(members::member_id.eq(member_id))
+                    .filter(members::left_at.is_null()),
+            )
+            .set(members::left_at.eq(now))
+            .execute(&mut *conn)
+            .await?;
+            if affected != 1 {
+                return Err(HouseholdMembershipError::MemberNotFound);
+            }
+            record_change(
+                conn,
+                household_id,
+                member_id,
+                actor_id,
+                "household.member.removed",
                 vec![Some("members".to_owned())],
             )
             .await?;

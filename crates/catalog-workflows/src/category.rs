@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Category {
     pub id: String,
@@ -18,7 +20,7 @@ macro_rules! identifier {
         impl $type_name {
             pub fn new(value: impl Into<String>) -> Result<Self, $error_name> {
                 let value = value.into();
-                if value.is_empty() {
+                if Uuid::parse_str(&value).is_err() {
                     return Err($error_name);
                 }
                 Ok(Self(value))

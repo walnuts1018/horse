@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateConceptCommand {
     pub actor_id: String,
@@ -117,5 +119,5 @@ fn trim_optional(value: Option<String>) -> Option<String> {
 }
 
 fn validate_id(value: &str) -> Result<(), ()> {
-    if value.is_empty() { Err(()) } else { Ok(()) }
+    Uuid::parse_str(value).map(|_| ()).map_err(|_| ())
 }

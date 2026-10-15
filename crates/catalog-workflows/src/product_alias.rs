@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetProductAliasCommand {
     pub actor_id: String,
@@ -29,13 +31,13 @@ pub enum SetProductAliasError {
 pub fn decide_set_product_alias(
     command: SetProductAliasCommand,
 ) -> Result<SetProductAliasDecision, SetProductAliasError> {
-    if command.actor_id.is_empty() {
+    if Uuid::parse_str(&command.actor_id).is_err() {
         return Err(SetProductAliasError::InvalidActorId);
     }
-    if command.household_id.is_empty() {
+    if Uuid::parse_str(&command.household_id).is_err() {
         return Err(SetProductAliasError::InvalidHouseholdId);
     }
-    if command.variant_id.is_empty() {
+    if Uuid::parse_str(&command.variant_id).is_err() {
         return Err(SetProductAliasError::InvalidVariantId);
     }
 
@@ -74,9 +76,9 @@ mod tests {
     #[test]
     fn normalizes_merchant_and_alias_for_persistence() {
         let decision = decide_set_product_alias(SetProductAliasCommand {
-            actor_id: "actor".to_owned(),
-            household_id: "household".to_owned(),
-            variant_id: "variant".to_owned(),
+            actor_id: "00000000-0000-4000-8000-000000000001".to_owned(),
+            household_id: "00000000-0000-4000-8000-000000000002".to_owned(),
+            variant_id: "00000000-0000-4000-8000-000000000003".to_owned(),
             merchant: "  SHOP   NAME ".to_owned(),
             alias: "  Product   Name  ".to_owned(),
         })

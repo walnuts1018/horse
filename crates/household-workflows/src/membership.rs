@@ -5,6 +5,13 @@ pub struct LeaveHouseholdCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveHouseholdMemberCommand {
+    pub actor_id: String,
+    pub household_id: String,
+    pub member_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransferOwnerCommand {
     pub actor_id: String,
     pub household_id: String,
@@ -22,6 +29,7 @@ pub struct MembershipChangeDecision {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MembershipChange {
     Leave,
+    Remove,
     TransferOwner { new_owner_was_owner: bool },
 }
 
@@ -57,6 +65,36 @@ pub fn decide_leave_household(
         household_id: command.household_id,
         member_id: command.member_id,
         change: MembershipChange::Leave,
+    })
+}
+
+pub fn decide_remove_household_member(
+    command: RemoveHouseholdMemberCommand,
+    actor_role: Option<&str>,
+    target_role: Option<&str>,
+    owner_count: usize,
+    has_active_funding_reference: bool,
+) -> Result<MembershipChangeDecision, MembershipError> {
+    if command.actor_id.is_empty()
+        || command.household_id.is_empty()
+        || command.member_id.is_empty()
+    {
+        return Err(MembershipError::InvalidIdentifier);
+    }
+    if actor_role != Some("OWNER") || target_role.is_none() {
+        return Err(MembershipError::Forbidden);
+    }
+    if target_role == Some("OWNER") && owner_count <= 1 {
+        return Err(MembershipError::LastOwner);
+    }
+    if has_active_funding_reference {
+        return Err(MembershipError::ReferencedMember);
+    }
+    Ok(MembershipChangeDecision {
+        actor_id: command.actor_id,
+        household_id: command.household_id,
+        member_id: command.member_id,
+        change: MembershipChange::Remove,
     })
 }
 
