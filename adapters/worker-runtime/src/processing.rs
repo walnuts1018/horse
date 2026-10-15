@@ -1170,12 +1170,23 @@ fn evidence_guidance(result: &Value) -> String {
                 "page={page} top={top:.4} left={left:.4} text={text:?}\n"
             ));
             if guidance.len() >= 6_000 {
-                guidance.truncate(6_000);
+                truncate_to_byte_limit(&mut guidance, 6_000);
                 break;
             }
         }
     }
     guidance
+}
+
+fn truncate_to_byte_limit(value: &mut String, byte_limit: usize) {
+    if value.len() <= byte_limit {
+        return;
+    }
+    let mut boundary = byte_limit;
+    while !value.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    value.truncate(boundary);
 }
 
 fn needs_pro_review(result: &Value) -> bool {
@@ -2929,5 +2940,21 @@ fn statement_kind_instruction(source_kind: &str) -> &'static str {
         "Classify each row as CARD_PURCHASE or REFUND. Preserve the printed signed amount."
     } else {
         "Classify each row as PURCHASE_PAYMENT, CARD_BILL_PAYMENT, ACCOUNT_TRANSFER, LOAN, REPAYMENT, EXTERNAL_INCOME, REFUND or UNCLASSIFIED. Use EXTERNAL_INCOME only for credits from outside the household, and ACCOUNT_TRANSFER for movement between household accounts. Preserve the printed signed amount."
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_to_byte_limit;
+
+    #[test]
+    fn truncates_multibyte_text_at_the_last_valid_boundary() {
+        let mut value = format!("{}あtail", "x".repeat(5_999));
+
+        truncate_to_byte_limit(&mut value, 6_000);
+
+        assert_eq!(value.len(), 5_999);
+        assert!(value.is_char_boundary(value.len()));
+        assert!(value.ends_with('x'));
     }
 }
