@@ -1,7 +1,7 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use catalog_application::category as application_category;
-use catalog_application::category::Category as DomainCategory;
+use catalog_application::category::CategoryView as DomainCategory;
 use catalog_application::category::{
     CreateCategoryCommand, SetCategoryArchivedCommand, UpdateCategoryNameCommand,
 };
@@ -201,16 +201,17 @@ pub async fn set_category_archived(
 impl From<DomainCategory> for Category {
     fn from(value: DomainCategory) -> Self {
         Self {
-            id: encode_node_id("Category", &value.id)
+            id: encode_node_id("Category", value.id.as_str())
                 .expect("persisted category id must be a UUID")
                 .into(),
-            name: value.name,
+            name: value.name.as_str().to_owned(),
             parent_id: value
                 .parent_id
-                .as_deref()
+                .as_ref()
+                .map(|id| id.as_str())
                 .and_then(|id| encode_node_id("Category", id).ok())
                 .map(Into::into),
-            archived: value.archived,
+            archived: value.status.is_archived(),
         }
     }
 }

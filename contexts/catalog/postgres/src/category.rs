@@ -1,5 +1,5 @@
 use catalog_application::category::{
-    ActorId, Category, CategoryError, CategoryEvent, CategoryId, CategoryName,
+    ActorId, CategoryError, CategoryEvent, CategoryId, CategoryName, CategoryView,
     CreateCategoryDecision, CreateCategoryOperations, HouseholdId, LoadedCategory,
     SetCategoryArchivedDecision, SetCategoryArchivedOperations, UpdateCategoryNameCommand,
     UpdateCategoryNameDecision, UpdateCategoryNameOperations,
@@ -21,19 +21,19 @@ struct PersistedCategory {
     archived: bool,
 }
 
-impl TryFrom<PersistedCategory> for Category {
+impl TryFrom<PersistedCategory> for CategoryView {
     type Error = CategoryWorkflowError;
 
     // DB復元値を無検証で信用せず、Smart Constructorを通して制約を再確認する。
     fn try_from(category: PersistedCategory) -> Result<Self, Self::Error> {
-        CategoryName::new(&category.name).map_err(|_| CategoryWorkflowError::CorruptStoredData)?;
-        Ok(Self {
-            id: category.id.to_string(),
-            household_id: category.household_id.to_string(),
-            parent_id: category.parent_id.map(|id| id.to_string()),
-            name: category.name,
-            archived: category.archived,
-        })
+        CategoryView::new(
+            category.id.to_string(),
+            category.household_id.to_string(),
+            category.parent_id.map(|id| id.to_string()),
+            category.name,
+            category.archived,
+        )
+        .map_err(|_| CategoryWorkflowError::CorruptStoredData)
     }
 }
 
@@ -161,7 +161,10 @@ impl CreateCategoryOperations for PostgresCreateCategoryOperations<'_> {
         Ok(())
     }
 
-    async fn persist(&mut self, decision: CreateCategoryDecision) -> Result<Category, Self::Error> {
+    async fn persist(
+        &mut self,
+        decision: CreateCategoryDecision,
+    ) -> Result<CategoryView, Self::Error> {
         use public::categories::dsl as categories;
         use public::household_events::dsl as events;
 
@@ -201,7 +204,7 @@ impl CreateCategoryOperations for PostgresCreateCategoryOperations<'_> {
             .execute(self.conn)
             .await?;
 
-        Ok(Category::try_from(PersistedCategory {
+        Ok(CategoryView::try_from(PersistedCategory {
             id: category_id,
             household_id,
             parent_id,
@@ -265,7 +268,7 @@ impl UpdateCategoryNameOperations for PostgresUpdateCategoryNameOperations<'_> {
         &mut self,
         category: LoadedCategory,
         decision: UpdateCategoryNameDecision,
-    ) -> Result<Category, Self::Error> {
+    ) -> Result<CategoryView, Self::Error> {
         use public::categories::dsl as categories;
         use public::household_events::dsl as events;
 
@@ -298,13 +301,14 @@ impl UpdateCategoryNameOperations for PostgresUpdateCategoryNameOperations<'_> {
             .execute(self.conn)
             .await?;
 
-        Ok(Category {
-            id: category.id.as_str().to_owned(),
-            household_id: category.household_id.as_str().to_owned(),
-            parent_id: category.parent_id.map(|id| id.as_str().to_owned()),
-            name: decision.name.as_str().to_owned(),
-            archived: category.archived,
-        })
+        CategoryView::new(
+            category.id.as_str(),
+            category.household_id.as_str(),
+            category.parent_id.map(|id| id.as_str().to_owned()),
+            decision.name.as_str(),
+            category.status.is_archived(),
+        )
+        .map_err(|_| CategoryWorkflowError::InvariantViolation("category"))
     }
 }
 
@@ -362,7 +366,7 @@ impl SetCategoryArchivedOperations for PostgresSetCategoryArchivedOperations<'_>
         &mut self,
         category: LoadedCategory,
         decision: SetCategoryArchivedDecision,
-    ) -> Result<Category, Self::Error> {
+    ) -> Result<CategoryView, Self::Error> {
         use public::categories::dsl as categories;
         use public::household_events::dsl as events;
 
@@ -395,13 +399,14 @@ impl SetCategoryArchivedOperations for PostgresSetCategoryArchivedOperations<'_>
             .execute(self.conn)
             .await?;
 
-        Ok(Category {
-            id: category.id.as_str().to_owned(),
-            household_id: category.household_id.as_str().to_owned(),
-            parent_id: category.parent_id.map(|id| id.as_str().to_owned()),
-            name: category.name.as_str().to_owned(),
-            archived: decision.archived,
-        })
+        CategoryView::new(
+            category.id.as_str(),
+            category.household_id.as_str(),
+            category.parent_id.map(|id| id.as_str().to_owned()),
+            category.name.as_str(),
+            decision.archived,
+        )
+        .map_err(|_| CategoryWorkflowError::InvariantViolation("category"))
     }
 }
 
@@ -419,7 +424,11 @@ fn loaded_category(
             .transpose()
             .map_err(|_| CategoryWorkflowError::CorruptStoredData)?,
         name: CategoryName::new(row.3).map_err(|_| CategoryWorkflowError::CorruptStoredData)?,
-        archived: row.4,
+        status: if row.4 {
+            catalog_application::category::CategoryStatus::Archived
+        } else {
+            catalog_application::category::CategoryStatus::Active
+        },
     })
 }
 

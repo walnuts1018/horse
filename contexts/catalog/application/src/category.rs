@@ -1,12 +1,12 @@
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Category {
-    pub id: String,
-    pub household_id: String,
-    pub parent_id: Option<String>,
-    pub name: String,
-    pub archived: bool,
+pub struct CategoryView {
+    pub id: CategoryId,
+    pub household_id: HouseholdId,
+    pub parent_id: Option<CategoryId>,
+    pub name: CategoryName,
+    pub status: CategoryStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,17 +15,37 @@ pub struct LoadedCategory {
     pub household_id: HouseholdId,
     pub parent_id: Option<CategoryId>,
     pub name: CategoryName,
-    pub archived: bool,
+    pub status: CategoryStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CategoryStatus {
+    Active,
+    Archived,
+}
+
+impl CategoryStatus {
+    pub fn is_archived(self) -> bool {
+        matches!(self, Self::Archived)
+    }
+
+    fn from_archived(archived: bool) -> Self {
+        if archived {
+            Self::Archived
+        } else {
+            Self::Active
+        }
+    }
 }
 
 impl LoadedCategory {
-    fn into_category(self) -> Category {
-        Category {
-            id: self.id.as_str().to_owned(),
-            household_id: self.household_id.as_str().to_owned(),
-            parent_id: self.parent_id.map(|id| id.as_str().to_owned()),
-            name: self.name.as_str().to_owned(),
-            archived: self.archived,
+    fn into_category(self) -> CategoryView {
+        CategoryView {
+            id: self.id,
+            household_id: self.household_id,
+            parent_id: self.parent_id,
+            name: self.name,
+            status: self.status,
         }
     }
 }
@@ -57,6 +77,28 @@ macro_rules! identifier {
 identifier!(ActorId, InvalidActorId);
 identifier!(HouseholdId, InvalidHouseholdId);
 identifier!(CategoryId, InvalidCategoryId);
+
+impl CategoryView {
+    pub fn new(
+        id: impl Into<String>,
+        household_id: impl Into<String>,
+        parent_id: Option<String>,
+        name: impl Into<String>,
+        archived: bool,
+    ) -> Result<Self, CategoryError> {
+        Ok(Self {
+            id: CategoryId::new(id).map_err(|_| CategoryError::InvalidCategoryId)?,
+            household_id: HouseholdId::new(household_id)
+                .map_err(|_| CategoryError::InvalidHouseholdId)?,
+            parent_id: parent_id
+                .map(CategoryId::new)
+                .transpose()
+                .map_err(|_| CategoryError::InvalidParentId)?,
+            name: CategoryName::new(name).map_err(|_| CategoryError::InvalidName)?,
+            status: CategoryStatus::from_archived(archived),
+        })
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CategoryName(String);
@@ -255,13 +297,16 @@ pub trait CreateCategoryOperations {
         household_id: &HouseholdId,
         parent_id: &CategoryId,
     ) -> Result<(), Self::Error>;
-    async fn persist(&mut self, decision: CreateCategoryDecision) -> Result<Category, Self::Error>;
+    async fn persist(
+        &mut self,
+        decision: CreateCategoryDecision,
+    ) -> Result<CategoryView, Self::Error>;
 }
 
 pub async fn create_category<O: CreateCategoryOperations>(
     operations: &mut O,
     command: CreateCategoryCommand,
-) -> Result<Category, O::Error> {
+) -> Result<CategoryView, O::Error> {
     let decision = decide_create_category(command)?;
     operations.load_household(&decision.household_id).await?;
     operations
@@ -291,13 +336,13 @@ pub trait UpdateCategoryNameOperations {
         &mut self,
         category: LoadedCategory,
         decision: UpdateCategoryNameDecision,
-    ) -> Result<Category, Self::Error>;
+    ) -> Result<CategoryView, Self::Error>;
 }
 
 pub async fn update_category_name<O: UpdateCategoryNameOperations>(
     operations: &mut O,
     command: UpdateCategoryNameCommand,
-) -> Result<Category, O::Error> {
+) -> Result<CategoryView, O::Error> {
     let decision = decide_update_category_name(command)?;
     let category = operations.load_category(&decision.category_id).await?;
     operations
@@ -325,13 +370,13 @@ pub trait SetCategoryArchivedOperations {
         &mut self,
         category: LoadedCategory,
         decision: SetCategoryArchivedDecision,
-    ) -> Result<Category, Self::Error>;
+    ) -> Result<CategoryView, Self::Error>;
 }
 
 pub async fn set_category_archived<O: SetCategoryArchivedOperations>(
     operations: &mut O,
     command: SetCategoryArchivedCommand,
-) -> Result<Category, O::Error> {
+) -> Result<CategoryView, O::Error> {
     let decision = decide_set_category_archived(command)?;
     let category = operations.load_category(&decision.category_id).await?;
     operations
