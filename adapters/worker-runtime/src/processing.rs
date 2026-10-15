@@ -42,10 +42,9 @@ pub struct ProcessConfig {
 
 impl ProcessConfig {
     pub fn from_env() -> Result<Self, String> {
-        let gemini_enabled = env::var("GEMINI_ENABLED")
-            .unwrap_or_else(|_| "false".to_owned())
-            .parse::<bool>()
-            .map_err(|_| "GEMINI_ENABLED must be a boolean".to_owned())?;
+        let gemini_enabled =
+            parse_bool(&env::var("GEMINI_ENABLED").unwrap_or_else(|_| "false".to_owned()))
+                .ok_or_else(|| "GEMINI_ENABLED must be a boolean".to_owned())?;
         let quota_limits =
             parse_quota_limits(&env::var("GEMINI_QUOTA_LIMITS").unwrap_or_default())?;
         let usd_jpy_rate = env::var("USDJPY_RATE")
@@ -1543,6 +1542,14 @@ fn parse_quota_limits(raw: &str) -> Result<HashMap<(String, String), QuotaLimit>
         );
     }
     Ok(limits)
+}
+
+fn parse_bool(value: &str) -> Option<bool> {
+    match value {
+        "1" | "t" | "T" | "TRUE" | "true" | "True" => Some(true),
+        "0" | "f" | "F" | "FALSE" | "false" | "False" => Some(false),
+        _ => None,
+    }
 }
 
 fn apply_cost_snapshot(

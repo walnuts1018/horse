@@ -162,48 +162,59 @@ impl ClaimExtractionJobOperations for PostgresClaimExtractionJobOperations<'_> {
         use public::extraction_jobs::dsl as jobs;
 
         let now = db_time(now_ms)?;
-        let mut query = jobs::extraction_jobs
-            .filter(jobs::failure_count.lt(jobs::max_attempts))
-            .filter(jobs::status.eq("queued"))
-            .filter(jobs::available_at.le(now))
-            .order_by(jobs::available_at.asc())
-            .then_order_by(jobs::id.asc())
-            .for_update()
-            .skip_locked()
-            .into_boxed();
-        if let Some(job_id) = job_id {
-            query = query.filter(jobs::id.eq(parse_uuid(job_id, "job_id")?));
+        use public::source_documents::dsl as documents;
+        let local_document_ids = documents::source_documents
+            .filter(documents::mime_type.eq("text/csv"))
+            .filter(documents::source_kind.eq_any(["card", "bank"]))
+            .select(documents::id);
+        macro_rules! candidate_query {
+            ($($filter:expr),*) => {
+                jobs::extraction_jobs
+                    .filter(jobs::failure_count.lt(jobs::max_attempts))
+                    .filter(jobs::status.eq("queued"))
+                    .filter(jobs::available_at.le(now))
+                    $(.filter($filter))*
+                    .order_by(jobs::available_at.asc())
+                    .then_order_by(jobs::id.asc())
+                    .for_update()
+                    .skip_locked()
+                    .select((
+                        jobs::id,
+                        jobs::household_id,
+                        jobs::source_document_id,
+                        jobs::version,
+                        jobs::status,
+                        jobs::provider,
+                        jobs::model,
+                        jobs::request,
+                        jobs::result,
+                        jobs::attempt_count,
+                        jobs::max_attempts,
+                        jobs::failure_count,
+                        jobs::available_at,
+                        jobs::lease_token,
+                        jobs::lease_expires_at,
+                    ))
+                    .first::<JobRow>(self.conn)
+                    .await
+                    .optional()
+            };
         }
-        if local_csv_only {
-            use public::source_documents::dsl as documents;
-            query = query.filter(jobs::source_document_id.eq_any(
-                documents::source_documents
-                    .filter(documents::mime_type.eq("text/csv"))
-                    .filter(documents::source_kind.eq_any(["card", "bank"]))
-                    .select(documents::id),
-            ));
-        }
-        let row = query
-            .select((
-                jobs::id,
-                jobs::household_id,
-                jobs::source_document_id,
-                jobs::version,
-                jobs::status,
-                jobs::provider,
-                jobs::model,
-                jobs::request,
-                jobs::result,
-                jobs::attempt_count,
-                jobs::max_attempts,
-                jobs::failure_count,
-                jobs::available_at,
-                jobs::lease_token,
-                jobs::lease_expires_at,
-            ))
-            .first::<JobRow>(self.conn)
-            .await
-            .optional()?;
+        let row = match (job_id, local_csv_only) {
+            (Some(job_id), true) => {
+                let id = parse_uuid(job_id, "job_id")?;
+                candidate_query!(
+                    jobs::id.eq(id),
+                    jobs::source_document_id.eq_any(local_document_ids)
+                )?
+            }
+            (Some(job_id), false) => {
+                let id = parse_uuid(job_id, "job_id")?;
+                candidate_query!(jobs::id.eq(id))?
+            }
+            (None, true) => candidate_query!(jobs::source_document_id.eq_any(local_document_ids))?,
+            (None, false) => candidate_query!()?,
+        };
         let Some(row) = row else {
             return Ok(None);
         };

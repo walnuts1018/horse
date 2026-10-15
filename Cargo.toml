@@ -15,6 +15,7 @@ members = [
     "contexts/evidence/postgres",
     "contexts/cross-context/postgres",
     "platform/postgres-common",
+    "platform/test-infra",
     "adapters/ai",
     "adapters/graphql",
     "adapters/http",
@@ -52,3 +53,4 @@ tokio-rustls = "0.26"
 webpki-roots = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+testcontainers-modules = { version = "0.15", default-features = false, features = ["postgres"] }

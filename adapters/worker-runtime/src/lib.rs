@@ -80,7 +80,11 @@ impl Worker {
                 claim_next_local_extraction_job(&self.pool, now).await
             };
             match claimed {
-                Ok(Some(job)) => self.process_one(job).await,
+                Ok(Some(job)) => {
+                    if let Err(error) = self.process_one(job).await {
+                        tracing::error!(error = %error, "save extraction result failed");
+                    }
+                }
                 Ok(None) => {
                     tokio::select! {
                         _ = tokio::time::sleep(Duration::from_secs(1)) => {},
@@ -114,16 +118,18 @@ impl Worker {
             !self.config.gemini_enabled(),
             Utc::now(),
         )
-            .await
-            .map_err(|error| std::io::Error::other(format!("claim notified extraction job: {error:?}")))?
+        .await
+        .map_err(|error| {
+            std::io::Error::other(format!("claim notified extraction job: {error:?}"))
+        })?
         else {
             return Ok(false);
         };
-        self.process_one(job).await;
+        self.process_one(job).await.map_err(std::io::Error::other)?;
         Ok(true)
     }
 
-    async fn process_one(&self, job: ClaimedExtractionJob) {
+    async fn process_one(&self, job: ClaimedExtractionJob) -> Result<(), String> {
         let success_job = job.clone();
         let failure_job = job.clone();
         let pool = &self.pool;
@@ -160,7 +166,8 @@ impl Worker {
                 tracing::warn!(job_id = %job.id, attempt = job.attempt_no, "extraction completion rejected by lease fence")
             }
             ExtractionExecutionOutcome::Succeeded(Err(error)) => {
-                tracing::error!(job_id = %job.id, error = ?error, "save extraction result failed")
+                tracing::error!(job_id = %job.id, error = ?error, "save extraction result failed");
+                return Err(format!("save extraction result failed: {error:?}"));
             }
             ExtractionExecutionOutcome::Failed {
                 failure,
@@ -178,9 +185,11 @@ impl Worker {
                 persistence: Err(error),
                 ..
             } => {
-                tracing::error!(job_id = %job.id, error = ?error, "save extraction failure failed")
+                tracing::error!(job_id = %job.id, error = ?error, "save extraction failure failed");
+                return Err(format!("save extraction failure failed: {error:?}"));
             }
         }
+        Ok(())
     }
 }
 

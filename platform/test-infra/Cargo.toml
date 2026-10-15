@@ -1,0 +1,7 @@
+[package]
+name = "horse-test-infra"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+testcontainers-modules = { workspace = true }
