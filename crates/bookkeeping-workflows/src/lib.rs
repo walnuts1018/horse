@@ -9,6 +9,7 @@ pub mod record_repayment;
 pub mod record_transfer;
 pub mod set_default_allocation;
 pub mod update_purchase;
+pub mod update_purchase_item;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PurchaseId(String);

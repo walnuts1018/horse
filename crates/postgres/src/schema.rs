@@ -20,6 +20,7 @@ pub mod public {
             name -> Text,
             kind -> Text,
             created_at -> Timestamptz,
+            card_last4 -> Nullable<Text>,
         }
     }
 
@@ -158,6 +159,9 @@ pub mod public {
             observation -> Jsonb,
             created_by -> Uuid,
             created_at -> Timestamptz,
+            purchase_id -> Nullable<Uuid>,
+            correction_id -> Nullable<Uuid>,
+            transfer_id -> Nullable<Uuid>,
         }
     }
 
@@ -637,6 +641,9 @@ pub mod public {
             idempotency_key -> Text,
             changed_by -> Uuid,
             changed_at -> Timestamptz,
+            purchase_id -> Nullable<Uuid>,
+            correction_id -> Nullable<Uuid>,
+            transfer_id -> Nullable<Uuid>,
         }
     }
 
