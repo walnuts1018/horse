@@ -7,6 +7,7 @@ use horse_postgres::{
 use household_workflows::{
     create_household::CreateHouseholdCommand,
     invitation::{CreateInvitationCommand, RevokeInvitationCommand},
+    ports::{CreateHouseholdPortError, HouseholdStore},
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -197,15 +198,15 @@ pub async fn create_household(
     input: CreateHouseholdInput,
 ) -> Result<CreateHouseholdResult> {
     let actor = crate::actor(ctx)?;
-    match postgres_household::persist_create_household(
-        ctx.data::<PgPool>()?,
-        CreateHouseholdCommand {
+    // §4の依存方向に従い、postgresの具体関数ではなくApplication層のport契約経由で操作する。
+    let store = postgres_household::PostgresHouseholds::new(ctx.data::<PgPool>()?.clone());
+    match store
+        .create_household(CreateHouseholdCommand {
             actor_id: actor.0.to_string(),
             name: input.name,
             member_names: input.member_names,
-        },
-    )
-    .await
+        })
+        .await
     {
         Ok(created) => {
             let id = parse_uuid(&created.household_id)?;
@@ -564,7 +565,7 @@ pub(crate) async fn load_household_graphql(
     postgres_household::load_household(pool, actor_id, household_id)
         .await
         .map_err(|error| {
-            create_household_error_code(&error)
+            load_household_error_code(&error)
                 .map(|code| async_graphql::Error::new(error_message(code)))
                 .unwrap_or_else(|| crate::internal_error(error))
         })
@@ -675,7 +676,17 @@ fn parse_uuid(value: &str) -> Result<Uuid> {
     Uuid::parse_str(value).map_err(crate::internal_error)
 }
 
-fn create_household_error_code(
+fn create_household_error_code(error: &CreateHouseholdPortError) -> Option<MutationErrorCode> {
+    use CreateHouseholdPortError as Error;
+    match error {
+        Error::InvalidInput => Some(MutationErrorCode::BadInput),
+        Error::NotFound => Some(MutationErrorCode::NotFound),
+        Error::Infra => None,
+    }
+}
+
+// 読み取り系はport対象外のため、postgresのエラーを直接 mapping する。
+fn load_household_error_code(
     error: &postgres_household::CreateHouseholdPersistenceError,
 ) -> Option<MutationErrorCode> {
     use postgres_household::CreateHouseholdPersistenceError as Error;
