@@ -72,6 +72,43 @@ pub struct CreateCategoryDecision {
     pub category_id: CategoryId,
     pub parent_id: Option<CategoryId>,
     pub name: CategoryName,
+    pub event: CategoryEvent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CategoryEvent {
+    Created { category_id: CategoryId },
+    NameUpdated { category_id: CategoryId },
+    Archived { category_id: CategoryId },
+    Unarchived { category_id: CategoryId },
+}
+
+impl CategoryEvent {
+    pub fn category_id(&self) -> &CategoryId {
+        match self {
+            Self::Created { category_id }
+            | Self::NameUpdated { category_id }
+            | Self::Archived { category_id }
+            | Self::Unarchived { category_id } => category_id,
+        }
+    }
+
+    pub fn event_type(&self) -> &'static str {
+        match self {
+            Self::Created { .. } => "category.created",
+            Self::NameUpdated { .. } => "category.name_updated",
+            Self::Archived { .. } => "category.archived",
+            Self::Unarchived { .. } => "category.unarchived",
+        }
+    }
+
+    pub fn changed_fields(&self) -> &'static [&'static str] {
+        match self {
+            Self::Created { .. } => &["name", "parentId"],
+            Self::NameUpdated { .. } => &["name"],
+            Self::Archived { .. } | Self::Unarchived { .. } => &["archived"],
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +123,7 @@ pub struct UpdateCategoryNameDecision {
     pub actor_id: ActorId,
     pub category_id: CategoryId,
     pub name: CategoryName,
+    pub event: CategoryEvent,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +138,7 @@ pub struct SetCategoryArchivedDecision {
     pub actor_id: ActorId,
     pub category_id: CategoryId,
     pub archived: bool,
+    pub event: CategoryEvent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,8 +154,8 @@ pub fn decide_create_category(
     command: CreateCategoryCommand,
 ) -> Result<CreateCategoryDecision, CategoryError> {
     let actor_id = ActorId::new(command.actor_id).map_err(|_| CategoryError::InvalidActorId)?;
-    let household_id = HouseholdId::new(command.household_id)
-        .map_err(|_| CategoryError::InvalidHouseholdId)?;
+    let household_id =
+        HouseholdId::new(command.household_id).map_err(|_| CategoryError::InvalidHouseholdId)?;
     let category_id =
         CategoryId::new(command.category_id).map_err(|_| CategoryError::InvalidCategoryId)?;
     let parent_id = command
@@ -125,12 +164,16 @@ pub fn decide_create_category(
         .transpose()
         .map_err(|_| CategoryError::InvalidParentId)?;
     let name = CategoryName::new(command.name).map_err(|_| CategoryError::InvalidName)?;
+    let event = CategoryEvent::Created {
+        category_id: category_id.clone(),
+    };
     Ok(CreateCategoryDecision {
         actor_id,
         household_id,
         category_id,
         parent_id,
         name,
+        event,
     })
 }
 
@@ -141,10 +184,14 @@ pub fn decide_update_category_name(
     let category_id =
         CategoryId::new(command.category_id).map_err(|_| CategoryError::InvalidCategoryId)?;
     let name = CategoryName::new(command.name).map_err(|_| CategoryError::InvalidName)?;
+    let event = CategoryEvent::NameUpdated {
+        category_id: category_id.clone(),
+    };
     Ok(UpdateCategoryNameDecision {
         actor_id,
         category_id,
         name,
+        event,
     })
 }
 
@@ -154,9 +201,19 @@ pub fn decide_set_category_archived(
     let actor_id = ActorId::new(command.actor_id).map_err(|_| CategoryError::InvalidActorId)?;
     let category_id =
         CategoryId::new(command.category_id).map_err(|_| CategoryError::InvalidCategoryId)?;
+    let event = if command.archived {
+        CategoryEvent::Archived {
+            category_id: category_id.clone(),
+        }
+    } else {
+        CategoryEvent::Unarchived {
+            category_id: category_id.clone(),
+        }
+    };
     Ok(SetCategoryArchivedDecision {
         actor_id,
         category_id,
         archived: command.archived,
+        event,
     })
 }

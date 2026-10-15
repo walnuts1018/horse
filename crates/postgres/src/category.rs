@@ -1,5 +1,5 @@
 use catalog_workflows::category::{
-    Category, CategoryError, CreateCategoryCommand, SetCategoryArchivedCommand,
+    Category, CategoryError, CategoryEvent, CreateCategoryCommand, SetCategoryArchivedCommand,
     UpdateCategoryNameCommand, decide_create_category, decide_set_category_archived,
     decide_update_category_name,
 };
@@ -105,12 +105,14 @@ pub async fn persist_create_category(
             diesel::insert_into(events::household_events)
                 .values((
                     events::household_id.eq(household_id),
-                    events::event_type.eq("category.created"),
+                    events::event_type.eq(decision.event.event_type()),
                     events::entity_kind.eq("category"),
-                    events::entity_id.eq(category_id),
+                    events::entity_id.eq(parse_uuid(
+                        decision.event.category_id().as_str(),
+                        "category_id",
+                    )?),
                     events::revision.eq(1_i64),
-                    events::changed_fields
-                        .eq(vec![Some("name".to_owned()), Some("parentId".to_owned())]),
+                    events::changed_fields.eq(event_fields(&decision.event)),
                     events::actor_id.eq(actor_id),
                     events::created_at.eq(Utc::now()),
                 ))
@@ -123,7 +125,8 @@ pub async fn persist_create_category(
                 parent_id,
                 name: decision.name.as_str().to_owned(),
                 archived: false,
-            }.into())
+            }
+            .into())
         })
         .await
 }
@@ -173,11 +176,14 @@ pub async fn persist_update_category_name(
                 diesel::insert_into(events::household_events)
                     .values((
                         events::household_id.eq(row.0),
-                        events::event_type.eq("category.name_updated"),
+                        events::event_type.eq(decision.event.event_type()),
                         events::entity_kind.eq("category"),
-                        events::entity_id.eq(category_id),
+                        events::entity_id.eq(parse_uuid(
+                            decision.event.category_id().as_str(),
+                            "category_id",
+                        )?),
                         events::revision.eq(1_i64),
-                        events::changed_fields.eq(vec![Some("name".to_owned())]),
+                        events::changed_fields.eq(event_fields(&decision.event)),
                         events::actor_id.eq(actor_id),
                         events::created_at.eq(Utc::now()),
                     ))
@@ -191,7 +197,8 @@ pub async fn persist_update_category_name(
                 parent_id: row.1,
                 name: decision.name.as_str().to_owned(),
                 archived: row.3,
-            }.into())
+            }
+            .into())
         })
         .await
 }
@@ -200,8 +207,8 @@ pub async fn persist_set_category_archived(
     pool: &PgPool,
     command: SetCategoryArchivedCommand,
 ) -> Result<Category, CategoryPersistenceError> {
-    let decision = decide_set_category_archived(command)
-        .map_err(CategoryPersistenceError::InvalidWorkflow)?;
+    let decision =
+        decide_set_category_archived(command).map_err(CategoryPersistenceError::InvalidWorkflow)?;
     let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
     let category_id = parse_uuid(decision.category_id.as_str(), "category_id")?;
 
@@ -241,15 +248,14 @@ pub async fn persist_set_category_archived(
                 diesel::insert_into(events::household_events)
                     .values((
                         events::household_id.eq(row.0),
-                        events::event_type.eq(if decision.archived {
-                            "category.archived"
-                        } else {
-                            "category.unarchived"
-                        }),
+                        events::event_type.eq(decision.event.event_type()),
                         events::entity_kind.eq("category"),
-                        events::entity_id.eq(category_id),
+                        events::entity_id.eq(parse_uuid(
+                            decision.event.category_id().as_str(),
+                            "category_id",
+                        )?),
                         events::revision.eq(1_i64),
-                        events::changed_fields.eq(vec![Some("archived".to_owned())]),
+                        events::changed_fields.eq(event_fields(&decision.event)),
                         events::actor_id.eq(actor_id),
                         events::created_at.eq(Utc::now()),
                     ))
@@ -263,7 +269,8 @@ pub async fn persist_set_category_archived(
                 parent_id: row.1,
                 name: row.2,
                 archived: decision.archived,
-            }.into())
+            }
+            .into())
         })
         .await
 }
@@ -291,4 +298,12 @@ async fn require_member(
 
 fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, CategoryPersistenceError> {
     Uuid::parse_str(value).map_err(|_| CategoryPersistenceError::InvalidUuid(field))
+}
+
+fn event_fields(event: &CategoryEvent) -> Vec<Option<String>> {
+    event
+        .changed_fields()
+        .iter()
+        .map(|field| Some((*field).to_owned()))
+        .collect()
 }
