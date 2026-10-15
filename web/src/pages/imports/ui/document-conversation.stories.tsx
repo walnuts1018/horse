@@ -234,7 +234,8 @@ function BranchConversation() {
         });
       }
       if (url.pathname.endsWith("/interaction") && init?.method === "POST") {
-        window.sessionStorage.setItem("story-branch-request", String(init.body));
+        const requestBody = init.body ? await new Response(init.body).text() : "";
+        window.sessionStorage.setItem("story-branch-request", requestBody);
         return Response.json({ jobId: "story-job-v3", status: "queued" }, { status: 202 });
       }
       return new Response(null, { status: 404 });
@@ -282,10 +283,10 @@ export const PreviousVersionCanStartABranch: Story = {
       "前の版からもう一度確認してください",
     );
     await userEvent.click(canvas.getByRole("button", { name: "このモデルで再確認" }));
-    await waitFor(() => {
+    await waitFor(async () => {
       const request = window.sessionStorage.getItem("story-branch-request");
-      expect(request).not.toBeNull();
-      expect(JSON.parse(request ?? "{}")).toMatchObject({
+      await expect(request).not.toBeNull();
+      await expect(JSON.parse(request ?? "{}")).toMatchObject({
         message: "前の版からもう一度確認してください",
         baseJobId: "story-job-v1",
       });
