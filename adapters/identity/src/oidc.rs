@@ -79,10 +79,12 @@ pub struct OidcResult {
 pub enum OidcError {
     IncompleteConfiguration(Vec<&'static str>),
     Provider(String),
+    TransientProvider(String),
     Database(DieselError),
     Pool(String),
     InvalidResponse,
     InvalidState,
+    InvalidGrant,
     AuthenticationFailed,
     SessionExpired,
 }
@@ -247,12 +249,25 @@ impl AuthService {
         let token = token
             .request_async(&self.http_client)
             .await
-            .map_err(|error| OidcError::Provider(error.to_string()))?;
+            .map_err(|error| match error {
+                openidconnect::CoreRequestTokenError::ServerResponse(response)
+                    if response.error().to_string() == "invalid_grant" =>
+                {
+                    OidcError::InvalidGrant
+                }
+                error => OidcError::TransientProvider(error.to_string()),
+            })?;
         let id_token = token.id_token().ok_or(OidcError::AuthenticationFailed)?;
         let nonce = Nonce::new(nonce);
         let claims = id_token
             .claims(&self.client.id_token_verifier(), &nonce)
-            .map_err(|_| OidcError::AuthenticationFailed)?;
+            .map_err(|error| {
+                if is_transient_claims_error(&error) {
+                    OidcError::TransientProvider(error.to_string())
+                } else {
+                    OidcError::AuthenticationFailed
+                }
+            })?;
         let subject = claims.subject().as_str().to_owned();
         if subject.is_empty() {
             return Err(OidcError::AuthenticationFailed);
@@ -377,6 +392,16 @@ impl AuthService {
             .await
             .map_err(|error| OidcError::Pool(error.to_string()))
     }
+}
+
+fn is_transient_claims_error(error: &openidconnect::ClaimsVerificationError) -> bool {
+    matches!(
+        error,
+        openidconnect::ClaimsVerificationError::SignatureVerification(
+            openidconnect::SignatureVerificationError::Other(message)
+        ) if message.to_ascii_lowercase().contains("fetch")
+            || message.to_ascii_lowercase().contains("jwks")
+    )
 }
 
 fn hash(value: &str) -> Vec<u8> {

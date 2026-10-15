@@ -1,7 +1,7 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_application::funding_record::{
-    RecordFundingCommand, RecordFundingError, decide_record_funding,
+    RecordFundingCommand, RecordFundingError, RecordFundingWorkflowCommand,
 };
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
 use bookkeeping_postgres::{
@@ -70,83 +70,16 @@ pub async fn record_funding(
         Ok(parsed) => parsed,
         Err(error) => return Ok(error.into()),
     };
-    match postgres_household_access::is_active_member(
-        ctx.data::<PgPool>()?,
-        parsed.household_id,
-        actor.0,
-    )
-    .await
-    {
-        Ok(true) => {}
-        Ok(false) => return Ok(not_found_error().into()),
-        Err(error) => return Err(internal_error(error)),
-    }
-    match postgres_household_access::is_active_member(
-        ctx.data::<PgPool>()?,
-        parsed.household_id,
-        parsed.member_id,
-    )
-    .await
-    {
-        Ok(true) => {}
-        Ok(false) => return Ok(not_found_error().into()),
-        Err(error) => return Err(internal_error(error)),
-    }
-    match postgres_funding::replay_record_funding(
-        ctx.data::<PgPool>()?,
-        &parsed.persistence,
-        parsed.member_id,
-        parsed.pool_id,
-    )
-    .await
-    {
-        Ok(Some(result)) => {
-            return Ok(funding_success(
-                ctx.data::<PgPool>()?,
-                parsed.household_id,
-                result.ledger_entry_id,
-            )
-            .await?
-            .into());
-        }
-        Ok(None) => {}
-        Err(error) => match persistence_error(&error) {
-            Some(error) => return Ok(error.into()),
-            None => return Err(internal_error(error)),
-        },
-    }
-    let command_context = match postgres_funding_context::load_funding_command_context(
-        ctx.data::<PgPool>()?,
-        parsed.household_id,
-        parsed.pool_id,
-        parsed.source_account_id,
-        parsed.destination_account_id,
-        parsed.persistence.occurred_at,
-    )
-    .await
-    {
-        Ok(context) => context,
-        Err(error) => match command_context_error(&error) {
-            Some(error) => return Ok(error.into()),
-            None => return Err(internal_error(error)),
-        },
+    let workflow_command = RecordFundingWorkflowCommand {
+        household_id: parsed.persistence.household_id.clone(),
+        occurred_at: parsed.persistence.occurred_at,
+        idempotency_key: parsed.persistence.idempotency_key.clone(),
+        request_fingerprint: parsed.persistence.request_fingerprint,
+        source_account_id: parsed.source_account_id.map(|id| id.to_string()),
+        destination_account_id: parsed.destination_account_id.map(|id| id.to_string()),
+        record: parsed.command,
     };
-    let mut command = parsed.command;
-    command.accounting_period = command_context.accounting_period;
-    command.source_account = command_context.source_account;
-    command.destination_account = command_context.destination_account;
-    let _ = command_context.pool_kind;
-    let decision = match decide_record_funding(command) {
-        Ok(decision) => decision,
-        Err(error) => return Ok(workflow_error(error).into()),
-    };
-    match postgres_funding::persist_record_funding(
-        ctx.data::<PgPool>()?,
-        parsed.persistence,
-        decision,
-    )
-    .await
-    {
+    match postgres_funding::record_funding_workflow(ctx.data::<PgPool>()?, workflow_command).await {
         Ok(result) => Ok(funding_success(
             ctx.data::<PgPool>()?,
             parsed.household_id,
@@ -154,7 +87,18 @@ pub async fn record_funding(
         )
         .await?
         .into()),
-        Err(error) => match persistence_error(&error) {
+        Err(bookkeeping_application::funding_record::RecordFundingWorkflowError::Decision(error)) => {
+            Ok(workflow_error(error).into())
+        }
+        Err(bookkeeping_application::funding_record::RecordFundingWorkflowError::Operations(
+            postgres_funding::RecordFundingWorkflowAdapterError::Context(error),
+        )) => match command_context_error(&error) {
+            Some(error) => Ok(error.into()),
+            None => Err(internal_error(error)),
+        },
+        Err(bookkeeping_application::funding_record::RecordFundingWorkflowError::Operations(
+            postgres_funding::RecordFundingWorkflowAdapterError::Persistence(error),
+        )) => match persistence_error(&error) {
             Some(error) => Ok(error.into()),
             None => Err(internal_error(error)),
         },

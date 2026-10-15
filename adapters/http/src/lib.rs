@@ -275,9 +275,11 @@ async fn callback(
         Err(error) => {
             let status = match &error {
                 OidcError::InvalidResponse | OidcError::InvalidState => StatusCode::BAD_REQUEST,
+                OidcError::InvalidGrant => StatusCode::UNAUTHORIZED,
                 OidcError::AuthenticationFailed | OidcError::SessionExpired => {
                     StatusCode::UNAUTHORIZED
                 }
+                OidcError::TransientProvider(_) => StatusCode::BAD_GATEWAY,
                 OidcError::IncompleteConfiguration(_) => StatusCode::SERVICE_UNAVAILABLE,
                 OidcError::Provider(_) | OidcError::Database(_) | OidcError::Pool(_) => {
                     tracing::error!(error = ?error, "OIDC callback failed");
