@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  compareReceiptExtractions,
+  readReceiptExtractionSnapshot,
+  storeReceiptExtractionSnapshot,
+} from "../model/extraction-diff";
+import {
   importModels,
   isQuotaLimitedExtraction,
   proImportModel,
@@ -14,6 +19,20 @@ type PendingMessage = {
   conversationLength: number;
   status: "processing" | "failed";
 };
+
+type ConversationMessage = NonNullable<
+  NonNullable<DocumentReview["result"]>["conversation"]
+>[number];
+
+function withConversationKeys(messages: ConversationMessage[] = []) {
+  const occurrences = new Map<string, number>();
+  return messages.map((entry) => {
+    const identity = JSON.stringify([entry.role, entry.text]);
+    const occurrence = occurrences.get(identity) ?? 0;
+    occurrences.set(identity, occurrence + 1);
+    return { ...entry, key: `${identity}-${occurrence}` };
+  });
+}
 
 function pendingMessageStorageKey(documentId: string) {
   return `document-interaction:${documentId}`;
@@ -80,6 +99,7 @@ export function DocumentConversation({
   );
   const sendingRef = useRef(false);
   const messages = document.result?.conversation;
+  const keyedMessages = withConversationKeys(messages);
   const hasExtraction = !!document.result?.receipt || !!document.result?.statements?.length;
   const selectedModel = importModels.find((option) => option.value === document.model);
   const model =
@@ -87,6 +107,21 @@ export function DocumentConversation({
   const paidModel = selectedModel?.tier === "paid" || document.model === "pro";
   const quotaLimited = isQuotaLimitedExtraction(document);
   const processing = ["queued", "running"].includes(document.status.toLowerCase());
+  const previousExtraction = readReceiptExtractionSnapshot(document.id);
+  const extractionDiff =
+    previousExtraction &&
+    document.jobId &&
+    document.jobId === previousExtraction.nextJobId &&
+    document.status.toLowerCase() === "succeeded"
+      ? compareReceiptExtractions(previousExtraction.receipt, document.result?.receipt)
+      : null;
+  const hasExtractionDiff = Boolean(
+    extractionDiff &&
+    (extractionDiff.receiptChanges.length > 0 ||
+      extractionDiff.itemChanges.length > 0 ||
+      extractionDiff.taxChanges.length > 0 ||
+      extractionDiff.paymentChanges.length > 0),
+  );
   const pendingMessageCompleted =
     !!storedPendingMessage &&
     !!messages
@@ -132,11 +167,26 @@ export function DocumentConversation({
         }),
       });
       if (!response.ok) throw new Error(`再確認を開始できませんでした (${response.status})`);
+      const accepted: unknown = await response.json().catch(() => null);
+      const nextJobId =
+        typeof accepted === "object" &&
+        accepted !== null &&
+        "jobId" in accepted &&
+        typeof accepted.jobId === "string"
+          ? accepted.jobId
+          : undefined;
       const nextPendingMessage: PendingMessage = {
         text: instruction,
         conversationLength: messages?.length ?? 0,
         status: "processing",
       };
+      if (document.jobId && document.result?.receipt && nextJobId) {
+        storeReceiptExtractionSnapshot(document.id, {
+          jobId: document.jobId,
+          nextJobId,
+          receipt: document.result.receipt,
+        });
+      }
       storePendingMessage(document.id, nextPendingMessage);
       setPendingMessage(nextPendingMessage);
       if (instruction === message.trim()) setMessage("");
@@ -153,12 +203,46 @@ export function DocumentConversation({
 
   return (
     <section className={styles.conversation} aria-label="AIとの再確認">
+      {hasExtractionDiff && extractionDiff && (
+        <details className={styles.extractionDiff} open>
+          <summary>前回からの変更</summary>
+          <ul>
+            {extractionDiff.receiptChanges.map((change) => (
+              <li key={`receipt-${change.label}`}>
+                <span>{change.label}</span>
+                <del>{change.before}</del>
+                <span aria-hidden="true">→</span>
+                <ins>{change.after}</ins>
+              </li>
+            ))}
+            {[
+              ...extractionDiff.itemChanges,
+              ...extractionDiff.taxChanges,
+              ...extractionDiff.paymentChanges,
+            ].map((row) => (
+              <li key={row.label}>
+                <span>{row.label}</span>
+                <ul>
+                  {row.changes.map((change) => (
+                    <li key={`${row.label}-${change.label}`}>
+                      <span>{change.label}</span>
+                      <del>{change.before}</del>
+                      <span aria-hidden="true">→</span>
+                      <ins>{change.after}</ins>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {((messages?.length ?? 0) > 0 || pendingMessage) && (
         <ol className={styles.messages}>
-          {messages?.map((entry, index) => (
+          {keyedMessages.map((entry) => (
             <li
               className={entry.role === "user" ? styles.userMessage : styles.assistantMessage}
-              key={`${index}-${entry.role}`}
+              key={entry.key}
             >
               <span>{entry.role === "user" ? "あなた" : "AI"}</span>
               <p>{entry.text}</p>

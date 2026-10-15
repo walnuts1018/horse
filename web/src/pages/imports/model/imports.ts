@@ -298,6 +298,8 @@ export type DocumentReview = {
         denominator: number;
         basis?: string;
         rounding?: string;
+        printedSubtotal?: number;
+        printedTax?: number;
       }>;
       payments?: ReceiptPayment[];
     };
