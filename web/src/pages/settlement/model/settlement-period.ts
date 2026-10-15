@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { Settlement } from "../../../shared/api";
-
 import { errorMessage, japanMonth } from "../../../shared/lib";
-import { readSettlement } from "../api/read-settlement";
+import { readSettlement, type SettlementWithEvidence } from "../api/read-settlement";
 
 export type SettlementSnapshot = {
   householdId: string;
   period: string;
-  value: Settlement;
+  value: SettlementWithEvidence;
 };
 
 export function useSettlementPeriod(householdId: string, refreshLedger: () => void) {

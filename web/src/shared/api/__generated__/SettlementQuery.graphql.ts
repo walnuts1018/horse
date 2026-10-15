@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b42f0a0b400ed7d30f00791092c3f3de>>
+ * @generated SignedSource<<18a5cdd5261093fee298af57bd6b8623>>
  * @lightSyntaxTransform
  */
 
@@ -21,6 +21,14 @@ export type SettlementQuery$data = {
       readonly advanceCreditYen: any;
       readonly amountDueYen: any;
       readonly carryYen: any;
+      readonly evidence: ReadonlyArray<{
+        readonly amountYen: any;
+        readonly kind: string;
+        readonly label: string;
+        readonly occurredAt: string | null | undefined;
+        readonly purchaseId: string | null | undefined;
+        readonly sourceId: string;
+      }>;
       readonly memberId: string;
       readonly memberName: string;
       readonly monthlyAdjustmentYen: any;
@@ -168,6 +176,59 @@ v1 = [
             "kind": "ScalarField",
             "name": "amountDueYen",
             "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "SettlementEvidence",
+            "kind": "LinkedField",
+            "name": "evidence",
+            "plural": true,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "kind",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "label",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "amountYen",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "sourceId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "purchaseId",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "occurredAt",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
           }
         ],
         "storageKey": null
@@ -208,16 +269,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "f4c28a885765b02a015a8638dd6aff7c",
+    "cacheID": "d24bc39b53011d199c2c00f26b866874",
     "id": null,
     "metadata": {},
     "name": "SettlementQuery",
     "operationKind": "query",
-    "text": "query SettlementQuery(\n  $householdId: ID!\n  $period: YearMonth!\n) {\n  settlement(householdId: $householdId, period: $period) {\n    __typename\n    id\n    period\n    revision\n    lines {\n      memberId\n      memberName\n      scheduledYen\n      paidYen\n      carryYen\n      priorBalanceYen\n      monthlyAdjustmentYen\n      advanceCreditYen\n      amountDueYen\n    }\n    ... on ClosedSettlement {\n      createdAt\n    }\n  }\n}\n"
+    "text": "query SettlementQuery(\n  $householdId: ID!\n  $period: YearMonth!\n) {\n  settlement(householdId: $householdId, period: $period) {\n    __typename\n    id\n    period\n    revision\n    lines {\n      memberId\n      memberName\n      scheduledYen\n      paidYen\n      carryYen\n      priorBalanceYen\n      monthlyAdjustmentYen\n      advanceCreditYen\n      amountDueYen\n      evidence {\n        kind\n        label\n        amountYen\n        sourceId\n        purchaseId\n        occurredAt\n      }\n    }\n    ... on ClosedSettlement {\n      createdAt\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "a5347ba208237270d365fc08ffbe24d2";
+(node as any).hash = "8eec0cde3255b0623fb074ce7f177a60";
 
 export default node;

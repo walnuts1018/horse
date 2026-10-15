@@ -6,6 +6,8 @@ import {
   type LoanBalance,
   type LoanBalancesQuery,
   type LoanBalancesQuery$data,
+  type ClosedSettlement,
+  type OpenSettlement,
   type Settlement,
   type SettlementQuery,
   type SettlementQuery$data,
@@ -15,13 +17,30 @@ import { settlementQuery } from "./settlement-operations";
 type SettlementRecord = SettlementQuery$data["settlement"];
 type LoanBalanceRecord = LoanBalancesQuery$data["loanBalances"]["edges"][number]["node"];
 
+export type SettlementEvidence = {
+  kind: string;
+  label: string;
+  amountYen: number;
+  sourceId: string;
+  purchaseId: string | null;
+  occurredAt: string | null;
+};
+
+type SettlementLineWithEvidence = Settlement["lines"][number] & { evidence: SettlementEvidence[] };
+export type SettlementWithEvidence =
+  | (Omit<OpenSettlement, "lines"> & { lines: SettlementLineWithEvidence[] })
+  | (Omit<ClosedSettlement, "lines"> & { lines: SettlementLineWithEvidence[] });
+
 export type LoanBalancePage = {
   loans: LoanBalance[];
   endCursor: string | null;
   hasNextPage: boolean;
 };
 
-export async function readSettlement(householdId: string, period: string): Promise<Settlement> {
+export async function readSettlement(
+  householdId: string,
+  period: string,
+): Promise<SettlementWithEvidence> {
   const data = await fetchQuery<SettlementQuery>(
     getRelayEnvironment(),
     settlementQuery,
@@ -50,7 +69,7 @@ export async function readLoanBalances(
   };
 }
 
-function mapSettlement(record: SettlementRecord): Settlement {
+function mapSettlement(record: SettlementRecord): SettlementWithEvidence {
   const fields = {
     id: record.id,
     period: record.period,
@@ -65,6 +84,14 @@ function mapSettlement(record: SettlementRecord): Settlement {
       monthlyAdjustmentYen: Number(line.monthlyAdjustmentYen),
       advanceCreditYen: Number(line.advanceCreditYen),
       amountDueYen: Number(line.amountDueYen),
+      evidence: line.evidence.map((item) => ({
+        kind: item.kind,
+        label: item.label,
+        amountYen: Number(item.amountYen),
+        sourceId: item.sourceId,
+        purchaseId: item.purchaseId ?? null,
+        occurredAt: item.occurredAt ?? null,
+      })),
     })),
   };
   switch (record.__typename) {

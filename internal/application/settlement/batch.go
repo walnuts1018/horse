@@ -119,14 +119,30 @@ func (w *Workflow) GetMany(ctx context.Context, requests []GetRequest) ([]Settle
 		}
 		namesByHousehold[member.HouseholdID][member.MemberID] = member.R.Member.DisplayName
 	}
+	evidenceRequests := make([]GetRequest, 0, len(parsed))
+	evidenceSeen := make(map[evidenceKey]struct{}, len(parsed))
+	for _, key := range parsed {
+		mapKey := evidenceKey{householdID: key.householdID, period: key.period}
+		if _, found := evidenceSeen[mapKey]; found {
+			continue
+		}
+		evidenceSeen[mapKey] = struct{}{}
+		evidenceRequests = append(evidenceRequests, GetRequest{HouseholdID: key.householdID.String(), Period: key.period})
+	}
+	evidenceByKey, err := settlementEvidenceMany(ctx, executor, evidenceRequests)
+	if err != nil {
+		return nil, err
+	}
 	openRequests := make([]GetRequest, 0, len(requests))
 	openIndexes := make([]int, 0, len(requests))
 	result := make([]Settlement, len(requests))
 	for index, key := range parsed {
+		evidence := evidenceByKey[evidenceKey{householdID: key.householdID, period: key.period}]
 		run := runsByKey[key]
 		if run == nil {
 			openRequests = append(openRequests, requests[index])
 			openIndexes = append(openIndexes, index)
+			result[index] = Settlement{HouseholdID: key.householdID.String(), Period: key.period, Status: "OPEN", Evidence: evidence}
 			continue
 		}
 		lines := linesByRun[run.ID]
@@ -134,7 +150,7 @@ func (w *Workflow) GetMany(ctx context.Context, requests []GetRequest) ([]Settle
 		slices.SortFunc(lines, func(left, right *models.SettlementLine) int {
 			return cmp.Compare(names[left.MemberID], names[right.MemberID])
 		})
-		value := Settlement{HouseholdID: key.householdID.String(), Period: key.period, Status: closedStatus, Revision: run.Revision, CreatedAt: new(run.CreatedAt), Lines: make([]domain.SettlementAmount, 0, len(lines))}
+		value := Settlement{HouseholdID: key.householdID.String(), Period: key.period, Status: closedStatus, Revision: run.Revision, CreatedAt: new(run.CreatedAt), Lines: make([]domain.SettlementAmount, 0, len(lines)), Evidence: evidence}
 		for _, line := range lines {
 			value.Lines = append(value.Lines, domain.SettlementAmount{
 				MemberID: line.MemberID.String(), MemberName: names[line.MemberID], ScheduledYen: line.ScheduledYen,
@@ -151,7 +167,8 @@ func (w *Workflow) GetMany(ctx context.Context, requests []GetRequest) ([]Settle
 		}
 		for index, preview := range previews {
 			request := openRequests[index]
-			result[openIndexes[index]] = Settlement{HouseholdID: request.HouseholdID, Period: request.Period, Status: "OPEN", Lines: preview}
+			previous := result[openIndexes[index]]
+			result[openIndexes[index]] = Settlement{HouseholdID: request.HouseholdID, Period: request.Period, Status: "OPEN", Lines: preview, Evidence: previous.Evidence}
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {

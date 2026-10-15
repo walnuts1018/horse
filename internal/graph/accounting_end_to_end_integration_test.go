@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -304,6 +305,21 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	if closedLines[memberA].AdvanceCreditYen != 2000 || closedLines[memberA].AmountDueYen != -2000 || closedLines[memberB].MonthlyAdjustmentYen != 2000 || closedLines[memberB].AmountDueYen != 2000 {
 		t.Fatalf("closed settlement did not capture the original purchase allocation: %#v", closedLines)
 	}
+	purchaseNodeID, err := encodeNodeID("Purchase", purchase.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var purchaseEvidenceFound bool
+	for _, line := range settlementData(t, closed).Lines {
+		for _, evidence := range line.Evidence {
+			if evidence.Kind == "PURCHASE" && evidence.PurchaseID != nil && *evidence.PurchaseID == purchaseNodeID {
+				purchaseEvidenceFound = true
+			}
+		}
+	}
+	if !purchaseEvidenceFound {
+		t.Fatalf("closed settlement did not expose a navigable purchase source: %#v", closed)
+	}
 	changedAmount := model.Long(4500)
 	if _, err := mutation.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{
 		ItemID: posted.Items[0].ID, BaseRevision: posted.Items[0].Revision, AmountYen: omittable(&changedAmount),
@@ -355,7 +371,7 @@ func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeri
 	closedAgainLines := settlementByMember(t, closedAgainData.Lines)
 	for memberID, before := range closedLines {
 		after := closedAgainLines[memberID]
-		if *before != *after {
+		if !reflect.DeepEqual(before, after) {
 			t.Fatalf("correction rewrote the closed settlement for member %s: before=%#v after=%#v", memberID, before, after)
 		}
 	}

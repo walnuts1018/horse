@@ -2283,16 +2283,26 @@ func (SetProductAliasUserError) IsMutationError()                {}
 func (this SetProductAliasUserError) GetCode() MutationErrorCode { return this.Code }
 func (this SetProductAliasUserError) GetMessage() string         { return this.Message }
 
+type SettlementEvidence struct {
+	Kind       string    `json:"kind"`
+	Label      string    `json:"label"`
+	AmountYen  Long      `json:"amountYen"`
+	SourceID   string    `json:"sourceId"`
+	PurchaseID *string   `json:"purchaseId,omitempty"`
+	OccurredAt *DateTime `json:"occurredAt,omitempty"`
+}
+
 type SettlementLine struct {
-	MemberID             string `json:"memberId"`
-	MemberName           string `json:"memberName"`
-	ScheduledYen         Long   `json:"scheduledYen"`
-	PaidYen              Long   `json:"paidYen"`
-	CarryYen             Long   `json:"carryYen"`
-	PriorBalanceYen      Long   `json:"priorBalanceYen"`
-	MonthlyAdjustmentYen Long   `json:"monthlyAdjustmentYen"`
-	AdvanceCreditYen     Long   `json:"advanceCreditYen"`
-	AmountDueYen         Long   `json:"amountDueYen"`
+	MemberID             string                `json:"memberId"`
+	MemberName           string                `json:"memberName"`
+	ScheduledYen         Long                  `json:"scheduledYen"`
+	PaidYen              Long                  `json:"paidYen"`
+	CarryYen             Long                  `json:"carryYen"`
+	PriorBalanceYen      Long                  `json:"priorBalanceYen"`
+	MonthlyAdjustmentYen Long                  `json:"monthlyAdjustmentYen"`
+	AdvanceCreditYen     Long                  `json:"advanceCreditYen"`
+	AmountDueYen         Long                  `json:"amountDueYen"`
+	Evidence             []*SettlementEvidence `json:"evidence"`
 }
 
 type SharedPoolFundingRuleInput struct {

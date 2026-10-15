@@ -1246,10 +1246,20 @@ type ComplexityRoot struct {
 		Message func(childComplexity int) int
 	}
 
+	SettlementEvidence struct {
+		AmountYen  func(childComplexity int) int
+		Kind       func(childComplexity int) int
+		Label      func(childComplexity int) int
+		OccurredAt func(childComplexity int) int
+		PurchaseID func(childComplexity int) int
+		SourceID   func(childComplexity int) int
+	}
+
 	SettlementLine struct {
 		AdvanceCreditYen     func(childComplexity int) int
 		AmountDueYen         func(childComplexity int) int
 		CarryYen             func(childComplexity int) int
+		Evidence             func(childComplexity int) int
 		MemberID             func(childComplexity int) int
 		MemberName           func(childComplexity int) int
 		MonthlyAdjustmentYen func(childComplexity int) int
@@ -6140,6 +6150,43 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.SetProductAliasUserError.Message(childComplexity), true
 
+	case "SettlementEvidence.amountYen":
+		if e.ComplexityRoot.SettlementEvidence.AmountYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SettlementEvidence.AmountYen(childComplexity), true
+	case "SettlementEvidence.kind":
+		if e.ComplexityRoot.SettlementEvidence.Kind == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SettlementEvidence.Kind(childComplexity), true
+	case "SettlementEvidence.label":
+		if e.ComplexityRoot.SettlementEvidence.Label == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SettlementEvidence.Label(childComplexity), true
+	case "SettlementEvidence.occurredAt":
+		if e.ComplexityRoot.SettlementEvidence.OccurredAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SettlementEvidence.OccurredAt(childComplexity), true
+	case "SettlementEvidence.purchaseId":
+		if e.ComplexityRoot.SettlementEvidence.PurchaseID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SettlementEvidence.PurchaseID(childComplexity), true
+	case "SettlementEvidence.sourceId":
+		if e.ComplexityRoot.SettlementEvidence.SourceID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SettlementEvidence.SourceID(childComplexity), true
+
 	case "SettlementLine.advanceCreditYen":
 		if e.ComplexityRoot.SettlementLine.AdvanceCreditYen == nil {
 			break
@@ -6158,6 +6205,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.SettlementLine.CarryYen(childComplexity), true
+	case "SettlementLine.evidence":
+		if e.ComplexityRoot.SettlementLine.Evidence == nil {
+			break
+		}
+
+		return e.ComplexityRoot.SettlementLine.Evidence(childComplexity), true
 	case "SettlementLine.memberId":
 		if e.ComplexityRoot.SettlementLine.MemberID == nil {
 			break
@@ -9266,6 +9319,16 @@ type SettlementLine {
   monthlyAdjustmentYen: Long!
   advanceCreditYen: Long!
   amountDueYen: Long!
+  evidence: [SettlementEvidence!]!
+}
+
+type SettlementEvidence {
+  kind: String!
+  label: String!
+  amountYen: Long!
+  sourceId: ID!
+  purchaseId: ID
+  occurredAt: DateTime
 }
 
 extend type Query {
@@ -10613,6 +10676,24 @@ func (ec *executionContext) childFields_RecurringExpenseEdge(ctx context.Context
 	return nil, fmt.Errorf("no field named %q was found under type RecurringExpenseEdge", field.Name)
 }
 
+func (ec *executionContext) childFields_SettlementEvidence(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "kind":
+		return ec.fieldContext_SettlementEvidence_kind(ctx, field)
+	case "label":
+		return ec.fieldContext_SettlementEvidence_label(ctx, field)
+	case "amountYen":
+		return ec.fieldContext_SettlementEvidence_amountYen(ctx, field)
+	case "sourceId":
+		return ec.fieldContext_SettlementEvidence_sourceId(ctx, field)
+	case "purchaseId":
+		return ec.fieldContext_SettlementEvidence_purchaseId(ctx, field)
+	case "occurredAt":
+		return ec.fieldContext_SettlementEvidence_occurredAt(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type SettlementEvidence", field.Name)
+}
+
 func (ec *executionContext) childFields_SettlementLine(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "memberId":
@@ -10633,6 +10714,8 @@ func (ec *executionContext) childFields_SettlementLine(ctx context.Context, fiel
 		return ec.fieldContext_SettlementLine_advanceCreditYen(ctx, field)
 	case "amountDueYen":
 		return ec.fieldContext_SettlementLine_amountDueYen(ctx, field)
+	case "evidence":
+		return ec.fieldContext_SettlementLine_evidence(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type SettlementLine", field.Name)
 }
@@ -31434,6 +31517,144 @@ func (ec *executionContext) fieldContext_SetProductAliasUserError_message(_ cont
 	return graphql.NewScalarFieldContext("SetProductAliasUserError", field, false, false, errors.New("field of type String does not have child fields"))
 }
 
+func (ec *executionContext) _SettlementEvidence_kind(ctx context.Context, field graphql.CollectedField, obj *model.SettlementEvidence) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SettlementEvidence_kind(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Kind, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SettlementEvidence_kind(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SettlementEvidence", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _SettlementEvidence_label(ctx context.Context, field graphql.CollectedField, obj *model.SettlementEvidence) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SettlementEvidence_label(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Label, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SettlementEvidence_label(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SettlementEvidence", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _SettlementEvidence_amountYen(ctx context.Context, field graphql.CollectedField, obj *model.SettlementEvidence) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SettlementEvidence_amountYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.AmountYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SettlementEvidence_amountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SettlementEvidence", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _SettlementEvidence_sourceId(ctx context.Context, field graphql.CollectedField, obj *model.SettlementEvidence) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SettlementEvidence_sourceId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.SourceID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SettlementEvidence_sourceId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SettlementEvidence", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _SettlementEvidence_purchaseId(ctx context.Context, field graphql.CollectedField, obj *model.SettlementEvidence) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SettlementEvidence_purchaseId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PurchaseID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOID2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SettlementEvidence_purchaseId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SettlementEvidence", field, false, false, errors.New("field of type ID does not have child fields"))
+}
+
+func (ec *executionContext) _SettlementEvidence_occurredAt(ctx context.Context, field graphql.CollectedField, obj *model.SettlementEvidence) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SettlementEvidence_occurredAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.OccurredAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.DateTime) graphql.Marshaler {
+			return ec.marshalODateTime2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_SettlementEvidence_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("SettlementEvidence", field, false, false, errors.New("field of type DateTime does not have child fields"))
+}
+
 func (ec *executionContext) _SettlementLine_memberId(ctx context.Context, field graphql.CollectedField, obj *model.SettlementLine) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -31639,6 +31860,38 @@ func (ec *executionContext) _SettlementLine_amountDueYen(ctx context.Context, fi
 }
 func (ec *executionContext) fieldContext_SettlementLine_amountDueYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("SettlementLine", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _SettlementLine_evidence(ctx context.Context, field graphql.CollectedField, obj *model.SettlementLine) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_SettlementLine_evidence(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Evidence, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.SettlementEvidence) graphql.Marshaler {
+			return ec.marshalNSettlementEvidence2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSettlementEvidenceᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_SettlementLine_evidence(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SettlementLine",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_SettlementEvidence(ctx, field)
+		},
+	}
+	return fc, nil
 }
 
 func (ec *executionContext) _SharedPool_id(ctx context.Context, field graphql.CollectedField, obj *model.SharedPool) (ret graphql.Marshaler) {
@@ -56876,6 +57129,69 @@ func (ec *executionContext) _SetProductAliasUserError(ctx context.Context, sel a
 	return out
 }
 
+var settlementEvidenceImplementors = []string{"SettlementEvidence"}
+
+func (ec *executionContext) _SettlementEvidence(ctx context.Context, sel ast.SelectionSet, obj *model.SettlementEvidence) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, settlementEvidenceImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SettlementEvidence")
+		case "kind":
+			out.Values[i] = ec._SettlementEvidence_kind(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "label":
+			out.Values[i] = ec._SettlementEvidence_label(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "amountYen":
+			out.Values[i] = ec._SettlementEvidence_amountYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "sourceId":
+			out.Values[i] = ec._SettlementEvidence_sourceId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "purchaseId":
+			out.Values[i] = ec._SettlementEvidence_purchaseId(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "occurredAt":
+			out.Values[i] = ec._SettlementEvidence_occurredAt(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var settlementLineImplementors = []string{"SettlementLine"}
 
 func (ec *executionContext) _SettlementLine(ctx context.Context, sel ast.SelectionSet, obj *model.SettlementLine) graphql.Marshaler {
@@ -56963,6 +57279,11 @@ func (ec *executionContext) _SettlementLine(ctx context.Context, sel ast.Selecti
 			}
 		case "amountDueYen":
 			out.Values[i] = ec._SettlementLine_amountDueYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "evidence":
+			out.Values[i] = ec._SettlementLine_evidence(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
@@ -61555,6 +61876,32 @@ func (ec *executionContext) marshalNSettlement2githubᚗcomᚋwalnuts1018ᚋhors
 		return graphql.Null
 	}
 	return ec._Settlement(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNSettlementEvidence2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSettlementEvidenceᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.SettlementEvidence) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNSettlementEvidence2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSettlementEvidence(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNSettlementEvidence2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSettlementEvidence(ctx context.Context, sel ast.SelectionSet, v *model.SettlementEvidence) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._SettlementEvidence(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNSettlementLine2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐSettlementLineᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.SettlementLine) graphql.Marshaler {

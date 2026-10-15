@@ -41,6 +41,7 @@ type Settlement struct {
 	Revision    int64
 	CreatedAt   *time.Time
 	Lines       []domain.SettlementAmount
+	Evidence    []Evidence
 }
 
 type CloseCommand struct {

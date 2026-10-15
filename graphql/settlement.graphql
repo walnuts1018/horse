@@ -33,6 +33,16 @@ type SettlementLine {
   monthlyAdjustmentYen: Long!
   advanceCreditYen: Long!
   amountDueYen: Long!
+  evidence: [SettlementEvidence!]!
+}
+
+type SettlementEvidence {
+  kind: String!
+  label: String!
+  amountYen: Long!
+  sourceId: ID!
+  purchaseId: ID
+  occurredAt: DateTime
 }
 
 extend type Query {

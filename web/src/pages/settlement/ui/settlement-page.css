@@ -204,6 +204,30 @@
   margin: 10px;
 }
 
+.settlement-evidence-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  list-style: none;
+}
+
+.settlement-evidence-list > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  color: #526258;
+  font-size: 12px;
+}
+
+.settlement-evidence-list > li > a {
+  grid-column: 1 / -1;
+  color: #25745d;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .settlement-account-select > span {
   color: #5f6d65;
   font-size: 11px;

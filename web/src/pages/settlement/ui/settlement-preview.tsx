@@ -1,6 +1,8 @@
+import { Link } from "@tanstack/react-router";
 import { ArrowLeftRight, Wallet } from "lucide-react";
 
-import type { Household, Settlement } from "../../../shared/api";
+import type { Household } from "../../../shared/api";
+import type { SettlementEvidence, SettlementWithEvidence } from "../api/read-settlement";
 import type { FundingIntent } from "../model/pending-ledger-mutations";
 
 import { formatSettlementYen, settlementPeriodLabel } from "../model/settlement-view";
@@ -24,7 +26,7 @@ export function SettlementPreview({
   onRestoreFunding,
 }: {
   household: Household;
-  settlement: Settlement | null;
+  settlement: SettlementWithEvidence | null;
   period: string;
   totalDue: number;
   pending: boolean;
@@ -143,6 +145,29 @@ export function SettlementPreview({
                       <dd>{formatSettlementYen(line.advanceCreditYen)}</dd>
                     </div>
                   </dl>
+                  <details className="settlement-disclosure">
+                    <summary className="settlement-disclosure-summary">根拠を表示</summary>
+                    <ul className="settlement-evidence-list">
+                      {line.evidence.map((evidence: SettlementEvidence) => (
+                        <li key={`${evidence.kind}:${evidence.sourceId}`}>
+                          <span>{evidence.label || evidence.kind}</span>
+                          <b>{formatSettlementYen(evidence.amountYen)}</b>
+                          {evidence.purchaseId && (
+                            <Link
+                              to="/households/$householdId/ledger"
+                              params={{ householdId: household.id }}
+                              search={(previous) => ({
+                                ...previous,
+                                purchaseId: evidence.purchaseId ?? "",
+                              })}
+                            >
+                              購入を見る
+                            </Link>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 </div>
                 <div className="settlement-amount">
                   <b className={line.amountDueYen < 0 ? "settlement-credit" : undefined}>

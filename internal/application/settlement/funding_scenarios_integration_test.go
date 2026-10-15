@@ -124,12 +124,30 @@ func TestIrregularFundingOverpaymentCarriesAcrossClosedPeriod(t *testing.T) {
 	if lines[memberB.String()].scheduled != 4000 || lines[memberB.String()].paid != 0 || lines[memberB.String()].due != 4000 {
 		t.Fatalf("unpaid irregular contribution should remain due: %#v", lines[memberB.String()])
 	}
+	var scheduledEvidence, paidEvidence bool
+	for _, evidence := range open.Evidence {
+		if evidence.MemberID != memberA.String() {
+			continue
+		}
+		if evidence.Kind == "SCHEDULED" && evidence.AmountYen == 6000 {
+			scheduledEvidence = true
+		}
+		if evidence.Kind == "PAID" && evidence.AmountYen == 10000 {
+			paidEvidence = true
+		}
+	}
+	if !scheduledEvidence || !paidEvidence {
+		t.Fatalf("settlement evidence omitted the scheduled or actual funding source: %#v", open.Evidence)
+	}
 	closed, err := settlements.Close(ctx, CloseCommand{ActorID: memberA.String(), HouseholdID: householdID.String(), Period: "2026-06"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if closed.Status != closedStatus || len(closed.Lines) != 2 {
 		t.Fatalf("June settlement did not close with both members: %#v", closed)
+	}
+	if len(closed.Evidence) != len(open.Evidence) {
+		t.Fatalf("closing changed the settlement evidence: open=%#v closed=%#v", open.Evidence, closed.Evidence)
 	}
 	next, err := settlements.Preview(ctx, householdID.String(), "2026-07")
 	if err != nil {

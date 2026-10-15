@@ -30,13 +30,33 @@ func settlementModel(value settlementapp.Settlement) (model.SettlementVariant, e
 		Revision: int(value.Revision), Lines: make([]*model.SettlementLine, 0, len(value.Lines)),
 	}
 	for _, line := range value.Lines {
-		result.Lines = append(result.Lines, &model.SettlementLine{
+		lineModel := &model.SettlementLine{
 			MemberID: line.MemberID, MemberName: line.MemberName,
 			ScheduledYen: graphLong(line.ScheduledYen), PaidYen: graphLong(line.PaidYen),
 			CarryYen: graphLong(line.CarryYen), PriorBalanceYen: graphLong(line.CarryYen),
 			MonthlyAdjustmentYen: graphLong(line.MonthlyAdjustmentYen), AdvanceCreditYen: graphLong(line.AdvanceCreditYen),
 			AmountDueYen: graphLong(line.AmountDueYen),
-		})
+			Evidence:     make([]*model.SettlementEvidence, 0),
+		}
+		for _, evidence := range value.Evidence {
+			if evidence.MemberID != line.MemberID {
+				continue
+			}
+			item := &model.SettlementEvidence{Kind: evidence.Kind, Label: evidence.Label, AmountYen: graphLong(evidence.AmountYen), SourceID: evidence.SourceID}
+			if evidence.PurchaseID != "" {
+				purchaseID, err := encodeNodeID("Purchase", evidence.PurchaseID)
+				if err != nil {
+					return nil, err
+				}
+				item.PurchaseID = &purchaseID
+			}
+			if evidence.OccurredAt != nil {
+				occurredAt := timeString(*evidence.OccurredAt)
+				item.OccurredAt = &occurredAt
+			}
+			lineModel.Evidence = append(lineModel.Evidence, item)
+		}
+		result.Lines = append(result.Lines, lineModel)
 	}
 	switch value.Status {
 	case settlementStatusOpen:

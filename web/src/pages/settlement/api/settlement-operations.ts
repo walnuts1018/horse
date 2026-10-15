@@ -17,6 +17,14 @@ export const settlementQuery = graphql`
         monthlyAdjustmentYen
         advanceCreditYen
         amountDueYen
+        evidence {
+          kind
+          label
+          amountYen
+          sourceId
+          purchaseId
+          occurredAt
+        }
       }
       ... on ClosedSettlement {
         createdAt
