@@ -1,3 +1,7 @@
+use bookkeeping_domain::{
+    SettlementError, SettlementInput as DomainSettlementInput, calculate_settlement,
+};
+
 use crate::{MemberId, PurchaseId};
 use std::collections::BTreeMap;
 
@@ -303,26 +307,27 @@ fn calculate_settlement(input: SettlementInput) -> Result<SettlementLine, CloseP
     if input.member_name.is_empty() {
         return Err(ClosePeriodError::EmptyMemberName);
     }
-    if input.scheduled_yen < 0 || input.paid_yen < 0 || input.advance_credit_yen < 0 {
-        return Err(ClosePeriodError::NegativeNonnegativeAmount);
-    }
-    let amount_due_yen = input
-        .scheduled_yen
-        .checked_add(input.previous_owed_yen)
-        .and_then(|amount| amount.checked_add(input.monthly_adjustment_yen))
-        .and_then(|amount| amount.checked_sub(input.paid_yen))
-        .and_then(|amount| amount.checked_sub(input.advance_credit_yen))
-        .ok_or(ClosePeriodError::AmountOverflow)?;
+    let amounts = calculate_settlement(DomainSettlementInput {
+        scheduled_yen: input.scheduled_yen,
+        paid_yen: input.paid_yen,
+        previous_owed_yen: input.previous_owed_yen,
+        monthly_adjustment_yen: input.monthly_adjustment_yen,
+        advance_credit_yen: input.advance_credit_yen,
+    })
+    .map_err(|error| match error {
+        SettlementError::NegativeNonnegativeAmount => ClosePeriodError::NegativeNonnegativeAmount,
+        SettlementError::AmountOverflow => ClosePeriodError::AmountOverflow,
+    })?;
 
     Ok(SettlementLine {
         member_id: input.member_id,
         member_name: input.member_name,
         scheduled_yen: input.scheduled_yen,
         paid_yen: input.paid_yen,
-        carry_yen: input.previous_owed_yen,
+        carry_yen: amounts.carry_yen,
         monthly_adjustment_yen: input.monthly_adjustment_yen,
         advance_credit_yen: input.advance_credit_yen,
-        amount_due_yen,
+        amount_due_yen: amounts.amount_due_yen,
     })
 }
 
