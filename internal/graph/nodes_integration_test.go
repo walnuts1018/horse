@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/gofrs/uuid/v5"
@@ -103,7 +104,25 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	if _, err := mutation.setDefaultAllocation(ownerContext, model.SetDefaultAllocationInput{HouseholdID: ownedHousehold.ID, Allocations: []*model.AllocationInput{{PoolID: pool.ID, Weight: 1}}}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := mutation.setPoolFundingRule(ownerContext, model.SetPoolFundingRuleInput{HouseholdID: ownedHousehold.ID, PoolID: pool.ID, Configuration: personalPoolFundingConfiguration(memberID), ExpectedVersion: 1}); err != nil {
+		t.Fatal(err)
+	}
 	secondOwnedPool, err := mutation.createPool(ownerContext, model.CreatePoolInput{HouseholdID: ownedHousehold.ID, Name: "nodes integration second", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sharedPool, err := mutation.createPool(ownerContext, model.CreatePoolInput{HouseholdID: ownedHousehold.ID, Name: "nodes integration shared", Kind: model.PoolKindShared})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mutation.setPoolFundingRule(ownerContext, model.SetPoolFundingRuleInput{
+		HouseholdID: ownedHousehold.ID, PoolID: sharedPool.ID,
+		Configuration:   sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberID, Weight: 100}}, model.SharedPoolSettlementPolicyBalanceToStandard),
+		ExpectedVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	unconfiguredSharedPool, err := mutation.createPool(ownerContext, model.CreatePoolInput{HouseholdID: ownedHousehold.ID, Name: "nodes integration shared unconfigured", Kind: model.PoolKindShared})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,6 +250,36 @@ func TestNodesBatchPreservesOrderDuplicatesAndHouseholdAuthorization(t *testing.
 	}
 	if value, ok := householdPoolNodes[6].(*model.Household); !ok || value.ID != ownedHousehold.ID {
 		t.Fatalf("householdPoolNodes[6] = %#v, want duplicate authorized household", householdPoolNodes[6])
+	}
+	poolNodes, err := (&queryResolver{Resolver: &Resolver{DB: db}}).nodes(ownerContext, []string{
+		globalID(nodeTypePool, pool.ID), globalID(nodeTypePool, secondOwnedPool.ID),
+		globalID(nodeTypePool, sharedPool.ID), globalID(nodeTypePool, unconfiguredSharedPool.ID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantHousehold, err := loadHousehold(ctx, db, ownedHousehold.ID, householdFields{pools: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, id := range []string{pool.ID, secondOwnedPool.ID, sharedPool.ID, unconfiguredSharedPool.ID} {
+		want := findValue(wantHousehold.PoolVariants, func(variant model.PoolVariant) bool { return variant.GetID() == id })
+		got, ok := poolNodes[index].(model.PoolVariant)
+		if !ok || !reflect.DeepEqual(poolData(got), poolData(want)) {
+			t.Fatalf("poolNodes[%d] for %s = %#v, want Pool fields %#v", index, id, poolData(got), poolData(want))
+		}
+	}
+	if _, ok := poolNodes[0].(*model.PersonalPool); !ok {
+		t.Fatalf("poolNodes[0] = %#v, want configured personal pool", poolNodes[0])
+	}
+	if _, ok := poolNodes[1].(*model.UnconfiguredPersonalPool); !ok {
+		t.Fatalf("poolNodes[1] = %#v, want unconfigured personal pool", poolNodes[1])
+	}
+	if _, ok := poolNodes[2].(*model.SharedPool); !ok {
+		t.Fatalf("poolNodes[2] = %#v, want configured shared pool", poolNodes[2])
+	}
+	if _, ok := poolNodes[3].(*model.UnconfiguredSharedPool); !ok {
+		t.Fatalf("poolNodes[3] = %#v, want unconfigured shared pool", poolNodes[3])
 	}
 	memberNodes, err := (&queryResolver{Resolver: &Resolver{DB: db}}).nodes(ownerContext, []string{
 		globalID(nodeTypeMember, memberID), globalID(nodeTypeMember, memberID),
