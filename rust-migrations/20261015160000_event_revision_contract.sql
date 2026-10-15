@@ -1,0 +1,2 @@
+ALTER TABLE household_events
+    DROP CONSTRAINT household_events_household_id_entity_kind_entity_id_revisio_key;

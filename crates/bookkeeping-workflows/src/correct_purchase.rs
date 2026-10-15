@@ -1,6 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
-use bookkeeping_domain::{AllocationShares, PositiveYen, Yen, allocate};
+use bookkeeping_domain::{
+    AllocationShares, AllocationWeight, PoolId as AllocationPoolId, PositiveYen, Yen, allocate,
+};
 
 use crate::{AccountId, ItemId, PoolId, PurchaseId, PurchaseStatus, Side};
 
@@ -96,6 +98,76 @@ pub struct CorrectionEvent {
     pub event_type: &'static str,
     pub purchase_id: PurchaseId,
     pub changed_fields: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CorrectionSettlementPolicy {
+    BalanceToStandard,
+    ReimbursePersonal,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorrectionFundingRule {
+    pub pool_id: String,
+    pub version: u32,
+    pub owner_member_id: Option<String>,
+    pub settlement_policy: Option<CorrectionSettlementPolicy>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorrectionFundingWeight {
+    pub member_id: String,
+    pub weight: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorrectionPurchaseBurdenSnapshot {
+    pub item_id: String,
+    pub pool_id: String,
+    pub member_id: String,
+    pub funding_rule_version: u32,
+    pub funding_weight: u64,
+    pub settlement_policy: Option<CorrectionSettlementPolicy>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorrectionPurchasePayment {
+    pub line_no: u32,
+    pub account_id: String,
+    pub amount: PositiveYen,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorrectionPaymentFundingSnapshot {
+    pub line_no: u32,
+    pub account_id: String,
+    pub pool_id: String,
+    pub member_id: String,
+    pub funding_rule_version: u32,
+    pub funding_weight: u64,
+    pub settlement_policy: Option<CorrectionSettlementPolicy>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorrectionMemberBurdenSnapshot {
+    pub item_id: Option<String>,
+    pub pool_id: String,
+    pub member_id: String,
+    pub amount_delta: i64,
+    pub funding_rule_version: u32,
+    pub funding_weight: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorrectionSettlementAdjustment {
+    pub member_id: String,
+    pub amount: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CorrectionFundingEffects {
+    pub member_burdens: Vec<CorrectionMemberBurdenSnapshot>,
+    pub settlement_adjustments: Vec<CorrectionSettlementAdjustment>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -257,6 +329,492 @@ pub fn decide_correct_purchase(
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CorrectionFundingError {
+    InvalidSnapshot,
+    ArithmeticOverflow,
+    InvalidAllocation,
+}
+
+pub fn calculate_correction_funding_effects(
+    decision: &CorrectPurchaseDecision,
+    purchase_burdens: &[CorrectionPurchaseBurdenSnapshot],
+    purchase_payments: &[CorrectionPurchasePayment],
+    payment_snapshots: &[CorrectionPaymentFundingSnapshot],
+    historical_rules: &[CorrectionFundingRule],
+) -> Result<CorrectionFundingEffects, CorrectionFundingError> {
+    let target_item = match &decision.target {
+        CorrectionTarget::Purchase => None,
+        CorrectionTarget::Item(item_id) => Some(item_id.as_str()),
+    };
+    let mut burdens = BTreeMap::<String, SavedBurden>::new();
+    for snapshot in purchase_burdens {
+        if target_item.is_some_and(|item_id| item_id != snapshot.item_id) {
+            continue;
+        }
+        if snapshot.funding_rule_version == 0 || snapshot.funding_weight == 0 {
+            return Err(CorrectionFundingError::InvalidSnapshot);
+        }
+        let burden = burdens
+            .entry(snapshot.pool_id.clone())
+            .or_insert_with(|| SavedBurden {
+                version: snapshot.funding_rule_version,
+                policy: snapshot.settlement_policy,
+                weights: BTreeMap::new(),
+            });
+        if burden.version != snapshot.funding_rule_version
+            || burden.policy != snapshot.settlement_policy
+            || burden
+                .weights
+                .insert(snapshot.member_id.clone(), snapshot.funding_weight)
+                .is_some_and(|weight| weight != snapshot.funding_weight)
+        {
+            return Err(CorrectionFundingError::InvalidSnapshot);
+        }
+    }
+    if burdens.is_empty() {
+        return Err(CorrectionFundingError::InvalidSnapshot);
+    }
+
+    let item_id = target_item.map(str::to_owned);
+    let mut member_burdens = Vec::new();
+    for allocation in &decision.allocations {
+        let amount = allocation.amount.value();
+        if amount == 0 {
+            continue;
+        }
+        let saved = burdens
+            .get(allocation.pool_id.as_str())
+            .ok_or(CorrectionFundingError::InvalidSnapshot)?;
+        for (member_id, distributed) in distribute(amount, &saved.weights)? {
+            if distributed == 0 {
+                continue;
+            }
+            let funding_weight = *saved
+                .weights
+                .get(&member_id)
+                .ok_or(CorrectionFundingError::InvalidSnapshot)?;
+            member_burdens.push(CorrectionMemberBurdenSnapshot {
+                item_id: item_id.clone(),
+                pool_id: allocation.pool_id.as_str().to_owned(),
+                member_id,
+                amount_delta: if decision.amount_delta.value() < 0 {
+                    -distributed
+                } else {
+                    distributed
+                },
+                funding_rule_version: saved.version,
+                funding_weight,
+            });
+        }
+    }
+    member_burdens.sort_by(|left, right| {
+        (&left.pool_id, &left.member_id).cmp(&(&right.pool_id, &right.member_id))
+    });
+
+    let mut rule_map = BTreeMap::<(String, u32), CorrectionFundingRule>::new();
+    for rule in historical_rules {
+        if rule.version == 0
+            || rule.pool_id.is_empty()
+            || rule_map
+                .insert((rule.pool_id.clone(), rule.version), rule.clone())
+                .is_some()
+        {
+            return Err(CorrectionFundingError::InvalidSnapshot);
+        }
+    }
+    let mut allocation_rules = BTreeMap::<(String, u32), ResolvedFundingRule>::new();
+    for (pool_id, burden) in &burdens {
+        let key = (pool_id.clone(), burden.version);
+        let rule = rule_map
+            .get(&key)
+            .ok_or(CorrectionFundingError::InvalidSnapshot)?;
+        allocation_rules.insert(
+            key,
+            make_funding_rule(rule, burden.policy, burden.weights.clone())?,
+        );
+    }
+
+    let mut payment_groups = BTreeMap::<u32, PaymentSnapshotGroup>::new();
+    for snapshot in payment_snapshots {
+        if snapshot.line_no == 0
+            || snapshot.funding_rule_version == 0
+            || snapshot.funding_weight == 0
+        {
+            return Err(CorrectionFundingError::InvalidSnapshot);
+        }
+        let group =
+            payment_groups
+                .entry(snapshot.line_no)
+                .or_insert_with(|| PaymentSnapshotGroup {
+                    account_id: snapshot.account_id.clone(),
+                    pool_id: snapshot.pool_id.clone(),
+                    version: snapshot.funding_rule_version,
+                    policy: snapshot.settlement_policy,
+                    weights: BTreeMap::new(),
+                });
+        if group.account_id != snapshot.account_id
+            || group.pool_id != snapshot.pool_id
+            || group.version != snapshot.funding_rule_version
+            || group.policy != snapshot.settlement_policy
+            || group
+                .weights
+                .insert(snapshot.member_id.clone(), snapshot.funding_weight)
+                .is_some_and(|weight| weight != snapshot.funding_weight)
+        {
+            return Err(CorrectionFundingError::InvalidSnapshot);
+        }
+    }
+    let mut payment_rules = BTreeMap::<u32, ResolvedFundingRule>::new();
+    for (line_no, group) in &payment_groups {
+        let key = (group.pool_id.clone(), group.version);
+        let historical = rule_map
+            .get(&key)
+            .ok_or(CorrectionFundingError::InvalidSnapshot)?;
+        let rule = make_funding_rule(historical, group.policy, group.weights.clone())?;
+        if let Some(saved) = allocation_rules.get(&key)
+            && saved != &rule
+        {
+            return Err(CorrectionFundingError::InvalidSnapshot);
+        }
+        allocation_rules.insert(key.clone(), rule.clone());
+        payment_rules.insert(*line_no, rule);
+    }
+
+    let mut payments = purchase_payments.to_vec();
+    payments.sort_by_key(|payment| payment.line_no);
+    if payments.is_empty() || payment_groups.len() != payments.len() {
+        return Err(CorrectionFundingError::InvalidSnapshot);
+    }
+    let mut seen_lines = BTreeMap::new();
+    for payment in &payments {
+        if payment.line_no == 0
+            || payment.amount.value() == 0
+            || seen_lines.insert(payment.line_no, payment).is_some()
+            || payment_groups
+                .get(&payment.line_no)
+                .is_none_or(|snapshot| snapshot.account_id != payment.account_id)
+        {
+            return Err(CorrectionFundingError::InvalidSnapshot);
+        }
+    }
+
+    let total = decision
+        .amount_delta
+        .value()
+        .checked_abs()
+        .ok_or(CorrectionFundingError::ArithmeticOverflow)?;
+    let allocation_total = decision.allocations.iter().try_fold(0_i64, |sum, item| {
+        sum.checked_add(item.amount.value())
+            .ok_or(CorrectionFundingError::ArithmeticOverflow)
+    })?;
+    if total == 0 || allocation_total != total {
+        return Err(CorrectionFundingError::InvalidAllocation);
+    }
+
+    let payment_weights = payments
+        .iter()
+        .map(|payment| (payment.line_no, payment.amount.value()))
+        .collect::<BTreeMap<_, _>>();
+    let mut remaining = distribute_by_key(total, &payment_weights)?;
+    let correction_payment_amounts = remaining.clone();
+    let mut per_payment_allocations = BTreeMap::<u32, BTreeMap<String, i64>>::new();
+    let mut ordered_allocations = decision.allocations.iter().collect::<Vec<_>>();
+    ordered_allocations.sort_by(|left, right| left.pool_id.cmp(&right.pool_id));
+    for allocation in ordered_allocations {
+        if allocation.amount.value() == 0 {
+            continue;
+        }
+        let available = remaining
+            .iter()
+            .filter(|(_, amount)| **amount > 0)
+            .map(|(line, amount)| (*line, *amount))
+            .collect::<BTreeMap<_, _>>();
+        let distributed = distribute_by_key(allocation.amount.value(), &available)?;
+        for (line, amount) in distributed {
+            let left = remaining
+                .get_mut(&line)
+                .ok_or(CorrectionFundingError::InvalidSnapshot)?;
+            *left = left
+                .checked_sub(amount)
+                .ok_or(CorrectionFundingError::ArithmeticOverflow)?;
+            per_payment_allocations
+                .entry(line)
+                .or_default()
+                .insert(allocation.pool_id.as_str().to_owned(), amount);
+        }
+    }
+
+    let mut adjustments = BTreeMap::<String, ExpenseAdjustment>::new();
+    for payment in &payments {
+        let paid = correction_payment_amounts
+            .get(&payment.line_no)
+            .copied()
+            .unwrap_or_default();
+        if paid == 0 {
+            continue;
+        }
+        let payment_rule = payment_rules
+            .get(&payment.line_no)
+            .ok_or(CorrectionFundingError::InvalidSnapshot)?;
+        let mut responsibilities = BTreeMap::<String, i64>::new();
+        let mut reimbursement_monthly = BTreeMap::<String, i64>::new();
+        if let Some(item_allocations) = per_payment_allocations.get(&payment.line_no) {
+            for (pool_id, allocation_amount) in item_allocations {
+                let saved = burdens
+                    .get(pool_id)
+                    .ok_or(CorrectionFundingError::InvalidSnapshot)?;
+                let allocation_rule = allocation_rules
+                    .get(&(pool_id.clone(), saved.version))
+                    .ok_or(CorrectionFundingError::InvalidSnapshot)?;
+                if payment_rule.owner_member_id.is_none()
+                    && payment_rule.settlement_policy
+                        == Some(CorrectionSettlementPolicy::ReimbursePersonal)
+                    && allocation_rule.owner_member_id.is_none()
+                {
+                    continue;
+                }
+                for (member_id, amount) in distribute(*allocation_amount, &allocation_rule.weights)?
+                {
+                    checked_add_to(&mut responsibilities, member_id, amount)?;
+                }
+                if payment_rule.owner_member_id.is_none()
+                    && payment_rule.settlement_policy
+                        == Some(CorrectionSettlementPolicy::ReimbursePersonal)
+                    && allocation_rule.owner_member_id.is_some()
+                {
+                    let owner = allocation_rule
+                        .owner_member_id
+                        .as_ref()
+                        .ok_or(CorrectionFundingError::InvalidSnapshot)?;
+                    let current = reimbursement_monthly
+                        .get(owner)
+                        .copied()
+                        .unwrap_or_default();
+                    reimbursement_monthly.insert(
+                        owner.clone(),
+                        current
+                            .checked_add(*allocation_amount)
+                            .ok_or(CorrectionFundingError::ArithmeticOverflow)?,
+                    );
+                }
+            }
+        }
+
+        if let Some(owner) = &payment_rule.owner_member_id {
+            for (member_id, burden) in &responsibilities {
+                let change = if member_id == owner {
+                    paid.checked_sub(*burden)
+                } else {
+                    burden.checked_neg()
+                }
+                .ok_or(CorrectionFundingError::ArithmeticOverflow)?;
+                let adjustment = adjustments.entry(member_id.clone()).or_default();
+                if change > 0 {
+                    adjustment.advance = adjustment
+                        .advance
+                        .checked_add(change)
+                        .ok_or(CorrectionFundingError::ArithmeticOverflow)?;
+                } else if change < 0 {
+                    adjustment.monthly = adjustment
+                        .monthly
+                        .checked_sub(change)
+                        .ok_or(CorrectionFundingError::ArithmeticOverflow)?;
+                }
+            }
+            if !responsibilities.contains_key(owner) {
+                let adjustment = adjustments.entry(owner.clone()).or_default();
+                adjustment.advance = adjustment
+                    .advance
+                    .checked_add(paid)
+                    .ok_or(CorrectionFundingError::ArithmeticOverflow)?;
+            }
+            continue;
+        }
+        match payment_rule.settlement_policy {
+            Some(CorrectionSettlementPolicy::BalanceToStandard) => {
+                for (member_id, baseline) in distribute(paid, &payment_rule.weights)? {
+                    let responsibility = responsibilities.remove(&member_id).unwrap_or_default();
+                    let adjustment = adjustments.entry(member_id).or_default();
+                    adjustment.monthly = adjustment
+                        .monthly
+                        .checked_add(responsibility - baseline)
+                        .ok_or(CorrectionFundingError::ArithmeticOverflow)?;
+                }
+                for (member_id, responsibility) in responsibilities {
+                    let adjustment = adjustments.entry(member_id).or_default();
+                    adjustment.monthly = adjustment
+                        .monthly
+                        .checked_add(responsibility)
+                        .ok_or(CorrectionFundingError::ArithmeticOverflow)?;
+                }
+            }
+            Some(CorrectionSettlementPolicy::ReimbursePersonal) => {
+                for (member_id, amount) in reimbursement_monthly {
+                    let adjustment = adjustments.entry(member_id).or_default();
+                    adjustment.monthly = adjustment
+                        .monthly
+                        .checked_add(amount)
+                        .ok_or(CorrectionFundingError::ArithmeticOverflow)?;
+                }
+            }
+            None => return Err(CorrectionFundingError::InvalidSnapshot),
+        }
+    }
+
+    let mut settlement_adjustments = Vec::new();
+    for (member_id, adjustment) in adjustments {
+        let signed = adjustment
+            .monthly
+            .checked_sub(adjustment.advance)
+            .ok_or(CorrectionFundingError::ArithmeticOverflow)?;
+        let amount = if decision.amount_delta.value() < 0 {
+            signed
+                .checked_neg()
+                .ok_or(CorrectionFundingError::ArithmeticOverflow)?
+        } else {
+            signed
+        };
+        if amount != 0 {
+            settlement_adjustments.push(CorrectionSettlementAdjustment { member_id, amount });
+        }
+    }
+
+    Ok(CorrectionFundingEffects {
+        member_burdens,
+        settlement_adjustments,
+    })
+}
+
+#[derive(Debug, Clone, Default)]
+struct ExpenseAdjustment {
+    monthly: i64,
+    advance: i64,
+}
+
+#[derive(Debug, Clone)]
+struct SavedBurden {
+    version: u32,
+    policy: Option<CorrectionSettlementPolicy>,
+    weights: BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Clone)]
+struct PaymentSnapshotGroup {
+    account_id: String,
+    pool_id: String,
+    version: u32,
+    policy: Option<CorrectionSettlementPolicy>,
+    weights: BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedFundingRule {
+    owner_member_id: Option<String>,
+    settlement_policy: Option<CorrectionSettlementPolicy>,
+    weights: BTreeMap<String, u64>,
+}
+
+fn make_funding_rule(
+    historical: &CorrectionFundingRule,
+    snapshot_policy: Option<CorrectionSettlementPolicy>,
+    weights: BTreeMap<String, u64>,
+) -> Result<ResolvedFundingRule, CorrectionFundingError> {
+    if weights.is_empty() || weights.values().any(|weight| *weight == 0) {
+        return Err(CorrectionFundingError::InvalidSnapshot);
+    }
+    if let Some(owner) = &historical.owner_member_id {
+        if historical.settlement_policy.is_some()
+            || snapshot_policy.is_some()
+            || weights.len() != 1
+            || weights.get(owner) != Some(&1)
+        {
+            return Err(CorrectionFundingError::InvalidSnapshot);
+        }
+    } else if historical.settlement_policy != snapshot_policy || snapshot_policy.is_none() {
+        return Err(CorrectionFundingError::InvalidSnapshot);
+    }
+    Ok(ResolvedFundingRule {
+        owner_member_id: historical.owner_member_id.clone(),
+        settlement_policy: historical.settlement_policy,
+        weights,
+    })
+}
+
+fn distribute(
+    amount: i64,
+    weights: &BTreeMap<String, u64>,
+) -> Result<Vec<(String, i64)>, CorrectionFundingError> {
+    if amount < 0 || weights.is_empty() || weights.values().any(|weight| *weight == 0) {
+        return Err(CorrectionFundingError::InvalidSnapshot);
+    }
+    let mut shares = Vec::with_capacity(weights.len());
+    for (id, weight) in weights {
+        let pool_id = AllocationPoolId::new(id.clone())
+            .map_err(|_| CorrectionFundingError::InvalidSnapshot)?;
+        let weight = AllocationWeight::new(pool_id, *weight)
+            .map_err(|_| CorrectionFundingError::InvalidSnapshot)?;
+        shares.push(weight);
+    }
+    let shares =
+        AllocationShares::new(shares).map_err(|_| CorrectionFundingError::InvalidSnapshot)?;
+    let allocations = allocate(
+        Yen::new(amount).map_err(|_| CorrectionFundingError::InvalidAllocation)?,
+        &shares,
+    );
+    Ok(allocations
+        .into_iter()
+        .map(|allocation| {
+            (
+                allocation.pool_id().as_str().to_owned(),
+                allocation.amount().value(),
+            )
+        })
+        .collect())
+}
+
+fn distribute_by_key(
+    amount: i64,
+    weights: &BTreeMap<u32, i64>,
+) -> Result<BTreeMap<u32, i64>, CorrectionFundingError> {
+    if amount < 0 || weights.is_empty() || weights.values().any(|weight| *weight <= 0) {
+        return Err(CorrectionFundingError::InvalidSnapshot);
+    }
+    let string_weights = weights
+        .iter()
+        .map(|(line_no, weight)| (payment_id(*line_no), *weight as u64))
+        .collect::<BTreeMap<_, _>>();
+    let distributed = distribute(amount, &string_weights)?;
+    distributed
+        .into_iter()
+        .map(|(id, amount)| {
+            let line_no = id
+                .parse::<u32>()
+                .map_err(|_| CorrectionFundingError::InvalidSnapshot)?;
+            Ok((line_no, amount))
+        })
+        .collect()
+}
+
+fn payment_id(line_no: u32) -> String {
+    line_no.to_string()
+}
+
+fn checked_add_to(
+    amounts: &mut BTreeMap<String, i64>,
+    member_id: String,
+    amount: i64,
+) -> Result<(), CorrectionFundingError> {
+    let current = amounts.get(&member_id).copied().unwrap_or_default();
+    amounts.insert(
+        member_id,
+        current
+            .checked_add(amount)
+            .ok_or(CorrectionFundingError::ArithmeticOverflow)?,
+    );
+    Ok(())
+}
+
 fn valid_period(value: &str) -> bool {
     let Some((year, month)) = value.split_once('-') else {
         return false;
@@ -371,6 +929,68 @@ mod tests {
             .sum::<i64>();
         assert_eq!(credits, debits);
         assert_eq!(decision.event.event_type, "purchase.corrected");
+    }
+
+    #[test]
+    fn funding_effects_use_saved_weights_and_payment_rules() {
+        let decision = decide_correct_purchase(command(-20)).unwrap();
+        let purchase_burdens = ["pool-a", "pool-b"]
+            .into_iter()
+            .flat_map(|pool_id| {
+                ["member-a", "member-b"].map(|member_id| CorrectionPurchaseBurdenSnapshot {
+                    item_id: "item-1".into(),
+                    pool_id: pool_id.into(),
+                    member_id: member_id.into(),
+                    funding_rule_version: 1,
+                    funding_weight: 1,
+                    settlement_policy: Some(CorrectionSettlementPolicy::BalanceToStandard),
+                })
+            })
+            .collect::<Vec<_>>();
+        let purchase_payments = vec![CorrectionPurchasePayment {
+            line_no: 1,
+            account_id: "account-1".into(),
+            amount: PositiveYen::new(100).unwrap(),
+        }];
+        let payment_snapshots = ["member-a", "member-b"]
+            .into_iter()
+            .map(|member_id| CorrectionPaymentFundingSnapshot {
+                line_no: 1,
+                account_id: "account-1".into(),
+                pool_id: "payment-pool".into(),
+                member_id: member_id.into(),
+                funding_rule_version: 1,
+                funding_weight: 1,
+                settlement_policy: Some(CorrectionSettlementPolicy::BalanceToStandard),
+            })
+            .collect::<Vec<_>>();
+        let historical_rules = ["pool-a", "pool-b", "payment-pool"]
+            .into_iter()
+            .map(|pool_id| CorrectionFundingRule {
+                pool_id: pool_id.into(),
+                version: 1,
+                owner_member_id: None,
+                settlement_policy: Some(CorrectionSettlementPolicy::BalanceToStandard),
+            })
+            .collect::<Vec<_>>();
+
+        let effects = calculate_correction_funding_effects(
+            &decision,
+            &purchase_burdens,
+            &purchase_payments,
+            &payment_snapshots,
+            &historical_rules,
+        )
+        .unwrap();
+
+        assert_eq!(effects.member_burdens.len(), 4);
+        assert!(
+            effects
+                .member_burdens
+                .iter()
+                .all(|burden| burden.amount_delta == -5)
+        );
+        assert!(effects.settlement_adjustments.is_empty());
     }
 
     #[test]

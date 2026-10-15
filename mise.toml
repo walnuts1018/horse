@@ -34,6 +34,10 @@ run = "diesel print-schema --database-url \"$RUST_DATABASE_URL\" --schema public
 description = "生成済みDiesel schemaとDBスキーマの差分確認"
 run = "diesel print-schema --database-url \"$RUST_DATABASE_URL\" --schema public | diff -u crates/postgres/src/schema.rs -"
 
+[tasks."rust:db:migrate"]
+description = "Rust用Atlasマイグレーション"
+run = "atlas migrate apply --config file://atlas-rust.hcl --env rust"
+
 [tasks.lint]
 description = "Goの静的解析"
 run = "golangci-lint run ./..."

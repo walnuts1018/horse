@@ -1,14 +1,14 @@
 use std::collections::BTreeSet;
 
 use bookkeeping_workflows::{PostPurchaseDecision, Side};
-use chrono::{DateTime, Datelike, Utc};
+use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
-use crate::{PgPool, schema::public};
+use crate::{PgPool, post_purchase_loader::ResolvedPostPurchasePayment, schema::public};
 
 const OPERATION: &str = "post_purchase";
 
@@ -20,6 +20,7 @@ pub struct PersistPostPurchase {
     pub ledger_description: String,
     pub idempotency_key: String,
     pub request_fingerprint: [u8; 32],
+    pub resolved_payments: Vec<ResolvedPostPurchasePayment>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,13 +129,31 @@ pub async fn persist_post_purchase(
 
         validate_household_references(&mut *conn, household_id, actor_id, purchase_id, &decision)
             .await?;
+        materialize_fallback_payments(
+            &mut *conn,
+            household_id,
+            purchase_id,
+            &input.resolved_payments,
+        )
+        .await?;
+        validate_payment_rows(
+            &mut *conn,
+            household_id,
+            purchase_id,
+            &input.resolved_payments,
+            &decision,
+        )
+        .await?;
         let occurred_at = purchases::purchases
             .filter(purchases::household_id.eq(household_id))
             .filter(purchases::id.eq(purchase_id))
             .select(purchases::occurred_at)
             .first::<DateTime<Utc>>(&mut *conn)
             .await?;
+        let tokyo = FixedOffset::east_opt(9 * 60 * 60)
+            .ok_or(PostPurchasePersistenceError::InvalidDecision)?;
         let period_start = occurred_at
+            .with_timezone(&tokyo)
             .date_naive()
             .with_day(1)
             .ok_or(PostPurchasePersistenceError::InvalidDecision)?;
@@ -494,6 +513,111 @@ async fn validate_household_references(
         .await?;
     if found_items.len() != item_ids.len() {
         return Err(PostPurchasePersistenceError::HouseholdMismatch);
+    }
+    Ok(())
+}
+
+async fn materialize_fallback_payments(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    purchase_id: Uuid,
+    payments: &[ResolvedPostPurchasePayment],
+) -> Result<(), PostPurchasePersistenceError> {
+    use public::purchase_payments::dsl as payments_table;
+
+    let fallback_payments = payments
+        .iter()
+        .filter(|payment| payment.is_fallback)
+        .collect::<Vec<_>>();
+    if fallback_payments.is_empty() {
+        return Ok(());
+    }
+    let existing = payments_table::purchase_payments
+        .filter(payments_table::household_id.eq(household_id))
+        .filter(payments_table::purchase_id.eq(purchase_id))
+        .select(payments_table::line_no)
+        .load::<i32>(conn)
+        .await?;
+    if !existing.is_empty() {
+        return Err(PostPurchasePersistenceError::InvalidDecision);
+    }
+    let mut line_numbers = BTreeSet::new();
+    for payment in fallback_payments {
+        let line_no = i32::try_from(payment.line_no)
+            .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("payment line_no"))?;
+        let account_id = parse_uuid(payment.account_id.as_str(), "payment account_id")?;
+        if line_no <= 0 || payment.amount.value() <= 0 || !line_numbers.insert(line_no) {
+            return Err(PostPurchasePersistenceError::InvalidDecision);
+        }
+        diesel::insert_into(payments_table::purchase_payments)
+            .values((
+                payments_table::household_id.eq(household_id),
+                payments_table::purchase_id.eq(purchase_id),
+                payments_table::line_no.eq(line_no),
+                payments_table::account_id.eq(account_id),
+                payments_table::amount_yen.eq(payment.amount.value()),
+            ))
+            .execute(conn)
+            .await?;
+    }
+    Ok(())
+}
+
+async fn validate_payment_rows(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    purchase_id: Uuid,
+    resolved_payments: &[ResolvedPostPurchasePayment],
+    decision: &PostPurchaseDecision,
+) -> Result<(), PostPurchasePersistenceError> {
+    use public::purchase_payments::dsl as payments;
+
+    let persisted = payments::purchase_payments
+        .filter(payments::household_id.eq(household_id))
+        .filter(payments::purchase_id.eq(purchase_id))
+        .select((
+            payments::line_no,
+            payments::account_id,
+            payments::amount_yen,
+        ))
+        .load::<(i32, Uuid, i64)>(conn)
+        .await?
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    let expected = resolved_payments
+        .iter()
+        .map(|payment| {
+            let line_no = i32::try_from(payment.line_no)
+                .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("payment line_no"))?;
+            Ok((
+                line_no,
+                parse_uuid(payment.account_id.as_str(), "payment account_id")?,
+                payment.amount.value(),
+            ))
+        })
+        .collect::<Result<BTreeSet<_>, PostPurchasePersistenceError>>()?;
+    let expected_identity = expected
+        .iter()
+        .map(|(line_no, account_id, _)| (*line_no, *account_id))
+        .collect::<BTreeSet<_>>();
+    let decision_identity = decision
+        .payment_funding_snapshots
+        .iter()
+        .map(|snapshot| {
+            Ok((
+                i32::try_from(snapshot.line_no).map_err(|_| {
+                    PostPurchasePersistenceError::NumericOutOfRange("payment line_no")
+                })?,
+                parse_uuid(snapshot.account_id.as_str(), "payment account_id")?,
+            ))
+        })
+        .collect::<Result<BTreeSet<_>, PostPurchasePersistenceError>>()?;
+    if persisted != expected
+        || expected.len() != resolved_payments.len()
+        || expected_identity.len() != expected.len()
+        || expected_identity != decision_identity
+    {
+        return Err(PostPurchasePersistenceError::InvalidDecision);
     }
     Ok(())
 }

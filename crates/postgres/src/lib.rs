@@ -1,7 +1,12 @@
 use diesel_async::pooled_connection::{AsyncDieselConnectionManager, PoolError, bb8::Pool};
 
 pub use diesel_async::AsyncPgConnection;
+pub mod close_period;
+pub mod correct_purchase;
 pub mod post_purchase;
+pub mod post_purchase_loader;
+pub mod record_repayment;
+pub mod record_transfer;
 pub mod schema;
 
 pub type PgPool = Pool<AsyncPgConnection>;

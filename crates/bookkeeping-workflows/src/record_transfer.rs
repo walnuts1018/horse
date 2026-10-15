@@ -119,6 +119,8 @@ pub struct RecordTransferDecision {
     pub kind: TransferKind,
     pub amount: PositiveYen,
     pub description: String,
+    pub payment_account_id: Option<AccountId>,
+    pub destination_account_id: Option<AccountId>,
     pub loan_id: Option<LoanId>,
     pub journal_lines: Vec<JournalLine>,
     pub settlement_adjustments: Vec<SettlementAdjustment>,
@@ -182,6 +184,14 @@ pub fn decide_record_transfer(
     let journal_lines = build_journal_lines(&command)?;
     let settlement_adjustments = settlement_adjustments(&command);
     let description = normalized_description(&command.description, command.kind);
+    let payment_account_id = command
+        .payment_account
+        .as_ref()
+        .map(|account| account.id.clone());
+    let destination_account_id = command
+        .destination_account
+        .as_ref()
+        .map(|account| account.id.clone());
     let loan_id = command.loan.map(|loan| loan.id);
 
     Ok(RecordTransferDecision {
@@ -191,6 +201,8 @@ pub fn decide_record_transfer(
         kind: command.kind,
         amount: command.amount,
         description,
+        payment_account_id,
+        destination_account_id,
         loan_id,
         journal_lines,
         settlement_adjustments,
