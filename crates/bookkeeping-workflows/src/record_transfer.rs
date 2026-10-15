@@ -399,19 +399,6 @@ mod tests {
         }
     }
 
-    fn command(kind: TransferKind) -> RecordTransferCommand {
-        let base = base();
-        match kind {
-            TransferKind::Advance => RecordTransferCommand::Advance(base),
-            TransferKind::Loan => RecordTransferCommand::Loan(base),
-            TransferKind::Gift => RecordTransferCommand::Gift(base),
-            TransferKind::Repayment => RecordTransferCommand::Repayment {
-                base,
-                loan: loan_basis(),
-            },
-        }
-    }
-
     fn loan_basis() -> LoanBasis {
         LoanBasis {
             id: LoanId::new("loan-1").unwrap(),
@@ -494,44 +481,43 @@ mod tests {
 
     #[test]
     fn transfer_rejects_closed_period_invalid_repayment_and_same_accounts() {
-        let mut closed = command(TransferKind::Gift);
+        let mut closed = base();
         closed.period_status = AccountingPeriodStatus::Closed;
         assert_eq!(
-            decide_record_transfer(closed),
+            decide_record_transfer(RecordTransferCommand::Gift(closed)),
             Err(RecordTransferError::AccountingPeriodClosed)
         );
 
-        let mut no_loan = command(TransferKind::Repayment);
+        // 返済にLoanBasisがない組み合わせは型で表現できないため、方向不一致のみ検証する。
+        let mismatch = RecordTransferCommand::Repayment {
+            base: base(),
+            loan: loan_basis(),
+        };
         assert_eq!(
-            decide_record_transfer(no_loan.clone()),
-            Err(RecordTransferError::RepaymentRequiresLoan)
-        );
-        no_loan.loan = Some(loan_basis());
-        no_loan.from_member_id = member("from");
-        no_loan.to_member_id = member("to");
-        assert_eq!(
-            decide_record_transfer(no_loan),
+            decide_record_transfer(mismatch),
             Err(RecordTransferError::LoanDirectionMismatch)
         );
 
-        let mut same_account = command(TransferKind::Gift);
-        same_account.payment_account = Some(account("same", "pool", PoolKind::Personal));
-        same_account.destination_account = same_account.payment_account.clone();
+        let mut same_base = base();
+        same_base.payment_account = Some(account("same", "pool", PoolKind::Personal));
+        same_base.destination_account = same_base.payment_account.clone();
         assert_eq!(
-            decide_record_transfer(same_account),
+            decide_record_transfer(RecordTransferCommand::Gift(same_base)),
             Err(RecordTransferError::SameAccounts)
         );
     }
 
     #[test]
     fn repayment_cannot_exceed_outstanding_balance() {
-        let mut input = command(TransferKind::Repayment);
-        input.from_member_id = member("to");
-        input.to_member_id = member("from");
-        input.amount = PositiveYen::new(81).unwrap();
-        input.loan = Some(loan_basis());
+        let mut overpaid = base();
+        overpaid.from_member_id = member("to");
+        overpaid.to_member_id = member("from");
+        overpaid.amount = PositiveYen::new(81).unwrap();
         assert_eq!(
-            decide_record_transfer(input),
+            decide_record_transfer(RecordTransferCommand::Repayment {
+                base: overpaid,
+                loan: loan_basis(),
+            }),
             Err(RecordTransferError::RepaymentExceedsOutstanding)
         );
     }

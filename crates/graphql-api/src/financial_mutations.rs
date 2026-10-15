@@ -5,7 +5,7 @@ use bookkeeping_workflows::{
     AccountId, MemberId,
     record_repayment::{RecordRepaymentCommand, RepaymentError, decide_record_repayment},
     record_transfer::{
-        AccountingPeriodStatus, RecordTransferCommand, RecordTransferError, TransferKind,
+        AccountingPeriodStatus, RecordTransferCommand, RecordTransferError, TransferBase,
         decide_record_transfer,
     },
 };
@@ -26,16 +26,6 @@ pub enum TransferInputKind {
     Advance,
     Loan,
     Gift,
-}
-
-impl From<TransferInputKind> for TransferKind {
-    fn from(value: TransferInputKind) -> Self {
-        match value {
-            TransferInputKind::Advance => Self::Advance,
-            TransferInputKind::Loan => Self::Loan,
-            TransferInputKind::Gift => Self::Gift,
-        }
-    }
 }
 
 #[derive(Clone, Debug, InputObject)]
@@ -209,17 +199,21 @@ pub async fn record_transfer(
         Ok(value) => value,
         Err(_) => return Ok(bad_transfer_error().into()),
     };
-    let command = RecordTransferCommand {
+    let base = TransferBase {
         actor_id: member_id(actor.0)?,
         from_member_id: member_id(parsed.from_member_id)?,
         to_member_id: member_id(parsed.to_member_id)?,
-        kind: parsed.kind.into(),
         amount,
         description: parsed.description.clone(),
         period_status: command_context.period_status,
         payment_account: command_context.payment_account,
         destination_account: command_context.destination_account,
-        loan: None,
+    };
+    // RecordTransferInputの種別はAdvance/Loan/Giftのみで、返済はRecordRepaymentInputで扱うため、LoanBasisなしの組み合わせはここでは構築できない。
+    let command = match parsed.kind {
+        TransferInputKind::Advance => RecordTransferCommand::Advance(base),
+        TransferInputKind::Loan => RecordTransferCommand::Loan(base),
+        TransferInputKind::Gift => RecordTransferCommand::Gift(base),
     };
     let decision = match decide_record_transfer(command) {
         Ok(value) => value,
