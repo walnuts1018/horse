@@ -484,17 +484,19 @@ pub(crate) async fn persist_post_purchase_in_transaction(
         .await?;
 
     for event in decision.events() {
+        let (event_type, changed_fields): (&str, &[&str]) = match event {
+            bookkeeping_domain::PurchaseEvent::Posted { .. } => ("purchase.posted", &["status"]),
+        };
         let event_revision = i64::try_from(event.revision())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("event revision"))?;
-        let changed_fields = event
-            .changed_fields()
+        let changed_fields = changed_fields
             .iter()
             .map(|field| Some((*field).to_owned()))
             .collect::<Vec<_>>();
         diesel::insert_into(public::household_events::table)
             .values((
                 public::household_events::household_id.eq(household_id),
-                public::household_events::event_type.eq(event.event_type()),
+                public::household_events::event_type.eq(event_type),
                 public::household_events::entity_kind.eq("purchase"),
                 public::household_events::entity_id
                     .eq(parse_uuid(event.purchase_id().as_str(), "event entity_id")?),

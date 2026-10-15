@@ -14,10 +14,6 @@ Workflowの実行責務はApplication、GraphQL、PostgreSQLに分かれてい�
 
 [`journal.rs`](../../contexts/bookkeeping/domain/src/journal.rs)の`BalancedJournal`は貸借一致を保証しますが、各Workflowは個別の仕訳明細型も保持しています。共通の会計不変条件とWorkflow固有の表現をどの範囲で共有するかは未決です。
 
-### 業務イベントと変更通知
-
-[`purchase.rs`](../../contexts/bookkeeping/domain/src/purchase.rs)の購入イベントは、`event_type`や`changed_fields`を含む変更通知の契約とも結び付いています。業務上の事実、他Context向けイベント、GraphQL向け変更通知を分ける案があります。
-
 ### Event永続化とWorkflowの境界
 
 複数のPostgreSQL実装が`household_events`向けのイベント項目を組み立てています。イベント内容を誰が決定し、各配送形式へ誰が変換するかを整理する余地があります。

@@ -472,6 +472,30 @@ mod tests {
     }
 
     #[test]
+    fn measure_constructor_rejects_values_outside_the_validated_range() {
+        assert_eq!(
+            Measure::new(0, 1, QuantityUnit::Piece),
+            Err(MeasureError::InvalidMeasure)
+        );
+        assert_eq!(
+            Measure::new(1, 0, QuantityUnit::Piece),
+            Err(MeasureError::InvalidMeasure)
+        );
+        assert_eq!(
+            Measure::new(2, 4, QuantityUnit::Piece),
+            Err(MeasureError::InvalidMeasure)
+        );
+        assert_eq!(
+            Measure::new(1_000_000_000_001, 1, QuantityUnit::Piece),
+            Err(MeasureError::InvalidMeasure)
+        );
+        assert_eq!(
+            Measure::new(1, 1_000_001, QuantityUnit::Piece),
+            Err(MeasureError::InvalidMeasure)
+        );
+    }
+
+    #[test]
     fn allocation_rule_selection_uses_scope_precedence() {
         let candidates = vec![
             AllocationRuleCandidate {

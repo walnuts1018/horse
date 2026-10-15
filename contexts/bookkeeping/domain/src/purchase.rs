@@ -444,9 +444,6 @@ pub enum PurchaseEvent {
 }
 
 impl PurchaseEvent {
-    pub const fn event_type(&self) -> &'static str {
-        "purchase.posted"
-    }
     pub fn purchase_id(&self) -> &PurchaseId {
         match self {
             Self::Posted { purchase_id, .. } => purchase_id,
@@ -456,9 +453,6 @@ impl PurchaseEvent {
         match self {
             Self::Posted { revision, .. } => *revision,
         }
-    }
-    pub const fn changed_fields(&self) -> &'static [&'static str] {
-        &["status"]
     }
 }
 

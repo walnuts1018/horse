@@ -12,10 +12,6 @@ Workflow構成は複数の層にあります。[`close_period.rs`](../../context
 
 [`journal.rs`](../../contexts/bookkeeping/domain/src/journal.rs)の`BalancedJournal`と、各Workflowの明細モデルが併存しています。全Workflowで共有する会計不変条件と、操作ごとに残すべき差異を整理する余地があります。
 
-## Eventの意味と配送形式
-
-[`purchase.rs`](../../contexts/bookkeeping/domain/src/purchase.rs)のイベント表現には業務上の事実と`event_type`・`changed_fields`などの変更通知情報が含まれます。業務イベント、Context間で公開する契約、GraphQLクライアント向け通知を分離する案があります。
-
 ## Bounded Contextとテーブル所有権
 
 [`purchase_command_context.rs`](../../contexts/bookkeeping/postgres/src/purchase_command_context.rs)などでは、Bookkeepingの処理から他Contextが所有するテーブルを参照します。共有DB自体ではなく、テーブルの更新規則と所有者をどのContextに置くかが検討事項です。現在の整合性境界を保つための直接参照か、Context間の契約へ移すかを業務モデルに基づいて決める必要があります。
@@ -26,4 +22,4 @@ Workflow構成は複数の層にあります。[`close_period.rs`](../../context
 
 ## 検証済み入力の表現
 
-[`create_purchase.rs`](../../contexts/bookkeeping/application/src/create_purchase.rs)の`Measure`は数値や単位を公開フィールドで保持し、[`set_allocation_rule.rs`](../../contexts/policy/application/src/set_allocation_rule.rs)の`ValidatedSetAllocationRuleCommand`も公開フィールドを持ちます。検証後の値を外部から直接構築できない形にし、プリミティブ値の検証結果を型で保持する余地があります。
+[`set_allocation_rule.rs`](../../contexts/policy/application/src/set_allocation_rule.rs)の`ValidatedSetAllocationRuleCommand`は公開フィールドを持ちます。検証後の値を外部から直接構築できない形にし、検証結果を型で保持する余地があります。
