@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
@@ -15,7 +14,6 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/inputvalidation"
-	"github.com/walnuts1018/horse/internal/domain"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -150,95 +148,68 @@ func loadPurchaseItemUpdateState(ctx context.Context, executor bob.Executor, ite
 	return purchaseItemUpdateState{householdID: householdID, household: household, purchase: purchase, item: item, status: status}, nil
 }
 
+func validatePurchaseItemUpdateVariant(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, command UpdateItemCommand, variantID *string) error {
+	if !command.ProductVariantIDSet || variantID == nil {
+		return nil
+	}
+	variantUUID, err := parseUUID(*variantID, "product variant")
+	if err != nil {
+		return ErrNotFound
+	}
+	variant, err := models.ProductVariants.Query(sm.Where(psql.And(
+		models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)),
+		models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.ProductVariants.Columns.Archived.EQ(psql.Arg(false)),
+	))).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	concept, err := models.ProductConcepts.Query(sm.Where(psql.And(
+		models.ProductConcepts.Columns.ID.EQ(psql.Arg(variant.ConceptID)),
+		models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+	))).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && concept.Archived {
+		return ErrNotFound
+	}
+	return err
+}
+
 func buildPurchaseItemUpdatePlan(ctx context.Context, tx pgx.Tx, executor bob.Executor, command UpdateItemCommand, state purchaseItemUpdateState, deferAccountingSync bool) (purchaseItemUpdatePlan, error) {
 	item, purchase := state.item, state.purchase
-	newName, newAmount := item.Name, item.AmountYen
-	if command.Name != nil {
-		newName = strings.TrimSpace(*command.Name)
-		if newName == "" {
-			return purchaseItemUpdatePlan{}, fmt.Errorf("%w: invalid item name", ErrBadInput)
-		}
-	}
-	if command.AmountYen != nil {
-		newAmount = *command.AmountYen
-		if newAmount < 0 || newAmount > maxMoney {
-			return purchaseItemUpdatePlan{}, fmt.Errorf("%w: invalid item amount", ErrBadInput)
-		}
-	}
-	categoryID, variantID := nullableID(item.CategoryID), nullableID(item.ProductVariantID)
-	if command.CategoryIDSet {
-		categoryID = command.CategoryID
-	}
-	if command.ProductVariantIDSet {
-		variantID = command.ProductVariantID
-	}
-	productLearning, err := prepareItemProductLearning(command, variantID)
+	values, err := preparePurchaseItemUpdateValues(command, item)
 	if err != nil {
 		return purchaseItemUpdatePlan{}, err
 	}
-	if command.ProductVariantIDSet && variantID != nil {
-		variantUUID, parseErr := parseUUID(*variantID, "product variant")
-		if parseErr != nil {
-			return purchaseItemUpdatePlan{}, ErrNotFound
-		}
-		variant, queryErr := models.ProductVariants.Query(sm.Where(psql.And(
-			models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)),
-			models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(state.householdID)),
-			models.ProductVariants.Columns.Archived.EQ(psql.Arg(false)),
-		))).One(ctx, executor)
-		if errors.Is(queryErr, sql.ErrNoRows) {
-			return purchaseItemUpdatePlan{}, ErrNotFound
-		}
-		if queryErr != nil {
-			return purchaseItemUpdatePlan{}, queryErr
-		}
-		concept, queryErr := models.ProductConcepts.Query(sm.Where(psql.And(
-			models.ProductConcepts.Columns.ID.EQ(psql.Arg(variant.ConceptID)),
-			models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(state.householdID)),
-		))).One(ctx, executor)
-		if errors.Is(queryErr, sql.ErrNoRows) || queryErr == nil && concept.Archived {
-			return purchaseItemUpdatePlan{}, ErrNotFound
-		}
-		if queryErr != nil {
-			return purchaseItemUpdatePlan{}, queryErr
-		}
+	if err := validatePurchaseItemUpdateVariant(ctx, executor, state.householdID, command, values.variantID); err != nil {
+		return purchaseItemUpdatePlan{}, err
 	}
-	measure, err := measureFromItemUpdate(command, item)
-	if err != nil {
-		return purchaseItemUpdatePlan{}, fmt.Errorf("%w: %w", ErrBadInput, err)
-	}
-	allocationOverride := item.AllocationOverride || command.AllocationsSet
-	var requestedWeights []domain.Weight
-	if command.AllocationsSet {
-		requestedWeights = make([]domain.Weight, 0, len(command.Allocations))
-		for _, allocation := range command.Allocations {
-			requestedWeights = append(requestedWeights, domain.Weight{PoolID: allocation.PoolID, Value: allocation.Weight})
-		}
-	}
-	payments, updatePayments, err := adjustedPurchasePayments(ctx, executor, purchase, item.AmountYen, newAmount)
+	calculation, err := preparePurchaseItemUpdateCalculation(command, item)
 	if err != nil {
 		return purchaseItemUpdatePlan{}, err
 	}
-	categoryValue, err := nullableUUID(categoryID)
+	payments, updatePayments, err := adjustedPurchasePayments(ctx, executor, purchase, item.AmountYen, values.amount)
+	if err != nil {
+		return purchaseItemUpdatePlan{}, err
+	}
+	categoryValue, err := nullableUUID(values.categoryID)
 	if err != nil {
 		return purchaseItemUpdatePlan{}, ErrNotFound
 	}
-	variantValue, err := nullableUUID(variantID)
+	variantValue, err := nullableUUID(values.variantID)
 	if err != nil {
 		return purchaseItemUpdatePlan{}, ErrNotFound
 	}
 	itemPlan, err := buildItemChangePlan(ctx, tx, executor, item, purchase, itemChangeInput{
-		fields: command.ChangedFields, amount: newAmount, categoryID: categoryValue, productVariantID: variantValue,
-		allocationOverride: allocationOverride, categoryOrVariantChanged: command.CategoryIDSet || command.ProductVariantIDSet,
-		allocationsSet: command.AllocationsSet, requestedWeights: requestedWeights,
+		fields: command.ChangedFields, amount: values.amount, categoryID: categoryValue, productVariantID: variantValue,
+		allocationOverride: calculation.allocationOverride, categoryOrVariantChanged: command.CategoryIDSet || command.ProductVariantIDSet,
+		allocationsSet: command.AllocationsSet, requestedWeights: calculation.requestedWeights,
 		defaultAllocationVersion: state.household.DefaultAllocationVersion,
 	})
 	if err != nil {
 		return purchaseItemUpdatePlan{}, err
 	}
-	accountingPlan := buildPurchaseItemAccountingPlan(state.status, payments, updatePayments, itemPlan.allocationsChanged, deferAccountingSync)
-	return purchaseItemUpdatePlan{
-		name: newName, amount: newAmount, variantID: variantID,
-		measure: measure, productLearning: productLearning, itemChange: itemPlan, accounting: accountingPlan,
-	}, nil
+	return assemblePurchaseItemUpdatePlan(state.status, deferAccountingSync, values, calculation, itemPlan, payments, updatePayments), nil
 }
