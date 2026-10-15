@@ -31,6 +31,78 @@ pub struct PersistedFunding {
     pub ledger_entry_id: String,
 }
 
+pub async fn replay_record_funding(
+    pool: &PgPool,
+    input: &PersistRecordFunding,
+    member_id: Uuid,
+    pool_id: Uuid,
+) -> Result<Option<PersistedFunding>, RecordFundingPersistenceError> {
+    if input.idempotency_key.trim().is_empty() || input.idempotency_key.len() > 200 {
+        return Err(RecordFundingPersistenceError::InvalidIdempotencyKey);
+    }
+    let household_id = parse_uuid(&input.household_id, "household_id")?;
+    let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|error| RecordFundingPersistenceError::Pool(error.to_string()))?;
+    (&mut *pooled)
+        .transaction::<Option<PersistedFunding>, RecordFundingPersistenceError, _>(async |conn| {
+            use public::idempotency_records::dsl as idem;
+
+            for id in [actor_id, member_id] {
+                public::household_members::table
+                    .filter(public::household_members::household_id.eq(household_id))
+                    .filter(public::household_members::member_id.eq(id))
+                    .filter(public::household_members::left_at.is_null())
+                    .select(public::household_members::member_id)
+                    .first::<Uuid>(&mut *conn)
+                    .await
+                    .optional()?
+                    .ok_or(RecordFundingPersistenceError::MemberNotFound)?;
+            }
+            public::pools::table
+                .filter(public::pools::household_id.eq(household_id))
+                .filter(public::pools::id.eq(pool_id))
+                .select(public::pools::id)
+                .first::<Uuid>(&mut *conn)
+                .await
+                .optional()?
+                .ok_or(RecordFundingPersistenceError::PoolNotFound)?;
+            let record = idem::idempotency_records
+                .filter(idem::household_id.eq(household_id))
+                .filter(idem::operation.eq(OPERATION))
+                .filter(idem::key.eq(&input.idempotency_key))
+                .select((
+                    idem::request_fingerprint,
+                    idem::resource_kind,
+                    idem::resource_id,
+                ))
+                .first::<(Vec<u8>, String, Uuid)>(&mut *conn)
+                .await
+                .optional()?;
+            let Some((fingerprint, resource_kind, ledger_entry_id)) = record else {
+                return Ok(None);
+            };
+            if fingerprint.as_slice() != input.request_fingerprint
+                || resource_kind != "ledger_entry"
+            {
+                return Err(RecordFundingPersistenceError::IdempotencyConflict);
+            }
+            let journal_id = public::ledger_entries::table
+                .filter(public::ledger_entries::household_id.eq(household_id))
+                .filter(public::ledger_entries::id.eq(ledger_entry_id))
+                .select(public::ledger_entries::journal_id)
+                .first::<Uuid>(&mut *conn)
+                .await?;
+            Ok(Some(PersistedFunding {
+                journal_id: journal_id.to_string(),
+                ledger_entry_id: ledger_entry_id.to_string(),
+            }))
+        })
+        .await
+}
+
 #[derive(Debug)]
 pub enum RecordFundingPersistenceError {
     Pool(String),

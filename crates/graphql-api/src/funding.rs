@@ -93,6 +93,23 @@ pub async fn record_funding(
         Ok(false) => return Ok(not_found_error().into()),
         Err(error) => return Err(internal_error(error)),
     }
+    match postgres_funding::replay_record_funding(
+        ctx.data::<PgPool>()?,
+        &parsed.persistence,
+        parsed.member_id,
+        parsed.pool_id,
+    )
+    .await
+    {
+        Ok(Some(result)) => {
+            return Ok(funding_success(result.ledger_entry_id)?.into());
+        }
+        Ok(None) => {}
+        Err(error) => match persistence_error(&error) {
+            Some(error) => return Ok(error.into()),
+            None => return Err(internal_error(error)),
+        },
+    }
     let command_context = match postgres_funding_context::load_funding_command_context(
         ctx.data::<PgPool>()?,
         parsed.household_id,
@@ -125,19 +142,22 @@ pub async fn record_funding(
     )
     .await
     {
-        Ok(result) => Ok(RecordFundingSuccess {
-            result: FundingLedgerEntryReference {
-                id: encode_node_id("LedgerEntry", &result.ledger_entry_id)
-                    .map_err(|_| Error::new("invalid persisted ledger entry id"))?
-                    .into(),
-            },
-        }
-        .into()),
+        Ok(result) => Ok(funding_success(result.ledger_entry_id)?.into()),
         Err(error) => match persistence_error(&error) {
             Some(error) => Ok(error.into()),
             None => Err(internal_error(error)),
         },
     }
+}
+
+fn funding_success(ledger_entry_id: String) -> Result<RecordFundingSuccess> {
+    Ok(RecordFundingSuccess {
+        result: FundingLedgerEntryReference {
+            id: encode_node_id("LedgerEntry", &ledger_entry_id)
+                .map_err(|_| Error::new("invalid persisted ledger entry id"))?
+                .into(),
+        },
+    })
 }
 
 struct ParsedRecordFunding {
