@@ -15,6 +15,7 @@ pub mod ingestion_job;
 pub mod household_membership;
 pub mod post_purchase;
 pub mod post_purchase_loader;
+pub mod product_alias;
 pub mod policy;
 pub mod record_repayment;
 pub mod record_transfer;
