@@ -4,8 +4,6 @@ use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId, Yen, alloca
 
 use crate::create_purchase::Measure;
 
-const MAX_MEASURE_NUMERATOR: i64 = 1_000_000_000_000;
-const MAX_MEASURE_DENOMINATOR: i64 = 1_000_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdatePurchaseItemCommand {
@@ -195,17 +193,11 @@ pub fn decide_update_purchase_item(
     {
         return Err(UpdatePurchaseItemError::InvalidAmount);
     }
-    if command.quantity_set {
-        if let Some(quantity) = &command.quantity {
-            validate_measure(quantity)?;
-        }
-    }
     if command.printed_unit_price_set {
         if let Some(price) = &command.printed_unit_price {
             if !(0..=bookkeeping_domain::MAX_YEN).contains(&price.amount_yen) {
                 return Err(UpdatePurchaseItemError::InvalidMeasure);
             }
-            validate_measure(&price.basis)?;
         }
     }
     validate_optional_id(command.category_id.as_deref())?;
@@ -322,31 +314,6 @@ fn validate_optional_id(value: Option<&str>) -> Result<(), UpdatePurchaseItemErr
     Ok(())
 }
 
-fn validate_measure(measure: &Measure) -> Result<(), UpdatePurchaseItemError> {
-    let numerator = measure.numerator;
-    let denominator = measure.denominator;
-    if numerator <= 0
-        || numerator > MAX_MEASURE_NUMERATOR
-        || denominator <= 0
-        || denominator > MAX_MEASURE_DENOMINATOR
-        || gcd(numerator, denominator) != 1
-        || measure.unit.trim().is_empty()
-        || measure.unit.len() > 32
-    {
-        return Err(UpdatePurchaseItemError::InvalidMeasure);
-    }
-    Ok(())
-}
-
-fn gcd(mut left: i64, mut right: i64) -> i64 {
-    while right != 0 {
-        let remainder = left % right;
-        left = right;
-        right = remainder;
-    }
-    left
-}
-
 fn allocation_shares(
     weights: &[ItemAllocationWeight],
 ) -> Result<AllocationShares, UpdatePurchaseItemError> {
@@ -440,21 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_bad_measures_and_conflicting_field_revisions() {
-        let mut invalid = command();
-        invalid.changed_fields = vec!["quantity".to_owned()];
-        invalid.amount_yen = None;
-        invalid.quantity_set = true;
-        invalid.quantity = Some(Measure {
-            numerator: 2,
-            denominator: 4,
-            unit: "個".to_owned(),
-        });
-        assert_eq!(
-            decide_update_purchase_item(invalid, state(), None, basis()),
-            Err(UpdatePurchaseItemError::InvalidMeasure)
-        );
-
+    fn rejects_conflicting_field_revisions() {
         let mut conflicting_state = state();
         conflicting_state
             .field_revisions

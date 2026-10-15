@@ -789,6 +789,8 @@ BC 間のビジネス処理を GraphQL Subscription に依存させるべきで�
 
 Rust実装では`purchaseChanges`と`sharedPurchaseDraftChanges`をこの用途に限定します。購入変更は共有ポーラーからbounded channelへ配信し、購読中もHouseholdの認可を定期的に確認します。購入変更はcursor、entity、revision、変更フィールドと関連するPurchaseを通知します。
 
+HTTP APIは`async-graphql-axum`のWebSocket transportを`/graphql`のGETとして公開し、既存のPOSTによるGraphQL実行を維持します。接続時にOriginを`public_origin`または`frontend_origin`と照合し、`horse_session` cookieをDBで解決してからUpgradeします。未認証接続は拒否し、認証済み接続にはHTTP POSTと同じActorおよびViewerIdentityをGraphQL contextへ設定します。クライアントは`graphql-transport-ws`または`graphql-ws` protocolで接続できます。
+
 購入品目の削除イベントには親Purchase IDを`household_events.payload`へ保存します。削除後は品目行から親IDを引けないためです。この変更履歴はGraphQLの更新通知に使い、BC間の公開イベントやTransactional Outboxの代わりにはしません。
 
 ## 11. AI 取り込み Worker は永続状態機械として設計する

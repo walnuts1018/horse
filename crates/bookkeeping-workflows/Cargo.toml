@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 bookkeeping-domain = { path = "../bookkeeping-domain" }
+chrono = { workspace = true }
 uuid = { workspace = true }

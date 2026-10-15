@@ -1,7 +1,9 @@
+use async_graphql::{Data, http::ALL_WEBSOCKET_PROTOCOLS};
+use async_graphql_axum::{GraphQLProtocol, GraphQLWebSocket};
 use axum::{
     Json, Router,
     body::{Body, to_bytes},
-    extract::{RawQuery, State},
+    extract::{RawQuery, State, ws::WebSocketUpgrade},
     http::{HeaderMap, HeaderValue, Request, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -30,7 +32,7 @@ struct ApiState {
 
 pub fn router(pool: PgPool, config: Config, graphql_schema: GraphqlSchema) -> Router {
     Router::new()
-        .route("/graphql", post(graphql))
+        .route("/graphql", get(graphql_ws).post(graphql))
         .route("/healthz", get(health))
         .route("/readyz", get(ready))
         .route("/auth/login", get(login))
@@ -42,6 +44,53 @@ pub fn router(pool: PgPool, config: Config, graphql_schema: GraphqlSchema) -> Ro
             config,
             graphql_schema,
         })
+}
+
+async fn graphql_ws(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    protocol: GraphQLProtocol,
+    websocket: WebSocketUpgrade,
+) -> Response {
+    if !same_origin(&headers, &state.config) {
+        return (StatusCode::FORBIDDEN, "request origin rejected").into_response();
+    }
+
+    if state.config.auth.is_none() {
+        return unauthenticated_graphql();
+    }
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return unauthenticated_graphql(),
+        Err(error) => {
+            tracing::error!(error = ?error, "GraphQL session lookup failed");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "authentication unavailable",
+            )
+                .into_response();
+        }
+    };
+
+    let mut data = Data::default();
+    data.insert(Actor(principal.member_id));
+    data.insert(ViewerIdentity {
+        member_id: principal.member_id,
+        subject: principal.subject,
+        display_name: principal.display_name,
+    });
+    websocket
+        .protocols(ALL_WEBSOCKET_PROTOCOLS)
+        .on_upgrade(move |stream| {
+            GraphQLWebSocket::new(stream, state.graphql_schema, protocol)
+                .with_data(data)
+                .serve()
+        })
+        .into_response()
 }
 
 async fn graphql(State(state): State<ApiState>, request: Request<Body>) -> Response {

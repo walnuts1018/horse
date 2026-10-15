@@ -1,15 +1,125 @@
 use std::collections::BTreeSet;
+use std::num::NonZeroU64;
 
 use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId, Yen, allocate};
+use chrono::{DateTime, Utc};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PurchaseOccurredAt(DateTime<Utc>);
+
+impl PurchaseOccurredAt {
+    pub fn new(value: DateTime<Utc>) -> Self {
+        Self(value)
+    }
+
+    pub fn value(self) -> DateTime<Utc> {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatePrecision {
+    DateTime,
+    DateOnly,
+}
+
+impl DatePrecision {
+    pub const fn as_db_value(self) -> &'static str {
+        match self {
+            Self::DateTime => "DATE_TIME",
+            Self::DateOnly => "DATE_ONLY",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PurchaseOrigin {
+    AiAssisted,
+    Manual,
+    Unknown,
+}
+
+impl PurchaseOrigin {
+    pub const fn as_db_value(self) -> &'static str {
+        match self {
+            Self::AiAssisted => "AI",
+            Self::Manual => "MANUAL",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AllocationRuleVersion(NonZeroU64);
+
+impl AllocationRuleVersion {
+    pub fn new(value: u64) -> Option<Self> {
+        NonZeroU64::new(value).map(Self)
+    }
+
+    pub const fn value(self) -> u64 {
+        self.0.get()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuantityUnit {
+    Piece,
+    Bottle,
+    Sheet,
+    Bag,
+    Box,
+    Gram,
+    Kilogram,
+    Milliliter,
+    Liter,
+}
+
+impl QuantityUnit {
+    pub const fn as_db_value(self) -> &'static str {
+        match self {
+            Self::Piece => "個",
+            Self::Bottle => "本",
+            Self::Sheet => "枚",
+            Self::Bag => "袋",
+            Self::Box => "箱",
+            Self::Gram => "g",
+            Self::Kilogram => "kg",
+            Self::Milliliter => "ml",
+            Self::Liter => "L",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, MeasureError> {
+        match value {
+            "個" => Ok(Self::Piece),
+            "本" => Ok(Self::Bottle),
+            "枚" => Ok(Self::Sheet),
+            "袋" => Ok(Self::Bag),
+            "箱" => Ok(Self::Box),
+            "g" => Ok(Self::Gram),
+            "kg" => Ok(Self::Kilogram),
+            "ml" => Ok(Self::Milliliter),
+            "L" => Ok(Self::Liter),
+            _ => Err(MeasureError::InvalidUnit),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MeasureError {
+    InvalidMeasure,
+    InvalidUnit,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatePurchaseCommand {
     pub purchase_id: String,
-    pub occurred_at: String,
-    pub date_precision: String,
+    pub occurred_at: PurchaseOccurredAt,
+    pub date_precision: DatePrecision,
     pub merchant: String,
-    pub origin: String,
-    pub allocation_rule_version: u64,
+    pub origin: PurchaseOrigin,
+    pub allocation_rule_version: AllocationRuleVersion,
     pub source_document_id: Option<String>,
     pub source_reference: Option<String>,
     pub receipt_candidate_id: Option<String>,
@@ -31,11 +141,33 @@ pub struct CreatePurchaseItem {
     pub allocations: Vec<CreatePurchaseAllocation>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Measure {
-    pub numerator: i64,
-    pub denominator: i64,
-    pub unit: String,
+    numerator: i64,
+    denominator: i64,
+    unit: QuantityUnit,
+}
+
+impl Measure {
+    pub fn new(
+        numerator: i64,
+        denominator: i64,
+        unit: QuantityUnit,
+    ) -> Result<Self, MeasureError> {
+        if numerator <= 0
+            || numerator > 1_000_000_000_000
+            || denominator <= 0
+            || denominator > 1_000_000
+            || gcd(numerator, denominator) != 1
+        {
+            return Err(MeasureError::InvalidMeasure);
+        }
+        Ok(Self { numerator, denominator, unit })
+    }
+
+    pub const fn numerator(self) -> i64 { self.numerator }
+    pub const fn denominator(self) -> i64 { self.denominator }
+    pub const fn unit(self) -> QuantityUnit { self.unit }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,11 +193,11 @@ pub struct CreatePurchasePayment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatePurchaseDecision {
     pub purchase_id: String,
-    pub occurred_at: String,
-    pub date_precision: String,
+    pub occurred_at: PurchaseOccurredAt,
+    pub date_precision: DatePrecision,
     pub merchant: String,
-    pub origin: String,
-    pub allocation_rule_version: u64,
+    pub origin: PurchaseOrigin,
+    pub allocation_rule_version: AllocationRuleVersion,
     pub source_document_id: Option<String>,
     pub source_reference: Option<String>,
     pub receipt_candidate_id: Option<String>,
@@ -99,21 +231,15 @@ pub struct DecidedPurchaseAllocation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CreatePurchaseError {
     InvalidPurchaseId,
-    InvalidOccurredAt,
-    InvalidDatePrecision,
-    InvalidOrigin,
     InvalidSourceReference,
     InvalidReceiptOverrideReason,
     InvalidMerchant,
-    InvalidAllocationRuleVersion,
     InvalidItemCount,
     InvalidItemId,
     InvalidItemName,
     InvalidAmount,
     InvalidAllocation,
     DuplicateAllocationPool,
-    InvalidMeasure,
-    InvalidUnit,
     InvalidPayment,
     DuplicatePaymentAccount,
     AmountOverflow,
@@ -124,17 +250,6 @@ pub fn decide_create_purchase(
 ) -> Result<CreatePurchaseDecision, CreatePurchaseError> {
     if command.purchase_id.is_empty() {
         return Err(CreatePurchaseError::InvalidPurchaseId);
-    }
-    if command.occurred_at.is_empty() {
-        return Err(CreatePurchaseError::InvalidOccurredAt);
-    }
-    let date_precision = if command.date_precision.is_empty() {
-        "DATE_TIME"
-    } else {
-        command.date_precision.as_str()
-    };
-    if !matches!(date_precision, "DATE_TIME" | "DATE_ONLY") {
-        return Err(CreatePurchaseError::InvalidDatePrecision);
     }
     if let Some(reference) = &command.source_reference {
         if command.source_document_id.is_none()
@@ -154,28 +269,12 @@ pub fn decide_create_purchase(
     {
         return Err(CreatePurchaseError::InvalidReceiptOverrideReason);
     }
-    let origin = if command.origin.is_empty() {
-        if command.source_document_id.is_some() {
-            "AI"
-        } else {
-            "MANUAL"
-        }
-    } else {
-        command.origin.as_str()
-    };
-    if !matches!(origin, "AI" | "MANUAL" | "UNKNOWN") {
-        return Err(CreatePurchaseError::InvalidOrigin);
-    }
     if command.items.is_empty() || command.items.len() > 200 {
         return Err(CreatePurchaseError::InvalidItemCount);
     }
     if command.merchant.chars().count() > 240 {
         return Err(CreatePurchaseError::InvalidMerchant);
     }
-    if command.allocation_rule_version == 0 {
-        return Err(CreatePurchaseError::InvalidAllocationRuleVersion);
-    }
-
     let mut total = 0_i64;
     let mut item_ids = BTreeSet::new();
     let mut items = Vec::with_capacity(command.items.len());
@@ -193,12 +292,10 @@ pub fn decide_create_purchase(
         total = total
             .checked_add(item.amount_yen)
             .ok_or(CreatePurchaseError::AmountOverflow)?;
-        validate_measure(item.quantity.as_ref())?;
         if let Some(price) = &item.printed_unit_price {
             if !(0..=1_000_000_000_000).contains(&price.amount_yen) {
                 return Err(CreatePurchaseError::InvalidMeasure);
             }
-            validate_measure(Some(&price.basis))?;
         }
         let mut seen_pools = BTreeSet::new();
         let mut weights = Vec::with_capacity(item.allocations.len());
@@ -269,9 +366,9 @@ pub fn decide_create_purchase(
     Ok(CreatePurchaseDecision {
         purchase_id: command.purchase_id,
         occurred_at: command.occurred_at,
-        date_precision: date_precision.to_owned(),
+        date_precision: command.date_precision,
         merchant: command.merchant.trim().to_owned(),
-        origin: origin.to_owned(),
+        origin: command.origin,
         allocation_rule_version: command.allocation_rule_version,
         source_document_id: command.source_document_id,
         source_reference: command.source_reference,
@@ -282,30 +379,6 @@ pub fn decide_create_purchase(
         items,
         payments: command.payments,
     })
-}
-
-fn validate_measure(measure: Option<&Measure>) -> Result<(), CreatePurchaseError> {
-    let Some(measure) = measure else {
-        return Ok(());
-    };
-    if measure.numerator <= 0
-        || measure.numerator > 1_000_000_000_000
-        || measure.denominator <= 0
-        || measure.denominator > 1_000_000
-        || gcd(measure.numerator, measure.denominator) != 1
-    {
-        return Err(CreatePurchaseError::InvalidMeasure);
-    }
-    if measure.unit.trim().is_empty() || measure.unit.len() > 32 {
-        return Err(CreatePurchaseError::InvalidUnit);
-    }
-    if !matches!(
-        measure.unit.as_str(),
-        "個" | "本" | "枚" | "袋" | "箱" | "g" | "kg" | "ml" | "L"
-    ) {
-        return Err(CreatePurchaseError::InvalidUnit);
-    }
-    Ok(())
 }
 
 fn gcd(mut left: i64, mut right: i64) -> i64 {
@@ -322,11 +395,11 @@ mod tests {
     fn command() -> CreatePurchaseCommand {
         CreatePurchaseCommand {
             purchase_id: "purchase-1".to_owned(),
-            occurred_at: "2026-10-15T12:00:00Z".to_owned(),
-            date_precision: String::new(),
+            occurred_at: PurchaseOccurredAt::new("2026-10-15T12:00:00Z".parse().unwrap()),
+            date_precision: DatePrecision::DateTime,
             merchant: "  Market  ".to_owned(),
-            origin: String::new(),
-            allocation_rule_version: 1,
+            origin: PurchaseOrigin::Manual,
+            allocation_rule_version: AllocationRuleVersion::new(1).unwrap(),
             source_document_id: None,
             source_reference: None,
             receipt_candidate_id: None,
@@ -355,8 +428,8 @@ mod tests {
     fn create_normalizes_text_and_allocates_item_amount() {
         let decision = decide_create_purchase(command()).unwrap();
         assert_eq!(decision.merchant, "Market");
-        assert_eq!(decision.date_precision, "DATE_TIME");
-        assert_eq!(decision.origin, "MANUAL");
+        assert_eq!(decision.date_precision, DatePrecision::DateTime);
+        assert_eq!(decision.origin, PurchaseOrigin::Manual);
         assert_eq!(decision.items[0].name, "milk");
         assert_eq!(decision.items[0].allocations[0].amount_yen, 101);
     }

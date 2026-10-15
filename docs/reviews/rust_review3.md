@@ -46,7 +46,7 @@ Rust workspace の構造、主要な Domain/Workflow、GraphQL、PostgreSQL、Wo
 - [`RecordTransferCommand`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/record_transfer.rs#L84-L89) が、操作種別ごとに異なるペイロードを持つ `enum` になっている点。
 - [`PostingTarget`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/lib.rs#L296-L309) によって、購入記帳の対象が Pool または Account のどちらかであることを型で保証している点。
 
-特に最後の二つは、既存のレビューから進んだ改善です。
+特に最後の二つは、確認 HEAD と現行コードの両方で確認できます。
 
 ## 2. 最優先で修正したい問題
 
@@ -59,7 +59,7 @@ Rust workspace の構造、主要な Domain/Workflow、GraphQL、PostgreSQL、Wo
 - [`bookkeeping-domain/src/purchase.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-domain/src/purchase.rs)
 - [`bookkeeping-workflows/src/lib.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/lib.rs)
 
-現在、両方の crate に `PurchaseId` と `decide_post_purchase` が存在します。
+確認 HEAD 時点では、両方の crate に `PurchaseId` と `decide_post_purchase` が存在していました。現行コードでもこの二重化は残っています。
 
 `bookkeeping-domain` は次のようなモデルを持っています。
 
@@ -70,7 +70,7 @@ pub enum Purchase {
 }
 ```
 
-一方、実際の購入記帳に必要な明細、配賦、支払、資金負担などは `bookkeeping-workflows` にあります。
+一方、実際の購入記帳に必要な明細、配賦、支払、資金負担などは `bookkeeping-workflows` にあります。現行コードでもこの役割分担は変わっていません。
 
 そして `bookkeeping-domain` の `decide_post_purchase` は `BalancedJournal` を使いますが、実際に PostgreSQL へ保存される仕訳は `bookkeeping-workflows` の `JournalLine` に基づいています。
 
@@ -151,7 +151,7 @@ pub enum BudgetChange {
 - [`purchase_command_context.rs`](https://github.com/walnuts1018/horse/blob/main/crates/postgres/src/purchase_command_context.rs#L100-L185)
 - [`create_purchase.rs`](https://github.com/walnuts1018/horse/blob/main/crates/postgres/src/create_purchase.rs#L389-L645)
 
-現在の配賦ルールの選択は、おおむね Product Variant → Product Concept → Category → Merchant という優先順位で DB を検索して決めています。
+確認 HEAD 時点では、配賦ルールの選択をおおむね Product Variant → Product Concept → Category → Merchant という優先順位で DB を検索して決めていました。現行コードにも`purchase_command_context.rs`の候補選択処理と`create_purchase.rs`のCatalog参照解決が残っています。
 
 ここで問題なのは優先順位の正しさではありません。
 
@@ -222,11 +222,11 @@ GraphQL DTO
 
 これは Domain と Application の層を厳密に分けたいという Rust 側の設計提案であり、書籍が特定の `application` crate を要求しているわけではありません。
 
-### P0-5. 重要な不変条件が他の Workflow ではまだ型になっていない
+### P0-5. Journal 不変条件が他の Workflow ではまだ統一されていない
 
 重要度：高
 
-購入記帳の `PostingTarget` は改善されていますが、同じ原則が他の Workflow にまだ波及していません。
+購入記帳の`PostingTarget`は現行コードで維持されていますが、同じ原則が他のWorkflowにまだ波及していません。
 
 [`record_transfer.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/record_transfer.rs#L123-L132) では次のようになっています。
 
@@ -242,13 +242,13 @@ pub struct JournalLine {
 }
 ```
 
-これは、三つの独立した `Option` により、8種類の組み合わせを表現できます。
+確認 HEAD 時点の`JournalLine`は、三つの独立した`Option`により8種類の組み合わせを表現していました。現行コードでも`record_transfer.rs`の該当型はこの形のままです。
 
 コードには対象IDを持たない行も実際に登場するため、それ自体を不正だと断定することはできません。
 
 しかし、それが正当な会計上の概念なら、対象IDなしというデータ表現ではなく、その意味を持つバリアントにするほうが DMMF 的です。
 
-同様に [`correct_purchase.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/correct_purchase.rs#L88-L96) にも `pool_id` と `account_id` の組み合わせが残っています。
+同様に現行の[`correct_purchase.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/correct_purchase.rs)にも`pool_id`と`account_id`を個別に持つ表現が残っています。
 
 また、Journal の各 Workflow がそれぞれ異なる明細型を持っている一方で、既存の `BalancedJournal` に統一されていません。
 

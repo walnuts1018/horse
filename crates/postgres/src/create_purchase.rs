@@ -1,5 +1,5 @@
 use bookkeeping_workflows::create_purchase::CreatePurchaseDecision;
-use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
+use chrono::{Datelike, FixedOffset, NaiveDate};
 use diesel::{
     ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, dsl::now,
     result::Error as DieselError,
@@ -78,9 +78,7 @@ pub async fn persist_create_purchase_in_transaction(
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
     let purchase_id = parse_uuid(&decision.purchase_id, "purchase_id")?;
-    let occurred_at = DateTime::parse_from_rfc3339(&decision.occurred_at)
-        .map_err(|_| CreatePurchasePersistenceError::InvalidOccurredAt)?
-        .with_timezone(&Utc);
+    let occurred_at = decision.occurred_at.value();
     let tokyo_offset = FixedOffset::east_opt(9 * 60 * 60)
         .ok_or(CreatePurchasePersistenceError::InvalidDecision)?;
     let period_start = NaiveDate::from_ymd_opt(
@@ -90,7 +88,7 @@ pub async fn persist_create_purchase_in_transaction(
     )
     .ok_or(CreatePurchasePersistenceError::InvalidOccurredAt)?;
     let allocation_rule_version =
-        i64::try_from(decision.allocation_rule_version).map_err(|_| {
+        i64::try_from(decision.allocation_rule_version.value()).map_err(|_| {
             CreatePurchasePersistenceError::NumericOutOfRange("allocation_rule_version")
         })?;
     if decision.items.is_empty()
@@ -98,8 +96,6 @@ pub async fn persist_create_purchase_in_transaction(
             .items
             .iter()
             .any(|item| item.allocations.is_empty())
-        || decision.date_precision.is_empty()
-        || decision.origin.is_empty()
     {
         return Err(CreatePurchasePersistenceError::InvalidDecision);
     }
@@ -234,8 +230,8 @@ pub async fn persist_create_purchase_in_transaction(
             public::purchases::status.eq("DRAFT"),
             public::purchases::created_by.eq(actor_id),
             public::purchases::allocation_rule_version.eq(allocation_rule_version),
-            public::purchases::date_precision.eq(&decision.date_precision),
-            public::purchases::origin.eq(&decision.origin),
+            public::purchases::date_precision.eq(decision.date_precision.as_db_value()),
+            public::purchases::origin.eq(decision.origin.as_db_value()),
         ))
         .execute(&mut *conn)
         .await?;
@@ -257,9 +253,9 @@ pub async fn persist_create_purchase_in_transaction(
             .as_ref()
             .map(|measure| {
                 (
-                    Some(measure.numerator),
-                    Some(measure.denominator),
-                    Some(measure.unit.as_str()),
+                    Some(measure.numerator()),
+                    Some(measure.denominator()),
+                    Some(measure.unit().as_db_value()),
                 )
             })
             .unwrap_or((None, None, None));
@@ -269,9 +265,9 @@ pub async fn persist_create_purchase_in_transaction(
             .map(|price| {
                 (
                     Some(price.amount_yen),
-                    Some(price.basis.numerator),
-                    Some(price.basis.denominator),
-                    Some(price.basis.unit.as_str()),
+                    Some(price.basis.numerator()),
+                    Some(price.basis.denominator()),
+                    Some(price.basis.unit().as_db_value()),
                 )
             })
             .unwrap_or((None, None, None, None));
@@ -401,7 +397,7 @@ async fn validate_catalog_references(
     use public::product_concepts::dsl as concepts;
     use public::product_variants::dsl as variants;
 
-    let default_version = i64::try_from(decision.allocation_rule_version).map_err(|_| {
+    let default_version = i64::try_from(decision.allocation_rule_version.value()).map_err(|_| {
         CreatePurchasePersistenceError::NumericOutOfRange("allocation_rule_version")
     })?;
     let current_default_version = households::households
@@ -503,7 +499,9 @@ async fn validate_catalog_references(
             }
         }
         if item.allocation_override {
-            if first.rule_id.is_some() || first.rule_version != decision.allocation_rule_version {
+            if first.rule_id.is_some()
+                || first.rule_version != decision.allocation_rule_version.value()
+            {
                 return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
             }
             continue;
@@ -521,7 +519,9 @@ async fn validate_catalog_references(
         if selected_rule.map(|id| id.to_string()) != first.rule_id {
             return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
         }
-        if first.rule_id.is_none() && first.rule_version != decision.allocation_rule_version {
+        if first.rule_id.is_none()
+            && first.rule_version != decision.allocation_rule_version.value()
+        {
             return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
         }
 
@@ -942,16 +942,16 @@ fn confirmed_item_json(
             "weight": allocation.weight,
         })).collect::<Vec<_>>(),
         "quantity": item.quantity.as_ref().map(|measure| serde_json::json!({
-            "numerator": measure.numerator,
-            "denominator": measure.denominator,
-            "unit": measure.unit,
+            "numerator": measure.numerator(),
+            "denominator": measure.denominator(),
+            "unit": measure.unit().as_db_value(),
         })),
         "printedUnitPrice": item.printed_unit_price.as_ref().map(|price| serde_json::json!({
             "amountYen": price.amount_yen,
             "basis": {
-                "numerator": price.basis.numerator,
-                "denominator": price.basis.denominator,
-                "unit": price.basis.unit,
+                "numerator": price.basis.numerator(),
+                "denominator": price.basis.denominator(),
+                "unit": price.basis.unit().as_db_value(),
             },
         })),
     })

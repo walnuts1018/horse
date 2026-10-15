@@ -4,8 +4,9 @@ use async_graphql::{
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_workflows::{
     create_purchase::{
-        CreatePurchaseAllocation, CreatePurchaseCommand, CreatePurchaseItem, CreatePurchasePayment,
-        Measure, PrintedUnitPrice, decide_create_purchase,
+        AllocationRuleVersion, CreatePurchaseAllocation, CreatePurchaseCommand, CreatePurchaseItem,
+        CreatePurchasePayment, DatePrecision, Measure, PrintedUnitPrice, PurchaseOccurredAt,
+        PurchaseOrigin as WorkflowPurchaseOrigin, QuantityUnit, decide_create_purchase,
     },
     decide_post_purchase,
 };
@@ -501,7 +502,8 @@ pub async fn create_purchase(
             None => return Err(crate::internal_error(error)),
         },
     };
-    let command = apply_allocation_context(parsed.command, context);
+    let command = apply_allocation_context(parsed.command, context)
+        .map_err(crate::internal_error)?;
     let decision = match decide_create_purchase(command) {
         Ok(value) => value,
         Err(_) => return Ok(bad_input().into()),
@@ -576,7 +578,9 @@ pub async fn create_and_post_purchase(
         },
     };
     let post_fingerprint = post_fingerprint(&parsed.command.purchase_id, 1)?;
-    let decision = match decide_create_purchase(apply_allocation_context(parsed.command, context)) {
+    let command = apply_allocation_context(parsed.command, context)
+        .map_err(crate::internal_error)?;
+    let decision = match decide_create_purchase(command) {
         Ok(value) => value,
         Err(_) => return Ok(bad_input().into()),
     };
@@ -808,23 +812,21 @@ fn parse_create_input(
         .date_precision
         .map(|value| {
             match value {
-                PurchaseDatePrecision::DateTime => "DATE_TIME",
-                PurchaseDatePrecision::DateOnly => "DATE_ONLY",
+                PurchaseDatePrecision::DateTime => DatePrecision::DateTime,
+                PurchaseDatePrecision::DateOnly => DatePrecision::DateOnly,
             }
-            .to_owned()
         })
-        .unwrap_or_default();
+        .unwrap_or(DatePrecision::DateTime);
     let origin = input
         .origin
         .map(|value| {
             match value {
-                PurchaseOrigin::Ai => "AI",
-                PurchaseOrigin::Manual => "MANUAL",
-                PurchaseOrigin::Unknown => "UNKNOWN",
+                PurchaseOrigin::Ai => WorkflowPurchaseOrigin::AiAssisted,
+                PurchaseOrigin::Manual => WorkflowPurchaseOrigin::Manual,
+                PurchaseOrigin::Unknown => WorkflowPurchaseOrigin::Unknown,
             }
-            .to_owned()
         })
-        .unwrap_or_default();
+        .unwrap_or(WorkflowPurchaseOrigin::Manual);
     let purchase_id = Uuid::now_v7().to_string();
     let mut items = Vec::with_capacity(input.items.len());
     for item in &input.items {
@@ -842,11 +844,13 @@ fn parse_create_input(
             .quantity
             .as_ref()
             .map(|value| {
-                Ok(Measure {
-                    numerator: value.numerator.parse().map_err(|_| bad_input())?,
-                    denominator: value.denominator.parse().map_err(|_| bad_input())?,
-                    unit: value.unit.clone(),
-                })
+                let unit = QuantityUnit::parse(&value.unit).map_err(|_| bad_input())?;
+                Measure::new(
+                    value.numerator.parse().map_err(|_| bad_input())?,
+                    value.denominator.parse().map_err(|_| bad_input())?,
+                    unit,
+                )
+                .map_err(|_| bad_input())
             })
             .transpose()?;
         let printed_unit_price = item
@@ -855,10 +859,14 @@ fn parse_create_input(
             .map(|value| {
                 Ok(PrintedUnitPrice {
                     amount_yen: value.amount_yen.0,
-                    basis: Measure {
-                        numerator: value.basis.numerator.parse().map_err(|_| bad_input())?,
-                        denominator: value.basis.denominator.parse().map_err(|_| bad_input())?,
-                        unit: value.basis.unit.clone(),
+                    basis: {
+                        let unit = QuantityUnit::parse(&value.basis.unit).map_err(|_| bad_input())?;
+                        Measure::new(
+                            value.basis.numerator.parse().map_err(|_| bad_input())?,
+                            value.basis.denominator.parse().map_err(|_| bad_input())?,
+                            unit,
+                        )
+                        .map_err(|_| bad_input())?
                     },
                 })
             })
@@ -907,11 +915,11 @@ fn parse_create_input(
     Ok(ParsedCreatePurchase {
         command: CreatePurchaseCommand {
             purchase_id,
-            occurred_at: occurred_at.to_rfc3339(),
+            occurred_at: PurchaseOccurredAt::new(occurred_at),
             date_precision,
             merchant: input.merchant.clone(),
             origin,
-            allocation_rule_version: 1,
+            allocation_rule_version: AllocationRuleVersion::new(1).expect("positive constant"),
             source_document_id: input.source_document_id.clone(),
             source_reference: input.source_reference.clone(),
             receipt_candidate_id: input.receipt_candidate_id.clone(),
@@ -1005,8 +1013,9 @@ fn canonical_input(input: &CreatePurchaseInput) -> CanonicalCreatePurchase {
 fn apply_allocation_context(
     mut command: CreatePurchaseCommand,
     context: purchase_command_context::PurchaseCommandContext,
-) -> CreatePurchaseCommand {
-    command.allocation_rule_version = context.allocation_rule_version;
+) -> std::result::Result<CreatePurchaseCommand, ()> {
+    command.allocation_rule_version =
+        AllocationRuleVersion::new(context.allocation_rule_version).ok_or(())?;
     for (item, resolved) in command.items.iter_mut().zip(context.items) {
         if item.category_id.is_none() {
             item.category_id = resolved.category_id.map(|id| id.to_string());
@@ -1023,7 +1032,7 @@ fn apply_allocation_context(
             })
             .collect();
     }
-    command
+    Ok(command)
 }
 
 fn decode_node_id(

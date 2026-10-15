@@ -392,9 +392,9 @@ pub async fn persist_update_purchase_item_in_transaction(
         None => (locked.7, locked.8, locked.9.clone()),
         Some(None) => (None, None, None),
         Some(Some(value)) => (
-            Some(value.numerator),
-            Some(value.denominator),
-            Some(value.unit.clone()),
+            Some(value.numerator()),
+            Some(value.denominator()),
+            Some(value.unit().as_db_value().to_owned()),
         ),
     };
     let (
@@ -407,9 +407,9 @@ pub async fn persist_update_purchase_item_in_transaction(
         Some(None) => (None, None, None, None),
         Some(Some(value)) => (
             Some(value.amount_yen),
-            Some(value.basis.numerator),
-            Some(value.basis.denominator),
-            Some(value.basis.unit.clone()),
+            Some(value.basis.numerator()),
+            Some(value.basis.denominator()),
+            Some(value.basis.unit().as_db_value().to_owned()),
         ),
     };
     let category_id = match &decision.category_id {
@@ -1198,11 +1198,15 @@ fn measure(
     match (numerator, denominator, unit) {
         (None, None, None) => Ok(None),
         (Some(numerator), Some(denominator), Some(unit)) => {
-            Ok(Some(bookkeeping_workflows::create_purchase::Measure {
+            let unit = bookkeeping_workflows::create_purchase::QuantityUnit::parse(&unit)
+                .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidDecision)?;
+            let measure = bookkeeping_workflows::create_purchase::Measure::new(
                 numerator,
                 denominator,
                 unit,
-            }))
+            )
+            .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidDecision)?;
+            Ok(Some(measure))
         }
         _ => Err(UpdatePurchaseItemPersistenceError::InvalidDecision),
     }
@@ -1219,16 +1223,13 @@ fn printed_price(
 > {
     match (yen, numerator, denominator, unit) {
         (None, None, None, None) => Ok(None),
-        (Some(amount_yen), Some(numerator), Some(denominator), Some(unit)) => Ok(Some(
-            bookkeeping_workflows::update_purchase_item::PrintedUnitPrice {
-                amount_yen,
-                basis: bookkeeping_workflows::create_purchase::Measure {
-                    numerator,
-                    denominator,
-                    unit,
-                },
-            },
-        )),
+        (Some(amount_yen), Some(numerator), Some(denominator), Some(unit)) => {
+            let basis = measure(Some(numerator), Some(denominator), Some(unit))?
+                .ok_or(UpdatePurchaseItemPersistenceError::InvalidDecision)?;
+            Ok(Some(
+                bookkeeping_workflows::update_purchase_item::PrintedUnitPrice { amount_yen, basis },
+            ))
+        }
         _ => Err(UpdatePurchaseItemPersistenceError::InvalidDecision),
     }
 }

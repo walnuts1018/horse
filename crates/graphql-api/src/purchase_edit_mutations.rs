@@ -633,11 +633,12 @@ pub(crate) fn item_update_command(
 fn parse_measure(
     value: UpdatePurchaseItemQuantityInput,
 ) -> std::result::Result<bookkeeping_workflows::create_purchase::Measure, ()> {
-    Ok(bookkeeping_workflows::create_purchase::Measure {
-        numerator: value.numerator.parse().map_err(|_| ())?,
-        denominator: value.denominator.parse().map_err(|_| ())?,
-        unit: value.unit,
-    })
+    let unit = bookkeeping_workflows::create_purchase::QuantityUnit::parse(&value.unit)?;
+    bookkeeping_workflows::create_purchase::Measure::new(
+        value.numerator.parse().map_err(|_| ())?,
+        value.denominator.parse().map_err(|_| ())?,
+        unit,
+    )
 }
 
 fn parse_printed_unit_price(

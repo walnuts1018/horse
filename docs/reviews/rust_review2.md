@@ -138,45 +138,6 @@ DMMF\_%E6%9B%B8%E7%B1%8D%E5%85%A8%E7%AB%A0%E5%88%86%E6%9E%90\_%E8%A8%AD%E8%A8%88
 
 構造の改善だけでなく、実際の整合性リスクや細部の型設計にも修正候補があります。
 
-### P1-5. CreatePurchase にプリミティブ型が多い
-
-該当：[bookkeeping-workflows/src/create_purchase.rs](https://github.com/walnuts1018/horse/blob/a3603e2/crates/bookkeeping-workflows/src/create_purchase.rs)
-
-`CreatePurchaseCommand` には `occurred_at: String`、`date_precision: String`、`origin: String`、`allocation_rule_version: u64` などが存在します。
-
-また、`Measure` は `numerator`、`denominator`、`unit: String` の組み合わせで、正当性を `decide_create_purchase` の内部で検証しています。
-
-この設計では、検証済みの型としての保証が Workflow の後段まで残りません。
-
-例えば、次の型を設けたいです。
-
-```
-pub enum DatePrecision {
-    DateOnly,
-    DateTime,
-}
-
-pub enum PurchaseOrigin {
-    Manual,
-    AiAssisted,
-    Imported,
-}
-
-pub enum QuantityUnit {
-    Piece,
-    Gram,
-    Kilogram,
-    Milliliter,
-    Liter,
-}
-```
-
-数量の分子・分母は Smart Constructor を備えた正の有理数型にします。なお、`1 kg` と `1000 g` の扱いや単位変換は、業務要件に基づいて明示的に決定する必要があります。
-
-また、`origin` のデフォルトが `source_document_id` の存在から `AI` と推定される点も見直したいです。原本が添付されていることと、AI が購入データを作成したことは同義ではありません。
-
-この区別は、Evidence & Ingestion のモデリングでも重要になります。
-
 ## 4. ディレクトリ・crate 構成も再設計したい
 
 現在の Workspace は `bookkeeping-domain` と各 `*-workflows` が業務別になっている一方で、`postgres` と `graphql-api` が技術別の大きな共有モジュールになっています。
