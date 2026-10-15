@@ -62,509 +62,502 @@ pub async fn persist_update_purchase_item(
 ) -> Result<PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError> {
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
-    let item_id = parse_uuid(&command.item_id, "item_id")?;
     let mut pooled = pool
         .get()
         .await
         .map_err(|error| UpdatePurchaseItemPersistenceError::Pool(error.to_string()))?;
-
     (&mut *pooled)
         .transaction::<PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError, _>(
             async move |conn| {
-                use public::accounting_periods::dsl as periods;
-                use public::household_events::dsl as events;
-                use public::household_members::dsl as members;
-                use public::households::dsl as households;
-                use public::purchase_items::dsl as items;
-                use public::purchases::dsl as purchases;
-
-                let observed = items::purchase_items
-                    .filter(items::id.eq(item_id))
-                    .select((items::household_id, items::purchase_id))
-                    .first::<(Uuid, Uuid)>(conn)
+                persist_update_purchase_item_in_transaction(conn, household_id, actor_id, command)
                     .await
-                    .optional()?
-                    .ok_or(UpdatePurchaseItemPersistenceError::ItemNotFound)?;
-                if observed.0 != household_id {
-                    return Err(UpdatePurchaseItemPersistenceError::HouseholdMismatch);
-                }
-                let purchase_observed = purchases::purchases
-                    .filter(purchases::id.eq(observed.1))
-                    .select((purchases::occurred_at, purchases::status))
-                    .first::<(DateTime<Utc>, String)>(conn)
-                    .await
-                    .optional()?
-                    .ok_or(UpdatePurchaseItemPersistenceError::PurchaseNotFound)?;
-                require_member(&mut *conn, household_id, actor_id).await?;
-                let old_period = accounting_period(purchase_observed.0)?;
-                diesel::insert_into(periods::accounting_periods)
-                    .values((
-                        periods::household_id.eq(household_id),
-                        periods::period_start.eq(old_period),
-                        periods::status.eq("OPEN"),
-                        periods::revision.eq(1_i64),
-                    ))
-                    .on_conflict((periods::household_id, periods::period_start))
-                    .do_nothing()
-                    .execute(&mut *conn)
-                    .await?;
-                let period_status = periods::accounting_periods
-                    .filter(periods::household_id.eq(household_id))
-                    .filter(periods::period_start.eq(old_period))
-                    .for_update()
-                    .select(periods::status)
-                    .first::<String>(&mut *conn)
-                    .await?;
-                if period_status != "OPEN" {
-                    return Err(UpdatePurchaseItemPersistenceError::AccountingPeriodClosed);
-                }
-
-                let default_version = households::households
-                    .filter(households::id.eq(household_id))
-                    .for_share()
-                    .select(households::default_allocation_version)
-                    .first::<i64>(&mut *conn)
-                    .await
-                    .optional()?
-                    .ok_or(UpdatePurchaseItemPersistenceError::HouseholdMismatch)?;
-                let active_member = members::household_members
-                    .filter(members::household_id.eq(household_id))
-                    .filter(members::member_id.eq(actor_id))
-                    .filter(members::left_at.is_null())
-                    .select(members::member_id)
-                    .first::<Uuid>(&mut *conn)
-                    .await
-                    .optional()?
-                    .is_some();
-                if !active_member {
-                    return Err(UpdatePurchaseItemPersistenceError::MemberNotFound);
-                }
-
-                let purchase = purchases::purchases
-                    .filter(purchases::id.eq(observed.1))
-                    .for_update()
-                    .select((
-                        purchases::household_id,
-                        purchases::status,
-                        purchases::occurred_at,
-                        purchases::merchant,
-                        purchases::revision,
-                        purchases::payment_account_id,
-                    ))
-                    .first::<(Uuid, String, DateTime<Utc>, String, i64, Option<Uuid>)>(&mut *conn)
-                    .await
-                    .optional()?
-                    .ok_or(UpdatePurchaseItemPersistenceError::PurchaseNotFound)?;
-                if purchase.0 != household_id || accounting_period(purchase.2)? != old_period {
-                    return Err(UpdatePurchaseItemPersistenceError::HouseholdMismatch);
-                }
-                if !matches!(purchase.1.as_str(), "DRAFT" | "POSTED") {
-                    return Err(UpdatePurchaseItemPersistenceError::InvalidDecision);
-                }
-
-                let locked = items::purchase_items
-                    .filter(items::id.eq(item_id))
-                    .filter(items::purchase_id.eq(observed.1))
-                    .for_update()
-                    .select((
-                        items::revision,
-                        items::field_revisions,
-                        items::name,
-                        items::amount_yen,
-                        items::category_id,
-                        items::product_variant_id,
-                        items::allocation_override,
-                        items::quantity_numerator,
-                        items::quantity_denominator,
-                        items::quantity_unit,
-                        items::printed_unit_price_yen,
-                        items::printed_unit_price_quantity_numerator,
-                        items::printed_unit_price_quantity_denominator,
-                        items::printed_unit_price_unit,
-                    ))
-                    .first::<(
-                        i64,
-                        serde_json::Value,
-                        String,
-                        i64,
-                        Option<Uuid>,
-                        Option<Uuid>,
-                        bool,
-                        Option<i64>,
-                        Option<i64>,
-                        Option<String>,
-                        Option<i64>,
-                        Option<i64>,
-                        Option<i64>,
-                        Option<String>,
-                    )>(&mut *conn)
-                    .await
-                    .optional()?
-                    .ok_or(UpdatePurchaseItemPersistenceError::ItemNotFound)?;
-
-                let previous_burdens = public::purchase_member_burdens::dsl::purchase_member_burdens
-                    .filter(public::purchase_member_burdens::dsl::household_id.eq(household_id))
-                    .filter(public::purchase_member_burdens::dsl::purchase_id.eq(observed.1))
-                    .select((
-                        public::purchase_member_burdens::dsl::item_id,
-                        public::purchase_member_burdens::dsl::pool_id,
-                        public::purchase_member_burdens::dsl::member_id,
-                        public::purchase_member_burdens::dsl::funding_rule_version,
-                        public::purchase_member_burdens::dsl::funding_weight,
-                        public::purchase_member_burdens::dsl::settlement_policy,
-                        public::purchase_member_burdens::dsl::snapshot_source,
-                    ))
-                    .load::<(Uuid, Uuid, Uuid, i32, i64, Option<String>, String)>(&mut *conn)
-                    .await?;
-                let previous_payment_snapshots = public::purchase_payment_funding_snapshots::dsl::purchase_payment_funding_snapshots
-                    .filter(public::purchase_payment_funding_snapshots::dsl::household_id.eq(household_id))
-                    .filter(public::purchase_payment_funding_snapshots::dsl::purchase_id.eq(observed.1))
-                    .select((
-                        public::purchase_payment_funding_snapshots::dsl::account_id,
-                        public::purchase_payment_funding_snapshots::dsl::pool_id,
-                        public::purchase_payment_funding_snapshots::dsl::member_id,
-                        public::purchase_payment_funding_snapshots::dsl::funding_rule_version,
-                        public::purchase_payment_funding_snapshots::dsl::funding_weight,
-                        public::purchase_payment_funding_snapshots::dsl::settlement_policy,
-                        public::purchase_payment_funding_snapshots::dsl::snapshot_source,
-                    ))
-                    .load::<(Uuid, Uuid, Uuid, i32, i64, Option<String>, String)>(&mut *conn)
-                    .await?;
-                let previous_payment_accounts = public::purchase_payments::dsl::purchase_payments
-                    .filter(public::purchase_payments::dsl::household_id.eq(household_id))
-                    .filter(public::purchase_payments::dsl::purchase_id.eq(observed.1))
-                    .order(public::purchase_payments::dsl::line_no)
-                    .select((
-                        public::purchase_payments::dsl::account_id,
-                        public::purchase_payments::dsl::amount_yen,
-                    ))
-                    .load::<(Uuid, i64)>(&mut *conn)
-                    .await?;
-
-                let existing_allocations = public::purchase_allocations::dsl::purchase_allocations
-                    .filter(public::purchase_allocations::dsl::item_id.eq(item_id))
-                    .order(public::purchase_allocations::dsl::pool_id)
-                    .select((
-                        public::purchase_allocations::dsl::pool_id,
-                        public::purchase_allocations::dsl::weight,
-                        public::purchase_allocations::dsl::rule_id,
-                        public::purchase_allocations::dsl::rule_version,
-                    ))
-                    .load::<(Uuid, i64, Option<Uuid>, i64)>(&mut *conn)
-                    .await?;
-                let current_allocations = existing_allocations
-                    .iter()
-                    .map(|(pool_id, weight, _, _)| ItemAllocationWeight {
-                        pool_id: pool_id.to_string(),
-                        weight: *weight,
-                    })
-                    .collect::<Vec<_>>();
-                let (allocation_rule_id, allocation_rule_version) = existing_allocations
-                    .as_slice()
-                    .first()
-                    .map(|row| (row.2.map(|id| id.to_string()), row.3))
-                    .unwrap_or((None, default_version));
-                let current = PurchaseItemState {
-                    revision: to_u64(locked.0, "item_revision")?,
-                    status: purchase.1.clone(),
-                    name: locked.2.clone(),
-                    amount_yen: locked.3,
-                    category_id: locked.4.map(|id| id.to_string()),
-                    product_variant_id: locked.5.map(|id| id.to_string()),
-                    quantity: measure(locked.7, locked.8, locked.9.clone())?,
-                    printed_unit_price: printed_price(
-                        locked.10,
-                        locked.11,
-                        locked.12,
-                        locked.13.clone(),
-                    )?,
-                    allocation_override: locked.6,
-                    allocation_rule_id,
-                    allocation_rule_version: to_u64(
-                        allocation_rule_version,
-                        "allocation_rule_version",
-                    )?,
-                    field_revisions: revisions(locked.1)?,
-                    allocations: current_allocations,
-                };
-                let default_basis =
-                    load_default_basis(&mut *conn, household_id, default_version).await?;
-                let target_category_id = if command.category_id_set {
-                    command
-                        .category_id
-                        .as_deref()
-                        .map(|id| parse_uuid(id, "category_id"))
-                        .transpose()?
-                } else {
-                    locked.4
-                };
-                let target_variant_id = if command.product_variant_id_set {
-                    command
-                        .product_variant_id
-                        .as_deref()
-                        .map(|id| parse_uuid(id, "product_variant_id"))
-                        .transpose()?
-                } else {
-                    locked.5
-                };
-                let automatic_basis = if command.category_id_set || command.product_variant_id_set {
-                    load_automatic_basis(
-                        &mut *conn,
-                        household_id,
-                        target_category_id,
-                        target_variant_id,
-                        &purchase.3,
-                    )
-                    .await?
-                } else {
-                    None
-                };
-                validate_references(
-                    &mut *conn,
-                    household_id,
-                    command
-                        .category_id_set
-                        .then_some(command.category_id.as_deref())
-                        .flatten()
-                        .map(|id| parse_uuid(id, "category_id"))
-                        .transpose()?,
-                    command
-                        .product_variant_id_set
-                        .then_some(command.product_variant_id.as_deref())
-                        .flatten()
-                        .map(|id| parse_uuid(id, "product_variant_id"))
-                        .transpose()?,
-                )
-                .await?;
-                let decision = decide_update_purchase_item(
-                    command.clone(),
-                    current,
-                    automatic_basis,
-                    default_basis,
-                )
-                .map_err(UpdatePurchaseItemPersistenceError::InvalidWorkflow)?;
-                validate_decision(&decision, item_id)?;
-                let next_item_amount = decision.amount_yen.unwrap_or(locked.3);
-                let adjusted_payments = if next_item_amount != locked.3 {
-                    Some(
-                        adjust_purchase_payments(
-                            &mut *conn,
-                            household_id,
-                            observed.1,
-                            locked.3,
-                            next_item_amount,
-                            purchase.5,
-                        )
-                        .await?,
-                    )
-                } else {
-                    None
-                };
-                let payment_changed = adjusted_payments
-                    .as_ref()
-                    .is_some_and(|payments| !payments.is_empty());
-                let next_revision = i64::try_from(decision.revision).map_err(|_| {
-                    UpdatePurchaseItemPersistenceError::NumericOutOfRange("revision")
-                })?;
-                let field_revisions = serde_json::Value::Object(
-                    decision
-                        .field_revisions
-                        .iter()
-                        .map(|(field, revision)| {
-                            i64::try_from(*revision)
-                                .map(|revision| (field.clone(), serde_json::Value::from(revision)))
-                                .map_err(|_| {
-                                    UpdatePurchaseItemPersistenceError::NumericOutOfRange(
-                                        "field_revision",
-                                    )
-                                })
-                        })
-                        .collect::<Result<serde_json::Map<_, _>, _>>()?,
-                );
-                let (quantity_numerator, quantity_denominator, quantity_unit) =
-                    match decision.quantity.as_ref() {
-                        None => (locked.7, locked.8, locked.9.clone()),
-                        Some(None) => (None, None, None),
-                        Some(Some(value)) => (
-                            Some(value.numerator),
-                            Some(value.denominator),
-                            Some(value.unit.clone()),
-                        ),
-                    };
-                let (
-                    printed_unit_price_yen,
-                    printed_unit_price_quantity_numerator,
-                    printed_unit_price_quantity_denominator,
-                    printed_unit_price_unit,
-                ) =
-                    match decision.printed_unit_price.as_ref() {
-                        None => (locked.10, locked.11, locked.12, locked.13.clone()),
-                        Some(None) => (None, None, None, None),
-                        Some(Some(value)) => (
-                            Some(value.amount_yen),
-                            Some(value.basis.numerator),
-                            Some(value.basis.denominator),
-                            Some(value.basis.unit.clone()),
-                        ),
-                    };
-                let category_id = match &decision.category_id {
-                    Some(Some(value)) => Some(parse_uuid(value, "category_id")?),
-                    Some(None) => None,
-                    None => locked.4,
-                };
-                let product_variant_id = match &decision.product_variant_id {
-                    Some(Some(value)) => Some(parse_uuid(value, "product_variant_id")?),
-                    Some(None) => None,
-                    None => locked.5,
-                };
-                diesel::update(items::purchase_items.filter(items::id.eq(item_id)))
-                    .set((
-                        items::name.eq(decision.name.as_deref().unwrap_or(&locked.2)),
-                        items::amount_yen.eq(decision.amount_yen.unwrap_or(locked.3)),
-                        items::category_id.eq(category_id),
-                        items::product_variant_id.eq(product_variant_id),
-                        items::allocation_override.eq(decision.allocation_override),
-                        items::revision.eq(next_revision),
-                        items::field_revisions.eq(field_revisions),
-                        items::quantity_numerator.eq(quantity_numerator),
-                        items::quantity_denominator.eq(quantity_denominator),
-                        items::quantity_unit.eq(quantity_unit),
-                        items::printed_unit_price_yen.eq(printed_unit_price_yen),
-                        items::printed_unit_price_quantity_numerator
-                            .eq(printed_unit_price_quantity_numerator),
-                        items::printed_unit_price_quantity_denominator
-                            .eq(printed_unit_price_quantity_denominator),
-                        items::printed_unit_price_unit.eq(printed_unit_price_unit),
-                        items::updated_at.eq(now),
-                    ))
-                    .execute(&mut *conn)
-                    .await?;
-
-                persist_product_learning(
-                    &mut *conn,
-                    household_id,
-                    actor_id,
-                    observed.1,
-                    item_id,
-                    &locked.2,
-                    locked.5,
-                    product_variant_id,
-                    command.product_variant_id_set,
-                    &purchase.3,
-                    decision.product_learning.as_ref(),
-                )
-                .await?;
-
-                if let Some(payments) = adjusted_payments {
-                    diesel::delete(
-                        public::purchase_payments::dsl::purchase_payments
-                            .filter(public::purchase_payments::dsl::household_id.eq(household_id))
-                            .filter(public::purchase_payments::dsl::purchase_id.eq(observed.1)),
-                    )
-                    .execute(&mut *conn)
-                    .await?;
-                    for (index, (account_id, amount_yen)) in payments.iter().enumerate() {
-                        let line_no = i32::try_from(index + 1).map_err(|_| {
-                            UpdatePurchaseItemPersistenceError::NumericOutOfRange("payment_line_no")
-                        })?;
-                        diesel::insert_into(public::purchase_payments::table)
-                            .values((
-                                public::purchase_payments::household_id.eq(household_id),
-                                public::purchase_payments::purchase_id.eq(observed.1),
-                                public::purchase_payments::line_no.eq(line_no),
-                                public::purchase_payments::account_id.eq(account_id),
-                                public::purchase_payments::amount_yen.eq(amount_yen),
-                            ))
-                            .execute(&mut *conn)
-                            .await?;
-                    }
-                }
-
-                if let Some(allocations) = &decision.allocations {
-                    validate_pools(&mut *conn, household_id, allocations).await?;
-                    diesel::delete(
-                        public::purchase_allocations::dsl::purchase_allocations
-                            .filter(public::purchase_allocations::dsl::item_id.eq(item_id)),
-                    )
-                    .execute(&mut *conn)
-                    .await?;
-                    for allocation in allocations {
-                        let pool_id = parse_uuid(&allocation.pool_id, "pool_id")?;
-                        let rule_id = decision
-                            .allocation_rule_id
-                            .as_deref()
-                            .map(|id| parse_uuid(id, "allocation_rule_id"))
-                            .transpose()?;
-                        let rule_version = i64::try_from(decision.allocation_rule_version)
-                            .map_err(|_| {
-                                UpdatePurchaseItemPersistenceError::NumericOutOfRange(
-                                    "allocation_rule_version",
-                                )
-                            })?;
-                        diesel::insert_into(public::purchase_allocations::table)
-                            .values((
-                                public::purchase_allocations::household_id.eq(household_id),
-                                public::purchase_allocations::purchase_id.eq(observed.1),
-                                public::purchase_allocations::item_id.eq(item_id),
-                                public::purchase_allocations::pool_id.eq(pool_id),
-                                public::purchase_allocations::amount_yen.eq(allocation.amount_yen),
-                                public::purchase_allocations::weight.eq(allocation.weight),
-                                public::purchase_allocations::rule_version.eq(rule_version),
-                                public::purchase_allocations::rule_id.eq(rule_id),
-                            ))
-                            .execute(&mut *conn)
-                            .await?;
-                    }
-                }
-                if purchase.1 == "POSTED" && decision.allocations_changed {
-                    sync_posted_accounting(
-                        &mut *conn,
-                        household_id,
-                        observed.1,
-                        purchase.2,
-                        &purchase.3,
-                        purchase.4,
-                        &previous_burdens,
-                        &previous_payment_accounts,
-                        &previous_payment_snapshots,
-                        payment_changed,
-                    )
-                    .await?;
-                }
-                let purchase_revision = purchase.4.checked_add(1).ok_or(
-                    UpdatePurchaseItemPersistenceError::NumericOutOfRange("purchase_revision"),
-                )?;
-                diesel::update(purchases::purchases.filter(purchases::id.eq(observed.1)))
-                    .set((
-                        purchases::revision.eq(purchase_revision),
-                        purchases::updated_at.eq(now),
-                    ))
-                    .execute(&mut *conn)
-                    .await?;
-                diesel::insert_into(events::household_events)
-                    .values((
-                        events::household_id.eq(household_id),
-                        events::event_type.eq("purchase.item.updated"),
-                        events::entity_kind.eq("purchase_item"),
-                        events::entity_id.eq(item_id),
-                        events::revision.eq(next_revision),
-                        events::changed_fields.eq(decision
-                            .changed_fields
-                            .iter()
-                            .cloned()
-                            .map(Some)
-                            .collect::<Vec<_>>()),
-                        events::actor_id.eq(actor_id),
-                    ))
-                    .execute(&mut *conn)
-                    .await?;
-                Ok(PersistedUpdatePurchaseItem {
-                    purchase_id: observed.1.to_string(),
-                    revision: decision.revision,
-                })
             },
         )
         .await
+}
+
+pub async fn persist_update_purchase_item_in_transaction(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    actor_id: Uuid,
+    command: UpdatePurchaseItemCommand,
+) -> Result<PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError> {
+    let item_id = parse_uuid(&command.item_id, "item_id")?;
+    use public::accounting_periods::dsl as periods;
+    use public::household_events::dsl as events;
+    use public::household_members::dsl as members;
+    use public::households::dsl as households;
+    use public::purchase_items::dsl as items;
+    use public::purchases::dsl as purchases;
+
+    let observed = items::purchase_items
+        .filter(items::id.eq(item_id))
+        .select((items::household_id, items::purchase_id))
+        .first::<(Uuid, Uuid)>(conn)
+        .await
+        .optional()?
+        .ok_or(UpdatePurchaseItemPersistenceError::ItemNotFound)?;
+    if observed.0 != household_id {
+        return Err(UpdatePurchaseItemPersistenceError::HouseholdMismatch);
+    }
+    let purchase_observed = purchases::purchases
+        .filter(purchases::id.eq(observed.1))
+        .select((purchases::occurred_at, purchases::status))
+        .first::<(DateTime<Utc>, String)>(conn)
+        .await
+        .optional()?
+        .ok_or(UpdatePurchaseItemPersistenceError::PurchaseNotFound)?;
+    require_member(&mut *conn, household_id, actor_id).await?;
+    let old_period = accounting_period(purchase_observed.0)?;
+    diesel::insert_into(periods::accounting_periods)
+        .values((
+            periods::household_id.eq(household_id),
+            periods::period_start.eq(old_period),
+            periods::status.eq("OPEN"),
+            periods::revision.eq(1_i64),
+        ))
+        .on_conflict((periods::household_id, periods::period_start))
+        .do_nothing()
+        .execute(&mut *conn)
+        .await?;
+    let period_status = periods::accounting_periods
+        .filter(periods::household_id.eq(household_id))
+        .filter(periods::period_start.eq(old_period))
+        .for_update()
+        .select(periods::status)
+        .first::<String>(&mut *conn)
+        .await?;
+    if period_status != "OPEN" {
+        return Err(UpdatePurchaseItemPersistenceError::AccountingPeriodClosed);
+    }
+
+    let default_version = households::households
+        .filter(households::id.eq(household_id))
+        .for_share()
+        .select(households::default_allocation_version)
+        .first::<i64>(&mut *conn)
+        .await
+        .optional()?
+        .ok_or(UpdatePurchaseItemPersistenceError::HouseholdMismatch)?;
+    let active_member = members::household_members
+        .filter(members::household_id.eq(household_id))
+        .filter(members::member_id.eq(actor_id))
+        .filter(members::left_at.is_null())
+        .select(members::member_id)
+        .first::<Uuid>(&mut *conn)
+        .await
+        .optional()?
+        .is_some();
+    if !active_member {
+        return Err(UpdatePurchaseItemPersistenceError::MemberNotFound);
+    }
+
+    let purchase = purchases::purchases
+        .filter(purchases::id.eq(observed.1))
+        .for_update()
+        .select((
+            purchases::household_id,
+            purchases::status,
+            purchases::occurred_at,
+            purchases::merchant,
+            purchases::revision,
+            purchases::payment_account_id,
+        ))
+        .first::<(Uuid, String, DateTime<Utc>, String, i64, Option<Uuid>)>(&mut *conn)
+        .await
+        .optional()?
+        .ok_or(UpdatePurchaseItemPersistenceError::PurchaseNotFound)?;
+    if purchase.0 != household_id || accounting_period(purchase.2)? != old_period {
+        return Err(UpdatePurchaseItemPersistenceError::HouseholdMismatch);
+    }
+    if !matches!(purchase.1.as_str(), "DRAFT" | "POSTED") {
+        return Err(UpdatePurchaseItemPersistenceError::InvalidDecision);
+    }
+
+    let locked = items::purchase_items
+        .filter(items::id.eq(item_id))
+        .filter(items::purchase_id.eq(observed.1))
+        .for_update()
+        .select((
+            items::revision,
+            items::field_revisions,
+            items::name,
+            items::amount_yen,
+            items::category_id,
+            items::product_variant_id,
+            items::allocation_override,
+            items::quantity_numerator,
+            items::quantity_denominator,
+            items::quantity_unit,
+            items::printed_unit_price_yen,
+            items::printed_unit_price_quantity_numerator,
+            items::printed_unit_price_quantity_denominator,
+            items::printed_unit_price_unit,
+        ))
+        .first::<(
+            i64,
+            serde_json::Value,
+            String,
+            i64,
+            Option<Uuid>,
+            Option<Uuid>,
+            bool,
+            Option<i64>,
+            Option<i64>,
+            Option<String>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<String>,
+        )>(&mut *conn)
+        .await
+        .optional()?
+        .ok_or(UpdatePurchaseItemPersistenceError::ItemNotFound)?;
+
+    let previous_burdens = public::purchase_member_burdens::dsl::purchase_member_burdens
+        .filter(public::purchase_member_burdens::dsl::household_id.eq(household_id))
+        .filter(public::purchase_member_burdens::dsl::purchase_id.eq(observed.1))
+        .select((
+            public::purchase_member_burdens::dsl::item_id,
+            public::purchase_member_burdens::dsl::pool_id,
+            public::purchase_member_burdens::dsl::member_id,
+            public::purchase_member_burdens::dsl::funding_rule_version,
+            public::purchase_member_burdens::dsl::funding_weight,
+            public::purchase_member_burdens::dsl::settlement_policy,
+            public::purchase_member_burdens::dsl::snapshot_source,
+        ))
+        .load::<(Uuid, Uuid, Uuid, i32, i64, Option<String>, String)>(&mut *conn)
+        .await?;
+    let previous_payment_snapshots =
+        public::purchase_payment_funding_snapshots::dsl::purchase_payment_funding_snapshots
+            .filter(public::purchase_payment_funding_snapshots::dsl::household_id.eq(household_id))
+            .filter(public::purchase_payment_funding_snapshots::dsl::purchase_id.eq(observed.1))
+            .select((
+                public::purchase_payment_funding_snapshots::dsl::account_id,
+                public::purchase_payment_funding_snapshots::dsl::pool_id,
+                public::purchase_payment_funding_snapshots::dsl::member_id,
+                public::purchase_payment_funding_snapshots::dsl::funding_rule_version,
+                public::purchase_payment_funding_snapshots::dsl::funding_weight,
+                public::purchase_payment_funding_snapshots::dsl::settlement_policy,
+                public::purchase_payment_funding_snapshots::dsl::snapshot_source,
+            ))
+            .load::<(Uuid, Uuid, Uuid, i32, i64, Option<String>, String)>(&mut *conn)
+            .await?;
+    let previous_payment_accounts = public::purchase_payments::dsl::purchase_payments
+        .filter(public::purchase_payments::dsl::household_id.eq(household_id))
+        .filter(public::purchase_payments::dsl::purchase_id.eq(observed.1))
+        .order(public::purchase_payments::dsl::line_no)
+        .select((
+            public::purchase_payments::dsl::account_id,
+            public::purchase_payments::dsl::amount_yen,
+        ))
+        .load::<(Uuid, i64)>(&mut *conn)
+        .await?;
+
+    let existing_allocations = public::purchase_allocations::dsl::purchase_allocations
+        .filter(public::purchase_allocations::dsl::item_id.eq(item_id))
+        .order(public::purchase_allocations::dsl::pool_id)
+        .select((
+            public::purchase_allocations::dsl::pool_id,
+            public::purchase_allocations::dsl::weight,
+            public::purchase_allocations::dsl::rule_id,
+            public::purchase_allocations::dsl::rule_version,
+        ))
+        .load::<(Uuid, i64, Option<Uuid>, i64)>(&mut *conn)
+        .await?;
+    let current_allocations = existing_allocations
+        .iter()
+        .map(|(pool_id, weight, _, _)| ItemAllocationWeight {
+            pool_id: pool_id.to_string(),
+            weight: *weight,
+        })
+        .collect::<Vec<_>>();
+    let (allocation_rule_id, allocation_rule_version) = existing_allocations
+        .as_slice()
+        .first()
+        .map(|row| (row.2.map(|id| id.to_string()), row.3))
+        .unwrap_or((None, default_version));
+    let current = PurchaseItemState {
+        revision: to_u64(locked.0, "item_revision")?,
+        status: purchase.1.clone(),
+        name: locked.2.clone(),
+        amount_yen: locked.3,
+        category_id: locked.4.map(|id| id.to_string()),
+        product_variant_id: locked.5.map(|id| id.to_string()),
+        quantity: measure(locked.7, locked.8, locked.9.clone())?,
+        printed_unit_price: printed_price(locked.10, locked.11, locked.12, locked.13.clone())?,
+        allocation_override: locked.6,
+        allocation_rule_id,
+        allocation_rule_version: to_u64(allocation_rule_version, "allocation_rule_version")?,
+        field_revisions: revisions(locked.1)?,
+        allocations: current_allocations,
+    };
+    let default_basis = load_default_basis(&mut *conn, household_id, default_version).await?;
+    let target_category_id = if command.category_id_set {
+        command
+            .category_id
+            .as_deref()
+            .map(|id| parse_uuid(id, "category_id"))
+            .transpose()?
+    } else {
+        locked.4
+    };
+    let target_variant_id = if command.product_variant_id_set {
+        command
+            .product_variant_id
+            .as_deref()
+            .map(|id| parse_uuid(id, "product_variant_id"))
+            .transpose()?
+    } else {
+        locked.5
+    };
+    let automatic_basis = if command.category_id_set || command.product_variant_id_set {
+        load_automatic_basis(
+            &mut *conn,
+            household_id,
+            target_category_id,
+            target_variant_id,
+            &purchase.3,
+        )
+        .await?
+    } else {
+        None
+    };
+    validate_references(
+        &mut *conn,
+        household_id,
+        command
+            .category_id_set
+            .then_some(command.category_id.as_deref())
+            .flatten()
+            .map(|id| parse_uuid(id, "category_id"))
+            .transpose()?,
+        command
+            .product_variant_id_set
+            .then_some(command.product_variant_id.as_deref())
+            .flatten()
+            .map(|id| parse_uuid(id, "product_variant_id"))
+            .transpose()?,
+    )
+    .await?;
+    let decision =
+        decide_update_purchase_item(command.clone(), current, automatic_basis, default_basis)
+            .map_err(UpdatePurchaseItemPersistenceError::InvalidWorkflow)?;
+    validate_decision(&decision, item_id)?;
+    let next_item_amount = decision.amount_yen.unwrap_or(locked.3);
+    let adjusted_payments = if next_item_amount != locked.3 {
+        Some(
+            adjust_purchase_payments(
+                &mut *conn,
+                household_id,
+                observed.1,
+                locked.3,
+                next_item_amount,
+                purchase.5,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+    let payment_changed = adjusted_payments
+        .as_ref()
+        .is_some_and(|payments| !payments.is_empty());
+    let next_revision = i64::try_from(decision.revision)
+        .map_err(|_| UpdatePurchaseItemPersistenceError::NumericOutOfRange("revision"))?;
+    let field_revisions = serde_json::Value::Object(
+        decision
+            .field_revisions
+            .iter()
+            .map(|(field, revision)| {
+                i64::try_from(*revision)
+                    .map(|revision| (field.clone(), serde_json::Value::from(revision)))
+                    .map_err(|_| {
+                        UpdatePurchaseItemPersistenceError::NumericOutOfRange("field_revision")
+                    })
+            })
+            .collect::<Result<serde_json::Map<_, _>, _>>()?,
+    );
+    let (quantity_numerator, quantity_denominator, quantity_unit) = match decision.quantity.as_ref()
+    {
+        None => (locked.7, locked.8, locked.9.clone()),
+        Some(None) => (None, None, None),
+        Some(Some(value)) => (
+            Some(value.numerator),
+            Some(value.denominator),
+            Some(value.unit.clone()),
+        ),
+    };
+    let (
+        printed_unit_price_yen,
+        printed_unit_price_quantity_numerator,
+        printed_unit_price_quantity_denominator,
+        printed_unit_price_unit,
+    ) = match decision.printed_unit_price.as_ref() {
+        None => (locked.10, locked.11, locked.12, locked.13.clone()),
+        Some(None) => (None, None, None, None),
+        Some(Some(value)) => (
+            Some(value.amount_yen),
+            Some(value.basis.numerator),
+            Some(value.basis.denominator),
+            Some(value.basis.unit.clone()),
+        ),
+    };
+    let category_id = match &decision.category_id {
+        Some(Some(value)) => Some(parse_uuid(value, "category_id")?),
+        Some(None) => None,
+        None => locked.4,
+    };
+    let product_variant_id = match &decision.product_variant_id {
+        Some(Some(value)) => Some(parse_uuid(value, "product_variant_id")?),
+        Some(None) => None,
+        None => locked.5,
+    };
+    diesel::update(items::purchase_items.filter(items::id.eq(item_id)))
+        .set((
+            items::name.eq(decision.name.as_deref().unwrap_or(&locked.2)),
+            items::amount_yen.eq(decision.amount_yen.unwrap_or(locked.3)),
+            items::category_id.eq(category_id),
+            items::product_variant_id.eq(product_variant_id),
+            items::allocation_override.eq(decision.allocation_override),
+            items::revision.eq(next_revision),
+            items::field_revisions.eq(field_revisions),
+            items::quantity_numerator.eq(quantity_numerator),
+            items::quantity_denominator.eq(quantity_denominator),
+            items::quantity_unit.eq(quantity_unit),
+            items::printed_unit_price_yen.eq(printed_unit_price_yen),
+            items::printed_unit_price_quantity_numerator.eq(printed_unit_price_quantity_numerator),
+            items::printed_unit_price_quantity_denominator
+                .eq(printed_unit_price_quantity_denominator),
+            items::printed_unit_price_unit.eq(printed_unit_price_unit),
+            items::updated_at.eq(now),
+        ))
+        .execute(&mut *conn)
+        .await?;
+
+    persist_product_learning(
+        &mut *conn,
+        household_id,
+        actor_id,
+        observed.1,
+        item_id,
+        &locked.2,
+        locked.5,
+        product_variant_id,
+        command.product_variant_id_set,
+        &purchase.3,
+        decision.product_learning.as_ref(),
+    )
+    .await?;
+
+    if let Some(payments) = adjusted_payments {
+        diesel::delete(
+            public::purchase_payments::dsl::purchase_payments
+                .filter(public::purchase_payments::dsl::household_id.eq(household_id))
+                .filter(public::purchase_payments::dsl::purchase_id.eq(observed.1)),
+        )
+        .execute(&mut *conn)
+        .await?;
+        for (index, (account_id, amount_yen)) in payments.iter().enumerate() {
+            let line_no = i32::try_from(index + 1).map_err(|_| {
+                UpdatePurchaseItemPersistenceError::NumericOutOfRange("payment_line_no")
+            })?;
+            diesel::insert_into(public::purchase_payments::table)
+                .values((
+                    public::purchase_payments::household_id.eq(household_id),
+                    public::purchase_payments::purchase_id.eq(observed.1),
+                    public::purchase_payments::line_no.eq(line_no),
+                    public::purchase_payments::account_id.eq(account_id),
+                    public::purchase_payments::amount_yen.eq(amount_yen),
+                ))
+                .execute(&mut *conn)
+                .await?;
+        }
+    }
+
+    if let Some(allocations) = &decision.allocations {
+        validate_pools(&mut *conn, household_id, allocations).await?;
+        diesel::delete(
+            public::purchase_allocations::dsl::purchase_allocations
+                .filter(public::purchase_allocations::dsl::item_id.eq(item_id)),
+        )
+        .execute(&mut *conn)
+        .await?;
+        for allocation in allocations {
+            let pool_id = parse_uuid(&allocation.pool_id, "pool_id")?;
+            let rule_id = decision
+                .allocation_rule_id
+                .as_deref()
+                .map(|id| parse_uuid(id, "allocation_rule_id"))
+                .transpose()?;
+            let rule_version = i64::try_from(decision.allocation_rule_version).map_err(|_| {
+                UpdatePurchaseItemPersistenceError::NumericOutOfRange("allocation_rule_version")
+            })?;
+            diesel::insert_into(public::purchase_allocations::table)
+                .values((
+                    public::purchase_allocations::household_id.eq(household_id),
+                    public::purchase_allocations::purchase_id.eq(observed.1),
+                    public::purchase_allocations::item_id.eq(item_id),
+                    public::purchase_allocations::pool_id.eq(pool_id),
+                    public::purchase_allocations::amount_yen.eq(allocation.amount_yen),
+                    public::purchase_allocations::weight.eq(allocation.weight),
+                    public::purchase_allocations::rule_version.eq(rule_version),
+                    public::purchase_allocations::rule_id.eq(rule_id),
+                ))
+                .execute(&mut *conn)
+                .await?;
+        }
+    }
+    if purchase.1 == "POSTED" && decision.allocations_changed {
+        sync_posted_accounting(
+            &mut *conn,
+            household_id,
+            observed.1,
+            purchase.2,
+            &purchase.3,
+            purchase.4,
+            &previous_burdens,
+            &previous_payment_accounts,
+            &previous_payment_snapshots,
+            payment_changed,
+        )
+        .await?;
+    }
+    let purchase_revision =
+        purchase
+            .4
+            .checked_add(1)
+            .ok_or(UpdatePurchaseItemPersistenceError::NumericOutOfRange(
+                "purchase_revision",
+            ))?;
+    diesel::update(purchases::purchases.filter(purchases::id.eq(observed.1)))
+        .set((
+            purchases::revision.eq(purchase_revision),
+            purchases::updated_at.eq(now),
+        ))
+        .execute(&mut *conn)
+        .await?;
+    diesel::insert_into(events::household_events)
+        .values((
+            events::household_id.eq(household_id),
+            events::event_type.eq("purchase.item.updated"),
+            events::entity_kind.eq("purchase_item"),
+            events::entity_id.eq(item_id),
+            events::revision.eq(next_revision),
+            events::changed_fields.eq(decision
+                .changed_fields
+                .iter()
+                .cloned()
+                .map(Some)
+                .collect::<Vec<_>>()),
+            events::actor_id.eq(actor_id),
+        ))
+        .execute(&mut *conn)
+        .await?;
+    Ok(PersistedUpdatePurchaseItem {
+        purchase_id: observed.1.to_string(),
+        revision: decision.revision,
+    })
 }
 
 async fn require_member(

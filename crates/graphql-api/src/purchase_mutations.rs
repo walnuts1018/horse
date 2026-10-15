@@ -1016,7 +1016,7 @@ fn post_fingerprint(purchase_id: &str, expected_revision: i32) -> Result<[u8; 32
     Ok(Sha256::digest(serde_json::to_vec(&request).map_err(crate::internal_error)?).into())
 }
 
-async fn purchase_result(
+pub(crate) async fn purchase_result(
     pool: &PgPool,
     household_id: Uuid,
     purchase_id: &str,

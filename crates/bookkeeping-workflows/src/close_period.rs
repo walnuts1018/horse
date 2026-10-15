@@ -140,9 +140,9 @@ pub fn decide_funding_obligations(
             || schedule.member_id.as_str().is_empty()
             || schedule.pool_id.is_empty()
             || schedule.amount_yen < 0
-            || schedule.ends_on_day.is_some_and(|ends_on| {
-                ends_on < schedule.starts_on_day
-            })
+            || schedule
+                .ends_on_day
+                .is_some_and(|ends_on| ends_on < schedule.starts_on_day)
         {
             return Err(ClosePeriodError::InvalidFundingSchedule);
         }
@@ -157,8 +157,15 @@ pub fn decide_funding_obligations(
 
         let key = (schedule.member_id.clone(), schedule.pool_id.clone());
         let is_newer = newest_by_member_pool.get(&key).is_none_or(|current| {
-            (schedule.starts_on_day, schedule.created_at_micros, &schedule.id)
-                > (current.starts_on_day, current.created_at_micros, &current.id)
+            (
+                schedule.starts_on_day,
+                schedule.created_at_micros,
+                &schedule.id,
+            ) > (
+                current.starts_on_day,
+                current.created_at_micros,
+                &current.id,
+            )
         });
         if is_newer {
             newest_by_member_pool.insert(key, schedule);
@@ -168,11 +175,7 @@ pub fn decide_funding_obligations(
     newest_by_member_pool
         .into_values()
         .map(|schedule| {
-            let amount_yen = funding_schedule_amount(
-                period_start_day,
-                period_end_day,
-                &schedule,
-            )?;
+            let amount_yen = funding_schedule_amount(period_start_day, period_end_day, &schedule)?;
             Ok(FundingObligationDecision {
                 schedule_id: schedule.id,
                 member_id: schedule.member_id,
@@ -191,8 +194,7 @@ fn funding_schedule_amount(
     match schedule.cadence {
         FundingCadence::Monthly => Ok(schedule.amount_yen),
         FundingCadence::Custom => {
-            if schedule.starts_on_day < period_start_day
-                || schedule.starts_on_day >= period_end_day
+            if schedule.starts_on_day < period_start_day || schedule.starts_on_day >= period_end_day
             {
                 Ok(0)
             } else {
@@ -205,7 +207,11 @@ fn funding_schedule_amount(
                 let days = period_start_day - occurrence;
                 let weeks = (days + 6) / 7;
                 occurrence = occurrence
-                    .checked_add(weeks.checked_mul(7).ok_or(ClosePeriodError::InvalidFundingSchedule)?)
+                    .checked_add(
+                        weeks
+                            .checked_mul(7)
+                            .ok_or(ClosePeriodError::InvalidFundingSchedule)?,
+                    )
                     .ok_or(ClosePeriodError::InvalidFundingSchedule)?;
             }
             let mut total = 0_i64;

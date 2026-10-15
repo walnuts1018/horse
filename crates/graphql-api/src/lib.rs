@@ -31,10 +31,13 @@ pub mod pool_mutations;
 pub mod purchase_edit_mutations;
 pub mod purchase_defaults_query;
 pub mod purchase_correction_query;
+pub mod purchase_analytics_query;
+pub mod purchase_corrections_mutations;
 pub mod purchase_mutations;
 pub mod settlement_mutations;
 pub mod shared_purchase_draft;
 pub mod funding_schedule_query;
+pub mod statement_link_mutations;
 pub mod viewer_query;
 pub mod scalars;
 pub use scalars::{DateTime, Long};
@@ -385,6 +388,34 @@ impl QueryRoot {
         id: ID,
     ) -> Result<Option<shared_purchase_draft::SharedPurchaseDraft>> {
         shared_purchase_draft::shared_purchase_draft(ctx, id).await
+    }
+
+    async fn purchase_analytics(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        from: policy_mutations::YearMonth,
+        to: policy_mutations::YearMonth,
+    ) -> Result<Vec<purchase_analytics_query::PurchaseAnalyticsEntry>> {
+        purchase_analytics_query::graphql_purchase_analytics(ctx, household_id, from, to).await
+    }
+
+    async fn purchase_price_observations(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        from: policy_mutations::YearMonth,
+        to: policy_mutations::YearMonth,
+        item_ids: Vec<String>,
+    ) -> Result<Vec<purchase_analytics_query::PurchasePriceObservation>> {
+        purchase_analytics_query::graphql_purchase_price_observations(
+            ctx,
+            household_id,
+            from,
+            to,
+            item_ids,
+        )
+        .await
     }
 }
 
@@ -818,6 +849,54 @@ impl MutationRoot {
         input: shared_purchase_draft::UpdateSharedPurchaseDraftInput,
     ) -> Result<shared_purchase_draft::UpdateSharedPurchaseDraftResult> {
         shared_purchase_draft::update_shared_purchase_draft(ctx, input).await
+    }
+
+    async fn link_statement_account_movement(
+        &self,
+        ctx: &Context<'_>,
+        input: statement_link_mutations::LinkStatementAccountMovementInput,
+    ) -> Result<statement_link_mutations::LinkStatementAccountMovementResult> {
+        statement_link_mutations::link_statement_account_movement(ctx, input).await
+    }
+
+    async fn link_statement_account_income(
+        &self,
+        ctx: &Context<'_>,
+        input: statement_link_mutations::LinkStatementAccountIncomeInput,
+    ) -> Result<statement_link_mutations::LinkStatementAccountIncomeResult> {
+        statement_link_mutations::link_statement_account_income(ctx, input).await
+    }
+
+    async fn link_statement_transfer(
+        &self,
+        ctx: &Context<'_>,
+        input: statement_link_mutations::LinkStatementTransferInput,
+    ) -> Result<statement_link_mutations::LinkStatementTransferResult> {
+        statement_link_mutations::link_statement_transfer(ctx, input).await
+    }
+
+    async fn link_statement_refund_correction(
+        &self,
+        ctx: &Context<'_>,
+        input: statement_link_mutations::LinkStatementRefundCorrectionInput,
+    ) -> Result<statement_link_mutations::LinkStatementRefundCorrectionResult> {
+        statement_link_mutations::link_statement_refund_correction(ctx, input).await
+    }
+
+    async fn correct_purchase(
+        &self,
+        ctx: &Context<'_>,
+        input: purchase_corrections_mutations::CorrectPurchaseInput,
+    ) -> Result<purchase_corrections_mutations::CorrectPurchaseResult> {
+        purchase_corrections_mutations::correct_purchase(ctx, input).await
+    }
+
+    async fn correct_purchase_from_statement(
+        &self,
+        ctx: &Context<'_>,
+        input: purchase_corrections_mutations::CorrectPurchaseFromStatementInput,
+    ) -> Result<purchase_corrections_mutations::CorrectPurchaseResult> {
+        purchase_corrections_mutations::correct_purchase_from_statement(ctx, input).await
     }
 }
 

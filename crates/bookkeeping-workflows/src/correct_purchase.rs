@@ -535,7 +535,10 @@ pub fn calculate_correction_funding_effects(
             || group.version != snapshot.funding_rule_version
             || group.policy != snapshot.settlement_policy
             || group.snapshot_source != snapshot.snapshot_source
-            || !matches!(snapshot.snapshot_source.as_str(), "POSTED" | "LEGACY_CURRENT_RULES")
+            || !matches!(
+                snapshot.snapshot_source.as_str(),
+                "POSTED" | "LEGACY_CURRENT_RULES"
+            )
             || group
                 .weights
                 .insert(snapshot.member_id.clone(), snapshot.funding_weight)

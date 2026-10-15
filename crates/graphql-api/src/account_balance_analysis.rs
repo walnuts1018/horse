@@ -41,8 +41,8 @@ pub struct AccountBalanceChange {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct AccountOpeningBalance {
-    id: ID,
-    account: crate::account_mutations::AccountObject,
+    pub(crate) id: ID,
+    pub(crate) account: crate::account_mutations::AccountObject,
 }
 
 #[derive(Clone, Debug, Union)]

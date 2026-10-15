@@ -222,7 +222,10 @@ pub fn decide_update_purchase_item(
             return Err(UpdatePurchaseItemError::ProductLearningRequiresVariantChange);
         }
         if !matches!(learning, &ProductLearning::ItemOnly)
-            && command.product_variant_id.as_ref().is_none_or(String::is_empty)
+            && command
+                .product_variant_id
+                .as_ref()
+                .is_none_or(String::is_empty)
         {
             return Err(UpdatePurchaseItemError::ProductLearningRequiresLinkedVariant);
         }

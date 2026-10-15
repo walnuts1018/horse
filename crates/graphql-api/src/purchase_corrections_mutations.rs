@@ -148,9 +148,9 @@ pub async fn correct_purchase_from_statement(
         Ok(value) => value,
         Err(()) => return Ok(bad_input().into()),
     };
-    let source_document_id = match decode_node_id(&input.source_document_id, "SourceDocument") {
-        Ok(id) => id,
-        Err(()) => return Ok(bad_input().into()),
+    let source_document_id = match Uuid::parse_str(input.source_document_id.as_str()) {
+        Ok(id) if !id.is_nil() => id,
+        _ => return Ok(bad_input().into()),
     };
     if input.source_reference.trim().is_empty()
         || input.source_reference.len() > 256
@@ -295,6 +295,7 @@ fn user_error(
         E::InvalidUuid(_) | E::InvalidIdempotencyKey | E::InvalidDecision => {
             MutationErrorCode::BadInput
         }
+        E::StatementNotRefundable => MutationErrorCode::BadInput,
         E::PurchaseNotFound | E::SourceDocumentNotFound | E::MemberNotFound => {
             MutationErrorCode::NotFound
         }

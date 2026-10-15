@@ -420,7 +420,7 @@ pub async fn bulk_delete_purchase_items(
     }
 }
 
-fn update_purchase_command(
+pub(crate) fn update_purchase_command(
     input: UpdatePurchaseInput,
     purchase_id: Uuid,
 ) -> std::result::Result<UpdatePurchaseCommand, ()> {
@@ -509,7 +509,7 @@ fn update_purchase_draft(
     })
 }
 
-fn item_update_command(
+pub(crate) fn item_update_command(
     input: UpdatePurchaseItemInput,
     item_id: Uuid,
     base_revision: u64,

@@ -141,7 +141,9 @@ pub async fn load_purchase_command_context(
                 .await
                 .optional()?;
         }
-        if selected.is_none() && let Some(concept_id) = concept_id {
+        if selected.is_none()
+            && let Some(concept_id) = concept_id
+        {
             selected = rules::allocation_rules
                 .filter(rules::household_id.eq(household_id))
                 .filter(rules::product_concept_id.eq(Some(concept_id)))
@@ -150,7 +152,9 @@ pub async fn load_purchase_command_context(
                 .await
                 .optional()?;
         }
-        if selected.is_none() && let Some(category_id) = category_id {
+        if selected.is_none()
+            && let Some(category_id) = category_id
+        {
             selected = rules::allocation_rules
                 .filter(rules::household_id.eq(household_id))
                 .filter(rules::category_id.eq(Some(category_id)))

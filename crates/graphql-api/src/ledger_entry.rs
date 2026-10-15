@@ -19,6 +19,28 @@ pub struct FundingLedgerEntry {
 }
 
 #[derive(Clone, Debug, SimpleObject)]
+pub struct PurchaseLedgerEntry {
+    id: ID,
+    occurred_at: crate::DateTime,
+    description: String,
+    amount_yen: crate::Long,
+    currency: String,
+    created_at: crate::DateTime,
+    purchase: crate::purchase_mutations::PurchaseObject,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct CorrectionLedgerEntry {
+    id: ID,
+    occurred_at: crate::DateTime,
+    description: String,
+    amount_yen: crate::Long,
+    currency: String,
+    created_at: crate::DateTime,
+    purchase: crate::purchase_mutations::PurchaseObject,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
 pub struct AdvanceTransferLedgerEntry {
     id: ID,
     occurred_at: crate::DateTime,
@@ -109,6 +131,7 @@ pub enum Node {
     Member(crate::member_pool::Member),
     Pool(crate::member_pool::Pool),
     Account(crate::account_mutations::AccountObject),
+    AccountOpeningBalance(crate::account_balance_analysis::AccountOpeningBalance),
     AccountMovement(crate::account_mutations::AccountMovementObject),
     AccountIncome(crate::account_mutations::AccountIncomeObject),
     Category(crate::category::Category),
@@ -126,6 +149,8 @@ pub enum Node {
     PurchaseWideCorrection(crate::purchase_mutations::PurchaseWideCorrection),
     PurchaseItemCorrection(crate::purchase_mutations::PurchaseItemCorrection),
     LedgerEntry(LedgerEntry),
+    PurchaseLedgerEntry(PurchaseLedgerEntry),
+    CorrectionLedgerEntry(CorrectionLedgerEntry),
     TransferLedgerEntry(TransferLedgerEntry),
     FundingLedgerEntry(FundingLedgerEntry),
     AdvanceTransferLedgerEntry(AdvanceTransferLedgerEntry),
@@ -148,7 +173,49 @@ pub enum Node {
 )]
 pub enum LedgerEntry {
     FundingLedgerEntry(FundingLedgerEntry),
+    PurchaseLedgerEntry(PurchaseLedgerEntry),
+    CorrectionLedgerEntry(CorrectionLedgerEntry),
     TransferLedgerEntry(TransferLedgerEntry),
+}
+
+pub(crate) fn purchase_ledger_entry(
+    id: Uuid,
+    occurred_at: chrono::DateTime<chrono::Utc>,
+    description: String,
+    amount_yen: i64,
+    currency: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+    purchase: crate::purchase_mutations::PurchaseObject,
+) -> LedgerEntry {
+    LedgerEntry::PurchaseLedgerEntry(PurchaseLedgerEntry {
+        id: encode_node_id("LedgerEntry", id),
+        occurred_at: occurred_at.into(),
+        description,
+        amount_yen: crate::Long(amount_yen),
+        currency,
+        created_at: created_at.into(),
+        purchase,
+    })
+}
+
+pub(crate) fn correction_ledger_entry(
+    id: Uuid,
+    occurred_at: chrono::DateTime<chrono::Utc>,
+    description: String,
+    amount_yen: i64,
+    currency: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+    purchase: crate::purchase_mutations::PurchaseObject,
+) -> LedgerEntry {
+    LedgerEntry::CorrectionLedgerEntry(CorrectionLedgerEntry {
+        id: encode_node_id("LedgerEntry", id),
+        occurred_at: occurred_at.into(),
+        description,
+        amount_yen: crate::Long(amount_yen),
+        currency,
+        created_at: created_at.into(),
+        purchase,
+    })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
