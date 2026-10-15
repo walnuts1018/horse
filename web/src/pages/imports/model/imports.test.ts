@@ -26,11 +26,14 @@ describe("取り込みAIモデル", () => {
       "gemini-3.5-flash-lite",
       "gemini-3.1-flash-lite",
       "gemini-3.1-pro-preview",
+      "gemini-4-argon",
     ]);
     expect(importModelTier("gemini-3.8-flash")).toBe("free");
     expect(importModelTier("gemini-3.1-pro-preview")).toBe("paid");
+    expect(importModelTier("gemini-4-argon")).toBe("paid");
     expect(importModelCostLabel("gemini-3.8-flash")).toBe("無料・利用上限あり");
     expect(importModelCostLabel("gemini-3.1-pro-preview")).toBe("有料・従量課金");
+    expect(importModelCostLabel("gemini-4-argon")).toBe("有料・従量課金");
   });
 });
 
@@ -194,6 +197,14 @@ describe("再抽出モデルの初期選択", () => {
         status: "FAILED",
         errorCode: "spend_cap_reached",
         model: "gemini-3.1-pro-preview",
+      }),
+    ).toBe("gemini-3.8-flash");
+    expect(
+      retryImportModel({
+        id: "argon-spend-cap",
+        status: "FAILED",
+        errorCode: "spend_cap_reached",
+        model: "gemini-4-argon",
       }),
     ).toBe("gemini-3.8-flash");
     expect(

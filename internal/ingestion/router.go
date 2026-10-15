@@ -23,11 +23,12 @@ const (
 	ModelEmail   = "gemini-3.5-flash-lite"
 	ModelLite31  = "gemini-3.1-flash-lite"
 	ModelPro     = "gemini-3.1-pro-preview"
+	ModelArgon   = "gemini-4-argon"
 )
 
 func ValidModelSelection(selection string) bool {
 	switch selection {
-	case "", ModelSelectionFree, ModelSelectionPro, ModelReceipt, ModelEmail, ModelLite31, ModelPro:
+	case "", ModelSelectionFree, ModelSelectionPro, ModelReceipt, ModelEmail, ModelLite31, ModelPro, ModelArgon:
 		return true
 	default:
 		return false
@@ -144,6 +145,11 @@ func (r GeminiRouter) selectedOptions(selection, sourceKind, mimeType, purpose s
 		options.ExactModel = true
 		options.Reason = geminiReasonInitialExtraction
 		options.Attempt = attempt
+	case ModelArgon:
+		options.Model = ModelArgon
+		options.ExactModel = true
+		options.PaidOnly = true
+		options.ServiceTier = geminiServiceTierStandard
 	default:
 		return GeminiRouteOptions{}, errors.New("invalid Gemini model selection")
 	}
@@ -666,6 +672,11 @@ func estimateCostJPY(project, model, serviceTier string, inputTokens, outputToke
 
 func modelPrices(model string, inputTokens int64, at time.Time) (float64, float64) {
 	switch model {
+	case ModelArgon:
+		if at.Before(time.Date(2026, time.December, 1, 0, 0, 0, 0, time.UTC)) {
+			return 2, 10
+		}
+		return 4, 20
 	case ModelReceipt, "gemini-3.6-flash":
 		if at.Before(time.Date(2027, time.January, 1, 0, 0, 0, 0, time.UTC)) {
 			return 0.75, 3.75

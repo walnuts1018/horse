@@ -76,6 +76,7 @@ func TestGeminiRouterSelectedOptionsUseRequestedModelRoute(t *testing.T) {
 		sourceKind string
 		mimeType   string
 		wantModel  string
+		wantTier   string
 		freeOnly   bool
 		paidOnly   bool
 	}{
@@ -86,6 +87,7 @@ func TestGeminiRouterSelectedOptionsUseRequestedModelRoute(t *testing.T) {
 		{name: "exact 3.5 flash lite model", selection: ModelEmail, sourceKind: "receipt", mimeType: mimeTypeJPEG, wantModel: ModelEmail, freeOnly: true},
 		{name: "exact 3.1 flash lite model", selection: ModelLite31, sourceKind: "receipt", mimeType: mimeTypeJPEG, wantModel: ModelLite31, freeOnly: true},
 		{name: "exact pro model", selection: ModelPro, sourceKind: "receipt", mimeType: mimeTypeJPEG, wantModel: ModelPro, paidOnly: true},
+		{name: "exact Argon model", selection: ModelArgon, sourceKind: "receipt", mimeType: mimeTypeJPEG, wantModel: ModelArgon, wantTier: geminiServiceTierStandard, paidOnly: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -94,13 +96,16 @@ func TestGeminiRouterSelectedOptionsUseRequestedModelRoute(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if options.Model != test.wantModel || !options.ExactModel || options.FreeOnly != test.freeOnly || options.PaidOnly != test.paidOnly || options.Attempt != 3 || options.Reason != geminiReasonInitialExtraction {
+			if options.Model != test.wantModel || options.ServiceTier != test.wantTier || !options.ExactModel || options.FreeOnly != test.freeOnly || options.PaidOnly != test.paidOnly || options.Attempt != 3 || options.Reason != geminiReasonInitialExtraction {
 				t.Fatalf("selected extraction options = %+v", options)
 			}
 		})
 	}
 	if _, err := router.selectedOptions("unknown", "receipt", mimeTypeJPEG, JobPurposeInteractive, 1); err == nil {
 		t.Fatal("unknown model selection was accepted")
+	}
+	if !ValidModelSelection(ModelArgon) {
+		t.Fatal("Argon model selection was rejected")
 	}
 }
 
@@ -640,14 +645,59 @@ func TestGeminiRouterModelOverridesAndEmailQualityUpgrade(t *testing.T) {
 func TestEstimatedGeminiCostUsesProjectTierAndPriceChange(t *testing.T) {
 	t.Parallel()
 	cutover := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+	argonCutover := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	argonBefore := estimateCostJPY(ProjectPaid, ModelArgon, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, argonCutover.Add(-time.Second))
+	argonAfter := estimateCostJPY(ProjectPaid, ModelArgon, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, argonCutover)
 	before := estimateCostJPY(ProjectPaid, ModelReceipt, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, cutover.Add(-time.Second))
 	flex := estimateCostJPY(ProjectPaid, ModelReceipt, geminiServiceTierFlex, 1_000_000, 1_000_000, 100, cutover.Add(-time.Second))
 	after := estimateCostJPY(ProjectPaid, ModelReceipt, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, cutover)
 	proUnderLimit := estimateCostJPY(ProjectPaid, ModelPro, geminiServiceTierStandard, 200_000, 1_000_000, 100, cutover)
 	proOverLimit := estimateCostJPY(ProjectPaid, ModelPro, geminiServiceTierStandard, 200_001, 1_000_000, 100, cutover)
 	lite31 := estimateCostJPY(ProjectPaid, ModelLite31, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, cutover)
-	if before != 450 || flex != 225 || after != 900 || proUnderLimit != 1240 || proOverLimit != 1880.0004 || lite31 != 175 || estimateCostJPY(ProjectFree, ModelReceipt, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, cutover) != 0 {
-		t.Fatalf("unexpected estimated prices: before=%f flex=%f after=%f", before, flex, after)
+	if argonBefore != 1200 || argonAfter != 2400 || before != 450 || flex != 225 || after != 900 || proUnderLimit != 1240 || proOverLimit != 1880.0004 || lite31 != 175 || estimateCostJPY(ProjectFree, ModelArgon, geminiServiceTierStandard, 1_000_000, 1_000_000, 100, argonCutover) != 0 {
+		t.Fatalf("unexpected estimated prices: Argon before=%f after=%f, Flash before=%f flex=%f after=%f", argonBefore, argonAfter, before, flex, after)
+	}
+}
+
+func TestGeminiArgonUsesOnlyPaidProject(t *testing.T) {
+	t.Parallel()
+	freeCalls := 0
+	freeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		freeCalls++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer freeServer.Close()
+	paidCalls := 0
+	paidServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paidCalls++
+		if r.Header.Get("x-goog-api-key") != testPaidGeminiAPIKey {
+			t.Errorf("Argon request used an unexpected API key")
+		}
+		if strings.Contains(r.URL.Path, ":generateContent") {
+			if !strings.Contains(r.URL.Path, ModelArgon+":generateContent") {
+				t.Errorf("Argon request changed model: %s", r.URL.Path)
+			}
+			writeGeminiSuccess(w, `{"merchant":"Market","purchasedAt":"","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"totalTokens":1000}`)
+	}))
+	defer paidServer.Close()
+	router := GeminiRouter{
+		Free:       Gemini{APIKey: testFreeGeminiAPIKey, Endpoint: freeServer.URL + "/v1beta/", HTTPClient: freeServer.Client()},
+		Paid:       Gemini{APIKey: testPaidGeminiAPIKey, Project: testPaidProjectID, Endpoint: paidServer.URL + "/v1beta/", HTTPClient: paidServer.Client()},
+		USDJPYRate: 100,
+	}
+	options, err := router.selectedOptions(ModelArgon, "receipt", mimeTypeJPEG, JobPurposeInteractive, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, runs, err := router.Generate(t.Context(), "receipt", Document{MIMEType: mimeTypeJPEG, Data: []byte("synthetic image")}, nil, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if freeCalls != 0 || paidCalls != 1 || receipt.Model != ModelArgon || len(runs) != 1 || runs[0].Route != ProjectPaid || runs[0].Model != ModelArgon || runs[0].PriceTableVersion != GeminiPriceTableVersion || runs[0].PriceEstimateStatus != "estimated_paid" || runs[0].EstimatedJPY != 0.475 {
+		t.Fatalf("Argon did not remain on the paid Developer API route: free=%d paid=%d receipt=%+v runs=%+v", freeCalls, paidCalls, receipt, runs)
 	}
 }
 

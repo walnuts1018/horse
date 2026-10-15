@@ -11,7 +11,7 @@ import (
 )
 
 const PromptVersion = "source-kind-2026-10-14.1"
-const GeminiPriceTableVersion = "gemini-prices-2026-10-v1"
+const GeminiPriceTableVersion = "gemini-prices-2026-10-v2"
 const MaxDocumentBytes = 20 << 20
 const MaxOutputTokens = 16_384
 const receiptDiscountKey = "discount"

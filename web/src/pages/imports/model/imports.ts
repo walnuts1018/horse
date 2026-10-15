@@ -57,6 +57,7 @@ export const importModels = [
   { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", tier: "free" },
   { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", tier: "free" },
   { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro Preview", tier: "paid" },
+  { value: "gemini-4-argon", label: "Gemini 4 Argon", tier: "paid" },
 ] as const;
 
 export type ImportModel = (typeof importModels)[number]["value"];
