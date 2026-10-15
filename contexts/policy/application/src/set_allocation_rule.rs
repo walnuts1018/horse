@@ -7,11 +7,50 @@ pub struct AllocationRuleWeight {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AllocationRuleTarget {
-    pub category_id: Option<String>,
-    pub merchant: Option<String>,
-    pub product_concept_id: Option<String>,
-    pub product_variant_id: Option<String>,
+pub enum AllocationRuleTarget {
+    Category(String),
+    Merchant(String),
+    ProductConcept(String),
+    ProductVariant(String),
+}
+
+impl AllocationRuleTarget {
+    pub fn category_id(&self) -> Option<&str> {
+        match self {
+            Self::Category(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    pub fn merchant(&self) -> Option<&str> {
+        match self {
+            Self::Merchant(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub fn product_concept_id(&self) -> Option<&str> {
+        match self {
+            Self::ProductConcept(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    pub fn product_variant_id(&self) -> Option<&str> {
+        match self {
+            Self::ProductVariant(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    pub fn changed_field(&self) -> &'static str {
+        match self {
+            Self::Category(_) => "categoryId",
+            Self::Merchant(_) => "merchant",
+            Self::ProductConcept(_) => "productConceptId",
+            Self::ProductVariant(_) => "productVariantId",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,7 +90,6 @@ pub struct SetAllocationRuleResult {
 pub enum SetAllocationRuleError {
     InvalidActorId,
     InvalidHouseholdId,
-    InvalidTarget,
     InvalidTargetId,
     InvalidMerchant,
     EmptyWeights,
@@ -88,36 +126,27 @@ pub fn validate_set_allocation_rule(
     if command.household_id.is_empty() {
         return Err(SetAllocationRuleError::InvalidHouseholdId);
     }
-    let selected_targets = [
-        command.target.category_id.as_ref(),
-        command.target.merchant.as_ref(),
-        command.target.product_concept_id.as_ref(),
-        command.target.product_variant_id.as_ref(),
-    ]
-    .into_iter()
-    .flatten()
-    .count();
-    if selected_targets != 1 {
-        return Err(SetAllocationRuleError::InvalidTarget);
-    }
-    for target_id in [
-        command.target.category_id.as_deref(),
-        command.target.product_concept_id.as_deref(),
-        command.target.product_variant_id.as_deref(),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        if target_id.is_empty() {
+    let target = match command.target {
+        AllocationRuleTarget::Category(id) if !id.is_empty() => AllocationRuleTarget::Category(id),
+        AllocationRuleTarget::ProductConcept(id) if !id.is_empty() => {
+            AllocationRuleTarget::ProductConcept(id)
+        }
+        AllocationRuleTarget::ProductVariant(id) if !id.is_empty() => {
+            AllocationRuleTarget::ProductVariant(id)
+        }
+        AllocationRuleTarget::Merchant(value) => {
+            let normalized = normalize_merchant(&value);
+            if normalized.is_empty() || normalized.len() > 240 {
+                return Err(SetAllocationRuleError::InvalidMerchant);
+            }
+            AllocationRuleTarget::Merchant(normalized)
+        }
+        AllocationRuleTarget::Category(_)
+        | AllocationRuleTarget::ProductConcept(_)
+        | AllocationRuleTarget::ProductVariant(_) => {
             return Err(SetAllocationRuleError::InvalidTargetId);
         }
-    }
-    if let Some(merchant) = &command.target.merchant {
-        let normalized = normalize_merchant(merchant);
-        if normalized.is_empty() || normalized.len() > 240 {
-            return Err(SetAllocationRuleError::InvalidMerchant);
-        }
-    }
+    };
     if command.weights.is_empty() {
         return Err(SetAllocationRuleError::EmptyWeights);
     }
@@ -135,10 +164,6 @@ pub fn validate_set_allocation_rule(
         }
     }
 
-    let mut target = command.target;
-    if let Some(merchant) = target.merchant.take() {
-        target.merchant = Some(normalize_merchant(&merchant));
-    }
     Ok(ValidatedSetAllocationRuleCommand {
         actor_id: command.actor_id,
         household_id: command.household_id,
@@ -161,15 +186,7 @@ pub fn decide_set_allocation_rule(
         Some(_) => return Err(SetAllocationRuleError::InvalidTargetId),
         None => (None, 1),
     };
-    let target_field = if command.target.product_variant_id.is_some() {
-        "productVariantId"
-    } else if command.target.product_concept_id.is_some() {
-        "productConceptId"
-    } else if command.target.category_id.is_some() {
-        "categoryId"
-    } else {
-        "merchant"
-    };
+    let target_field = command.target.changed_field();
     Ok(SetAllocationRuleDecision {
         actor_id: command.actor_id,
         household_id: command.household_id,
@@ -206,12 +223,7 @@ mod tests {
     }
 
     fn target_category() -> AllocationRuleTarget {
-        AllocationRuleTarget {
-            category_id: Some("category".to_owned()),
-            merchant: None,
-            product_concept_id: None,
-            product_variant_id: None,
-        }
+        AllocationRuleTarget::Category("category".to_owned())
     }
 
     fn weights() -> Vec<AllocationRuleWeight> {
@@ -230,16 +242,11 @@ mod tests {
     #[test]
     fn normalizes_merchant_and_decides_revision_and_event_fields() {
         let validated = validate_set_allocation_rule(command(
-            AllocationRuleTarget {
-                category_id: None,
-                merchant: Some("  FOO   BAR ".to_owned()),
-                product_concept_id: None,
-                product_variant_id: None,
-            },
+            AllocationRuleTarget::Merchant("  FOO   BAR ".to_owned()),
             weights(),
         ))
         .expect("valid rule");
-        assert_eq!(validated.target.merchant.as_deref(), Some("foo bar"));
+        assert_eq!(validated.target.merchant(), Some("foo bar"));
         let decision =
             decide_set_allocation_rule(validated, Some(("rule".to_owned(), 3))).expect("decision");
         assert_eq!(decision.revision, 4);
@@ -248,18 +255,20 @@ mod tests {
     }
 
     #[test]
-    fn rejects_multiple_targets_and_invalid_weights() {
+    fn rejects_empty_target_ids_and_invalid_weights() {
         assert_eq!(
             validate_set_allocation_rule(command(
-                AllocationRuleTarget {
-                    category_id: Some("category".to_owned()),
-                    merchant: Some("shop".to_owned()),
-                    product_concept_id: None,
-                    product_variant_id: None,
-                },
+                AllocationRuleTarget::Category(String::new()),
                 weights(),
             )),
-            Err(SetAllocationRuleError::InvalidTarget)
+            Err(SetAllocationRuleError::InvalidTargetId)
+        );
+        assert_eq!(
+            validate_set_allocation_rule(command(
+                AllocationRuleTarget::Merchant("   ".to_owned()),
+                weights(),
+            )),
+            Err(SetAllocationRuleError::InvalidMerchant)
         );
         let invalid_weights = vec![AllocationRuleWeight {
             pool_id: "pool".to_owned(),

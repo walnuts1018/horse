@@ -400,28 +400,13 @@ pub async fn set_allocation_rule(
     };
     let target = match input.target {
         AllocationRuleTargetInput::CategoryId(id) => match decode_node_id(&id, "Category") {
-            Ok(id) => WorkflowAllocationRuleTarget {
-                category_id: Some(id.to_string()),
-                merchant: None,
-                product_concept_id: None,
-                product_variant_id: None,
-            },
+            Ok(id) => WorkflowAllocationRuleTarget::Category(id.to_string()),
             Err(()) => return Ok(set_allocation_rule_error(MutationErrorCode::BadInput).into()),
         },
-        AllocationRuleTargetInput::Merchant(value) => WorkflowAllocationRuleTarget {
-            category_id: None,
-            merchant: Some(value),
-            product_concept_id: None,
-            product_variant_id: None,
-        },
+        AllocationRuleTargetInput::Merchant(value) => WorkflowAllocationRuleTarget::Merchant(value),
         AllocationRuleTargetInput::ProductConceptId(id) => {
             match decode_node_id(&id, "ProductConcept") {
-                Ok(id) => WorkflowAllocationRuleTarget {
-                    category_id: None,
-                    merchant: None,
-                    product_concept_id: Some(id.to_string()),
-                    product_variant_id: None,
-                },
+                Ok(id) => WorkflowAllocationRuleTarget::ProductConcept(id.to_string()),
                 Err(()) => {
                     return Ok(set_allocation_rule_error(MutationErrorCode::BadInput).into());
                 }
@@ -429,12 +414,7 @@ pub async fn set_allocation_rule(
         }
         AllocationRuleTargetInput::ProductVariantId(id) => {
             match decode_node_id(&id, "ProductVariant") {
-                Ok(id) => WorkflowAllocationRuleTarget {
-                    category_id: None,
-                    merchant: None,
-                    product_concept_id: None,
-                    product_variant_id: Some(id.to_string()),
-                },
+                Ok(id) => WorkflowAllocationRuleTarget::ProductVariant(id.to_string()),
                 Err(()) => {
                     return Ok(set_allocation_rule_error(MutationErrorCode::BadInput).into());
                 }
