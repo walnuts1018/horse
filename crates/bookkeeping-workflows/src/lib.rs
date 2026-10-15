@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId, PositiveYen, Yen, allocate};
 
 pub mod account_income;
+pub mod account_card_last4;
 pub mod account_movement;
 pub mod close_period;
 pub mod correct_purchase;

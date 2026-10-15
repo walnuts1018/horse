@@ -2,6 +2,7 @@ use diesel_async::pooled_connection::{AsyncDieselConnectionManager, PoolError, b
 
 pub use diesel_async::AsyncPgConnection;
 pub mod account_balance_analysis;
+pub mod account_card_last4;
 pub mod account_income;
 pub mod account_movement;
 pub mod category;
