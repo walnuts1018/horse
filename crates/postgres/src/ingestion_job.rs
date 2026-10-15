@@ -64,7 +64,7 @@ pub async fn claim_next_extraction_job(
                 .filter(jobs::status.eq("queued"))
                 .filter(jobs::available_at.le(now))
                 .order_by(jobs::available_at.asc())
-                .then_order_by(jobs::created_at.asc())
+                .then_order_by(jobs::id.asc())
                 .for_update()
                 .skip_locked()
                 .select((
@@ -177,6 +177,7 @@ pub async fn record_extraction_failure(
     failure_kind: ExtractionFailureKind,
     error_code: &str,
     error_message: &str,
+    partial_result: Option<Value>,
     retry_delay_ms: i64,
     now: DateTime<Utc>,
 ) -> Result<bool, IngestionJobError> {
@@ -196,7 +197,7 @@ pub async fn record_extraction_failure(
                 state.max_attempts,
             )
         },
-        None,
+        partial_result,
         Some((error_code.to_owned(), error_message.to_owned())),
     )
     .await
@@ -250,6 +251,7 @@ where
                     jobs::available_at,
                     jobs::lease_token,
                     jobs::lease_expires_at,
+                    jobs::result,
                 ))
                 .first::<StateRow>(&mut *conn)
                 .await
@@ -257,7 +259,7 @@ where
             let Some(row) = row else {
                 return Ok(false);
             };
-                let state = row.state();
+            let state = row.state();
             let transition = decide(&state, &lease_token.to_string(), now_ms)
                 .map_err(|_| IngestionJobError::InvalidTransition)?;
             if state.attempt_count != attempt_no {
@@ -265,6 +267,11 @@ where
             }
             let error_code = failure.as_ref().map(|value| value.0.as_str());
             let error_message = failure.as_ref().map(|value| value.1.as_str());
+            let result = if failure.is_some() {
+                Some(merge_failed_result(row.result, result))
+            } else {
+                result.map(Some)
+            };
             let changed = diesel::update(
                 jobs::extraction_jobs
                     .filter(jobs::id.eq(job_id))
@@ -273,18 +280,18 @@ where
                     .filter(jobs::lease_token.eq(Some(lease_token)))
                     .filter(jobs::lease_expires_at.gt(Some(now))),
             )
-            .set((
-                jobs::status.eq(status_text(transition.status)),
-                jobs::failure_count.eq(transition.failure_count),
-                jobs::available_at.eq(db_time(transition.available_at_ms)?),
-                jobs::finished_at.eq(transition.finished_at_ms.map(db_time).transpose()?),
-                jobs::lease_token.eq(None::<Uuid>),
-                jobs::lease_expires_at.eq(None::<DateTime<Utc>>),
-                jobs::result.eq(result),
-                jobs::error_code.eq(error_code),
-                jobs::error_message.eq(error_message),
-                jobs::updated_at.eq(now),
-            ))
+            .set(JobFinishChangeset {
+                status: status_text(transition.status),
+                failure_count: transition.failure_count,
+                available_at: db_time(transition.available_at_ms)?,
+                finished_at: Some(transition.finished_at_ms.map(db_time).transpose()?),
+                lease_token: Some(None),
+                lease_expires_at: Some(None),
+                result,
+                error_code: Some(error_code),
+                error_message: Some(error_message),
+                updated_at: now,
+            })
             .execute(&mut *conn)
             .await?;
             if changed != 1 {
@@ -295,7 +302,7 @@ where
             } else {
                 "failed"
             };
-            diesel::update(
+            let attempt_updated = diesel::update(
                 attempts::extraction_job_attempts
                     .filter(attempts::job_id.eq(job_id))
                     .filter(attempts::attempt_no.eq(attempt_no))
@@ -313,6 +320,9 @@ where
             ))
             .execute(&mut *conn)
             .await?;
+            if attempt_updated != 1 {
+                return Err(IngestionJobError::InvalidTransition);
+            }
             Ok(true)
         })
         .await
@@ -347,6 +357,7 @@ pub async fn recover_expired_extraction_jobs(
                     jobs::available_at,
                     jobs::lease_token,
                     jobs::lease_expires_at,
+                    jobs::result,
                 ))
                 .load::<StateRow>(conn)
                 .await?;
@@ -373,6 +384,7 @@ pub async fn recover_expired_extraction_jobs(
                 .set((
                     jobs::status.eq(status_text(transition.status)),
                     jobs::failure_count.eq(transition.failure_count),
+                    jobs::available_at.eq(db_time(transition.available_at_ms)?),
                     jobs::finished_at.eq(finished_at),
                     jobs::lease_token.eq(None::<Uuid>),
                     jobs::lease_expires_at.eq(None::<DateTime<Utc>>),
@@ -381,10 +393,10 @@ pub async fn recover_expired_extraction_jobs(
                 ))
                 .execute(&mut *conn)
                 .await?;
-                if updated == 0 {
-                    continue;
+                if updated != 1 {
+                    return Err(IngestionJobError::InvalidTransition);
                 }
-                diesel::update(
+                let attempt_updated = diesel::update(
                     attempts::extraction_job_attempts
                         .filter(attempts::job_id.eq(job_id))
                         .filter(attempts::attempt_no.eq(attempt_no))
@@ -399,6 +411,9 @@ pub async fn recover_expired_extraction_jobs(
                 ))
                 .execute(&mut *conn)
                 .await?;
+                if attempt_updated != 1 {
+                    return Err(IngestionJobError::InvalidTransition);
+                }
                 recovered += 1;
             }
             Ok(recovered)
@@ -452,6 +467,7 @@ struct StateRow {
     available_at: DateTime<Utc>,
     lease_token: Option<Uuid>,
     lease_expires_at: Option<DateTime<Utc>>,
+    result: Option<Value>,
 }
 
 impl StateRow {
@@ -469,6 +485,65 @@ impl StateRow {
                 .map(|expires_at| expires_at.timestamp_millis()),
         }
     }
+}
+
+#[derive(diesel::AsChangeset)]
+#[diesel(table_name = public::extraction_jobs)]
+struct JobFinishChangeset<'a> {
+    status: &'a str,
+    failure_count: i32,
+    available_at: DateTime<Utc>,
+    finished_at: Option<Option<DateTime<Utc>>>,
+    lease_token: Option<Option<Uuid>>,
+    lease_expires_at: Option<Option<DateTime<Utc>>>,
+    result: Option<Option<Value>>,
+    error_code: Option<Option<&'a str>>,
+    error_message: Option<Option<&'a str>>,
+    updated_at: DateTime<Utc>,
+}
+
+fn merge_failed_result(previous: Option<Value>, current: Option<Value>) -> Option<Value> {
+    let Some(mut current) = current.filter(|value| {
+        value
+            .get("runs")
+            .and_then(Value::as_array)
+            .is_some_and(|runs| !runs.is_empty())
+            || value
+                .get("ocrLines")
+                .and_then(Value::as_array)
+                .is_some_and(|lines| !lines.is_empty())
+            || value
+                .get("issues")
+                .and_then(Value::as_array)
+                .is_some_and(|issues| !issues.is_empty())
+    }) else {
+        return previous;
+    };
+    let Some(current_object) = current.as_object_mut() else {
+        return previous;
+    };
+    let mut previous_object = previous
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    let mut runs = previous_object
+        .remove("runs")
+        .and_then(|value| value.as_array().cloned())
+        .unwrap_or_default();
+    if let Some(new_runs) = current_object
+        .remove("runs")
+        .and_then(|value| value.as_array().cloned())
+    {
+        runs.extend(new_runs);
+    }
+    if !runs.is_empty() {
+        previous_object.insert("runs".to_owned(), Value::Array(runs));
+    }
+    for key in ["issues", "ocrLines", "transform", "transformPage"] {
+        if let Some(value) = current_object.remove(key) {
+            previous_object.insert(key.to_owned(), value);
+        }
+    }
+    Some(Value::Object(previous_object))
 }
 
 fn parse_status(status: &str) -> ExtractionJobStatus {

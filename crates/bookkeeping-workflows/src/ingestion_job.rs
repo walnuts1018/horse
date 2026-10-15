@@ -167,6 +167,7 @@ pub fn finish_extraction_success(
 pub struct RecoverExpiredExtractionJob {
     pub status: ExtractionJobStatus,
     pub failure_count: i32,
+    pub available_at_ms: i64,
     pub finished_at_ms: Option<i64>,
 }
 
@@ -197,6 +198,7 @@ pub fn recover_expired_extraction_job(
             ExtractionJobStatus::Failed
         },
         failure_count,
+        available_at_ms: if retry { now_ms } else { state.available_at_ms },
         finished_at_ms: (!retry).then_some(now_ms),
     })
 }
