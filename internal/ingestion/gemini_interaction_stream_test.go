@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestInteractionReplyPrefixWaitsForCompleteJSONCharacters(t *testing.T) {
@@ -32,7 +33,7 @@ func TestInteractionReplyPrefixWaitsForCompleteJSONCharacters(t *testing.T) {
 
 func TestGeminiInteractStreamsOnlyReplyText(t *testing.T) {
 	output := `{"reply":"確認しました。","receipt":{"merchant":"Shop","purchasedAt":"2026-10-01","datePrecision":"DATE_ONLY","currency":"JPY","items":[],"taxGroups":[],"discount":0,"total":0,"payments":[],"warnings":[]}}`
-	split := strings.Index(output, `,"receipt"`)
+	split := len(`{"reply":"確`)
 	var request map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -54,11 +55,13 @@ func TestGeminiInteractStreamsOnlyReplyText(t *testing.T) {
 	defer server.Close()
 
 	var previews []string
+	var previewTimes []time.Time
 	gemini := Gemini{APIKey: testGeminiAPIKey, Model: ModelReceipt, Endpoint: server.URL + "/v1beta/", HTTPClient: server.Client()}
 	receipt, reply, _, err := gemini.InteractStreaming(
 		t.Context(), Document{MIMEType: mimeTypePNG, Data: []byte("synthetic png")}, "receipt", []byte(`{"receipt":{}}`), nil,
 		"check the total", GeminiRequestOptions{ThinkingLevel: geminiThinkingLevelLow}, func(preview string) error {
 			previews = append(previews, preview)
+			previewTimes = append(previewTimes, time.Now())
 			return nil
 		},
 	)
@@ -67,6 +70,9 @@ func TestGeminiInteractStreamsOnlyReplyText(t *testing.T) {
 	}
 	if receipt.Merchant != "Shop" || reply != "確認しました。" || len(previews) == 0 || previews[len(previews)-1] != reply {
 		t.Fatalf("stream result = receipt %#v, reply %q, previews %#v", receipt, reply, previews)
+	}
+	if len(previewTimes) != 2 || previewTimes[1].Sub(previewTimes[0]) < interactionReplyPreviewInterval {
+		t.Fatalf("preview writes = %v, want initial and final writes at least %s apart", previewTimes, interactionReplyPreviewInterval)
 	}
 	if request["stream"] != true {
 		t.Fatalf("interaction request stream = %#v, want true", request["stream"])

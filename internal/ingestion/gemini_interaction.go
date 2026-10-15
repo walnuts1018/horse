@@ -184,6 +184,7 @@ func consumeInteractionStream(ctx context.Context, eventStream *stream.EventStre
 	var usage geminiUsage
 	var completed *interactions.Interaction
 	var previousReply string
+	publisher := interactionReplyPublisher{callback: onReply}
 	for eventStream.Next() {
 		if err := ctx.Err(); err != nil {
 			return nil, usage, err
@@ -201,18 +202,24 @@ func consumeInteractionStream(ctx context.Context, eventStream *stream.EventStre
 				if onReply != nil {
 					reply, found, parseErr := interactionReplyPrefix([]byte(output.String()))
 					if (parseErr != nil || found && !strings.HasPrefix(reply, previousReply)) && previousReply != "" {
-						if err := onReply(""); err != nil {
+						published, err := publisher.publish(ctx, "", false)
+						if err != nil {
 							return nil, usage, &GeminiAPIError{Kind: GeminiFailureTemporary, Code: "interaction_progress_failed"}
 						}
-						previousReply = ""
+						if published {
+							previousReply = ""
+						}
 					} else if parseErr == nil && found && reply != previousReply {
 						if len(reply) > 12_000 {
 							return nil, usage, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "interaction_reply_too_long"}
 						}
-						if err := onReply(reply); err != nil {
+						published, err := publisher.publish(ctx, reply, false)
+						if err != nil {
 							return nil, usage, &GeminiAPIError{Kind: GeminiFailureTemporary, Code: "interaction_progress_failed"}
 						}
-						previousReply = reply
+						if published {
+							previousReply = reply
+						}
 					}
 				}
 			}
@@ -233,7 +240,48 @@ func consumeInteractionStream(ctx context.Context, eventStream *stream.EventStre
 	if completed == nil {
 		return nil, usage, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "incomplete_generation"}
 	}
+	if onReply != nil {
+		reply, found, parseErr := interactionReplyPrefix([]byte(output.String()))
+		if parseErr == nil && found && reply != previousReply {
+			if _, err := publisher.publish(ctx, reply, true); err != nil {
+				return nil, usage, &GeminiAPIError{Kind: GeminiFailureTemporary, Code: "interaction_progress_failed"}
+			}
+		}
+	}
 	return completed, usage, nil
+}
+
+const interactionReplyPreviewInterval = time.Second
+
+type interactionReplyPublisher struct {
+	callback      func(string) error
+	lastPublished time.Time
+}
+
+func (p *interactionReplyPublisher) publish(ctx context.Context, reply string, final bool) (bool, error) {
+	if p.callback == nil {
+		return false, nil
+	}
+	if !p.lastPublished.IsZero() {
+		wait := interactionReplyPreviewInterval - time.Since(p.lastPublished)
+		if wait > 0 {
+			if !final {
+				return false, nil
+			}
+			timer := time.NewTimer(wait)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return false, ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+	if err := p.callback(reply); err != nil {
+		return false, err
+	}
+	p.lastPublished = time.Now()
+	return true, nil
 }
 
 func interactionReplyPrefix(data []byte) (string, bool, error) {
