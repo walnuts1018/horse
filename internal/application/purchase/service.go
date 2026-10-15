@@ -159,21 +159,8 @@ func validateCreateCommand(input CreateCommand) error {
 	if err := inputvalidation.Check(input); err != nil {
 		return err
 	}
-	if input.SourceReference != nil && (input.SourceDocumentID == nil || strings.ContainsAny(*input.SourceReference, "\r\n")) {
-		return fmt.Errorf("%w: source reference requires a document and must be valid", ErrBadInput)
-	}
-	origin := input.Origin
-	if origin == "" {
-		origin = manualOrigin
-		if input.SourceDocumentID != nil {
-			origin = "AI"
-		}
-	}
-	if input.DatePrecision != "" && input.DatePrecision != "DATE_TIME" && input.DatePrecision != "DATE_ONLY" {
-		return fmt.Errorf("%w: invalid purchase date precision", ErrBadInput)
-	}
-	if origin != "AI" && origin != manualOrigin && origin != "UNKNOWN" {
-		return fmt.Errorf("%w: invalid purchase origin", ErrBadInput)
+	if _, _, err := normalizeCreateCommand(input); err != nil {
+		return err
 	}
 	if _, err := parseUUID(input.HouseholdID, "household"); err != nil {
 		return err
@@ -185,26 +172,11 @@ func validateCreateCommand(input CreateCommand) error {
 }
 
 func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fingerprint [sha256.Size]byte) (CreateResult, error) {
-	if input.SourceReference != nil && (input.SourceDocumentID == nil || strings.ContainsAny(*input.SourceReference, "\r\n")) {
-		return CreateResult{}, fmt.Errorf("%w: source reference requires a document and must be valid", ErrBadInput)
+	input, origin, err := normalizeCreateCommand(input)
+	if err != nil {
+		return CreateResult{}, err
 	}
-	origin := input.Origin
-	if origin == "" {
-		origin = manualOrigin
-		if input.SourceDocumentID != nil {
-			origin = "AI"
-		}
-	}
-	if input.DatePrecision == "" {
-		input.DatePrecision = "DATE_TIME"
-	}
-	if input.DatePrecision != "DATE_TIME" && input.DatePrecision != "DATE_ONLY" {
-		return CreateResult{}, fmt.Errorf("%w: invalid purchase date precision", ErrBadInput)
-	}
-	if origin != "AI" && origin != manualOrigin && origin != "UNKNOWN" {
-		return CreateResult{}, fmt.Errorf("%w: invalid purchase origin", ErrBadInput)
-	}
-	merchant := strings.TrimSpace(input.Merchant)
+	merchant := input.Merchant
 	householdUUID, err := parseUUID(input.HouseholdID, "household")
 	if err != nil {
 		return CreateResult{}, err
@@ -316,86 +288,9 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fi
 	}).Exec(ctx, executor); err != nil {
 		return CreateResult{}, err
 	}
-	purchaseItemUUIDs := make([]gofrsuuid.UUID, 0, len(input.Items))
-	for _, item := range input.Items {
-		plan, err := prepareCreateItem(item)
-		if err != nil {
-			return CreateResult{}, err
-		}
-		if plan.variantID != nil {
-			variant, err := models.ProductVariants.Query(sm.Where(psql.And(
-				models.ProductVariants.Columns.ID.EQ(psql.Arg(*plan.variantID)),
-				models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-			))).One(ctx, executor)
-			if errors.Is(err, sql.ErrNoRows) || err == nil && variant.Archived {
-				return CreateResult{}, ErrNotFound
-			}
-			if err != nil {
-				return CreateResult{}, err
-			}
-			concept, err := models.ProductConcepts.Query(sm.Where(psql.And(
-				models.ProductConcepts.Columns.ID.EQ(psql.Arg(variant.ConceptID)),
-				models.ProductConcepts.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-			))).One(ctx, executor)
-			if errors.Is(err, sql.ErrNoRows) || err == nil && concept.Archived {
-				return CreateResult{}, ErrNotFound
-			}
-			if err != nil {
-				return CreateResult{}, err
-			}
-			if plan.categoryID == nil && concept.CategoryID.Valid {
-				id := concept.CategoryID.V
-				plan.categoryID = &id
-			}
-		}
-		weights, appliedRuleID, appliedRuleVersion := defaults, (*gofrsuuid.UUID)(nil), ruleVersion
-		if !plan.allocationOverride {
-			ruleWeights, ruleID, revision, err := allocationRuleWeights(ctx, tx, householdUUID, plan.categoryID, plan.variantID, merchantRuleKey)
-			if err != nil {
-				return CreateResult{}, err
-			}
-			if ruleID != nil {
-				weights, appliedRuleID, appliedRuleVersion = ruleWeights, ruleID, revision
-			}
-		}
-		plan, err = allocateCreateItem(plan, weights, appliedRuleID, appliedRuleVersion)
-		if err != nil {
-			return CreateResult{}, err
-		}
-		itemUUID := newUUID()
-		var categoryValue, variantValue sql.Null[gofrsuuid.UUID]
-		if plan.categoryID != nil {
-			categoryValue = sql.Null[gofrsuuid.UUID]{V: *plan.categoryID, Valid: true}
-		}
-		if plan.variantID != nil {
-			variantValue = sql.Null[gofrsuuid.UUID]{V: *plan.variantID, Valid: true}
-		}
-		if _, err := models.PurchaseItems.Insert(&models.PurchaseItemSetter{
-			ID: &itemUUID, HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, Name: &plan.name,
-			AmountYen: &plan.amountYen, CategoryID: &categoryValue, ProductVariantID: &variantValue, AllocationOverride: &plan.allocationOverride,
-			QuantityNumerator: &plan.measure.quantityNumerator, QuantityDenominator: &plan.measure.quantityDenominator, QuantityUnit: &plan.measure.quantityUnit,
-			PrintedUnitPriceYen: &plan.measure.printedUnitPriceYen, PrintedUnitPriceQuantityNumerator: &plan.measure.printedUnitPriceQuantityNumerator,
-			PrintedUnitPriceQuantityDenominator: &plan.measure.printedUnitPriceQuantityDenominator, PrintedUnitPriceUnit: &plan.measure.printedUnitPriceUnit,
-		}).Exec(ctx, executor); err != nil {
-			return CreateResult{}, err
-		}
-		purchaseItemUUIDs = append(purchaseItemUUIDs, itemUUID)
-		for _, allocation := range plan.allocations {
-			poolUUID, err := parseUUID(allocation.PoolID, "allocation pool")
-			if err != nil {
-				return CreateResult{}, err
-			}
-			var ruleUUID sql.Null[gofrsuuid.UUID]
-			if plan.ruleID != nil {
-				ruleUUID = sql.Null[gofrsuuid.UUID]{V: *plan.ruleID, Valid: true}
-			}
-			if _, err := models.ItemAllocations.Insert(&models.ItemAllocationSetter{
-				HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, ItemID: &itemUUID, PoolID: &poolUUID,
-				Weight: &allocation.Weight, AmountYen: &allocation.Amount, RuleVersion: &plan.ruleVersion, RuleID: &ruleUUID,
-			}).Exec(ctx, executor); err != nil {
-				return CreateResult{}, err
-			}
-		}
+	purchaseItemUUIDs, err := createPurchaseItems(ctx, tx, executor, householdUUID, purchaseUUID, merchantRuleKey, ruleVersion, defaults, input.Items)
+	if err != nil {
+		return CreateResult{}, err
 	}
 	if len(input.PaymentAllocations) > 0 {
 		payments, err := validatePayments(ctx, tx, householdUUID, input.PaymentAllocations)
