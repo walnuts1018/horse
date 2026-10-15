@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import type { EvidencePreviewController } from "../model/evidence-preview";
 
-import { InlineError } from "../../../shared/ui";
 import { regionPolygon, type Region } from "../model/evidence-geometry";
 import { yen, type DocumentReview } from "../model/imports";
 import {
@@ -43,18 +42,7 @@ export function EvidenceSourcePreview({
   onDirty: () => void;
   onRetryCrop: () => void;
 }) {
-  const {
-    page,
-    pageDraft,
-    setPageDraft,
-    preview,
-    loading,
-    error,
-    showPage,
-    selectPage,
-    receiptEvidenceIndex,
-    setReceiptEvidenceIndex,
-  } = previewState;
+  const { page, preview, selectPage, receiptEvidenceIndex, setReceiptEvidenceIndex } = previewState;
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const receiptItems = useMemo(
     () => ensureReceiptItemKeys(document.result?.receipt?.items ?? []),
@@ -105,91 +93,66 @@ export function EvidenceSourcePreview({
           <FileImage size={23} />
           <span>原本ファイルを開く</span>
         </a>
-        {document.mimeType?.startsWith("image/") || document.mimeType === "application/pdf" ? (
-          <>
-            {document.mimeType === "application/pdf" && (
-              <div className={styles.evidencePreviewPageControls}>
-                <label>
-                  PDFページ
-                  <input
-                    aria-label="PDFページ"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={pageDraft}
-                    onChange={(event) => setPageDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") showPage();
+        {document.mimeType?.startsWith("image/") &&
+          preview?.documentId === document.id &&
+          preview.page === page && (
+            <div className={styles.evidenceImageStage}>
+              <img src={preview.src} alt={`${page + 1}ページ目の原本`} />
+              {receiptItems.map((item, index) =>
+                item.region?.page === page ? (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={`${styles.evidenceRegion} ${selectedReceiptIndex === index ? styles.evidenceRegionSelected : ""}`}
+                    style={{
+                      clipPath: `polygon(${regionPolygon(item.region, preview.transform)})`,
+                    }}
+                    aria-label={`${item.name}の原本位置`}
+                    aria-pressed={selectedReceiptIndex === index}
+                    onClick={() => {
+                      setReceiptEvidenceIndex(String(index));
+                      selectReceiptEvidenceItem(document.id, {
+                        itemKey: item.key ?? `item-${index}`,
+                        index,
+                        focusEditor: true,
+                      });
+                      onSelectCropRegion(item.region!);
                     }}
                   />
-                </label>
-                <button className="text-button" type="button" onClick={showPage}>
-                  ページを表示
-                </button>
-              </div>
-            )}
-            {loading && <p>ページを読み込んでいます</p>}
-            {error && <InlineError message={error} />}
-            {preview?.documentId === document.id && preview.page === page && (
-              <div className={styles.evidenceImageStage}>
-                <img src={preview.src} alt={`${page + 1}ページ目の原本`} />
-                {receiptItems.map((item, index) =>
-                  item.region?.page === page ? (
-                    <button
-                      key={item.key}
-                      type="button"
-                      className={`${styles.evidenceRegion} ${selectedReceiptIndex === index ? styles.evidenceRegionSelected : ""}`}
-                      style={{
-                        clipPath: `polygon(${regionPolygon(item.region, preview.transform)})`,
-                      }}
-                      aria-label={`${item.name}の原本位置`}
-                      aria-pressed={selectedReceiptIndex === index}
-                      onClick={() => {
-                        setReceiptEvidenceIndex(String(index));
-                        selectReceiptEvidenceItem(document.id, {
-                          itemKey: item.key ?? `item-${index}`,
-                          index,
-                          focusEditor: true,
-                        });
-                        onSelectCropRegion(item.region!);
-                      }}
-                    />
-                  ) : null,
-                )}
-                {document.result?.ocrLines?.map((line) =>
-                  line.region?.page === page ? (
-                    <button
-                      key={line.key}
-                      type="button"
-                      className={`${styles.evidenceRegion} ${styles.evidenceRegionOcr}`}
-                      style={{
-                        clipPath: `polygon(${regionPolygon(line.region, preview.transform)})`,
-                      }}
-                      aria-label={`${line.text}の原本位置`}
-                      onClick={() => onSelectCropRegion(line.region!)}
-                    />
-                  ) : null,
-                )}
-                {document.result?.statements?.map((entry) => {
-                  const reference = entry.sourceReference || `row:${entry.row}`;
-                  return entry.region?.page === page ? (
-                    <button
-                      key={reference}
-                      type="button"
-                      className={`${styles.evidenceRegion} ${selectedStatementReference === reference ? styles.evidenceRegionSelected : styles.evidenceRegionOcr}`}
-                      style={{
-                        clipPath: `polygon(${regionPolygon(entry.region, preview.transform)})`,
-                      }}
-                      aria-label={`${entry.merchant}の明細位置`}
-                      aria-pressed={selectedStatementReference === reference}
-                      onClick={() => onSelectStatementRegion(reference, entry.region!.page)}
-                    />
-                  ) : null;
-                })}
-              </div>
-            )}
-          </>
-        ) : null}
+                ) : null,
+              )}
+              {document.result?.ocrLines?.map((line) =>
+                line.region?.page === page ? (
+                  <button
+                    key={line.key}
+                    type="button"
+                    className={`${styles.evidenceRegion} ${styles.evidenceRegionOcr}`}
+                    style={{
+                      clipPath: `polygon(${regionPolygon(line.region, preview.transform)})`,
+                    }}
+                    aria-label={`${line.text}の原本位置`}
+                    onClick={() => onSelectCropRegion(line.region!)}
+                  />
+                ) : null,
+              )}
+              {document.result?.statements?.map((entry) => {
+                const reference = entry.sourceReference || `row:${entry.row}`;
+                return entry.region?.page === page ? (
+                  <button
+                    key={reference}
+                    type="button"
+                    className={`${styles.evidenceRegion} ${selectedStatementReference === reference ? styles.evidenceRegionSelected : styles.evidenceRegionOcr}`}
+                    style={{
+                      clipPath: `polygon(${regionPolygon(entry.region, preview.transform)})`,
+                    }}
+                    aria-label={`${entry.merchant}の明細位置`}
+                    aria-pressed={selectedStatementReference === reference}
+                    onClick={() => onSelectStatementRegion(reference, entry.region!.page)}
+                  />
+                ) : null;
+              })}
+            </div>
+          )}
       </div>
       {(document.result?.receipt?.items?.length ||
         document.result?.ocrLines?.some((line) => line.region)) && (
@@ -260,23 +223,6 @@ export function EvidenceSourcePreview({
                     />
                   </label>
                 ))}
-                <label>
-                  ページ
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={cropRegion.page + 1}
-                    onChange={(event) => {
-                      onDirty();
-                      const requestedPage = Math.max(0, Math.trunc(Number(event.target.value) - 1));
-                      onCropRegionChange((current) =>
-                        current ? { ...current, page: requestedPage } : current,
-                      );
-                      selectPage(requestedPage);
-                    }}
-                  />
-                </label>
                 <button
                   className="button button-soft"
                   type="button"
