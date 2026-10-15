@@ -2,7 +2,7 @@
 
 ## 状態
 
-進行中。Rust workspaceではBookkeepingのDomainとWorkflow、PostgreSQL Adapterの実装が始まっている。GoのAPIとWorkerは稼働を維持し、業務機能をRustへ段階的に移行する。
+進行中。Rust WorkspaceをBounded ContextごとのDomain・Application・PostgreSQL Adapterへ再編し、GraphQL APIとWorkerをComposition Rootから組み立てる。Go APIとWorkerの機能移行はRust版の契約・業務動作・運用確認が終わるまで継続する。
 
 ## 決定
 
@@ -11,6 +11,10 @@ BackendをGoからRustへ移行する。移行中もGraphQL Schemaと既存の�
 PostgreSQLのスキーマとmigrationの正本にはAtlasを使う。RustからのDBアクセスにはDiesel 2.3と`diesel-async` 0.9.2を使い、Atlas適用後のスキーマから生成した型定義を基に、型付きQuery DSLで実装する。Dieselのmigration機能と`sql_query`による生SQLは使わない。DSLで表現できない要件はクエリやスキーマを見直して解決する。
 
 業務処理はDMMFに沿って、入力と現在状態から結果・イベント・失敗を値として返すpure Decisionと、DBや外部サービスのI/Oを行う実行境界に分ける。DecisionはI/O、GraphQL、永続化型に依存させない。実行境界が必要な読み込みを行い、Decisionを呼び出し、その結果に基づいて書き込みとイベント配送を行う。
+
+Workspaceは`apps/`にComposition Root、`contexts/<bounded-context>/{domain,application,postgres}`に業務ごとの実装、`adapters/`にGraphQL・HTTP・Identity・AI・Workerの接続、`platform/postgres-common`に接続Poolと生成済みDiesel Schemaを配置する。複数Contextを横断する読み取りと更新は`contexts/cross-context/postgres`に配置し、単一Contextのデータ所有権へ混在させない。
+
+Application Workflowは業務操作のLoad・Decision・Persistの順序を所有し、小さな操作契約を通じてPostgreSQL AdapterへI/Oを要求する。PostgreSQL AdapterがDieselのtransactionとロックを維持し、Workflow全体を原子的に実行する。GraphQL ResolverはDTOを認証済みActor付きCommandへ変換し、Application Workflowを呼び出す。
 
 ## 移行順序
 

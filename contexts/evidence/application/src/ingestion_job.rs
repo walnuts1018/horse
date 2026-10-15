@@ -55,6 +55,61 @@ pub struct ClaimExtractionJob {
     pub lease_expires_at_ms: i64,
 }
 
+pub trait ClaimExtractionJobOperations {
+    type Error;
+    type Candidate;
+    type Claimed;
+
+    fn queued_job(&self, candidate: &Self::Candidate) -> &QueuedJob;
+
+    async fn load_next_candidate(
+        &mut self,
+        now_ms: i64,
+    ) -> Result<Option<Self::Candidate>, Self::Error>;
+
+    async fn persist_claim(
+        &mut self,
+        candidate: Self::Candidate,
+        claim: ClaimExtractionJob,
+        now_ms: i64,
+    ) -> Result<Option<Self::Claimed>, Self::Error>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaimExtractionJobWorkflowError<E> {
+    Operations(E),
+    Decision(ClaimExtractionJobError),
+}
+
+pub async fn claim_next_extraction_job<O>(
+    operations: &mut O,
+    now_ms: i64,
+    lease_token: impl Into<String>,
+    lease_duration_ms: i64,
+) -> Result<Option<O::Claimed>, ClaimExtractionJobWorkflowError<O::Error>>
+where
+    O: ClaimExtractionJobOperations,
+{
+    let Some(candidate) = operations
+        .load_next_candidate(now_ms)
+        .await
+        .map_err(ClaimExtractionJobWorkflowError::Operations)?
+    else {
+        return Ok(None);
+    };
+    let claim = claim_extraction_job(
+        operations.queued_job(&candidate),
+        now_ms,
+        lease_token,
+        lease_duration_ms,
+    )
+    .map_err(ClaimExtractionJobWorkflowError::Decision)?;
+    operations
+        .persist_claim(candidate, claim, now_ms)
+        .await
+        .map_err(ClaimExtractionJobWorkflowError::Operations)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimExtractionJobError {
     InvalidState,

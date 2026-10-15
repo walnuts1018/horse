@@ -75,6 +75,35 @@ pub enum BudgetError {
     InvalidRevision,
 }
 
+pub trait BudgetOperations {
+    type Error: From<BudgetError>;
+
+    async fn persist_create(&mut self, decision: BudgetDecision) -> Result<Budget, Self::Error>;
+    async fn persist_update(&mut self, decision: BudgetDecision) -> Result<Budget, Self::Error>;
+    async fn persist_archive(&mut self, decision: BudgetDecision) -> Result<Budget, Self::Error>;
+}
+
+pub async fn create_budget<O: BudgetOperations>(
+    operations: &mut O,
+    command: CreateBudgetCommand,
+) -> Result<Budget, O::Error> {
+    operations.persist_create(decide_create(command)?).await
+}
+
+pub async fn update_budget<O: BudgetOperations>(
+    operations: &mut O,
+    command: UpdateBudgetCommand,
+) -> Result<Budget, O::Error> {
+    operations.persist_update(decide_update(command)?).await
+}
+
+pub async fn archive_budget<O: BudgetOperations>(
+    operations: &mut O,
+    command: ArchiveBudgetCommand,
+) -> Result<Budget, O::Error> {
+    operations.persist_archive(decide_archive(command)?).await
+}
+
 pub fn decide_create(command: CreateBudgetCommand) -> Result<BudgetDecision, BudgetError> {
     validate_identity(&command.actor_id, &command.household_id, &command.id)?;
     let category_id = validate_optional_id(command.category_id)?;

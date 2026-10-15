@@ -42,6 +42,107 @@ pub enum MembershipError {
     ReferencedMember,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MembershipFacts {
+    pub actor_role: Option<String>,
+    pub target_role: Option<String>,
+    pub owner_count: usize,
+    pub has_active_funding_reference: bool,
+}
+
+pub trait LeaveHouseholdOperations {
+    type Error: From<MembershipError>;
+
+    async fn load_facts(
+        &mut self,
+        household_id: &str,
+        actor_id: &str,
+        target_id: &str,
+    ) -> Result<MembershipFacts, Self::Error>;
+    async fn persist(
+        &mut self,
+        decision: MembershipChangeDecision,
+    ) -> Result<String, Self::Error>;
+}
+
+pub async fn leave_household<O: LeaveHouseholdOperations>(
+    operations: &mut O,
+    command: LeaveHouseholdCommand,
+) -> Result<String, O::Error> {
+    let facts = operations
+        .load_facts(&command.household_id, &command.member_id, &command.member_id)
+        .await?;
+    let decision = decide_leave_household(
+        command,
+        facts.target_role.as_deref(),
+        facts.owner_count,
+        facts.has_active_funding_reference,
+    )?;
+    operations.persist(decision).await
+}
+
+pub trait RemoveHouseholdMemberOperations {
+    type Error: From<MembershipError>;
+
+    async fn load_facts(
+        &mut self,
+        household_id: &str,
+        actor_id: &str,
+        target_id: &str,
+    ) -> Result<MembershipFacts, Self::Error>;
+    async fn persist(
+        &mut self,
+        decision: MembershipChangeDecision,
+    ) -> Result<String, Self::Error>;
+}
+
+pub async fn remove_household_member<O: RemoveHouseholdMemberOperations>(
+    operations: &mut O,
+    command: RemoveHouseholdMemberCommand,
+) -> Result<String, O::Error> {
+    let facts = operations
+        .load_facts(&command.household_id, &command.actor_id, &command.member_id)
+        .await?;
+    let decision = decide_remove_household_member(
+        command,
+        facts.actor_role.as_deref(),
+        facts.target_role.as_deref(),
+        facts.owner_count,
+        facts.has_active_funding_reference,
+    )?;
+    operations.persist(decision).await
+}
+
+pub trait TransferHouseholdOwnerOperations {
+    type Error: From<MembershipError>;
+
+    async fn load_facts(
+        &mut self,
+        household_id: &str,
+        actor_id: &str,
+        target_id: &str,
+    ) -> Result<MembershipFacts, Self::Error>;
+    async fn persist(
+        &mut self,
+        decision: MembershipChangeDecision,
+    ) -> Result<String, Self::Error>;
+}
+
+pub async fn transfer_owner<O: TransferHouseholdOwnerOperations>(
+    operations: &mut O,
+    command: TransferOwnerCommand,
+) -> Result<String, O::Error> {
+    let facts = operations
+        .load_facts(&command.household_id, &command.actor_id, &command.new_owner_id)
+        .await?;
+    let decision = decide_transfer_owner(
+        command,
+        facts.actor_role.as_deref(),
+        facts.target_role.as_deref(),
+    )?;
+    operations.persist(decision).await
+}
+
 pub fn decide_leave_household(
     command: LeaveHouseholdCommand,
     target_role: Option<&str>,

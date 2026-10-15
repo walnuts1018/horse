@@ -4,7 +4,7 @@ use crate::{
     AccountId, PostPurchaseCommand, PostPurchaseDecision, PostPurchaseError, PurchaseStatus,
     create_purchase::{
         AllocationRuleVersion, CreatePurchaseAllocation, CreatePurchaseCommand,
-        CreatePurchaseDecision, CreatePurchaseError, CreatePurchaseItem, decide_create_purchase,
+        CreatePurchaseDecision, CreatePurchaseError, decide_create_purchase,
     },
     decide_post_purchase,
 };
@@ -67,7 +67,7 @@ pub struct CreatedPurchase {
     pub created: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatedPurchaseState {
     pub revision: u64,
     pub status: PurchaseStatus,

@@ -8,6 +8,16 @@ use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
 
+pub struct PolicyOperations<'a> {
+    pool: &'a PgPool,
+}
+
+impl<'a> PolicyOperations<'a> {
+    pub fn new(pool: &'a PgPool) -> Self {
+        Self { pool }
+    }
+}
+
 #[derive(Debug)]
 pub enum PolicyPersistenceError {
     Pool(String),
@@ -30,12 +40,22 @@ impl From<DieselError> for PolicyPersistenceError {
     }
 }
 
+impl From<budget::BudgetError> for PolicyPersistenceError {
+    fn from(_: budget::BudgetError) -> Self {
+        Self::InvalidWorkflow
+    }
+}
+
+impl From<recurring_expense::RecurringExpenseError> for PolicyPersistenceError {
+    fn from(_: recurring_expense::RecurringExpenseError) -> Self {
+        Self::InvalidWorkflow
+    }
+}
+
 pub async fn persist_create_budget(
     pool: &PgPool,
-    command: budget::CreateBudgetCommand,
+    decision: budget::BudgetDecision,
 ) -> Result<budget::Budget, PolicyPersistenceError> {
-    let decision =
-        budget::decide_create(command).map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(
         decision
@@ -136,10 +156,8 @@ pub async fn persist_create_budget(
 
 pub async fn persist_update_budget(
     pool: &PgPool,
-    command: budget::UpdateBudgetCommand,
+    decision: budget::BudgetDecision,
 ) -> Result<budget::Budget, PolicyPersistenceError> {
-    let decision =
-        budget::decide_update(command).map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(
         decision
@@ -264,10 +282,8 @@ pub async fn persist_update_budget(
 
 pub async fn persist_archive_budget(
     pool: &PgPool,
-    command: budget::ArchiveBudgetCommand,
+    decision: budget::BudgetDecision,
 ) -> Result<budget::Budget, PolicyPersistenceError> {
-    let decision =
-        budget::decide_archive(command).map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(
         decision
@@ -361,10 +377,8 @@ pub async fn persist_archive_budget(
 
 pub async fn persist_create_recurring_expense(
     pool: &PgPool,
-    command: recurring_expense::CreateRecurringExpenseCommand,
+    decision: recurring_expense::RecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
-    let decision = recurring_expense::decide_create(command)
-        .map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(
         decision
@@ -514,10 +528,8 @@ pub async fn persist_create_recurring_expense(
 
 pub async fn persist_update_recurring_expense(
     pool: &PgPool,
-    command: recurring_expense::UpdateRecurringExpenseCommand,
+    decision: recurring_expense::RecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
-    let decision = recurring_expense::decide_update(command)
-        .map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(
         decision
@@ -701,10 +713,8 @@ pub async fn persist_update_recurring_expense(
 
 pub async fn persist_archive_recurring_expense(
     pool: &PgPool,
-    command: recurring_expense::ArchiveRecurringExpenseCommand,
+    decision: recurring_expense::RecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
-    let decision = recurring_expense::decide_archive(command)
-        .map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(
         decision
@@ -815,10 +825,8 @@ pub async fn persist_archive_recurring_expense(
 
 pub async fn persist_match_recurring_expense(
     pool: &PgPool,
-    command: recurring_expense::MatchRecurringExpenseCommand,
+    decision: recurring_expense::MatchRecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
-    let decision = recurring_expense::decide_match(command)
-        .map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(&decision.household_id, "household_id")?;
     let id = parse_uuid(&decision.id, "expense_id")?;
@@ -1023,4 +1031,61 @@ async fn record_event(
 
 fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, PolicyPersistenceError> {
     Uuid::parse_str(value).map_err(|_| PolicyPersistenceError::InvalidUuid(field))
+}
+
+impl budget::BudgetOperations for PolicyOperations<'_> {
+    type Error = PolicyPersistenceError;
+
+    async fn persist_create(
+        &mut self,
+        decision: budget::BudgetDecision,
+    ) -> Result<budget::Budget, Self::Error> {
+        persist_create_budget(self.pool, decision).await
+    }
+
+    async fn persist_update(
+        &mut self,
+        decision: budget::BudgetDecision,
+    ) -> Result<budget::Budget, Self::Error> {
+        persist_update_budget(self.pool, decision).await
+    }
+
+    async fn persist_archive(
+        &mut self,
+        decision: budget::BudgetDecision,
+    ) -> Result<budget::Budget, Self::Error> {
+        persist_archive_budget(self.pool, decision).await
+    }
+}
+
+impl recurring_expense::RecurringExpenseOperations for PolicyOperations<'_> {
+    type Error = PolicyPersistenceError;
+
+    async fn persist_create(
+        &mut self,
+        decision: recurring_expense::RecurringExpenseDecision,
+    ) -> Result<recurring_expense::RecurringExpense, Self::Error> {
+        persist_create_recurring_expense(self.pool, decision).await
+    }
+
+    async fn persist_update(
+        &mut self,
+        decision: recurring_expense::RecurringExpenseDecision,
+    ) -> Result<recurring_expense::RecurringExpense, Self::Error> {
+        persist_update_recurring_expense(self.pool, decision).await
+    }
+
+    async fn persist_archive(
+        &mut self,
+        decision: recurring_expense::RecurringExpenseDecision,
+    ) -> Result<recurring_expense::RecurringExpense, Self::Error> {
+        persist_archive_recurring_expense(self.pool, decision).await
+    }
+
+    async fn persist_match(
+        &mut self,
+        decision: recurring_expense::MatchRecurringExpenseDecision,
+    ) -> Result<recurring_expense::RecurringExpense, Self::Error> {
+        persist_match_recurring_expense(self.pool, decision).await
+    }
 }
