@@ -50,7 +50,7 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 
 Member、Account、Category、Household、Pool Nodeの複数ID解決では、所属確認と対象データ取得をBobで一括取得するよう変更しました。Pool NodeはHousehold全体を読み込まず、必要なPoolと設定情報だけを取得します。重複IDを含む順序維持、家庭所属の認可、CategoryのParentID mappingをfocused integration testで確認しています。単一LedgerEntry Nodeもbatch loaderへ通し、既存テストでLoanBalanceを含む型を解決できることを確認しました。`nodes(ids:)`で複数のUnmatchedObservation Nodeを取得する経路も、所属家庭、SourceObservation、DocumentConfirmation、必要なCorrectionをまとめて取得するよう変更しました。複合Node IDの重複、順序、未存在行、家庭所属の認可をfocused integration testで確認しました。複数Nodeの解決では、UnmatchedObservationとSettlementが認可用Household一覧を共有します。Settlement Nodeのclosed run取得を一括化しました。未確定periodのpreview計算はSettlement Serviceを個別に呼び出します。Node 24種類のうち22種類は`isBatchLoadedNodeKind`を通り、SettlementとUnmatchedObservationは`nodes()`内の専用batch経路を使います。
 
-`loadPurchases()`のGraphQL表示モデル組み立ては`purchase_graph.go`の`mapPurchases()`へ分離しました。`purchases`で`paymentAllocations`が選択された場合に限り、支払と口座を読み込みます。選択fieldに応じた読み込み範囲の絞り込みはこの関連データに限られ、その他のPurchase関連データや`loadHousehold()`の表示モデル組み立ては引き続き見直し対象です。
+`loadPurchases()`のGraphQL表示モデル組み立ては`purchase_graph.go`の`mapPurchases()`へ分離しました。`purchases`では選択fieldに応じて支払・口座と証憑・SourceDocumentを読み込みます。その他のPurchase関連データも要求fieldに応じて絞り込む必要があります。複数親から同じ関連データを参照するqueryを含め、GraphQL loaderの実際のクエリ数と取得範囲は引き続き確認します。
 
 目指すのは「すべてを先読みする巨大なローダー」でも「フィールドごとに1件ずつSQLを実行する構造」でもなく、GraphQLで要求されたデータだけを、親子関係に応じた適切な単位で一括取得する構造です。
 
