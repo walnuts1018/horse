@@ -1,17 +1,15 @@
 use catalog_application::category::{
     ActorId, Category, CategoryError, CategoryEvent, CategoryId, CategoryName,
-    CreateCategoryCommand, CreateCategoryDecision, CreateCategoryOperations, HouseholdId,
-    SetCategoryArchivedCommand, UpdateCategoryNameCommand, create_category,
-    decide_set_category_archived, decide_update_category_name,
+    CreateCategoryDecision, CreateCategoryOperations, HouseholdId, LoadedCategory,
+    SetCategoryArchivedDecision, SetCategoryArchivedOperations, UpdateCategoryNameCommand,
+    UpdateCategoryNameDecision, UpdateCategoryNameOperations,
 };
 use chrono::Utc;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
-use diesel_async::{
-    AsyncConnection, RunQueryDsl, pooled_connection::bb8::RunError as PoolRunError,
-};
+use diesel_async::{RunQueryDsl, pooled_connection::bb8::RunError as PoolRunError};
 use uuid::Uuid;
 
-use crate::{PgPool, schema::public};
+use crate::schema::public;
 
 #[derive(Debug)]
 struct PersistedCategory {
@@ -84,21 +82,14 @@ impl From<CategoryError> for CategoryWorkflowError {
     }
 }
 
-pub async fn persist_create_category(
-    pool: &PgPool,
-    command: CreateCategoryCommand,
-) -> Result<Category, CategoryWorkflowError> {
-    let mut pooled = pool.get().await.map_err(CategoryWorkflowError::from)?;
-    (&mut *pooled)
-        .transaction::<Category, CategoryWorkflowError, _>(async |conn| {
-            let mut operations = PostgresCreateCategoryOperations { conn };
-            create_category(&mut operations, command).await
-        })
-        .await
+pub struct PostgresCreateCategoryOperations<'a> {
+    conn: &'a mut diesel_async::AsyncPgConnection,
 }
 
-struct PostgresCreateCategoryOperations<'a> {
-    conn: &'a mut diesel_async::AsyncPgConnection,
+impl<'a> PostgresCreateCategoryOperations<'a> {
+    pub fn new(conn: &'a mut diesel_async::AsyncPgConnection) -> Self {
+        Self { conn }
+    }
 }
 
 impl CreateCategoryOperations for PostgresCreateCategoryOperations<'_> {
@@ -202,146 +193,216 @@ impl CreateCategoryOperations for PostgresCreateCategoryOperations<'_> {
     }
 }
 
-pub async fn persist_update_category_name(
-    pool: &PgPool,
-    command: UpdateCategoryNameCommand,
-) -> Result<Category, CategoryWorkflowError> {
-    let mut pooled = pool.get().await.map_err(CategoryWorkflowError::from)?;
-    (&mut *pooled)
-        .transaction::<Category, CategoryWorkflowError, _>(async |conn| {
-            use public::categories::dsl as categories;
-            use public::household_events::dsl as events;
-
-            // 1. Decide: 純粋関数。DBを認識しない。
-            let decision = decide_update_category_name(command)?;
-            let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
-            let category_id = parse_uuid(decision.category_id.as_str(), "category_id")?;
-
-            // 2. Load: 更新対象をロック付きで読む。
-            let row = categories::categories
-                .filter(categories::id.eq(category_id))
-                .for_update()
-                .select((
-                    categories::household_id,
-                    categories::parent_id,
-                    categories::name,
-                    categories::archived,
-                ))
-                .first::<(Uuid, Option<Uuid>, String, bool)>(conn)
-                .await
-                .optional()?
-                .ok_or(CategoryWorkflowError::CategoryNotFound)?;
-            require_member(conn, row.0, actor_id).await?;
-
-            // 3. Persist: 本体とイベントを同一トランザクションで確定する。
-            if row.2 != decision.name.as_str() {
-                diesel::update(
-                    categories::categories
-                        .filter(categories::id.eq(category_id))
-                        .filter(categories::household_id.eq(row.0)),
-                )
-                .set(categories::name.eq(decision.name.as_str()))
-                .execute(&mut *conn)
-                .await?;
-                let event_revision = next_event_revision(&mut *conn, category_id).await?;
-                diesel::insert_into(events::household_events)
-                    .values((
-                        events::household_id.eq(row.0),
-                        events::event_type.eq(decision.event.event_type()),
-                        events::entity_kind.eq("category"),
-                        events::entity_id.eq(parse_uuid(
-                            decision.event.category_id().as_str(),
-                            "category_id",
-                        )?),
-                        events::revision.eq(event_revision),
-                        events::changed_fields.eq(event_fields(&decision.event)),
-                        events::actor_id.eq(actor_id),
-                        events::created_at.eq(Utc::now()),
-                    ))
-                    .execute(&mut *conn)
-                    .await?;
-            }
-
-            Ok(Category::try_from(PersistedCategory {
-                id: category_id,
-                household_id: row.0,
-                parent_id: row.1,
-                name: decision.name.as_str().to_owned(),
-                archived: row.3,
-            })?)
-        })
-        .await
+pub struct PostgresUpdateCategoryNameOperations<'a> {
+    conn: &'a mut diesel_async::AsyncPgConnection,
 }
 
-pub async fn persist_set_category_archived(
-    pool: &PgPool,
-    command: SetCategoryArchivedCommand,
-) -> Result<Category, CategoryWorkflowError> {
-    let mut pooled = pool.get().await.map_err(CategoryWorkflowError::from)?;
-    (&mut *pooled)
-        .transaction::<Category, CategoryWorkflowError, _>(async |conn| {
-            use public::categories::dsl as categories;
-            use public::household_events::dsl as events;
+impl<'a> PostgresUpdateCategoryNameOperations<'a> {
+    pub fn new(conn: &'a mut diesel_async::AsyncPgConnection) -> Self {
+        Self { conn }
+    }
+}
 
-            // 1. Decide: 純粋関数。DBを認識しない。
-            let decision = decide_set_category_archived(command)?;
-            let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
-            let category_id = parse_uuid(decision.category_id.as_str(), "category_id")?;
+impl UpdateCategoryNameOperations for PostgresUpdateCategoryNameOperations<'_> {
+    type Error = CategoryWorkflowError;
 
-            // 2. Load: 更新対象をロック付きで読む。
-            let row = categories::categories
-                .filter(categories::id.eq(category_id))
-                .for_update()
-                .select((
-                    categories::household_id,
-                    categories::parent_id,
-                    categories::name,
-                    categories::archived,
-                ))
-                .first::<(Uuid, Option<Uuid>, String, bool)>(conn)
-                .await
-                .optional()?
-                .ok_or(CategoryWorkflowError::CategoryNotFound)?;
-            require_member(conn, row.0, actor_id).await?;
+    async fn load_category(
+        &mut self,
+        category_id: &CategoryId,
+    ) -> Result<LoadedCategory, Self::Error> {
+        use public::categories::dsl as categories;
 
-            // 3. Persist: 本体とイベントを同一トランザクションで確定する。
-            if row.3 != decision.archived {
-                diesel::update(
-                    categories::categories
-                        .filter(categories::id.eq(category_id))
-                        .filter(categories::household_id.eq(row.0)),
-                )
-                .set(categories::archived.eq(decision.archived))
-                .execute(&mut *conn)
-                .await?;
-                let event_revision = next_event_revision(&mut *conn, category_id).await?;
-                diesel::insert_into(events::household_events)
-                    .values((
-                        events::household_id.eq(row.0),
-                        events::event_type.eq(decision.event.event_type()),
-                        events::entity_kind.eq("category"),
-                        events::entity_id.eq(parse_uuid(
-                            decision.event.category_id().as_str(),
-                            "category_id",
-                        )?),
-                        events::revision.eq(event_revision),
-                        events::changed_fields.eq(event_fields(&decision.event)),
-                        events::actor_id.eq(actor_id),
-                        events::created_at.eq(Utc::now()),
-                    ))
-                    .execute(&mut *conn)
-                    .await?;
-            }
+        let category_id = parse_uuid(category_id.as_str(), "category_id")?;
+        let row = categories::categories
+            .filter(categories::id.eq(category_id))
+            .for_update()
+            .select((
+                categories::id,
+                categories::household_id,
+                categories::parent_id,
+                categories::name,
+                categories::archived,
+            ))
+            .first::<(Uuid, Uuid, Option<Uuid>, String, bool)>(self.conn)
+            .await
+            .optional()?
+            .ok_or(CategoryWorkflowError::CategoryNotFound)?;
+        loaded_category(row)
+    }
 
-            Ok(Category::try_from(PersistedCategory {
-                id: category_id,
-                household_id: row.0,
-                parent_id: row.1,
-                name: row.2,
-                archived: decision.archived,
-            })?)
-        })
+    async fn require_member(
+        &mut self,
+        household_id: &HouseholdId,
+        actor_id: &ActorId,
+    ) -> Result<(), Self::Error> {
+        require_member(
+            self.conn,
+            parse_uuid(household_id.as_str(), "household_id")?,
+            parse_uuid(actor_id.as_str(), "actor_id")?,
+        )
         .await
+    }
+
+    async fn persist(
+        &mut self,
+        category: LoadedCategory,
+        decision: UpdateCategoryNameDecision,
+    ) -> Result<Category, Self::Error> {
+        use public::categories::dsl as categories;
+        use public::household_events::dsl as events;
+
+        let category_id = parse_uuid(category.id.as_str(), "category_id")?;
+        let household_id = parse_uuid(category.household_id.as_str(), "household_id")?;
+        let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+        diesel::update(
+            categories::categories
+                .filter(categories::id.eq(category_id))
+                .filter(categories::household_id.eq(household_id)),
+        )
+        .set(categories::name.eq(decision.name.as_str()))
+        .execute(self.conn)
+        .await?;
+        let event_revision = next_event_revision(self.conn, category_id).await?;
+        diesel::insert_into(events::household_events)
+            .values((
+                events::household_id.eq(household_id),
+                events::event_type.eq(decision.event.event_type()),
+                events::entity_kind.eq("category"),
+                events::entity_id.eq(parse_uuid(
+                    decision.event.category_id().as_str(),
+                    "category_id",
+                )?),
+                events::revision.eq(event_revision),
+                events::changed_fields.eq(event_fields(&decision.event)),
+                events::actor_id.eq(actor_id),
+                events::created_at.eq(Utc::now()),
+            ))
+            .execute(self.conn)
+            .await?;
+
+        Ok(Category {
+            id: category.id.as_str().to_owned(),
+            household_id: category.household_id.as_str().to_owned(),
+            parent_id: category.parent_id.map(|id| id.as_str().to_owned()),
+            name: decision.name.as_str().to_owned(),
+            archived: category.archived,
+        })
+    }
+}
+
+pub struct PostgresSetCategoryArchivedOperations<'a> {
+    conn: &'a mut diesel_async::AsyncPgConnection,
+}
+
+impl<'a> PostgresSetCategoryArchivedOperations<'a> {
+    pub fn new(conn: &'a mut diesel_async::AsyncPgConnection) -> Self {
+        Self { conn }
+    }
+}
+
+impl SetCategoryArchivedOperations for PostgresSetCategoryArchivedOperations<'_> {
+    type Error = CategoryWorkflowError;
+
+    async fn load_category(
+        &mut self,
+        category_id: &CategoryId,
+    ) -> Result<LoadedCategory, Self::Error> {
+        use public::categories::dsl as categories;
+
+        let category_id = parse_uuid(category_id.as_str(), "category_id")?;
+        let row = categories::categories
+            .filter(categories::id.eq(category_id))
+            .for_update()
+            .select((
+                categories::id,
+                categories::household_id,
+                categories::parent_id,
+                categories::name,
+                categories::archived,
+            ))
+            .first::<(Uuid, Uuid, Option<Uuid>, String, bool)>(self.conn)
+            .await
+            .optional()?
+            .ok_or(CategoryWorkflowError::CategoryNotFound)?;
+        loaded_category(row)
+    }
+
+    async fn require_member(
+        &mut self,
+        household_id: &HouseholdId,
+        actor_id: &ActorId,
+    ) -> Result<(), Self::Error> {
+        require_member(
+            self.conn,
+            parse_uuid(household_id.as_str(), "household_id")?,
+            parse_uuid(actor_id.as_str(), "actor_id")?,
+        )
+        .await
+    }
+
+    async fn persist(
+        &mut self,
+        category: LoadedCategory,
+        decision: SetCategoryArchivedDecision,
+    ) -> Result<Category, Self::Error> {
+        use public::categories::dsl as categories;
+        use public::household_events::dsl as events;
+
+        let category_id = parse_uuid(category.id.as_str(), "category_id")?;
+        let household_id = parse_uuid(category.household_id.as_str(), "household_id")?;
+        let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+        diesel::update(
+            categories::categories
+                .filter(categories::id.eq(category_id))
+                .filter(categories::household_id.eq(household_id)),
+        )
+        .set(categories::archived.eq(decision.archived))
+        .execute(self.conn)
+        .await?;
+        let event_revision = next_event_revision(self.conn, category_id).await?;
+        diesel::insert_into(events::household_events)
+            .values((
+                events::household_id.eq(household_id),
+                events::event_type.eq(decision.event.event_type()),
+                events::entity_kind.eq("category"),
+                events::entity_id.eq(parse_uuid(
+                    decision.event.category_id().as_str(),
+                    "category_id",
+                )?),
+                events::revision.eq(event_revision),
+                events::changed_fields.eq(event_fields(&decision.event)),
+                events::actor_id.eq(actor_id),
+                events::created_at.eq(Utc::now()),
+            ))
+            .execute(self.conn)
+            .await?;
+
+        Ok(Category {
+            id: category.id.as_str().to_owned(),
+            household_id: category.household_id.as_str().to_owned(),
+            parent_id: category.parent_id.map(|id| id.as_str().to_owned()),
+            name: category.name.as_str().to_owned(),
+            archived: decision.archived,
+        })
+    }
+}
+
+fn loaded_category(
+    row: (Uuid, Uuid, Option<Uuid>, String, bool),
+) -> Result<LoadedCategory, CategoryWorkflowError> {
+    Ok(LoadedCategory {
+        id: CategoryId::new(row.0.to_string())
+            .map_err(|_| CategoryWorkflowError::CorruptStoredData)?,
+        household_id: HouseholdId::new(row.1.to_string())
+            .map_err(|_| CategoryWorkflowError::CorruptStoredData)?,
+        parent_id: row
+            .2
+            .map(|id| CategoryId::new(id.to_string()))
+            .transpose()
+            .map_err(|_| CategoryWorkflowError::CorruptStoredData)?,
+        name: CategoryName::new(row.3).map_err(|_| CategoryWorkflowError::CorruptStoredData)?,
+        archived: row.4,
+    })
 }
 
 // categoriesテーブルにrevision列がないため、同一エンティティのイベントシーケンスとして採番する。更新対象行をFOR UPDATEでロック済みの同一トランザクション内で取得するため、同時更新との競合は直列化される。

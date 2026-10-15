@@ -278,7 +278,10 @@ pub async fn create_category<O: CreateCategoryOperations>(
 pub trait UpdateCategoryNameOperations {
     type Error: From<CategoryError>;
 
-    async fn load_category(&mut self, category_id: &CategoryId) -> Result<LoadedCategory, Self::Error>;
+    async fn load_category(
+        &mut self,
+        category_id: &CategoryId,
+    ) -> Result<LoadedCategory, Self::Error>;
     async fn require_member(
         &mut self,
         household_id: &HouseholdId,
@@ -309,7 +312,10 @@ pub async fn update_category_name<O: UpdateCategoryNameOperations>(
 pub trait SetCategoryArchivedOperations {
     type Error: From<CategoryError>;
 
-    async fn load_category(&mut self, category_id: &CategoryId) -> Result<LoadedCategory, Self::Error>;
+    async fn load_category(
+        &mut self,
+        category_id: &CategoryId,
+    ) -> Result<LoadedCategory, Self::Error>;
     async fn require_member(
         &mut self,
         household_id: &HouseholdId,

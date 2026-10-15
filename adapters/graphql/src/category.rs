@@ -1,10 +1,12 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use catalog_application::category as application_category;
 use catalog_application::category::Category as DomainCategory;
 use catalog_application::category::{
     CreateCategoryCommand, SetCategoryArchivedCommand, UpdateCategoryNameCommand,
 };
 use catalog_postgres::category as postgres_category;
+use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_postgres_common::PgPool;
 use uuid::Uuid;
 
@@ -104,18 +106,23 @@ pub async fn create_category(
         },
         None => None,
     };
-    match postgres_category::persist_create_category(
-        ctx.data::<PgPool>()?,
-        CreateCategoryCommand {
-            actor_id: actor.0.to_string(),
-            household_id: household_id.to_string(),
-            category_id: Uuid::now_v7().to_string(),
-            parent_id,
-            name: input.name,
-        },
-    )
-    .await
-    {
+    let command = CreateCategoryCommand {
+        actor_id: actor.0.to_string(),
+        household_id: household_id.to_string(),
+        category_id: Uuid::now_v7().to_string(),
+        parent_id,
+        name: input.name,
+    };
+    let mut pooled = ctx.data::<PgPool>()?.get().await.map_err(|error| {
+        crate::internal_error(postgres_category::CategoryWorkflowError::from(error))
+    })?;
+    let result = (&mut *pooled)
+        .transaction::<DomainCategory, postgres_category::CategoryWorkflowError, _>(async |conn| {
+            let mut operations = postgres_category::PostgresCreateCategoryOperations::new(conn);
+            application_category::create_category(&mut operations, command).await
+        })
+        .await;
+    match result {
         Ok(category) => Ok(CreateCategorySuccess {
             result: category.into(),
         }
@@ -136,16 +143,21 @@ pub async fn update_category_name(
         Ok(id) => id,
         Err(()) => return Ok(update_error(MutationErrorCode::BadInput).into()),
     };
-    match postgres_category::persist_update_category_name(
-        ctx.data::<PgPool>()?,
-        UpdateCategoryNameCommand {
-            actor_id: actor.0.to_string(),
-            category_id: category_id.to_string(),
-            name: input.name,
-        },
-    )
-    .await
-    {
+    let command = UpdateCategoryNameCommand {
+        actor_id: actor.0.to_string(),
+        category_id: category_id.to_string(),
+        name: input.name,
+    };
+    let mut pooled = ctx.data::<PgPool>()?.get().await.map_err(|error| {
+        crate::internal_error(postgres_category::CategoryWorkflowError::from(error))
+    })?;
+    let result = (&mut *pooled)
+        .transaction::<DomainCategory, postgres_category::CategoryWorkflowError, _>(async |conn| {
+            let mut operations = postgres_category::PostgresUpdateCategoryNameOperations::new(conn);
+            application_category::update_category_name(&mut operations, command).await
+        })
+        .await;
+    match result {
         Ok(category) => Ok(UpdateCategoryNameSuccess {
             result: category.into(),
         }
@@ -166,16 +178,22 @@ pub async fn set_category_archived(
         Ok(id) => id,
         Err(()) => return Ok(archive_error(MutationErrorCode::BadInput).into()),
     };
-    match postgres_category::persist_set_category_archived(
-        ctx.data::<PgPool>()?,
-        SetCategoryArchivedCommand {
-            actor_id: actor.0.to_string(),
-            category_id: category_id.to_string(),
-            archived: input.archived,
-        },
-    )
-    .await
-    {
+    let command = SetCategoryArchivedCommand {
+        actor_id: actor.0.to_string(),
+        category_id: category_id.to_string(),
+        archived: input.archived,
+    };
+    let mut pooled = ctx.data::<PgPool>()?.get().await.map_err(|error| {
+        crate::internal_error(postgres_category::CategoryWorkflowError::from(error))
+    })?;
+    let result = (&mut *pooled)
+        .transaction::<DomainCategory, postgres_category::CategoryWorkflowError, _>(async |conn| {
+            let mut operations =
+                postgres_category::PostgresSetCategoryArchivedOperations::new(conn);
+            application_category::set_category_archived(&mut operations, command).await
+        })
+        .await;
+    match result {
         Ok(category) => Ok(SetCategoryArchivedSuccess {
             result: category.into(),
         }
