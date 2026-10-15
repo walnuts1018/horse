@@ -31,6 +31,9 @@ const (
 )
 
 func (s *Service) Update(ctx context.Context, command UpdateCommand) (UpdateResult, error) {
+	if err := validatePurchaseUpdateCommand(command); err != nil {
+		return UpdateResult{}, err
+	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return UpdateResult{}, err
@@ -96,14 +99,27 @@ func validatePurchaseUpdateFields(input purchaseUpdateValidationInput) error {
 	return nil
 }
 
-func (s *Service) updateInTransaction(ctx context.Context, tx pgx.Tx, command UpdateCommand, options purchaseUpdateOptions) (UpdateResult, error) {
+func validatePurchaseUpdateCommand(command UpdateCommand) error {
 	if err := inputvalidation.Check(command); err != nil {
-		return UpdateResult{}, err
+		return err
 	}
 	if err := validatePurchaseUpdateFields(purchaseUpdateValidationInput{
 		changedFields: command.ChangedFields, occurredAt: command.OccurredAt, datePrecision: command.DatePrecision,
 		merchant: command.Merchant, paymentAllocations: command.PaymentAllocations,
 	}); err != nil {
+		return err
+	}
+	if _, err := parseUUID(command.PurchaseID, "purchase"); err != nil {
+		return err
+	}
+	if _, err := parseUUID(command.ActorID, "actor"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) updateInTransaction(ctx context.Context, tx pgx.Tx, command UpdateCommand, options purchaseUpdateOptions) (UpdateResult, error) {
+	if err := validatePurchaseUpdateCommand(command); err != nil {
 		return UpdateResult{}, err
 	}
 
