@@ -314,6 +314,18 @@ export type DocumentReview = {
   };
 };
 
+export type DocumentExtractionVersion = {
+  id: string;
+  version: number;
+  model: string;
+  createdAt: string;
+  conversationTurns: number;
+};
+
+export type DocumentExtraction = DocumentExtractionVersion & {
+  result: NonNullable<DocumentReview["result"]>;
+};
+
 export function isQuotaLimitedExtraction(document: DocumentReview): boolean {
   const status = document.status.toUpperCase();
   return (

@@ -88,6 +88,8 @@ func (s *Server) Handler() http.Handler {
 	add(http.MethodPost, "/documents", s.uploadDocument)
 	add(http.MethodGet, "/documents", s.documents)
 	add(http.MethodGet, "/documents/:id", s.document)
+	add(http.MethodGet, "/documents/:id/extractions", s.documentExtractions)
+	add(http.MethodGet, "/documents/:id/extractions/:versionId", s.documentExtraction)
 	add(http.MethodGet, "/documents/:id/content", s.documentContent)
 	add(http.MethodGet, "/documents/:id/preview", s.documentPreview)
 	add(http.MethodGet, "/documents/:id/matches", s.documentMatches)

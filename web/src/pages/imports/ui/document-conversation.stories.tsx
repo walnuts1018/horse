@@ -143,3 +143,148 @@ export const ExtractionChanges: Story = {
     },
   ],
 };
+
+function BranchConversation() {
+  const [document, setDocument] = useState<DocumentReview>({
+    id: "story-branch-document",
+    jobId: "story-job-v2",
+    status: "succeeded",
+    model: "gemini-3.8-flash",
+    result: { receipt: { merchant: "喫茶店", total: 1200 } },
+  });
+
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (input, init) => {
+      const url = new URL(
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+        window.location.origin,
+      );
+      if (url.pathname.endsWith("/extractions") && init?.method !== "POST") {
+        const completed = window.sessionStorage.getItem("story-branch-complete") === "true";
+        return Response.json({
+          versions: [
+            ...(completed
+              ? [
+                  {
+                    id: "story-job-v3",
+                    version: 3,
+                    model: "gemini-3.8-flash",
+                    createdAt: "2026-10-16T00:00:00Z",
+                    conversationTurns: 2,
+                  },
+                ]
+              : []),
+            {
+              id: "story-job-v2",
+              version: 2,
+              model: "gemini-3.8-flash",
+              createdAt: "2026-10-15T00:00:00Z",
+              conversationTurns: 2,
+            },
+            {
+              id: "story-job-v1",
+              version: 1,
+              model: "gemini-3.8-flash",
+              createdAt: "2026-10-14T00:00:00Z",
+              conversationTurns: 1,
+            },
+          ],
+        });
+      }
+      if (url.pathname.endsWith("/story-job-v3")) {
+        return Response.json({
+          id: "story-job-v3",
+          version: 3,
+          model: "gemini-3.8-flash",
+          createdAt: "2026-10-16T00:00:00Z",
+          conversationTurns: 2,
+          result: {
+            receipt: { merchant: "喫茶店", total: 1100 },
+            conversation: [
+              { role: "user", text: "前の会話の質問" },
+              { role: "assistant", text: "前の会話の回答" },
+              { role: "user", text: "前の版からもう一度確認してください" },
+              { role: "assistant", text: "旧版を起点に再確認しました" },
+            ],
+          },
+        });
+      }
+      if (url.pathname.endsWith("/story-job-v1")) {
+        return Response.json({
+          id: "story-job-v1",
+          version: 1,
+          model: "gemini-3.8-flash",
+          createdAt: "2026-10-14T00:00:00Z",
+          conversationTurns: 1,
+          result: {
+            receipt: { merchant: "喫茶店", total: 1000 },
+            conversation: [
+              { role: "user", text: "前の会話の質問" },
+              { role: "assistant", text: "前の会話の回答" },
+            ],
+          },
+        });
+      }
+      if (url.pathname.endsWith("/interaction") && init?.method === "POST") {
+        window.sessionStorage.setItem("story-branch-request", String(init.body));
+        return Response.json({ jobId: "story-job-v3", status: "queued" }, { status: 202 });
+      }
+      return new Response(null, { status: 404 });
+    };
+    return () => {
+      window.fetch = originalFetch;
+      window.sessionStorage.removeItem("story-branch-request");
+      window.sessionStorage.removeItem("story-branch-complete");
+      window.sessionStorage.removeItem("document-interaction:story-branch-document");
+      window.sessionStorage.removeItem("document-extraction:story-branch-document");
+    };
+  }, []);
+
+  return (
+    <div style={{ width: "min(640px, 90vw)" }}>
+      <DocumentConversation
+        document={document}
+        onError={() => undefined}
+        onUpdated={() => {
+          setDocument((current) => ({ ...current, jobId: "story-job-v3", status: "queued" }));
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          window.sessionStorage.setItem("story-branch-complete", "true");
+          setDocument((current) => ({ ...current, status: "succeeded" }));
+        }}
+      >
+        ジョブを完了する
+      </button>
+    </div>
+  );
+}
+
+export const PreviousVersionCanStartABranch: Story = {
+  render: () => <BranchConversation />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "過去の抽出版から分岐" }));
+    const versionPicker = await canvas.findByLabelText("再確認の起点");
+    await userEvent.selectOptions(versionPicker, "story-job-v1");
+    await expect(await canvas.findByText("前の会話の質問")).toBeTruthy();
+    await userEvent.type(
+      canvas.getByLabelText("AIに追加指示"),
+      "前の版からもう一度確認してください",
+    );
+    await userEvent.click(canvas.getByRole("button", { name: "このモデルで再確認" }));
+    await waitFor(() => {
+      const request = window.sessionStorage.getItem("story-branch-request");
+      expect(request).not.toBeNull();
+      expect(JSON.parse(request ?? "{}")).toMatchObject({
+        message: "前の版からもう一度確認してください",
+        baseJobId: "story-job-v1",
+      });
+    });
+    await userEvent.click(canvas.getByRole("button", { name: "ジョブを完了する" }));
+    await expect(await canvas.findByText("旧版を起点に再確認しました")).toBeTruthy();
+  },
+};

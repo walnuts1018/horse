@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  readDocumentExtraction,
+  readDocumentExtractionVersions,
+} from "../api/document-extractions";
+import {
   compareExtractions,
   type ExtractionRowChange,
   readReceiptExtractionSnapshot,
@@ -10,6 +14,8 @@ import {
   importModels,
   isQuotaLimitedExtraction,
   proImportModel,
+  type DocumentExtraction,
+  type DocumentExtractionVersion,
   type DocumentReview,
 } from "../model/imports";
 
@@ -121,17 +127,25 @@ export function DocumentConversation({
 }) {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [historyOpened, setHistoryOpened] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [versions, setVersions] = useState<DocumentExtractionVersion[]>([]);
+  const [selectedVersionId, setSelectedVersionId] = useState("");
+  const [selectedExtraction, setSelectedExtraction] = useState<DocumentExtraction | null>(null);
+  const [branchJobId, setBranchJobId] = useState("");
   const [storedPendingMessage, setPendingMessage] = useState<PendingMessage | null>(() =>
     readPendingMessage(document.id),
   );
   const sendingRef = useRef(false);
-  const messages = document.result?.conversation;
+  const messages = selectedExtraction?.result.conversation ?? document.result?.conversation;
   const keyedMessages = withConversationKeys(messages);
-  const hasExtraction = !!document.result?.receipt || !!document.result?.statements?.length;
-  const selectedModel = importModels.find((option) => option.value === document.model);
+  const activeResult = selectedExtraction?.result ?? document.result;
+  const hasExtraction = !!activeResult?.receipt || !!activeResult?.statements?.length;
+  const activeModel = selectedExtraction?.model ?? document.model;
+  const selectedModel = importModels.find((option) => option.value === activeModel);
   const model =
-    selectedModel?.label ?? (document.model === "pro" ? "既定の有料モデル" : "既定の無料モデル");
-  const paidModel = selectedModel?.tier === "paid" || document.model === "pro";
+    selectedModel?.label ?? (activeModel === "pro" ? "既定の有料モデル" : "既定の無料モデル");
+  const paidModel = selectedModel?.tier === "paid" || activeModel === "pro";
   const quotaLimited = isQuotaLimitedExtraction(document);
   const processing = ["queued", "running"].includes(document.status.toLowerCase());
   const previousExtraction = readReceiptExtractionSnapshot(document.id);
@@ -167,6 +181,79 @@ export function DocumentConversation({
         : storedPendingMessage;
 
   useEffect(() => {
+    if (!historyOpened) return;
+    const controller = new AbortController();
+    setHistoryLoading(true);
+    readDocumentExtractionVersions(document.id, controller.signal)
+      .then((loaded) => {
+        setVersions(loaded);
+        setSelectedVersionId((current) => {
+          if (current && loaded.some((entry) => entry.id === current)) return current;
+          if (
+            document.status.toLowerCase() === "succeeded" &&
+            loaded.some((entry) => entry.id === document.jobId)
+          ) {
+            return document.jobId ?? "";
+          }
+          return loaded[0]?.id ?? "";
+        });
+      })
+      .catch((reason) => {
+        if (!controller.signal.aborted) {
+          onError(reason instanceof Error ? reason.message : "抽出履歴を取得できませんでした");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setHistoryLoading(false);
+      });
+    return () => controller.abort();
+  }, [document.id, historyOpened, onError]);
+
+  useEffect(() => {
+    if (!historyOpened || !selectedVersionId) {
+      setSelectedExtraction(null);
+      return;
+    }
+    const controller = new AbortController();
+    readDocumentExtraction(document.id, selectedVersionId, controller.signal)
+      .then(setSelectedExtraction)
+      .catch((reason) => {
+        if (!controller.signal.aborted) {
+          onError(reason instanceof Error ? reason.message : "抽出版を取得できませんでした");
+        }
+      });
+    return () => controller.abort();
+  }, [document.id, historyOpened, onError, selectedVersionId]);
+
+  useEffect(() => {
+    if (
+      !historyOpened ||
+      !branchJobId ||
+      document.status.toLowerCase() !== "succeeded" ||
+      document.jobId !== branchJobId
+    ) {
+      return;
+    }
+    setSelectedVersionId(branchJobId);
+    const controller = new AbortController();
+    Promise.all([
+      readDocumentExtractionVersions(document.id, controller.signal),
+      readDocumentExtraction(document.id, branchJobId, controller.signal),
+    ])
+      .then(([loadedVersions, extraction]) => {
+        setVersions(loadedVersions);
+        setSelectedExtraction(extraction);
+        setBranchJobId("");
+      })
+      .catch((reason) => {
+        if (!controller.signal.aborted) {
+          onError(reason instanceof Error ? reason.message : "新しい抽出版を取得できませんでした");
+        }
+      });
+    return () => controller.abort();
+  }, [branchJobId, document.id, document.jobId, document.status, historyOpened, onError]);
+
+  useEffect(() => {
     if (!storedPendingMessage) return;
     if (pendingMessageCompleted) {
       clearPendingMessage(document.id);
@@ -182,7 +269,14 @@ export function DocumentConversation({
 
   const send = async (text: string, modelOverride?: string) => {
     const instruction = text.trim();
-    if (!instruction || sendingRef.current || processing) return;
+    if (
+      !instruction ||
+      sendingRef.current ||
+      processing ||
+      (historyOpened && !!selectedVersionId && !selectedExtraction)
+    ) {
+      return;
+    }
     sendingRef.current = true;
     setSending(true);
     try {
@@ -193,6 +287,7 @@ export function DocumentConversation({
         body: JSON.stringify({
           message: instruction,
           ...(modelOverride ? { model: modelOverride } : {}),
+          ...(selectedExtraction ? { baseJobId: selectedExtraction.id } : {}),
         }),
       });
       if (!response.ok) throw new Error(`再確認を開始できませんでした (${response.status})`);
@@ -204,6 +299,7 @@ export function DocumentConversation({
         typeof accepted.jobId === "string"
           ? accepted.jobId
           : undefined;
+      if (selectedExtraction && nextJobId) setBranchJobId(nextJobId);
       const nextPendingMessage: PendingMessage = {
         text: instruction,
         conversationLength: messages?.length ?? 0,
@@ -211,14 +307,14 @@ export function DocumentConversation({
       };
       if (
         document.jobId &&
-        (document.result?.receipt || document.result?.statements?.length) &&
+        (activeResult?.receipt || activeResult?.statements?.length) &&
         nextJobId
       ) {
         storeReceiptExtractionSnapshot(document.id, {
-          jobId: document.jobId,
+          jobId: selectedExtraction?.id ?? document.jobId,
           nextJobId,
-          receipt: document.result.receipt,
-          statements: document.result.statements,
+          receipt: activeResult?.receipt,
+          statements: activeResult?.statements,
         });
       }
       storePendingMessage(document.id, nextPendingMessage);
@@ -255,6 +351,57 @@ export function DocumentConversation({
             {renderExtractionRows(extractionDiff.statementChanges)}
           </ul>
         </details>
+      )}
+      {historyOpened ? (
+        versions.length > 0 ? (
+          <>
+            <label className={styles.versionPicker}>
+              再確認の起点
+              <select
+                value={selectedVersionId}
+                onChange={(event) => setSelectedVersionId(event.currentTarget.value)}
+                disabled={historyLoading || sending || processing}
+              >
+                {versions.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    第{version.version}版・{new Date(version.createdAt).toLocaleString("ja-JP")}・
+                    {version.model}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className={styles.historyButton}
+              onClick={() => {
+                setHistoryOpened(false);
+                setSelectedExtraction(null);
+                setSelectedVersionId("");
+              }}
+              disabled={sending || processing}
+            >
+              現在の抽出版へ戻る
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className={styles.historyButton}
+            onClick={() => setHistoryOpened(false)}
+            disabled={historyLoading}
+          >
+            会話へ戻る
+          </button>
+        )
+      ) : (
+        <button
+          type="button"
+          className={styles.historyButton}
+          onClick={() => setHistoryOpened(true)}
+          disabled={sending || processing}
+        >
+          過去の抽出版から分岐
+        </button>
       )}
       {((messages?.length ?? 0) > 0 || pendingMessage) && (
         <ol className={styles.messages}>
@@ -328,7 +475,16 @@ export function DocumentConversation({
                 : "入力がGoogleの製品改善に使われる場合があります。"}
             </small>
           </div>
-          <button type="submit" disabled={sending || !message.trim() || processing}>
+          <button
+            type="submit"
+            disabled={
+              sending ||
+              !message.trim() ||
+              processing ||
+              historyLoading ||
+              (historyOpened && !!selectedVersionId && !selectedExtraction)
+            }
+          >
             {sending || processing
               ? "再確認中"
               : paidModel
@@ -338,7 +494,13 @@ export function DocumentConversation({
           {quotaLimited && !paidModel && (
             <button
               type="button"
-              disabled={sending || !message.trim() || processing}
+              disabled={
+                sending ||
+                !message.trim() ||
+                processing ||
+                historyLoading ||
+                (historyOpened && !!selectedVersionId && !selectedExtraction)
+              }
               onClick={() => void send(message, proImportModel)}
             >
               Gemini 3.1 Pro Previewで再確認・有料

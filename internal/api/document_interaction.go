@@ -36,12 +36,19 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Message string `json:"message"`
-		Model   string `json:"model,omitempty"`
+		Message   string `json:"message"`
+		Model     string `json:"model,omitempty"`
+		BaseJobID string `json:"baseJobId,omitempty"`
 	}
 	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 64<<10), &input); err != nil || !utf8.ValidString(input.Message) || strings.TrimSpace(input.Message) == "" || len(input.Message) > 8_000 || input.Model != "" && input.Model != ingestion.ModelPro {
 		http.Error(w, "invalid document interaction input", http.StatusBadRequest)
 		return
+	}
+	if input.BaseJobID != "" {
+		if _, err := uuid.FromString(input.BaseJobID); err != nil {
+			http.Error(w, "invalid document interaction input", http.StatusBadRequest)
+			return
+		}
 	}
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
@@ -97,16 +104,37 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(), sm.Limit(1),
 	).One(r.Context(), executor)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && !latestSuccess.Result.Valid {
-		http.Error(w, "document interaction requires an existing extraction", http.StatusConflict)
+		http.Error(w, "document interaction requires a successful extraction", http.StatusConflict)
 		return
 	}
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction extraction lookup failed", "error", err)
+		s.logger.ErrorContext(r.Context(), "document interaction latest extraction lookup failed", "error", err)
+		http.Error(w, "extraction lookup failed", http.StatusInternalServerError)
+		return
+	}
+	var baseJob *models.ExtractionJob
+	if input.BaseJobID != "" {
+		baseJobUUID, _ := uuid.FromString(input.BaseJobID)
+		baseJob, err = models.ExtractionJobs.Query(sm.Where(psql.And(
+			models.ExtractionJobs.Columns.ID.EQ(psql.Arg(baseJobUUID)),
+			models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)),
+			models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
+			models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
+		))).One(r.Context(), executor)
+	} else {
+		baseJob = latestSuccess
+	}
+	if errors.Is(err, sql.ErrNoRows) || err == nil && !baseJob.Result.Valid {
+		http.Error(w, "document interaction requires a successful extraction", http.StatusConflict)
+		return
+	}
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "document interaction base extraction lookup failed", "error", err)
 		http.Error(w, "extraction lookup failed", http.StatusInternalServerError)
 		return
 	}
 	var previous ingestion.Verification
-	if err := stdjson.Unmarshal(latestSuccess.Result.V.Val, &previous); err != nil {
+	if err := stdjson.Unmarshal(baseJob.Result.V.Val, &previous); err != nil {
 		s.logger.ErrorContext(r.Context(), "document interaction result decoding failed", "error", err)
 		http.Error(w, "extraction result is unavailable", http.StatusConflict)
 		return
@@ -124,7 +152,7 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conversationID := previous.ConversationID
-	if conversationID == "" {
+	if baseJob.ID != latestSuccess.ID || conversationID == "" {
 		conversationIDValue, idErr := uuid.NewV7()
 		if idErr != nil {
 			s.logger.ErrorContext(r.Context(), "document interaction ID generation failed", "error", idErr)
@@ -136,7 +164,7 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 	var previousRequest struct {
 		Model string `json:"model,omitempty"`
 	}
-	if err := stdjson.Unmarshal(latestSuccess.Request.Val, &previousRequest); err != nil || !validDocumentModelSelection(previousRequest.Model) {
+	if err := stdjson.Unmarshal(baseJob.Request.Val, &previousRequest); err != nil || !validDocumentModelSelection(previousRequest.Model) {
 		http.Error(w, "extraction model is unavailable", http.StatusConflict)
 		return
 	}
