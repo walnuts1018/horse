@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
     ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, result::Error as DieselError,
 };
@@ -83,6 +83,7 @@ pub enum PurchaseCommandResultError {
     Database(DieselError),
     PurchaseNotFound,
     NumericOutOfRange,
+    InvalidPurchaseStatus,
 }
 
 impl From<DieselError> for PurchaseCommandResultError {
@@ -97,7 +98,8 @@ pub async fn load_purchase_command_result(
     purchase_id: Uuid,
 ) -> Result<PurchaseCommandResult, PurchaseCommandResultError> {
     use public::{
-        accounts::dsl as accounts, evidence_links::dsl as evidence, pools::dsl as pools,
+        accounting_periods::dsl as periods, accounts::dsl as accounts,
+        evidence_links::dsl as evidence, pools::dsl as pools,
         purchase_allocations::dsl as allocations, purchase_corrections::dsl as corrections,
         purchase_item_tags::dsl as item_tags, purchase_items::dsl as items,
         purchase_payments::dsl as payments, purchases::dsl as purchases,
@@ -137,6 +139,27 @@ pub async fn load_purchase_command_result(
         .await
         .optional()?
         .ok_or(PurchaseCommandResultError::PurchaseNotFound)?;
+
+    let period_start = accounting_period_start(base.0)?;
+    let period_status = periods::accounting_periods
+        .filter(periods::household_id.eq(household_id))
+        .filter(periods::period_start.eq(period_start))
+        .select(periods::status)
+        .first::<String>(&mut *conn)
+        .await
+        .optional()?;
+    let status = match base.4.as_str() {
+        "DRAFT" => "DRAFT",
+        "POSTED" | "CLOSED" => {
+            if period_status.as_deref() == Some("CLOSED") || base.4 == "CLOSED" {
+                "CLOSED"
+            } else {
+                "POSTED"
+            }
+        }
+        _ => return Err(PurchaseCommandResultError::InvalidPurchaseStatus),
+    }
+    .to_owned();
 
     let item_rows = items::purchase_items
         .filter(items::household_id.eq(household_id))
@@ -352,7 +375,7 @@ pub async fn load_purchase_command_result(
         date_precision: base.1,
         merchant: base.2,
         origin: base.3,
-        status: base.4,
+        status,
         revision: base.5,
         created_at: base.6,
         updated_at: base.7,
@@ -392,13 +415,13 @@ pub async fn load_purchase_edit_context(
     household_id: Uuid,
     purchase_id: Uuid,
 ) -> Result<Option<PurchaseEditContext>, PurchaseCommandResultError> {
-    use public::purchases::dsl as purchases;
+    use public::{accounting_periods::dsl as periods, purchases::dsl as purchases};
 
     let mut conn = pool
         .get()
         .await
         .map_err(|error| PurchaseCommandResultError::Pool(error.to_string()))?;
-    purchases::purchases
+    let row = purchases::purchases
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::id.eq(purchase_id))
         .select((
@@ -418,22 +441,48 @@ pub async fn load_purchase_edit_context(
             serde_json::Value,
         )>(&mut *conn)
         .await
-        .optional()
-        .map(|row| {
-            row.map(
-                |(revision, status, occurred_at, date_precision, merchant, field_revisions)| {
-                    PurchaseEditContext {
-                        revision,
-                        status,
-                        occurred_at,
-                        date_precision,
-                        merchant,
-                        field_revisions,
-                    }
-                },
-            )
-        })
-        .map_err(PurchaseCommandResultError::Database)
+        .optional()?;
+    let Some((revision, persisted_status, occurred_at, date_precision, merchant, field_revisions)) = row else {
+        return Ok(None);
+    };
+    let period_status = periods::accounting_periods
+        .filter(periods::household_id.eq(household_id))
+        .filter(periods::period_start.eq(accounting_period_start(occurred_at)?))
+        .select(periods::status)
+        .first::<String>(&mut *conn)
+        .await
+        .optional()?;
+    let status = match persisted_status.as_str() {
+        "DRAFT" => "DRAFT",
+        "POSTED" | "CLOSED" => {
+            if period_status.as_deref() == Some("CLOSED") || persisted_status == "CLOSED" {
+                "CLOSED"
+            } else {
+                "POSTED"
+            }
+        }
+        _ => return Err(PurchaseCommandResultError::InvalidPurchaseStatus),
+    };
+    Ok(Some(PurchaseEditContext {
+        revision,
+        status: status.to_owned(),
+        occurred_at,
+        date_precision,
+        merchant,
+        field_revisions,
+    }))
+}
+
+fn accounting_period_start(
+    occurred_at: DateTime<Utc>,
+) -> Result<NaiveDate, PurchaseCommandResultError> {
+    let tokyo = FixedOffset::east_opt(9 * 60 * 60)
+        .ok_or(PurchaseCommandResultError::InvalidPurchaseStatus)?;
+    occurred_at
+        .with_timezone(&tokyo)
+        .date_naive()
+        .with_day(1)
+        .ok_or(PurchaseCommandResultError::InvalidPurchaseStatus)
 }
 
 pub async fn load_purchase_item_household_ids(
