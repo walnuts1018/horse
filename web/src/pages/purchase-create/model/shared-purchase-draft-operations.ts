@@ -45,7 +45,9 @@ export const createSharedPurchaseDraftMutation = graphql`
 
 export const updateSharedPurchaseDraftMutation = graphql`
   mutation UpdateSharedPurchaseDraftMutation($id: ID!, $expectedRevision: Int!, $payload: String!) {
-    updateSharedPurchaseDraft(input: { id: $id, expectedRevision: $expectedRevision, payload: $payload }) {
+    updateSharedPurchaseDraft(
+      input: { id: $id, expectedRevision: $expectedRevision, payload: $payload }
+    ) {
       __typename
       ... on UpdateSharedPurchaseDraftSuccess {
         result {
