@@ -1,4 +1,27 @@
 use std::collections::BTreeSet;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct ItemId(Uuid);
+
+impl ItemId {
+    fn new(value: &str) -> Result<Self, BulkDeleteItemsError> {
+        Uuid::parse_str(value)
+            .map(Self)
+            .map_err(|_| BulkDeleteItemsError::InvalidItemId)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PurchaseId(Uuid);
+
+impl PurchaseId {
+    fn new(value: &str) -> Result<Self, BulkDeleteItemsError> {
+        Uuid::parse_str(value)
+            .map(Self)
+            .map_err(|_| BulkDeleteItemsError::InvalidPurchaseId)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BulkDeleteItemTarget {
@@ -41,6 +64,7 @@ pub enum BulkDeleteItemsError {
     EmptyTargets,
     TooManyTargets,
     InvalidItemId,
+    InvalidPurchaseId,
     DuplicateTarget,
     MissingItem,
     InvalidRevision,
@@ -62,22 +86,34 @@ pub fn decide_bulk_delete_items(
     if command.targets.len() > 100 {
         return Err(BulkDeleteItemsError::TooManyTargets);
     }
+    let target_ids = command
+        .targets
+        .iter()
+        .map(|target| ItemId::new(&target.item_id))
+        .collect::<Result<Vec<_>, _>>()?;
     let mut seen = BTreeSet::new();
-    for target in &command.targets {
-        if target.item_id.is_empty() {
-            return Err(BulkDeleteItemsError::InvalidItemId);
-        }
+    for (target, item_id) in command.targets.iter().zip(&target_ids) {
         if target.base_revision == 0 {
             return Err(BulkDeleteItemsError::InvalidRevision);
         }
-        if !seen.insert(target.item_id.as_str()) {
+        if !seen.insert(item_id) {
             return Err(BulkDeleteItemsError::DuplicateTarget);
+        }
+    }
+
+    let purchase_ids = purchases
+        .iter()
+        .map(|purchase| PurchaseId::new(&purchase.purchase_id))
+        .collect::<Result<Vec<_>, _>>()?;
+    for purchase in &purchases {
+        for item in &purchase.items {
+            ItemId::new(&item.item_id)?;
         }
     }
 
     let mut decisions = Vec::with_capacity(purchases.len());
     let mut consumed = BTreeSet::new();
-    for purchase in purchases {
+    for (purchase, purchase_id) in purchases.into_iter().zip(purchase_ids) {
         if !matches!(purchase.status.as_str(), "DRAFT" | "POSTED") {
             return Err(BulkDeleteItemsError::ClosedPurchase);
         }
@@ -115,7 +151,7 @@ pub fn decide_bulk_delete_items(
             .checked_add(1)
             .ok_or(BulkDeleteItemsError::RevisionOverflow)?;
         decisions.push(BulkDeletePurchaseDecision {
-            purchase_id: purchase.purchase_id,
+            purchase_id: purchase_id.0.to_string(),
             purchase_revision,
             deleted_item_ids,
             deleted_amount_yen,

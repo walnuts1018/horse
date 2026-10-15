@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tag {
     pub id: String,
@@ -62,15 +64,15 @@ pub fn decide_create_tag(
     command: CreateTagCommand,
     tag_id: String,
 ) -> Result<CreateTagDecision, TagError> {
-    validate_id(&command.actor_id).map_err(|_| TagError::InvalidActorId)?;
-    validate_id(&command.household_id).map_err(|_| TagError::InvalidHouseholdId)?;
-    validate_id(&tag_id).map_err(|_| TagError::InvalidTagId)?;
+    let actor_id = ActorId::new(&command.actor_id)?;
+    let household_id = HouseholdId::new(&command.household_id)?;
+    let tag_id = TagId::new(&tag_id)?;
     let name = validated_name(command.name)?;
 
     Ok(CreateTagDecision {
-        actor_id: command.actor_id,
-        household_id: command.household_id,
-        tag_id,
+        actor_id: actor_id.0,
+        household_id: household_id.0,
+        tag_id: tag_id.0,
         name,
         revision: 1,
         event_type: "tag.created",
@@ -83,9 +85,11 @@ pub fn decide_update_tag(
     current: Tag,
 ) -> Result<UpdateTagDecision, TagError> {
     let name = validate_tag_name(&command.name)?;
-    validate_id(&command.actor_id).map_err(|_| TagError::InvalidActorId)?;
-    validate_id(&command.tag_id).map_err(|_| TagError::InvalidTagId)?;
-    if command.tag_id != current.id || i64::from(command.base_revision) != current.revision {
+    let actor_id = ActorId::new(&command.actor_id)?;
+    let tag_id = TagId::new(&command.tag_id)?;
+    let current_tag_id = TagId::new(&current.id)?;
+    HouseholdId::new(&current.household_id)?;
+    if tag_id != current_tag_id || i64::from(command.base_revision) != current.revision {
         return Err(TagError::RevisionConflict);
     }
     let tag = Tag {
@@ -98,7 +102,7 @@ pub fn decide_update_tag(
     };
 
     Ok(UpdateTagDecision {
-        actor_id: command.actor_id,
+        actor_id: actor_id.0,
         tag,
         event_type: "tag.updated",
         changed_fields: vec!["name".to_owned()],
@@ -109,9 +113,11 @@ pub fn decide_set_tag_archived(
     command: SetTagArchivedCommand,
     current: Tag,
 ) -> Result<UpdateTagDecision, TagError> {
-    validate_id(&command.actor_id).map_err(|_| TagError::InvalidActorId)?;
-    validate_id(&command.tag_id).map_err(|_| TagError::InvalidTagId)?;
-    if command.tag_id != current.id || i64::from(command.base_revision) != current.revision {
+    let actor_id = ActorId::new(&command.actor_id)?;
+    let tag_id = TagId::new(&command.tag_id)?;
+    let current_tag_id = TagId::new(&current.id)?;
+    HouseholdId::new(&current.household_id)?;
+    if tag_id != current_tag_id || i64::from(command.base_revision) != current.revision {
         return Err(TagError::RevisionConflict);
     }
     let tag = Tag {
@@ -124,7 +130,7 @@ pub fn decide_set_tag_archived(
     };
 
     Ok(UpdateTagDecision {
-        actor_id: command.actor_id,
+        actor_id: actor_id.0,
         tag,
         event_type: "tag.archived",
         changed_fields: vec!["archived".to_owned()],
@@ -143,6 +149,32 @@ fn validated_name(value: String) -> Result<String, TagError> {
     validate_tag_name(&value)
 }
 
-fn validate_id(value: &str) -> Result<(), ()> {
-    if value.is_empty() { Err(()) } else { Ok(()) }
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ActorId(String);
+
+impl ActorId {
+    fn new(value: &str) -> Result<Self, TagError> {
+        Uuid::parse_str(value).map_err(|_| TagError::InvalidActorId)?;
+        Ok(Self(value.to_owned()))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HouseholdId(String);
+
+impl HouseholdId {
+    fn new(value: &str) -> Result<Self, TagError> {
+        Uuid::parse_str(value).map_err(|_| TagError::InvalidHouseholdId)?;
+        Ok(Self(value.to_owned()))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TagId(String);
+
+impl TagId {
+    fn new(value: &str) -> Result<Self, TagError> {
+        Uuid::parse_str(value).map_err(|_| TagError::InvalidTagId)?;
+        Ok(Self(value.to_owned()))
+    }
 }

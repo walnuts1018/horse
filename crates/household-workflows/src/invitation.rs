@@ -1,4 +1,45 @@
 use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ActorId(String);
+
+impl ActorId {
+    fn new(value: String) -> Result<Self, InvitationError> {
+        Uuid::parse_str(&value).map_err(|_| InvitationError::InvalidIdentifier)?;
+        Ok(Self(value))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HouseholdId(String);
+
+impl HouseholdId {
+    fn new(value: String) -> Result<Self, InvitationError> {
+        Uuid::parse_str(&value).map_err(|_| InvitationError::InvalidIdentifier)?;
+        Ok(Self(value))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InvitationId(String);
+
+impl InvitationId {
+    fn new(value: String) -> Result<Self, InvitationError> {
+        Uuid::parse_str(&value).map_err(|_| InvitationError::InvalidIdentifier)?;
+        Ok(Self(value))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MemberId(String);
+
+impl MemberId {
+    fn new(value: String) -> Result<Self, InvitationError> {
+        Uuid::parse_str(&value).map_err(|_| InvitationError::InvalidIdentifier)?;
+        Ok(Self(value))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateInvitationCommand {
@@ -62,12 +103,9 @@ pub fn decide_create_invitation(
     actor_role: Option<&str>,
     now: DateTime<Utc>,
 ) -> Result<CreateInvitationDecision, InvitationError> {
-    if command.actor_id.is_empty()
-        || command.household_id.is_empty()
-        || command.invitation_id.is_empty()
-    {
-        return Err(InvitationError::InvalidIdentifier);
-    }
+    let actor_id = ActorId::new(command.actor_id)?;
+    let household_id = HouseholdId::new(command.household_id)?;
+    let invitation_id = InvitationId::new(command.invitation_id)?;
     if actor_role != Some("OWNER") {
         return Err(InvitationError::Forbidden);
     }
@@ -76,9 +114,9 @@ pub fn decide_create_invitation(
         return Err(InvitationError::InvalidExpiry);
     }
     Ok(CreateInvitationDecision {
-        actor_id: command.actor_id,
-        household_id: command.household_id,
-        invitation_id: command.invitation_id,
+        actor_id: actor_id.0,
+        household_id: household_id.0,
+        invitation_id: invitation_id.0,
         expires_at: command.expires_at,
     })
 }
@@ -91,12 +129,9 @@ pub fn decide_accept_invitation(
     existing_member_active: bool,
     now: DateTime<Utc>,
 ) -> Result<AcceptInvitationDecision, InvitationError> {
-    if command.member_id.is_empty()
-        || command.household_id.is_empty()
-        || command.invitation_id.is_empty()
-    {
-        return Err(InvitationError::InvalidIdentifier);
-    }
+    let member_id = MemberId::new(command.member_id)?;
+    let household_id = HouseholdId::new(command.household_id)?;
+    let invitation_id = InvitationId::new(command.invitation_id)?;
     if revoked {
         return Err(InvitationError::Revoked);
     }
@@ -110,9 +145,9 @@ pub fn decide_accept_invitation(
         return Err(InvitationError::AlreadyMember);
     }
     Ok(AcceptInvitationDecision {
-        member_id: command.member_id,
-        household_id: command.household_id,
-        invitation_id: command.invitation_id,
+        member_id: member_id.0,
+        household_id: household_id.0,
+        invitation_id: invitation_id.0,
         restore_membership: true,
     })
 }
@@ -123,12 +158,9 @@ pub fn decide_revoke_invitation(
     accepted: bool,
     already_revoked: bool,
 ) -> Result<RevokeInvitationDecision, InvitationError> {
-    if command.actor_id.is_empty()
-        || command.household_id.is_empty()
-        || command.invitation_id.is_empty()
-    {
-        return Err(InvitationError::InvalidIdentifier);
-    }
+    let actor_id = ActorId::new(command.actor_id)?;
+    let household_id = HouseholdId::new(command.household_id)?;
+    let invitation_id = InvitationId::new(command.invitation_id)?;
     if actor_role != Some("OWNER") {
         return Err(InvitationError::Forbidden);
     }
@@ -136,9 +168,9 @@ pub fn decide_revoke_invitation(
         return Err(InvitationError::AlreadyAccepted);
     }
     Ok(RevokeInvitationDecision {
-        actor_id: command.actor_id,
-        household_id: command.household_id,
-        invitation_id: command.invitation_id,
+        actor_id: actor_id.0,
+        household_id: household_id.0,
+        invitation_id: invitation_id.0,
         already_revoked,
     })
 }

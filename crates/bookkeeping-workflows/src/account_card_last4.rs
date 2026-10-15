@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetCardLast4Command {
     pub actor_id: String,
@@ -26,6 +28,7 @@ pub struct AccountCardLast4Updated {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetCardLast4Error {
+    InvalidIdentifier,
     InvalidCardLast4,
     CardAccountRequired,
 }
@@ -33,6 +36,8 @@ pub enum SetCardLast4Error {
 pub fn decide_set_card_last4(
     command: SetCardLast4Command,
 ) -> Result<SetCardLast4Decision, SetCardLast4Error> {
+    let actor_id = ActorId::new(command.actor_id)?;
+    let account_id = AccountId::new(command.account_id)?;
     if command.account_kind != "CARD" {
         return Err(SetCardLast4Error::CardAccountRequired);
     }
@@ -45,15 +50,34 @@ pub fn decide_set_card_last4(
     let changed = command.current != command.next;
     let event = changed.then(|| AccountCardLast4Updated {
         event_type: "account.card_last4_updated",
-        entity_id: command.account_id.clone(),
+        entity_id: account_id.0.clone(),
         revision: 1,
         changed_fields: ["cardLast4"],
     });
     Ok(SetCardLast4Decision {
-        actor_id: command.actor_id,
-        account_id: command.account_id,
+        actor_id: actor_id.0,
+        account_id: account_id.0,
         card_last4: command.next,
         changed,
         event,
     })
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ActorId(String);
+
+impl ActorId {
+    fn new(value: String) -> Result<Self, SetCardLast4Error> {
+        Uuid::parse_str(&value).map_err(|_| SetCardLast4Error::InvalidIdentifier)?;
+        Ok(Self(value))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AccountId(String);
+
+impl AccountId {
+    fn new(value: String) -> Result<Self, SetCardLast4Error> {
+        Uuid::parse_str(&value).map_err(|_| SetCardLast4Error::InvalidIdentifier)?;
+        Ok(Self(value))
+    }
 }
