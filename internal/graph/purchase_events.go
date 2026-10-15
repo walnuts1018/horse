@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
@@ -101,36 +102,95 @@ func purchaseChange(event *models.HouseholdEvent) (*model.PurchaseChange, bool) 
 	}, true
 }
 
-func purchaseForChange(ctx context.Context, db *pgxpool.Pool, event *models.HouseholdEvent) (*model.Purchase, error) {
-	purchaseID := event.EntityID.String()
-	switch event.Type {
-	case "purchase.item.updated":
-		item, err := models.PurchaseItems.Query(sm.Where(psql.And(
-			models.PurchaseItems.Columns.ID.EQ(psql.Arg(event.EntityID)),
-			models.PurchaseItems.Columns.HouseholdID.EQ(psql.Arg(event.HouseholdID)),
-		))).One(ctx, bobpgx.NewPool(db))
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
+type purchaseEventKey struct {
+	householdID uuid.UUID
+	purchaseID  uuid.UUID
+}
+
+type purchaseItemEventKey struct {
+	householdID uuid.UUID
+	itemID      uuid.UUID
+}
+
+func purchaseForChanges(ctx context.Context, db *pgxpool.Pool, events []*models.HouseholdEvent) (map[int64]*model.Purchase, error) {
+	itemConditions := make([]bob.Expression, 0, len(events))
+	eventPurchaseKeys := make(map[int64]purchaseEventKey, len(events))
+	itemEvents := make(map[purchaseItemEventKey][]*models.HouseholdEvent)
+	for _, event := range events {
+		switch event.Type {
+		case "purchase.item.updated":
+			itemConditions = append(itemConditions, psql.And(
+				models.PurchaseItems.Columns.ID.EQ(psql.Arg(event.EntityID)),
+				models.PurchaseItems.Columns.HouseholdID.EQ(psql.Arg(event.HouseholdID)),
+			))
+			key := purchaseItemEventKey{householdID: event.HouseholdID, itemID: event.EntityID}
+			itemEvents[key] = append(itemEvents[key], event)
+		case "purchase.item.deleted":
+			purchaseID, ok := deletedPurchaseID(event)
+			if !ok {
+				continue
+			}
+			id, err := uuid.FromString(purchaseID)
+			if err != nil {
+				continue
+			}
+			eventPurchaseKeys[event.Cursor] = purchaseEventKey{householdID: event.HouseholdID, purchaseID: id}
+		default:
+			eventPurchaseKeys[event.Cursor] = purchaseEventKey{householdID: event.HouseholdID, purchaseID: event.EntityID}
 		}
+	}
+
+	executor := bobpgx.NewPool(db)
+	if len(itemConditions) > 0 {
+		items, err := models.PurchaseItems.Query(sm.Where(psql.Or(itemConditions...))).All(ctx, executor)
 		if err != nil {
 			return nil, err
 		}
-		purchaseID = item.PurchaseID.String()
-	case "purchase.item.deleted":
-		deletedPurchaseID, ok := deletedPurchaseID(event)
-		if !ok {
-			return nil, ErrNotFound
+		for _, item := range items {
+			key := purchaseItemEventKey{householdID: item.HouseholdID, itemID: item.ID}
+			for _, event := range itemEvents[key] {
+				eventPurchaseKeys[event.Cursor] = purchaseEventKey{householdID: item.HouseholdID, purchaseID: item.PurchaseID}
+			}
 		}
-		purchaseID = deletedPurchaseID
 	}
-	purchase, err := loadPurchase(ctx, db, purchaseID)
+
+	uniqueKeys := make(map[purchaseEventKey]struct{}, len(eventPurchaseKeys))
+	purchaseConditions := make([]bob.Expression, 0, len(eventPurchaseKeys))
+	for _, key := range eventPurchaseKeys {
+		if _, ok := uniqueKeys[key]; ok {
+			continue
+		}
+		uniqueKeys[key] = struct{}{}
+		purchaseConditions = append(purchaseConditions, psql.And(
+			models.Purchases.Columns.ID.EQ(psql.Arg(key.purchaseID)),
+			models.Purchases.Columns.HouseholdID.EQ(psql.Arg(key.householdID)),
+		))
+	}
+	if len(purchaseConditions) == 0 {
+		return make(map[int64]*model.Purchase), nil
+	}
+	purchaseRows, err := models.Purchases.Query(sm.Where(psql.Or(purchaseConditions...))).All(ctx, executor)
 	if err != nil {
 		return nil, err
 	}
-	if purchase.HouseholdID != event.HouseholdID.String() {
-		return nil, ErrNotFound
+	purchases, err := loadPurchases(ctx, db, purchaseRows)
+	if err != nil {
+		return nil, err
 	}
-	return purchase, nil
+	purchasesByKey := make(map[purchaseEventKey]*model.Purchase, len(purchases))
+	for index, purchase := range purchases {
+		row := purchaseRows[index]
+		key := purchaseEventKey{householdID: row.HouseholdID, purchaseID: row.ID}
+		purchasesByKey[key] = purchase
+	}
+	purchasesByCursor := make(map[int64]*model.Purchase, len(eventPurchaseKeys))
+	for cursor, key := range eventPurchaseKeys {
+		if purchase := purchasesByKey[key]; purchase != nil {
+			purchasesByCursor[cursor] = purchase
+		}
+	}
+
+	return purchasesByCursor, nil
 }
 
 func deletedPurchaseID(event *models.HouseholdEvent) (string, bool) {

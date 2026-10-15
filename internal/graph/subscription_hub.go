@@ -3,7 +3,6 @@ package graph
 import (
 	"cmp"
 	"context"
-	"errors"
 	"log/slog"
 	"slices"
 	"sync"
@@ -255,9 +254,22 @@ func (h *subscriptionHub) pollPurchases(ctx context.Context, cursors []purchaseS
 		return cmp.Compare(a.Cursor, b.Cursor)
 	})
 	events = events[:min(len(events), subscriptionHubPurchaseEventBatchSize)]
+	batchEvents := make([]*models.HouseholdEvent, 0, len(events))
+	for _, event := range events {
+		if _, ok := purchaseChange(event); ok && h.hasAvailablePurchaseWatch(event.HouseholdID, event.Cursor, nil) {
+			batchEvents = append(batchEvents, event)
+		}
+	}
+	batchPurchases, err := purchaseForChanges(ctx, h.db, batchEvents)
+	if err != nil {
+		return false, err
+	}
+	batchEventCursors := make(map[int64]struct{}, len(batchEvents))
+	for _, event := range batchEvents {
+		batchEventCursors[event.Cursor] = struct{}{}
+	}
 	blocked := make(map[uint64]bool)
 	delivered := false
-	var err error
 	for _, event := range events {
 		change, ok := purchaseChange(event)
 		if !ok {
@@ -268,13 +280,18 @@ func (h *subscriptionHub) pollPurchases(ctx context.Context, cursors []purchaseS
 			h.blockFullPurchaseWatches(event.HouseholdID, event.Cursor, blocked)
 			continue
 		}
-		change.Purchase, err = purchaseForChange(ctx, h.db, event)
-		if errors.Is(err, ErrNotFound) {
+		if _, batched := batchEventCursors[event.Cursor]; batched {
+			change.Purchase = batchPurchases[event.Cursor]
+		} else {
+			loaded, err := purchaseForChanges(ctx, h.db, []*models.HouseholdEvent{event})
+			if err != nil {
+				return false, err
+			}
+			change.Purchase = loaded[event.Cursor]
+		}
+		if change.Purchase == nil {
 			h.advancePurchaseCursors(event.HouseholdID, event.Cursor, blocked)
 			continue
-		}
-		if err != nil {
-			return false, err
 		}
 		delivered = h.publishPurchaseChange(event.HouseholdID, event.Cursor, change, blocked) || delivered
 	}
