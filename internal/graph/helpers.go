@@ -11,6 +11,7 @@ import (
 
 	"uuid"
 
+	"github.com/99designs/gqlgen/graphql"
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob"
@@ -426,8 +427,11 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 		return []*model.Purchase{}, nil
 	}
 	executor := queryExecutor(db)
-	if err := purchases.LoadAccount(ctx, executor); err != nil {
-		return nil, err
+	loadPaymentAllocations := shouldLoadPurchasePaymentAllocations(ctx)
+	if loadPaymentAllocations {
+		if err := purchases.LoadAccount(ctx, executor); err != nil {
+			return nil, err
+		}
 	}
 	if err := purchases.LoadEvidenceLinks(ctx, executor); err != nil {
 		return nil, err
@@ -438,8 +442,10 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 	if err := purchases.LoadPurchaseItems(ctx, executor, sm.OrderBy(models.PurchaseItems.Columns.CreatedAt), sm.OrderBy(models.PurchaseItems.Columns.ID)); err != nil {
 		return nil, err
 	}
-	if err := purchases.LoadPurchasePayments(ctx, executor, sm.OrderBy(models.PurchasePayments.Columns.LineNo)); err != nil {
-		return nil, err
+	if loadPaymentAllocations {
+		if err := purchases.LoadPurchasePayments(ctx, executor, sm.OrderBy(models.PurchasePayments.Columns.LineNo)); err != nil {
+			return nil, err
+		}
 	}
 	correctionAggregates, err := aggregatePurchaseCorrections(ctx, db, purchases)
 	if err != nil {
@@ -454,7 +460,9 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 		items = append(items, purchase.R.PurchaseItems...)
 		evidenceLinks = append(evidenceLinks, purchase.R.EvidenceLinks...)
 		confirmations = append(confirmations, purchase.R.DocumentConfirmations...)
-		payments = append(payments, purchase.R.PurchasePayments...)
+		if loadPaymentAllocations {
+			payments = append(payments, purchase.R.PurchasePayments...)
+		}
 	}
 	itemCorrectionAggregates, err := aggregatePurchaseItemCorrections(ctx, db, items)
 	if err != nil {
@@ -484,11 +492,24 @@ func loadPurchases(ctx context.Context, db *pgxpool.Pool, purchases models.Purch
 	if err := itemTags.LoadTag(ctx, executor); err != nil {
 		return nil, err
 	}
-	if err := payments.LoadAccount(ctx, executor); err != nil {
-		return nil, err
+	if loadPaymentAllocations {
+		if err := payments.LoadAccount(ctx, executor); err != nil {
+			return nil, err
+		}
 	}
 
 	return mapPurchases(purchases, correctionAggregates, itemCorrectionAggregates)
+}
+
+func shouldLoadPurchasePaymentAllocations(ctx context.Context) bool {
+	if !graphql.HasOperationContext(ctx) {
+		return true
+	}
+	fieldContext := graphql.GetFieldContext(ctx)
+	if fieldContext == nil || fieldContext.Field.Name != "purchases" {
+		return true
+	}
+	return graphql.FieldRequested(ctx, "edges.node.paymentAllocations")
 }
 
 func graphAccount(account *models.Account) *model.Account {
