@@ -4,6 +4,8 @@ use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId, PositiveYen
 
 pub mod close_period;
 pub mod correct_purchase;
+pub mod record_repayment;
+pub mod record_transfer;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PurchaseId(String);
