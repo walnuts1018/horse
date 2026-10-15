@@ -185,7 +185,6 @@ export function ImportDocumentReview({
       </div>
       <StatementReview
         document={document}
-        purchases={purchases}
         household={household}
         accounts={household.accounts}
         confirmedStatements={review.confirmedStatements}

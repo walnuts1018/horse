@@ -7,6 +7,7 @@ import {
   loanBalancesQuery,
   statementTransferCandidatesQuery,
 } from "../../../entities/ledger";
+import { mapPurchase, purchaseHistoryQuery } from "../../../entities/purchase";
 import {
   getRelayEnvironment,
   type Account,
@@ -15,6 +16,7 @@ import {
   type Household,
   type LoanBalancesQuery,
   type Purchase,
+  type PurchaseHistoryQuery,
   type StatementTransferCandidatesQuery,
   type StatementRefundCorrectionsQuery,
 } from "../../../shared/api";
@@ -29,7 +31,6 @@ import {
 
 export function StatementReview({
   document,
-  purchases,
   household,
   accounts,
   confirmedStatements,
@@ -45,7 +46,6 @@ export function StatementReview({
   onSelectRegion,
 }: {
   document: DocumentReview;
-  purchases: Purchase[];
   household: Household;
   accounts: Account[];
   confirmedStatements: Set<string>;
@@ -73,6 +73,13 @@ export function StatementReview({
   const [refundTargets, setRefundTargets] = useState<
     Record<string, { purchaseId: string; itemId: string }>
   >({});
+  const [refundPurchaseCandidates, setRefundPurchaseCandidates] = useState<
+    Record<string, Purchase[]>
+  >({});
+  const [refundPurchaseCandidateState, setRefundPurchaseCandidateState] = useState<
+    Record<string, { loading: boolean; error: boolean }>
+  >({});
+  const loadedRefundPurchaseCandidates = useRef(new Set<string>());
   const [refundCorrectionTargets, setRefundCorrectionTargets] = useState<Record<string, string>>(
     {},
   );
@@ -362,6 +369,66 @@ export function StatementReview({
     });
   };
   const statements = document.result?.statements;
+  const loadRefundPurchaseCandidates = useCallback(
+    (entry: StatementEntry) => {
+      const reference = statementSourceReference(entry);
+      const key = `${household.id}:${document.id}:${reference}`;
+      if (loadedRefundPurchaseCandidates.current.has(key)) return;
+      loadedRefundPurchaseCandidates.current.add(key);
+      setRefundPurchaseCandidateState((current) => ({
+        ...current,
+        [key]: { loading: true, error: false },
+      }));
+      const amount = Math.abs(entry.amount);
+      const filters = ["PURCHASE", "ITEM"] as const;
+      const searchCandidates = async (search?: string) => {
+        const results = await Promise.all(
+          filters.map((amountTarget) =>
+            fetchQuery<PurchaseHistoryQuery>(getRelayEnvironment(), purchaseHistoryQuery, {
+              filter: {
+                householdId: household.id,
+                search,
+                minimumAmount: amount,
+                maximumAmount: amount,
+                amountTarget,
+              },
+              first: 100,
+              after: null,
+            }).toPromise(),
+          ),
+        );
+        const candidates = new Map<string, Purchase>();
+        for (const result of results) {
+          for (const { node } of result?.purchases.edges ?? []) {
+            if (node.status !== "DRAFT") candidates.set(node.id, mapPurchase(node));
+          }
+        }
+        return [...candidates.values()];
+      };
+      searchCandidates(entry.merchant.trim() || undefined)
+        .then((candidates) =>
+          candidates.length || !entry.merchant.trim() ? candidates : searchCandidates(),
+        )
+        .then((candidates) => {
+          setRefundPurchaseCandidates((current) => ({
+            ...current,
+            [key]: candidates,
+          }));
+          setRefundPurchaseCandidateState((current) => ({
+            ...current,
+            [key]: { loading: false, error: false },
+          }));
+        })
+        .catch(() => {
+          loadedRefundPurchaseCandidates.current.delete(key);
+          setRefundPurchaseCandidateState((current) => ({
+            ...current,
+            [key]: { loading: false, error: true },
+          }));
+        });
+    },
+    [document.id, household.id],
+  );
   if (!statements) return null;
 
   return (
@@ -504,6 +571,9 @@ export function StatementReview({
         const selectedMovementId = transferAccounts.existingMovementId ?? "";
         const loanDraft = transferAccounts;
         const refundCandidates = refundCorrectionCandidates[key] ?? [];
+        const purchaseCandidateKey = `${household.id}:${key}`;
+        const purchaseCandidates = refundPurchaseCandidates[purchaseCandidateKey] ?? [];
+        const purchaseCandidateState = refundPurchaseCandidateState[purchaseCandidateKey];
         const refundCorrectionPage = refundCorrectionPages[key];
         return (
           <div
@@ -552,6 +622,7 @@ export function StatementReview({
                       <select
                         value={refundTarget.purchaseId}
                         disabled={pending}
+                        onFocus={() => loadRefundPurchaseCandidates(entry)}
                         onChange={(event) =>
                           setRefundTargets((current) => ({
                             ...current,
@@ -560,18 +631,33 @@ export function StatementReview({
                         }
                       >
                         <option value="">買い物を選択</option>
-                        {purchases
-                          .filter((purchase) => purchase.status !== "DRAFT")
-                          .map((purchase) => (
-                            <option key={purchase.id} value={purchase.id}>
-                              {new Date(purchase.occurredAt).toLocaleDateString("ja-JP", {
-                                timeZone: "Asia/Tokyo",
-                              })}{" "}
-                              {purchase.merchant} · {yen(purchase.totalYen)}
-                            </option>
-                          ))}
+                        {purchaseCandidates.map((purchase) => (
+                          <option key={purchase.id} value={purchase.id}>
+                            {new Date(purchase.occurredAt).toLocaleDateString("ja-JP", {
+                              timeZone: "Asia/Tokyo",
+                            })}{" "}
+                            {purchase.merchant} · {yen(purchase.totalYen)}
+                          </option>
+                        ))}
                       </select>
                     </label>
+                    {purchaseCandidateState?.loading && <small>購入候補を検索しています</small>}
+                    {purchaseCandidateState?.error && (
+                      <small role="alert">
+                        購入候補を読み込めませんでした
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => loadRefundPurchaseCandidates(entry)}
+                        >
+                          再試行
+                        </button>
+                      </small>
+                    )}
+                    {purchaseCandidateState &&
+                      !purchaseCandidateState.loading &&
+                      !purchaseCandidateState.error &&
+                      purchaseCandidates.length === 0 && <small>購入候補が見つかりません</small>}
                     {refundTarget.purchaseId && (
                       <label>
                         <span>品目</span>
@@ -586,7 +672,7 @@ export function StatementReview({
                           }
                         >
                           <option value="">買い物全体</option>
-                          {purchases
+                          {purchaseCandidates
                             .find((purchase) => purchase.id === refundTarget.purchaseId)
                             ?.items.map((item) => (
                               <option key={item.id} value={item.id}>

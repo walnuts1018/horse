@@ -120,13 +120,9 @@ export function useImportConfirmation({
 }) {
   const createAndPostPurchase = useCreateAndPostPurchase();
   const { mutate: correctPurchaseFromStatement } = useCorrectPurchaseFromStatementMutation();
-  const hasRefundStatements = selectedDocument?.result?.statements?.some(
-    (entry) => entry.kind === "REFUND" && entry.amount < 0,
-  );
   const { purchases: recentPurchases, refresh: refreshPurchases } = useHouseholdPurchases(
     household.id,
     100,
-    { loadAll: hasRefundStatements },
   );
   const [locallyConfirmedStatements, setConfirmedStatements] = useState<Set<string>>(
     () => new Set(),
