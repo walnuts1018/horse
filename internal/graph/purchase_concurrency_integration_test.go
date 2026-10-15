@@ -195,6 +195,237 @@ func TestPurchaseConcurrentUpdatesMergeDisjointFieldsAndConflictOnSameField(t *t
 	assertEventCursorCommitOrder(t, ctx, db, householdUUID, memberUUID, purchaseUUID)
 }
 
+func TestPurchaseItemConcurrentUpdatesPreserveAmountAllocationsAndJournal(t *testing.T) {
+	t.Parallel()
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("HORSE_TEST_DATABASE_URL is not set")
+	}
+	ctx := t.Context()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(db.Close)
+	if err := db.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	memberID := uuid.NewV7().String()
+	memberUUID := generatedUUID(memberID)
+	subject, displayName := "purchase-item-concurrency:"+memberID, "Purchase item concurrency"
+	if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberUUID, OidcSubject: &subject, DisplayName: &displayName}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
+	})
+	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: displayName})
+	mutation := &mutationResolver{Resolver: &Resolver{DB: db}}
+	household, err := mutation.createHousehold(ctx, model.CreateHouseholdInput{Name: "Purchase item concurrency"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	householdUUID := generatedUUID(household.ID)
+	t.Cleanup(func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID)))).Exec(context.WithoutCancel(t.Context()), bobpgx.NewPool(db))
+	})
+
+	poolA, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "A", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	poolB, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: household.ID, Name: "B", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pool := range []*model.Pool{poolA, poolB} {
+		if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{
+			HouseholdID: household.ID, PoolID: pool.ID, Configuration: personalPoolFundingConfiguration(memberID), ExpectedVersion: 1,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := mutation.setDefaultAllocation(ctx, model.SetDefaultAllocationInput{
+		HouseholdID: household.ID, Allocations: []*model.AllocationInput{{PoolID: poolA.ID, Weight: 1}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	account, err := mutation.createAccount(ctx, model.CreateAccountInput{
+		HouseholdID: household.ID, Name: "Purchase card", Kind: model.AccountKindCard, PoolID: &poolA.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	purchase, err := mutation.createPurchase(ctx, model.CreatePurchaseInput{
+		IdempotencyKey: uuid.NewV7().String(), HouseholdID: household.ID, OccurredAt: "2026-10-14T11:00:00+09:00", Merchant: "Concurrent market",
+		PaymentAllocations: []*model.PurchasePaymentInput{{PaymentAccountID: account.ID, AmountYen: 1000}},
+		Items:              []*model.PurchaseItemInput{{Name: testPurchaseItemName, AmountYen: 1000}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	purchase, err = mutation.postPurchase(ctx, purchase.ID, purchase.Revision, uuid.NewV7().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := purchase.Items[0]
+
+	newAmount := model.Long(1200)
+	newName := "Concurrent item name"
+	baseRevision := int(item.Revision)
+	mergedResults := runConcurrentPurchaseItemUpdates(ctx, mutation,
+		model.UpdatePurchaseItemInput{ItemID: item.ID, BaseRevision: baseRevision, AmountYen: omittable(&newAmount)},
+		model.UpdatePurchaseItemInput{
+			ItemID: item.ID, BaseRevision: baseRevision, Name: omittable(&newName),
+			Allocations: omittable([]*model.AllocationInput{{PoolID: poolA.ID, Weight: 1}, {PoolID: poolB.ID, Weight: 1}}),
+		},
+	)
+	for _, result := range mergedResults {
+		if result.err != nil {
+			t.Fatalf("disjoint item update failed: %v", result.err)
+		}
+		if _, ok := result.value.(*model.UpdatePurchaseItemSuccess); !ok {
+			t.Fatalf("disjoint item update returned an unexpected result: %#v", result.value)
+		}
+	}
+	updatedPurchase, err := loadPurchase(ctx, db, purchase.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedItem := updatedPurchase.Items[0]
+	if updatedItem.Name != newName || updatedItem.AmountYen != newAmount {
+		t.Fatalf("disjoint item fields were lost: item=%#v", updatedItem)
+	}
+	assertConcurrentPurchaseItemState(t, ctx, db, householdUUID, purchase.ID, updatedItem.ID, 1200, map[gofrsuuid.UUID]int64{
+		generatedUUID(poolA.ID): 600,
+		generatedUUID(poolB.ID): 600,
+	})
+
+	amountA, amountB := model.Long(1600), model.Long(2000)
+	conflictResults := runConcurrentPurchaseItemUpdates(ctx, mutation,
+		model.UpdatePurchaseItemInput{ItemID: item.ID, BaseRevision: int(updatedItem.Revision), AmountYen: omittable(&amountA)},
+		model.UpdatePurchaseItemInput{ItemID: item.ID, BaseRevision: int(updatedItem.Revision), AmountYen: omittable(&amountB)},
+	)
+	var successfulAmount model.Long
+	successCount, conflictCount := 0, 0
+	for _, result := range conflictResults {
+		if result.err != nil {
+			t.Fatalf("same-field item update returned an execution error instead of a typed result: %v", result.err)
+		}
+		switch typed := result.value.(type) {
+		case *model.UpdatePurchaseItemSuccess:
+			successCount++
+			successfulAmount = typed.Result.AmountYen
+		case *model.UpdatePurchaseItemUserError:
+			if typed.Code != model.MutationErrorCodeConflict {
+				t.Fatalf("same-field item update returned %q; want typed CONFLICT", typed.Code)
+			}
+			conflictCount++
+		default:
+			t.Fatalf("same-field item update returned an unexpected result: %#v", result.value)
+		}
+	}
+	if successCount != 1 || conflictCount != 1 {
+		t.Fatalf("same-field item updates returned %d successes and %d conflicts; want one of each", successCount, conflictCount)
+	}
+	updatedPurchase, err = loadPurchase(ctx, db, purchase.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedItem = updatedPurchase.Items[0]
+	if updatedItem.AmountYen != successfulAmount {
+		t.Fatalf("reloaded item amount %d does not match successful update %d", updatedItem.AmountYen, successfulAmount)
+	}
+	firstAllocation, secondAllocation := int64(successfulAmount)/2, int64(successfulAmount)/2
+	if int64(successfulAmount)%2 != 0 {
+		secondAllocation++
+	}
+	assertConcurrentPurchaseItemState(t, ctx, db, householdUUID, purchase.ID, updatedItem.ID, int64(successfulAmount), map[gofrsuuid.UUID]int64{
+		generatedUUID(poolA.ID): firstAllocation,
+		generatedUUID(poolB.ID): secondAllocation,
+	})
+}
+
+func assertConcurrentPurchaseItemState(t *testing.T, ctx context.Context, db *pgxpool.Pool, householdID gofrsuuid.UUID, purchaseID, itemID string, amount int64, wantAllocations map[gofrsuuid.UUID]int64) {
+	t.Helper()
+	executor := bobpgx.NewPool(db)
+	purchaseUUID, itemUUID := generatedUUID(purchaseID), generatedUUID(itemID)
+	storedItem, err := models.PurchaseItems.Query(sm.Where(psql.And(
+		models.PurchaseItems.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+		models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID)),
+	))).One(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if storedItem.AmountYen != amount {
+		t.Fatalf("stored item amount = %d; want %d", storedItem.AmountYen, amount)
+	}
+	allocations, err := models.ItemAllocations.Query(sm.Where(psql.And(
+		models.ItemAllocations.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.ItemAllocations.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+		models.ItemAllocations.Columns.ItemID.EQ(psql.Arg(itemUUID)),
+	))).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var allocated int64
+	gotAllocations := make(map[gofrsuuid.UUID]int64, len(allocations))
+	for _, allocation := range allocations {
+		allocated += allocation.AmountYen
+		gotAllocations[allocation.PoolID] = allocation.AmountYen
+	}
+	if allocated != amount || len(gotAllocations) != len(wantAllocations) {
+		t.Fatalf("allocation total or rows differ: allocated=%d rows=%v; want total=%d rows=%v", allocated, gotAllocations, amount, wantAllocations)
+	}
+	for poolID, wantAmount := range wantAllocations {
+		if gotAllocations[poolID] != wantAmount {
+			t.Errorf("pool %s allocation = %d; want %d", poolID, gotAllocations[poolID], wantAmount)
+		}
+	}
+
+	payments, err := models.PurchasePayments.Query(sm.Where(psql.And(
+		models.PurchasePayments.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.PurchasePayments.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+	))).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paymentTotal int64
+	for _, payment := range payments {
+		paymentTotal += payment.AmountYen
+	}
+	if paymentTotal != amount {
+		t.Fatalf("purchase payment total = %d; want %d", paymentTotal, amount)
+	}
+
+	journals, err := models.Journals.Query(sm.Where(psql.And(
+		models.Journals.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.Journals.Columns.SourceKind.EQ(psql.Arg(sourceKindPurchase)),
+		models.Journals.Columns.SourceID.EQ(psql.Arg(purchaseUUID)),
+	))).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(journals) != 1 {
+		t.Fatalf("purchase journal count = %d; want 1", len(journals))
+	}
+	entries, err := models.JournalEntries.Query(sm.Where(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(journals[0].ID)))).All(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var debits, credits int64
+	for _, entry := range entries {
+		debits += entry.DebitYen
+		credits += entry.CreditYen
+	}
+	if debits != amount || credits != amount {
+		t.Fatalf("purchase journal debit/credit = %d/%d; want %d/%d", debits, credits, amount, amount)
+	}
+	assertHouseholdJournalsBalance(t, ctx, db, householdID)
+}
+
 func assertEventCursorCommitOrder(t *testing.T, ctx context.Context, db *pgxpool.Pool, householdID, actorID, entityID gofrsuuid.UUID) {
 	t.Helper()
 	executor := bobpgx.NewPool(db)
@@ -281,6 +512,32 @@ func runConcurrentPurchaseUpdates(ctx context.Context, mutation *mutationResolve
 	workers.Wait()
 	close(results)
 	updates := make([]concurrentPurchaseUpdateResult, 0, len(inputs))
+	for result := range results {
+		updates = append(updates, result)
+	}
+	return updates
+}
+
+type concurrentPurchaseItemUpdateResult struct {
+	value model.UpdatePurchaseItemResult
+	err   error
+}
+
+func runConcurrentPurchaseItemUpdates(ctx context.Context, mutation *mutationResolver, inputs ...model.UpdatePurchaseItemInput) []concurrentPurchaseItemUpdateResult {
+	start := make(chan struct{})
+	results := make(chan concurrentPurchaseItemUpdateResult, len(inputs))
+	var workers sync.WaitGroup
+	for _, input := range inputs {
+		workers.Go(func() {
+			<-start
+			value, err := mutation.UpdatePurchaseItem(ctx, input)
+			results <- concurrentPurchaseItemUpdateResult{value: value, err: err}
+		})
+	}
+	close(start)
+	workers.Wait()
+	close(results)
+	updates := make([]concurrentPurchaseItemUpdateResult, 0, len(inputs))
 	for result := range results {
 		updates = append(updates, result)
 	}
