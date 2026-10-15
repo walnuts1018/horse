@@ -162,35 +162,38 @@ pub fn decide_record_repayment(
     if let Some(source) = &command.source {
         push_journal_pair(
             &mut journal_lines,
-            Side::Credit,
-            Side::Debit,
-            amount,
-            Some(source.pool_id.clone()),
-            None,
-            "Transfer settlement",
-            "Transfer settlement offset",
+            JournalPair {
+                sides: (Side::Credit, Side::Debit),
+                amount,
+                pool_id: Some(source.pool_id.clone()),
+                account_id: None,
+                memos: ("Transfer settlement", "Transfer settlement offset"),
+            },
         )?;
         push_journal_pair(
             &mut journal_lines,
-            Side::Credit,
-            Side::Debit,
-            amount,
-            None,
-            Some(source.account_id.clone()),
-            "Transfer source account",
-            "Transfer source account offset",
+            JournalPair {
+                sides: (Side::Credit, Side::Debit),
+                amount,
+                pool_id: None,
+                account_id: Some(source.account_id.clone()),
+                memos: ("Transfer source account", "Transfer source account offset"),
+            },
         )?;
     }
     if let Some(destination) = &command.destination_account {
         push_journal_pair(
             &mut journal_lines,
-            Side::Debit,
-            Side::Credit,
-            amount,
-            None,
-            Some(destination.clone()),
-            "Transfer destination account",
-            "Transfer destination account offset",
+            JournalPair {
+                sides: (Side::Debit, Side::Credit),
+                amount,
+                pool_id: None,
+                account_id: Some(destination.clone()),
+                memos: (
+                    "Transfer destination account",
+                    "Transfer destination account offset",
+                ),
+            },
         )?;
     }
 
@@ -232,15 +235,17 @@ pub fn decide_record_repayment(
     })
 }
 
-fn push_journal_pair(
-    lines: &mut Vec<RepaymentJournalLine>,
-    first_side: Side,
-    second_side: Side,
+struct JournalPair {
+    sides: (Side, Side),
     amount: PositiveYen,
     pool_id: Option<PoolId>,
     account_id: Option<AccountId>,
-    first_memo: &'static str,
-    second_memo: &'static str,
+    memos: (&'static str, &'static str),
+}
+
+fn push_journal_pair(
+    lines: &mut Vec<RepaymentJournalLine>,
+    pair: JournalPair,
 ) -> Result<(), RepaymentError> {
     let first_line_no =
         u32::try_from(lines.len() + 1).map_err(|_| RepaymentError::JournalLineCountOverflow)?;
@@ -249,21 +254,21 @@ fn push_journal_pair(
         .ok_or(RepaymentError::JournalLineCountOverflow)?;
     lines.push(RepaymentJournalLine {
         line_no: first_line_no,
-        side: first_side,
+        side: pair.sides.0,
         member_id: None,
-        pool_id,
-        account_id: account_id.clone(),
-        amount,
-        memo: first_memo,
+        pool_id: pair.pool_id,
+        account_id: pair.account_id.clone(),
+        amount: pair.amount,
+        memo: pair.memos.0,
     });
     lines.push(RepaymentJournalLine {
         line_no: second_line_no,
-        side: second_side,
+        side: pair.sides.1,
         member_id: None,
         pool_id: None,
         account_id: None,
-        amount,
-        memo: second_memo,
+        amount: pair.amount,
+        memo: pair.memos.1,
     });
     Ok(())
 }

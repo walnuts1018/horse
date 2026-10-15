@@ -32,6 +32,11 @@ pub trait CreatePurchaseOperations {
         actor_id: &str,
     ) -> Result<(), Self::Error>;
 
+    async fn replay_existing(
+        &mut self,
+        persistence: &CreatePurchasePersistence,
+    ) -> Result<Option<CreatedPurchase>, Self::Error>;
+
     async fn load_allocation_context(
         &mut self,
         household_id: &str,
@@ -54,6 +59,13 @@ pub async fn create_purchase<O: CreatePurchaseOperations>(
         .require_active_member(&command.household_id, &command.actor_id)
         .await
         .map_err(CreatePurchaseWorkflowError::Operations)?;
+    if let Some(existing) = operations
+        .replay_existing(&command.persistence)
+        .await
+        .map_err(CreatePurchaseWorkflowError::Operations)?
+    {
+        return Ok(existing);
+    }
 
     let merchant_key = normalize_merchant(&command.purchase.merchant);
     let allocation_inputs = command

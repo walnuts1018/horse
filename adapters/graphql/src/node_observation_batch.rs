@@ -193,7 +193,7 @@ pub(crate) async fn load(
                 continue;
             };
             let purchase = purchase.clone();
-            Observation::ConfirmedObservation(ConfirmedObservation {
+            Observation::ConfirmedObservation(Box::new(ConfirmedObservation {
                 id,
                 document_id: document_id_value,
                 source_reference,
@@ -204,9 +204,9 @@ pub(crate) async fn load(
                 order_id,
                 transaction_id,
                 purchase,
-            })
+            }))
         } else {
-            Observation::UnmatchedObservation(UnmatchedObservation {
+            Observation::UnmatchedObservation(Box::new(UnmatchedObservation {
                 id,
                 document_id: document_id_value,
                 source_reference,
@@ -216,7 +216,7 @@ pub(crate) async fn load(
                 amount_yen,
                 order_id,
                 transaction_id,
-            })
+            }))
         };
         result.insert(key, Node::Observation(node));
     }

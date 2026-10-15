@@ -154,7 +154,7 @@ pub async fn record_funding_workflow(
             )),
         )
     })?;
-    let result = (&mut *pooled)
+    (*pooled)
         .transaction::<
             Result<_, application::RecordFundingWorkflowError<RecordFundingWorkflowAdapterError>>,
             DieselError,
@@ -170,8 +170,7 @@ pub async fn record_funding_workflow(
                     RecordFundingPersistenceError::Database(error),
                 ),
             )
-        })?;
-    result
+        })?
 }
 
 struct PgRecordFundingOperations<'a> {
@@ -558,21 +557,6 @@ async fn persist_record_funding_in_transaction(
         ledger_entry_id: ledger_entry_id.to_string(),
     })
 }
-async fn ensure_open_period(
-    conn: &mut diesel_async::AsyncPgConnection,
-    household_id: Uuid,
-    period_start: NaiveDate,
-    expected_revision: u64,
-) -> Result<(), RecordFundingPersistenceError> {
-    let (status, revision) = lock_accounting_period(conn, household_id, period_start).await?;
-    let expected_revision = i64::try_from(expected_revision)
-        .map_err(|_| RecordFundingPersistenceError::InvalidDecision)?;
-    if status != "OPEN" || revision != expected_revision {
-        return Err(RecordFundingPersistenceError::AccountingPeriodClosed);
-    }
-    Ok(())
-}
-
 async fn lock_accounting_period(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,

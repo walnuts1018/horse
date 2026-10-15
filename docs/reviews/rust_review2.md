@@ -8,7 +8,7 @@
 
 Rust Workspaceは`apps/`、`contexts/<bounded-context>/{domain,application,postgres}`、`contexts/cross-context/postgres`、`adapters/`、`platform/postgres-common`に分割されています。Context単位のcrate配置とGraphQL・WorkerのComposition Rootは、現在のディレクトリ構成と一致しています。
 
-Policy ContextにはBudget、RecurringExpense、AllocationRuleが置かれています。これらが同じ業務モデルを共有する根拠と、Bookkeepingとの所有境界はまだ明文化されていません。今後これらの機能を変更するときは、業務ルールの所有者と他Contextへの公開契約を確認してください。
+Policy ContextはBudget、RecurringExpense、AllocationRule、入金予定（`funding_schedules`）を所有します。月次のfunding obligationsとsettlementsはBookkeeping Contextが所有します。
 
 ## 2. WorkflowとTransaction
 

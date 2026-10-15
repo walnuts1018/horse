@@ -140,10 +140,9 @@ pub async fn account_balance_analysis_for_period(
     }
 
     let opening_at = grouped_changes
-        .iter()
-        .map(|(_, row)| row)
+        .values()
         .filter(|row| row.source_kind == OPENING_BALANCE_SOURCE_KIND && row.source_id == account_id)
-        .map(|row| row.occurred_at.clone())
+        .map(|row| row.occurred_at)
         .min();
     let mut changes = Vec::with_capacity(grouped_changes.len());
     for (_, row) in grouped_changes {
@@ -159,7 +158,7 @@ pub async fn account_balance_analysis_for_period(
     }
     changes.sort_by_key(|(row, _)| {
         (
-            row.occurred_at.clone(),
+            row.occurred_at,
             i32::from(row.source_kind != OPENING_BALANCE_SOURCE_KIND),
             row.journal_id,
         )
@@ -199,13 +198,13 @@ pub async fn account_balance_analysis_for_period(
             .find(|change| change.journal_id == cursor_id)
             .ok_or(AccountBalanceAnalysisError::CursorNotFound)?;
         let cursor_key = (
-            cursor.occurred_at.clone(),
+            cursor.occurred_at,
             cursor.source_kind == OPENING_BALANCE_SOURCE_KIND,
             cursor.journal_id,
         );
         period_changes.retain(|change| {
             (
-                change.occurred_at.clone(),
+                change.occurred_at,
                 change.source_kind == OPENING_BALANCE_SOURCE_KIND,
                 change.journal_id,
             ) < cursor_key

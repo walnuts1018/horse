@@ -47,7 +47,8 @@ fn map_purchase_error(error: PurchaseCommandResultError) -> Error {
         PurchaseCommandResultError::Pool(_) | PurchaseCommandResultError::Database(_) => {
             crate::internal_error(error)
         }
-        PurchaseCommandResultError::NumericOutOfRange => crate::internal_error(error),
+        PurchaseCommandResultError::NumericOutOfRange
+        | PurchaseCommandResultError::InvalidPurchaseStatus => crate::internal_error(error),
     }
 }
 

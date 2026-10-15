@@ -87,7 +87,7 @@ impl Telemetry {
 pub fn set_parent_from_headers(span: &tracing::Span, headers: &HeaderMap) {
     let parent =
         global::get_text_map_propagator(|propagator| propagator.extract(&HeaderExtractor(headers)));
-    span.set_parent(parent);
+    let _ = span.set_parent(parent);
 }
 
 enum Exporter {
@@ -98,19 +98,19 @@ enum Exporter {
 
 fn signal_exporter(signal: &str) -> Result<Exporter, Box<dyn Error + Send + Sync>> {
     let key = format!("OTEL_{signal}_EXPORTER");
-    if let Ok(value) = env::var(&key) {
-        if !value.is_empty() {
-            return match value.as_str() {
-                "none" => Ok(Exporter::None),
-                "otlp" => Ok(Exporter::Otlp),
-                "console" => Ok(Exporter::Console),
-                _ => Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("unsupported {key} value: {value}"),
-                )
-                .into()),
-            };
-        }
+    if let Ok(value) = env::var(&key)
+        && !value.is_empty()
+    {
+        return match value.as_str() {
+            "none" => Ok(Exporter::None),
+            "otlp" => Ok(Exporter::Otlp),
+            "console" => Ok(Exporter::Console),
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("unsupported {key} value: {value}"),
+            )
+            .into()),
+        };
     }
     if env::var(format!("OTEL_EXPORTER_OTLP_{signal}_ENDPOINT"))
         .is_ok_and(|value| !value.is_empty())

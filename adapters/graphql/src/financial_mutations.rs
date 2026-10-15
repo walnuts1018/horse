@@ -74,7 +74,7 @@ pub struct RecordTransferUserError {
 
 #[derive(Union)]
 pub enum RecordTransferResult {
-    Success(RecordTransferSuccess),
+    Success(Box<RecordTransferSuccess>),
     UserError(RecordTransferUserError),
 }
 
@@ -91,7 +91,7 @@ pub struct RecordRepaymentUserError {
 
 #[derive(Union)]
 pub enum RecordRepaymentResult {
-    Success(RecordRepaymentSuccess),
+    Success(Box<RecordRepaymentSuccess>),
     UserError(RecordRepaymentUserError),
 }
 
@@ -178,7 +178,7 @@ pub async fn record_transfer(
     if let Some(ledger_entry_id) = replay {
         let entry =
             load_ledger_entry(ctx.data::<PgPool>()?, parsed.household_id, &ledger_entry_id).await?;
-        return Ok(RecordTransferSuccess { result: entry }.into());
+        return Ok(Box::new(RecordTransferSuccess { result: entry }).into());
     }
     let command_context = match postgres_context::load_transfer_command_context(
         ctx.data::<PgPool>()?,
@@ -243,7 +243,7 @@ pub async fn record_transfer(
         &result.ledger_entry_id,
     )
     .await?;
-    Ok(RecordTransferSuccess { result: entry }.into())
+    Ok(Box::new(RecordTransferSuccess { result: entry }).into())
 }
 
 pub async fn record_repayment(
@@ -285,17 +285,19 @@ pub async fn record_repayment(
     if let Some(ledger_entry_id) = replay {
         let entry =
             load_ledger_entry(ctx.data::<PgPool>()?, parsed.household_id, &ledger_entry_id).await?;
-        return Ok(RecordRepaymentSuccess { result: entry }.into());
+        return Ok(Box::new(RecordRepaymentSuccess { result: entry }).into());
     }
     let command_context = match postgres_context::load_repayment_command_context(
         ctx.data::<PgPool>()?,
-        parsed.household_id,
-        parsed.loan_id,
-        parsed.payment_account_id,
-        parsed.destination_account_id,
-        parsed.from_member_id,
-        parsed.to_member_id,
-        parsed.occurred_at,
+        postgres_context::RepaymentCommandContextInput {
+            household_id: parsed.household_id,
+            loan_id: parsed.loan_id,
+            payment_account_id: parsed.payment_account_id,
+            destination_account_id: parsed.destination_account_id,
+            from_member_id: parsed.from_member_id,
+            to_member_id: parsed.to_member_id,
+            occurred_at: parsed.occurred_at,
+        },
     )
     .await
     {
@@ -345,7 +347,7 @@ pub async fn record_repayment(
         &result.ledger_entry_id,
     )
     .await?;
-    Ok(RecordRepaymentSuccess { result: entry }.into())
+    Ok(Box::new(RecordRepaymentSuccess { result: entry }).into())
 }
 
 struct ParsedTransferInput {

@@ -57,11 +57,10 @@ impl ProcessConfig {
                 .ok_or_else(|| "GEMINI_ENABLED must be a boolean".to_owned())?;
         let quota_limits =
             parse_quota_limits(&env::var("GEMINI_QUOTA_LIMITS").unwrap_or_default())?;
-        let usd_jpy_rate = env::var("USDJPY_RATE")
-            .or_else(|_| env::var("GEMINI_USDJPY_RATE"))
-            .ok()
-            .and_then(|value| value.parse::<f64>().ok())
-            .filter(|value| value.is_finite() && *value > 0.0)
+        let usd_jpy_rate_override = configured_exchange_rate("USDJPY_RATE")?;
+        let legacy_usd_jpy_rate_override = configured_exchange_rate("GEMINI_USDJPY_RATE")?;
+        let usd_jpy_rate = usd_jpy_rate_override
+            .or(legacy_usd_jpy_rate_override)
             .unwrap_or(158.535);
         let usd_jpy_rate_source = env::var("USDJPY_RATE_SOURCE").unwrap_or_else(|_| {
             if env::var("USDJPY_RATE").is_ok() || env::var("GEMINI_USDJPY_RATE").is_ok() {
@@ -393,16 +392,16 @@ pub async fn process(
     } else {
         &config.free_project
     };
-    let input = make_input(
-        &document,
-        &job.source_kind,
+    let input = make_input(MakeInput {
+        document: &document,
+        source_kind: &job.source_kind,
         request,
         clarification,
-        &lines,
-        &history_hints,
+        lines: &lines,
+        history_hints: &history_hints,
         email_has_attachments,
         is_csv_statement,
-    )
+    })
     .map_err(|code| {
         Failure::new(
             ProcessErrorKind::Permanent,
@@ -417,10 +416,19 @@ pub async fn process(
         .filter(|value| matches!(*value, "low" | "medium" | "high"))
         .unwrap_or("low");
     let started = Instant::now();
-    let candidates = if request
-        .get("routePinned")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
+    let explicitly_selected_free_model =
+        request
+            .get("model")
+            .and_then(Value::as_str)
+            .is_some_and(|selection| {
+                matches!(selection, "free" | "flash" | "flash-lite")
+                    || selected_route(config, &model) == "free"
+            });
+    let candidates = if explicitly_selected_free_model
+        || request
+            .get("routePinned")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
     {
         vec![(
             model.clone(),
@@ -666,82 +674,77 @@ pub async fn process(
                 ProcessErrorKind::Retryable,
                 "interaction_stream_failed",
                 "Gemini Developer API stream failed",
-                partial_with_run(
-                    &lines,
-                    &issues,
-                    &output,
-                    "interaction_stream_failed",
-                    &model,
+                partial_with_run(PartialRunContext {
+                    lines: &lines,
+                    issues: &issues,
+                    code: "interaction_stream_failed",
+                    model,
                     route,
                     project,
                     transform,
                     transform_page,
-                    started.elapsed().as_millis() as i64,
-                ),
+                    latency_ms: started.elapsed().as_millis() as i64,
+                }),
             ));
         }
         if event.event_type == "step.delta"
             && event.payload.pointer("/delta/type").and_then(Value::as_str) == Some("text")
+            && let Some(delta) = event.payload.pointer("/delta/text").and_then(Value::as_str)
         {
-            if let Some(delta) = event.payload.pointer("/delta/text").and_then(Value::as_str) {
-                if output.len().saturating_add(delta.len()) > MAX_OUTPUT_BYTES {
-                    return Err(Failure::new(
-                        ProcessErrorKind::Permanent,
-                        "response_too_large",
-                        "Gemini Developer API response exceeded the size limit",
-                        partial_with_run(
-                            &lines,
-                            &issues,
-                            &output,
-                            "response_too_large",
-                            &model,
-                            route,
-                            project,
-                            transform,
-                            transform_page,
-                            started.elapsed().as_millis() as i64,
-                        ),
-                    ));
-                }
-                output.push_str(delta);
-                if !clarification.is_empty() {
-                    if let Some(preview) = reply_preview(&output) {
-                        if preview != last_preview
-                            && last_preview_saved.elapsed() >= Duration::from_secs(1)
-                        {
-                            let saved = save_interaction_reply_preview(
-                                pool,
-                                &job.id,
-                                job.attempt_no,
-                                &job.lease_token,
-                                &preview,
-                                Utc::now(),
-                            )
-                            .await;
-                            match saved {
-                                Ok(true) => {}
-                                Ok(false) => {
-                                    return Err(Failure::new(
-                                        ProcessErrorKind::Permanent,
-                                        "stale_lease",
-                                        "Extraction worker lease is no longer current",
-                                        empty_partial(),
-                                    ));
-                                }
-                                Err(_) => {
-                                    return Err(Failure::new(
-                                        ProcessErrorKind::Retryable,
-                                        "interaction_progress_failed",
-                                        "Could not save extraction progress",
-                                        empty_partial(),
-                                    ));
-                                }
-                            }
-                            last_preview = preview;
-                            last_preview_saved = Instant::now();
-                        }
+            if output.len().saturating_add(delta.len()) > MAX_OUTPUT_BYTES {
+                return Err(Failure::new(
+                    ProcessErrorKind::Permanent,
+                    "response_too_large",
+                    "Gemini Developer API response exceeded the size limit",
+                    partial_with_run(PartialRunContext {
+                        lines: &lines,
+                        issues: &issues,
+                        code: "response_too_large",
+                        model,
+                        route,
+                        project,
+                        transform,
+                        transform_page,
+                        latency_ms: started.elapsed().as_millis() as i64,
+                    }),
+                ));
+            }
+            output.push_str(delta);
+            if !clarification.is_empty()
+                && let Some(preview) = reply_preview(&output)
+                && preview != last_preview
+                && last_preview_saved.elapsed() >= Duration::from_secs(1)
+            {
+                let saved = save_interaction_reply_preview(
+                    pool,
+                    &job.id,
+                    job.attempt_no,
+                    &job.lease_token,
+                    &preview,
+                    Utc::now(),
+                )
+                .await;
+                match saved {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return Err(Failure::new(
+                            ProcessErrorKind::Permanent,
+                            "stale_lease",
+                            "Extraction worker lease is no longer current",
+                            empty_partial(),
+                        ));
+                    }
+                    Err(_) => {
+                        return Err(Failure::new(
+                            ProcessErrorKind::Retryable,
+                            "interaction_progress_failed",
+                            "Could not save extraction progress",
+                            empty_partial(),
+                        ));
                     }
                 }
+                last_preview = preview;
+                last_preview_saved = Instant::now();
             }
         }
         if event.event_type == "interaction.completed" {
@@ -762,18 +765,17 @@ pub async fn process(
             ProcessErrorKind::Retryable,
             "incomplete_generation",
             "Gemini Developer API stream did not complete",
-            partial_with_run(
-                &lines,
-                &issues,
-                &output,
-                "incomplete_generation",
-                &model,
+            partial_with_run(PartialRunContext {
+                lines: &lines,
+                issues: &issues,
+                code: "incomplete_generation",
+                model,
                 route,
                 project,
                 transform,
                 transform_page,
-                started.elapsed().as_millis() as i64,
-            ),
+                latency_ms: started.elapsed().as_millis() as i64,
+            }),
         ));
     }
     if let Some(reservation_id) = reservation_id {
@@ -793,18 +795,17 @@ pub async fn process(
             ProcessErrorKind::Permanent,
             "invalid_interaction_json",
             "Gemini Developer API returned invalid extraction JSON",
-            partial_with_run(
-                &lines,
-                &issues,
-                &output,
-                "invalid_interaction_json",
-                &model,
+            partial_with_run(PartialRunContext {
+                lines: &lines,
+                issues: &issues,
+                code: "invalid_interaction_json",
+                model,
                 route,
                 project,
                 transform,
                 transform_page,
-                started.elapsed().as_millis() as i64,
-            ),
+                latency_ms: started.elapsed().as_millis() as i64,
+            }),
         )
     })?;
     let reply = parsed
@@ -817,18 +818,17 @@ pub async fn process(
                 ProcessErrorKind::Permanent,
                 "empty_interaction_reply",
                 "Gemini Developer API returned an empty reply",
-                partial_with_run(
-                    &lines,
-                    &issues,
-                    &output,
-                    "empty_interaction_reply",
-                    &model,
+                partial_with_run(PartialRunContext {
+                    lines: &lines,
+                    issues: &issues,
+                    code: "empty_interaction_reply",
+                    model,
                     route,
                     project,
                     transform,
                     transform_page,
-                    started.elapsed().as_millis() as i64,
-                ),
+                    latency_ms: started.elapsed().as_millis() as i64,
+                }),
             ));
         }
         if reply.len() > 12_000 {
@@ -883,18 +883,17 @@ pub async fn process(
                 "missing_receipt_extraction"
             },
             "Gemini Developer API response is missing extraction data",
-            partial_with_run(
-                &lines,
-                &issues,
-                &output,
-                "missing_extraction",
-                &model,
+            partial_with_run(PartialRunContext {
+                lines: &lines,
+                issues: &issues,
+                code: "missing_extraction",
+                model,
                 route,
                 project,
                 transform,
                 transform_page,
-                started.elapsed().as_millis() as i64,
-            ),
+                latency_ms: started.elapsed().as_millis() as i64,
+            }),
         ));
     }
     if !is_csv_statement
@@ -909,34 +908,32 @@ pub async fn process(
                 &issues,
                 Value::Null,
                 "invalid_coordinate_transform",
-                &model,
+                model,
                 route,
                 project,
             ),
         ));
     }
-    if email_has_attachments {
-        if let Some(object) = receipt.as_object_mut() {
-            let warnings = object
-                .entry("warnings".to_owned())
-                .or_insert_with(|| json!([]));
-            if let Some(warnings) = warnings.as_array_mut() {
-                warnings.push(json!(
-                    "メールに添付ファイルがあります。添付内容と抽出結果を照合してください。"
-                ));
-            }
+    if email_has_attachments && let Some(object) = receipt.as_object_mut() {
+        let warnings = object
+            .entry("warnings".to_owned())
+            .or_insert_with(|| json!([]));
+        if let Some(warnings) = warnings.as_array_mut() {
+            warnings.push(json!(
+                "メールに添付ファイルがあります。添付内容と抽出結果を照合してください。"
+            ));
         }
     }
-    let mut run = extraction_run(
-        &model,
+    let mut run = extraction_run(ExtractionRun {
+        model,
         route,
         project,
         input_tokens,
         output_tokens,
-        started.elapsed().as_millis() as i64,
-        &receipt,
-        !clarification.is_empty(),
-    );
+        latency_ms: started.elapsed().as_millis() as i64,
+        receipt: &receipt,
+        is_clarification: !clarification.is_empty(),
+    });
     if let Some(object) = run.as_object_mut() {
         let reason = request
             .get("reviewReason")
@@ -980,18 +977,17 @@ pub async fn process(
                 ProcessErrorKind::Permanent,
                 "statement_validation_failed",
                 "Statement extraction did not pass validation",
-                partial_with_run(
-                    &lines,
-                    &issues,
-                    &output,
-                    "statement_validation_failed",
-                    &model,
+                partial_with_run(PartialRunContext {
+                    lines: &lines,
+                    issues: &issues,
+                    code: "statement_validation_failed",
+                    model,
                     route,
                     project,
                     transform,
                     transform_page,
-                    started.elapsed().as_millis() as i64,
-                ),
+                    latency_ms: started.elapsed().as_millis() as i64,
+                }),
             ));
         }
         if is_image_or_pdf(&document.mime_type) && !lines.is_empty() {
@@ -1022,21 +1018,16 @@ pub async fn process(
             "conversationId": request.get("conversationId"),
             "conversation": conversation_after(request, clarification, reply),
         });
-        run_optional_reviews(
-            pool,
-            store,
-            config,
-            job,
-            &model,
-            &document.mime_type,
-            result,
-        )
-        .await
+        if job.request.get("reviewReason").is_some() {
+            Ok(result)
+        } else {
+            run_optional_reviews(pool, store, config, job, model, &document.mime_type, result).await
+        }
     } else {
         let Some(object) = receipt.as_object_mut() else {
             unreachable!()
         };
-        normalize_receipt_fields(object, &model, input_tokens, output_tokens);
+        normalize_receipt_fields(object, model, input_tokens, output_tokens);
         let warnings = object
             .get("warnings")
             .and_then(Value::as_array)
@@ -1072,16 +1063,11 @@ pub async fn process(
             "conversationId": request.get("conversationId"),
             "conversation": conversation_after(request, clarification, reply),
         });
-        run_optional_reviews(
-            pool,
-            store,
-            config,
-            job,
-            &model,
-            &document.mime_type,
-            result,
-        )
-        .await
+        if job.request.get("reviewReason").is_some() {
+            Ok(result)
+        } else {
+            run_optional_reviews(pool, store, config, job, model, &document.mime_type, result).await
+        }
     }
 }
 
@@ -1116,7 +1102,7 @@ async fn run_optional_reviews(
         "evidence_guided_quality_review",
         &guidance,
     );
-    if let Ok(candidate) = process(pool, store, config, &quality_job).await {
+    if let Ok(candidate) = Box::pin(process(pool, store, config, &quality_job)).await {
         current = select_review_result(current, candidate);
     }
 
@@ -1134,7 +1120,7 @@ async fn run_optional_reviews(
             "evidence_guided_pro_review",
             &guidance,
         );
-        if let Ok(candidate) = process(pool, store, config, &pro_job).await {
+        if let Ok(candidate) = Box::pin(process(pool, store, config, &pro_job)).await {
             current = select_review_result(current, candidate);
         }
     }
@@ -1248,16 +1234,28 @@ fn select_review_result(current: Value, candidate: Value) -> Value {
     selected
 }
 
-fn make_input(
-    document: &Document,
-    source_kind: &str,
-    request: &Value,
-    clarification: &str,
-    lines: &[OcrLine],
-    history_hints: &[HistoryHint],
+struct MakeInput<'a> {
+    document: &'a Document,
+    source_kind: &'a str,
+    request: &'a Value,
+    clarification: &'a str,
+    lines: &'a [OcrLine],
+    history_hints: &'a [HistoryHint],
     email_has_attachments: bool,
     is_csv_statement: bool,
-) -> Result<InteractionsInput, &'static str> {
+}
+
+fn make_input(input: MakeInput<'_>) -> Result<InteractionsInput, &'static str> {
+    let MakeInput {
+        document,
+        source_kind,
+        request,
+        clarification,
+        lines,
+        history_hints,
+        email_has_attachments,
+        is_csv_statement,
+    } = input;
     let mut prompt = if clarification.is_empty() {
         if source_kind == "card" {
             format!(
@@ -1641,6 +1639,23 @@ fn parse_quota_limits(raw: &str) -> Result<HashMap<(String, String), QuotaLimit>
         );
     }
     Ok(limits)
+}
+
+fn configured_exchange_rate(name: &str) -> Result<Option<f64>, String> {
+    let value = match env::var(name) {
+        Ok(value) => value,
+        Err(env::VarError::NotPresent) => return Ok(None),
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err(format!("{name} must be a positive finite number"));
+        }
+    };
+    let rate = value
+        .parse::<f64>()
+        .map_err(|_| format!("{name} must be a positive finite number"))?;
+    if !rate.is_finite() || rate <= 0.0 {
+        return Err(format!("{name} must be a positive finite number"));
+    }
+    Ok(Some(rate))
 }
 
 fn parse_bool(value: &str) -> Option<bool> {
@@ -2092,12 +2107,10 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
             .to_owned();
         match price_basis.as_str() {
             "TAX_INCLUDED" => {
-                if !tax_group.is_empty() {
-                    if by_id.contains_key(&tax_group) {
-                        included.entry(tax_group.clone()).or_default().push(index);
-                    } else {
-                        issues.push(format!("品目{}の税率が未確定です。", index + 1));
-                    }
+                if !tax_group.is_empty() && by_id.contains_key(&tax_group) {
+                    included.entry(tax_group.clone()).or_default().push(index);
+                } else if !tax_group.is_empty() {
+                    issues.push(format!("品目{}の税率が未確定です。", index + 1));
                 }
             }
             "TAX_EXCLUDED" => {
@@ -2130,31 +2143,33 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
     }
     for (id, group) in &by_id {
         if let Some(positions) = included.get(id) {
-            if excluded.contains_key(id) || group.basis != "" && group.basis != "TAX_INCLUDED" {
+            if excluded.contains_key(id) || !group.basis.is_empty() && group.basis != "TAX_INCLUDED"
+            {
                 issues.push("税率グループの税込・税抜区分が一致しません。".to_owned());
             }
             let subtotal = positions.iter().map(|index| computed[*index]).sum::<i64>();
             verify_printed_subtotal(group, subtotal, issues, true);
             let inclusive_denominator = group.denominator.saturating_add(group.numerator);
-            if inclusive_denominator > 0 {
-                if let Some((tax, known)) = calculate_tax(
+            if inclusive_denominator > 0
+                && let Some((tax, known)) = calculate_tax(
                     subtotal,
                     group.numerator,
                     inclusive_denominator,
                     &group.rounding,
-                ) {
-                    if let Some(printed_tax) = group.printed_tax {
-                        if known && tax != printed_tax {
-                            issues.push("印字内税額と計算内税額が一致しません。".to_owned());
-                        }
-                    } else if !known {
-                        issues.push("内税の端数処理が未確定です。".to_owned());
-                    }
+                )
+            {
+                if let Some(printed_tax) = group.printed_tax
+                    && known
+                    && tax != printed_tax
+                {
+                    issues.push("印字内税額と計算内税額が一致しません。".to_owned());
+                } else if group.printed_tax.is_none() && !known {
+                    issues.push("内税の端数処理が未確定です。".to_owned());
                 }
             }
         }
         if let Some(positions) = excluded.get(id) {
-            if group.basis != "" && group.basis != "TAX_EXCLUDED" {
+            if !group.basis.is_empty() && group.basis != "TAX_EXCLUDED" {
                 issues.push("税率グループの税込・税抜区分が一致しません。".to_owned());
             }
             let subtotal = positions.iter().map(|index| computed[*index]).sum::<i64>();
@@ -2200,20 +2215,19 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
         .unwrap_or_default();
     if receipt_discount > 0 {
         issues.push("レシート値引きの符号を確認してください。".to_owned());
+    } else if receipt_discount != 0
+        && (receipt_discount.unsigned_abs() > 1_000_000_000_000
+            || computed.iter().any(|amount| *amount < 0))
+    {
+        issues.push("返品にレシート値引きを適用できません。".to_owned());
     } else if receipt_discount != 0 {
-        if receipt_discount.unsigned_abs() > 1_000_000_000_000
-            || computed.iter().any(|amount| *amount < 0)
-        {
-            issues.push("返品にレシート値引きを適用できません。".to_owned());
-        } else {
-            match distribute(receipt_discount, &computed) {
-                Some(shares) => {
-                    for (amount, share) in computed.iter_mut().zip(shares) {
-                        *amount = amount.saturating_add(share);
-                    }
+        match distribute(receipt_discount, &computed) {
+            Some(shares) => {
+                for (amount, share) in computed.iter_mut().zip(shares) {
+                    *amount = amount.saturating_add(share);
                 }
-                None => issues.push("レシート値引きを品目に配賦できません。".to_owned()),
             }
+            None => issues.push("レシート値引きを品目に配賦できません。".to_owned()),
         }
     }
     for (item, amount) in items.iter_mut().zip(&computed) {
@@ -2230,15 +2244,17 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
     if computed_total != total {
         issues.push("品目の合計と印字合計が一致しません。".to_owned());
     }
-    if let Some(payments) = object.get("payments").and_then(Value::as_array) {
-        if !payments.is_empty() {
-            let sum = payments
-                .iter()
-                .filter_map(|payment| payment.get("amount").and_then(Value::as_i64))
-                .sum::<i64>();
-            if sum != total {
-                issues.push("決済額の合計と印字合計が一致しません。".to_owned());
-            }
+    if let Some(payments) = object
+        .get("payments")
+        .and_then(Value::as_array)
+        .filter(|payments| !payments.is_empty())
+    {
+        let sum = payments
+            .iter()
+            .filter_map(|payment| payment.get("amount").and_then(Value::as_i64))
+            .sum::<i64>();
+        if sum != total {
+            issues.push("決済額の合計と印字合計が一致しません。".to_owned());
         }
     }
     (computed_total, computed_total == total)
@@ -2688,33 +2704,35 @@ fn conversation_after(request: &Value, clarification: &str, reply: &str) -> Valu
     Value::Array(conversation)
 }
 
-fn extraction_run(
-    model: &str,
-    route: &str,
-    project: &str,
-    input: i64,
-    output: i64,
+struct ExtractionRun<'a> {
+    model: &'a str,
+    route: &'a str,
+    project: &'a str,
+    input_tokens: i64,
+    output_tokens: i64,
     latency_ms: i64,
-    receipt: &Value,
+    receipt: &'a Value,
     is_clarification: bool,
-) -> Value {
+}
+
+fn extraction_run(run: ExtractionRun<'_>) -> Value {
     json!({
-        "route":route,
-        "project":project,
-        "model":model,
+        "route":run.route,
+        "project":run.project,
+        "model":run.model,
         "promptVersion":PROMPT_VERSION,
         "thinkingLevel":"low",
         "serviceTier":"standard",
-        "inputTokens":input,
-        "outputTokens":output,
+        "inputTokens":run.input_tokens,
+        "outputTokens":run.output_tokens,
         "estimatedCostJPY":0,
         "pricingCurrency":"USD",
         "priceTableVersion":"gemini-prices-2026-10-v2",
-        "priceEstimateStatus":if route == "free" { "free_tier" } else { "unknown_model_price" },
-        "latencyMillis":latency_ms,
-        "reason":if is_clarification { "user_clarification" } else { "initial_extraction" },
+        "priceEstimateStatus":if run.route == "free" { "free_tier" } else { "unknown_model_price" },
+        "latencyMillis":run.latency_ms,
+        "reason":if run.is_clarification { "user_clarification" } else { "initial_extraction" },
         "status":"succeeded",
-        "receipt":receipt,
+        "receipt":run.receipt,
     })
 }
 
@@ -2806,23 +2824,32 @@ fn partial_result(
     json!({"runs":[run],"ocrLines":lines,"issues":issues,"transform":[1,0,0,0,1,0,0,0,1],"transformPage":0})
 }
 
-fn partial_with_run(
-    lines: &[OcrLine],
-    issues: &[String],
-    _output: &str,
-    code: &str,
-    model: &str,
-    route: &str,
-    project: &str,
+struct PartialRunContext<'a> {
+    lines: &'a [OcrLine],
+    issues: &'a [String],
+    code: &'a str,
+    model: &'a str,
+    route: &'a str,
+    project: &'a str,
     transform: [f64; 9],
     transform_page: usize,
-    latency: i64,
-) -> Value {
-    let mut result = partial_result(lines, issues, Value::Null, code, model, route, project);
-    result["transform"] = json!(transform);
-    result["transformPage"] = json!(transform_page);
+    latency_ms: i64,
+}
+
+fn partial_with_run(context: PartialRunContext<'_>) -> Value {
+    let mut result = partial_result(
+        context.lines,
+        context.issues,
+        Value::Null,
+        context.code,
+        context.model,
+        context.route,
+        context.project,
+    );
+    result["transform"] = json!(context.transform);
+    result["transformPage"] = json!(context.transform_page);
     if let Some(run) = result.pointer_mut("/runs/0") {
-        run["latencyMillis"] = json!(latency);
+        run["latencyMillis"] = json!(context.latency_ms);
     }
     result
 }

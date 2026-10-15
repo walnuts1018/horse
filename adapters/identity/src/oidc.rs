@@ -9,7 +9,7 @@ use openidconnect::{
     AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet,
     EndpointSet, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, RedirectUrl, Scope,
     TokenResponse, TokenUrl,
-    core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
+    core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata, CoreRequestTokenError},
     reqwest,
 };
 use sha2::{Digest, Sha256};
@@ -250,7 +250,7 @@ impl AuthService {
             .request_async(&self.http_client)
             .await
             .map_err(|error| match error {
-                openidconnect::CoreRequestTokenError::ServerResponse(response)
+                CoreRequestTokenError::ServerResponse(response)
                     if response.error().to_string() == "invalid_grant" =>
                 {
                     OidcError::InvalidGrant

@@ -1,3 +1,5 @@
+#![allow(async_fn_in_trait)]
+
 pub mod ingestion_job;
 
 use serde_json::Value;

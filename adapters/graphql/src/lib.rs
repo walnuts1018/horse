@@ -97,6 +97,7 @@ impl QueryRoot {
         viewer_query::graphql_viewer(ctx).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn tags(
         &self,
         ctx: &Context<'_>,
@@ -205,6 +206,7 @@ impl QueryRoot {
         monthly_spending_query::graphql_monthly_member_spending(ctx, household_id, from, to).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn account_balance_analysis(
         &self,
         ctx: &Context<'_>,
@@ -227,6 +229,7 @@ impl QueryRoot {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn funding_schedules(
         &self,
         ctx: &Context<'_>,
@@ -306,6 +309,7 @@ impl QueryRoot {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn budgets(
         &self,
         ctx: &Context<'_>,
@@ -320,6 +324,7 @@ impl QueryRoot {
             .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn recurring_expenses(
         &self,
         ctx: &Context<'_>,
@@ -474,6 +479,7 @@ impl QueryRoot {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn unmatched_observations(
         &self,
         ctx: &Context<'_>,
@@ -489,15 +495,17 @@ impl QueryRoot {
     ) -> Result<unmatched_observations_query::UnmatchedObservationConnection> {
         unmatched_observations_query::graphql_unmatched_observations(
             ctx,
-            household_id,
-            from,
-            to,
-            source_kind,
-            state,
-            after,
-            before,
-            first,
-            last,
+            unmatched_observations_query::UnmatchedObservationsParams {
+                household_id,
+                from,
+                to,
+                source_kind,
+                state,
+                after,
+                before,
+                first,
+                last,
+            },
         )
         .await
     }

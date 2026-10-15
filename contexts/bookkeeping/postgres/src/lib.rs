@@ -1,5 +1,7 @@
 pub use horse_postgres_common::{AsyncPgConnection, PgPool, schema};
 
+mod persistence_values;
+
 pub mod account_balance_analysis;
 pub mod account_balances;
 pub mod account_card_last4;
@@ -30,12 +32,11 @@ pub mod purchase_command_result;
 pub mod purchase_corrections;
 pub mod purchase_create_and_post;
 pub mod purchase_defaults_query;
-pub mod purchase_search_query;
 pub mod purchase_history;
+pub mod purchase_search_query;
 pub mod record_repayment;
 pub mod record_transfer;
 pub mod save_purchase_item_edits;
-pub mod set_funding_schedule;
 pub mod settlement_preview;
 pub mod settlement_query;
 pub mod shared_draft;

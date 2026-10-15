@@ -42,13 +42,15 @@ pub async fn graphql_funding_schedules(
     }
     let page = postgres_query::funding_schedules(
         ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        active,
-        after_id,
-        before_id,
-        page_size as usize,
-        backward,
+        postgres_query::FundingSchedulesQuery {
+            actor_id: actor.0,
+            household_id,
+            active,
+            after_id,
+            before_id,
+            page_size: page_size as usize,
+            backward,
+        },
     )
     .await
     .map_err(map_query_error)?;
@@ -61,8 +63,7 @@ pub async fn graphql_funding_schedules(
             Ok(FundingScheduleEdge { cursor, node })
         })
         .collect::<Result<Vec<_>>>()?;
-    let total_count =
-        i32::try_from(page.total_count).map_err(|error| crate::internal_error(error))?;
+    let total_count = i32::try_from(page.total_count).map_err(crate::internal_error)?;
     Ok(FundingScheduleConnection {
         page_info: PageInfo {
             has_next_page: page.has_next_page,

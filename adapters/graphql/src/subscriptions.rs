@@ -6,7 +6,7 @@ use std::{
 
 use async_graphql::{Context, Enum, Error, ID, Result, SimpleObject, Subscription};
 use chrono::{DateTime as ChronoDateTime, Utc};
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
+use diesel::{BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl};
 use futures_channel::mpsc;
 use futures_util::Stream;
 use horse_postgres_common::PgPool;
@@ -130,15 +130,36 @@ impl SubscriptionHub {
             return Ok(());
         }
         use horse_postgres_common::schema::public::household_events::dsl as events;
-        let minimum = cursors.iter().map(|(_, cursor)| *cursor).min().unwrap_or(0);
+        let mut minimum_cursors = HashMap::new();
+        for (household, cursor) in cursors {
+            minimum_cursors
+                .entry(household)
+                .and_modify(|minimum: &mut i64| *minimum = (*minimum).min(cursor))
+                .or_insert(cursor);
+        }
         let rows = {
             let mut conn = pool.get().await.map_err(crate::internal_error)?;
-            events::household_events
-                .filter(events::cursor.gt(minimum))
-                .order(events::cursor.asc())
+            let mut query = events::household_events.into_boxed::<diesel::pg::Pg>();
+            let mut conditions = minimum_cursors.into_iter();
+            if let Some((household, cursor)) = conditions.next() {
+                query = query.filter(
+                    events::household_id
+                        .eq(household)
+                        .and(events::stream_cursor.gt(cursor)),
+                );
+                for (household, cursor) in conditions {
+                    query = query.or_filter(
+                        events::household_id
+                            .eq(household)
+                            .and(events::stream_cursor.gt(cursor)),
+                    );
+                }
+            }
+            query
+                .order(events::stream_cursor.asc())
                 .limit(100)
                 .select((
-                    events::cursor,
+                    events::stream_cursor,
                     events::household_id,
                     events::event_type,
                     events::entity_kind,
@@ -243,11 +264,10 @@ impl SubscriptionHub {
                     purchase,
                 };
                 let mut watches = self.purchases.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(watch) = watches.get_mut(&id) {
-                    match watch.tx.try_send(change) {
-                        Ok(()) => watch.cursor = cursor,
-                        Err(_) => {}
-                    }
+                if let Some(watch) = watches.get_mut(&id)
+                    && watch.tx.try_send(change).is_ok()
+                {
+                    watch.cursor = cursor;
                 }
             }
         }
@@ -292,16 +312,15 @@ impl SubscriptionHub {
             };
             if let Some(revision) = revision {
                 let mut watches = self.drafts.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(watch) = watches.get_mut(&id) {
-                    if watch
+                if let Some(watch) = watches.get_mut(&id)
+                    && watch
                         .tx
                         .try_send(SharedPurchaseDraftChange {
                             cursor: revision.to_string(),
                         })
                         .is_ok()
-                    {
-                        watch.cursor = revision;
-                    }
+                {
+                    watch.cursor = revision;
                 }
             }
         }
@@ -383,7 +402,7 @@ impl SubscriptionRoot {
             |(mut rx, pool, actor, household, id, hub)| async move {
                 loop {
                     tokio::select! {
-                        value = futures_util::StreamExt::next(&mut rx) => return match value { Some(value) => Some((value, (rx, pool, actor, household, id, hub))), None => None },
+                        value = futures_util::StreamExt::next(&mut rx) => return value.map(|value| (value, (rx, pool, actor, household, id, hub))),
                         _ = tokio::time::sleep(Duration::from_secs(30)) => if authorize_household(&pool, actor, household).await.is_err() { hub.remove_purchase(id); return None; },
                     }
                 }
@@ -416,7 +435,7 @@ impl SubscriptionRoot {
             |(mut rx, pool, actor, draft_id, watch_id, hub)| async move {
                 loop {
                     tokio::select! {
-                        value = futures_util::StreamExt::next(&mut rx) => return match value { Some(value) => Some((value, (rx, pool, actor, draft_id, watch_id, hub))), None => None },
+                        value = futures_util::StreamExt::next(&mut rx) => return value.map(|value| (value, (rx, pool, actor, draft_id, watch_id, hub))),
                         _ = tokio::time::sleep(Duration::from_secs(30)) => if authorize_draft(&pool, actor, draft_id).await.is_err() { hub.remove_draft(watch_id); return None; },
                     }
                 }
@@ -461,8 +480,8 @@ async fn latest_cursor(pool: &PgPool, household: Uuid) -> Result<i64> {
     let mut conn = pool.get().await.map_err(crate::internal_error)?;
     events::household_events
         .filter(events::household_id.eq(household))
-        .select(events::cursor)
-        .order(events::cursor.desc())
+        .select(events::stream_cursor)
+        .order(events::stream_cursor.desc())
         .first::<i64>(&mut conn)
         .await
         .optional()

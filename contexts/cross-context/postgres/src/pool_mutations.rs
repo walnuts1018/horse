@@ -39,7 +39,7 @@ pub async fn persist_create_pool(
         .get()
         .await
         .map_err(|error| CreatePoolMutationError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<String, CreatePoolMutationError, _>(async move |conn| {
             use public::{allocation_defaults as defaults, household_events as events};
 
@@ -181,6 +181,12 @@ pub struct SetPoolFundingRuleCommand {
     pub configuration: PoolFundingConfiguration,
 }
 
+struct ValidatedFundingConfiguration {
+    owner_member_id: Option<Uuid>,
+    settlement_policy: Option<String>,
+    shares: Vec<(Uuid, i64)>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedPoolFundingRule {
     pub pool_id: String,
@@ -217,14 +223,17 @@ pub async fn persist_set_pool_funding_rule(
     if command.expected_version < 0 {
         return Err(SetPoolFundingRulePersistenceError::InvalidConfiguration);
     }
-    let (owner_member_id, settlement_policy, shares) =
-        validate_funding_configuration(&command.configuration)?;
+    let ValidatedFundingConfiguration {
+        owner_member_id,
+        settlement_policy,
+        shares,
+    } = validate_funding_configuration(&command.configuration)?;
 
     let mut pooled = pool
         .get()
         .await
         .map_err(|error| SetPoolFundingRulePersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedPoolFundingRule, SetPoolFundingRulePersistenceError, _>(
             async move |conn| {
                 use public::{
@@ -395,13 +404,15 @@ pub async fn persist_set_pool_funding_rule(
 
 fn validate_funding_configuration(
     configuration: &PoolFundingConfiguration,
-) -> Result<(Option<Uuid>, Option<String>, Vec<(Uuid, i64)>), SetPoolFundingRulePersistenceError> {
+) -> Result<ValidatedFundingConfiguration, SetPoolFundingRulePersistenceError> {
     match configuration {
-        PoolFundingConfiguration::Personal { owner_member_id } => Ok((
-            Some(parse_uuid(owner_member_id, "owner_member_id")?),
-            None,
-            Vec::new(),
-        )),
+        PoolFundingConfiguration::Personal { owner_member_id } => {
+            Ok(ValidatedFundingConfiguration {
+                owner_member_id: Some(parse_uuid(owner_member_id, "owner_member_id")?),
+                settlement_policy: None,
+                shares: Vec::new(),
+            })
+        }
         PoolFundingConfiguration::Shared {
             funding_shares,
             settlement_policy,
@@ -431,7 +442,11 @@ fn validate_funding_configuration(
                 shares.push((member_id, weight));
             }
             shares.sort_by_key(|(id, _)| *id);
-            Ok((None, Some(settlement_policy.clone()), shares))
+            Ok(ValidatedFundingConfiguration {
+                owner_member_id: None,
+                settlement_policy: Some(settlement_policy.clone()),
+                shares,
+            })
         }
     }
 }

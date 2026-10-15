@@ -12,7 +12,7 @@ use diesel::{
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
-use crate::{PgPool, schema::public};
+use crate::{PgPool, persistence_values, schema::public};
 
 const OPERATION: &str = "createPurchase";
 
@@ -77,7 +77,7 @@ pub async fn create_purchase_workflow(
             )),
         )
     })?;
-    let result = (&mut *pooled)
+    (*pooled)
         .transaction::<
             Result<_, application::CreatePurchaseWorkflowError<CreatePurchaseWorkflowAdapterError>>,
             DieselError,
@@ -91,8 +91,7 @@ pub async fn create_purchase_workflow(
             application::CreatePurchaseWorkflowError::Operations(
                 CreatePurchaseWorkflowAdapterError::Database(error),
             )
-        })?;
-    result
+        })?
 }
 
 struct PgCreatePurchaseOperations<'a> {
@@ -110,7 +109,7 @@ impl application::CreatePurchaseOperations for PgCreatePurchaseOperations<'_> {
         use public::household_members::dsl as members;
 
         let household_id = parse_uuid(household_id, "household_id")
-            .map_err(|error| CreatePurchaseWorkflowAdapterError::Persistence(error))?;
+            .map_err(CreatePurchaseWorkflowAdapterError::Persistence)?;
         let actor_id = parse_uuid(actor_id, "actor_id")
             .map_err(CreatePurchaseWorkflowAdapterError::Persistence)?;
         members::household_members
@@ -126,6 +125,46 @@ impl application::CreatePurchaseOperations for PgCreatePurchaseOperations<'_> {
                 CreatePurchasePersistenceError::MemberNotFound,
             ))?;
         Ok(())
+    }
+
+    async fn replay_existing(
+        &mut self,
+        persistence: &CreatePurchasePersistence,
+    ) -> Result<Option<CreatedPurchase>, Self::Error> {
+        if persistence.idempotency_key.is_empty() || persistence.idempotency_key.len() > 200 {
+            return Err(CreatePurchaseWorkflowAdapterError::Persistence(
+                CreatePurchasePersistenceError::InvalidIdempotencyKey,
+            ));
+        }
+        let household_id = parse_uuid(&persistence.household_id, "household_id")
+            .map_err(CreatePurchaseWorkflowAdapterError::Persistence)?;
+        use public::idempotency_records::dsl as idem;
+        let existing = idem::idempotency_records
+            .filter(idem::household_id.eq(household_id))
+            .filter(idem::operation.eq(OPERATION))
+            .filter(idem::key.eq(&persistence.idempotency_key))
+            .select((
+                idem::request_fingerprint,
+                idem::resource_kind,
+                idem::resource_id,
+            ))
+            .first::<(Vec<u8>, String, Uuid)>(&mut *self.conn)
+            .await
+            .optional()
+            .map_err(CreatePurchaseWorkflowAdapterError::Database)?;
+        let Some((fingerprint, resource_kind, resource_id)) = existing else {
+            return Ok(None);
+        };
+        if fingerprint.as_slice() != persistence.request_fingerprint || resource_kind != "purchase"
+        {
+            return Err(CreatePurchaseWorkflowAdapterError::Persistence(
+                CreatePurchasePersistenceError::IdempotencyConflict,
+            ));
+        }
+        Ok(Some(CreatedPurchase {
+            purchase_id: resource_id.to_string(),
+            created: false,
+        }))
     }
 
     async fn load_allocation_context(
@@ -153,6 +192,7 @@ impl application::CreatePurchaseOperations for PgCreatePurchaseOperations<'_> {
                             .map(|id| parse_uuid(id, "product_variant_id"))
                             .transpose()
                             .map_err(CreatePurchaseWorkflowAdapterError::Persistence)?,
+                        merchant_key: merchant_key.to_owned(),
                         allocations: item
                             .allocations
                             .iter()
@@ -168,14 +208,40 @@ impl application::CreatePurchaseOperations for PgCreatePurchaseOperations<'_> {
                 )
             })
             .collect::<Result<Vec<_>, Self::Error>>()?;
-        crate::purchase_command_context::load_purchase_command_context_in_transaction(
-            &mut *self.conn,
-            household_id,
-            merchant_key,
-            &item_inputs,
-        )
-        .await
-        .map_err(CreatePurchaseWorkflowAdapterError::Context)
+        let context =
+            crate::purchase_command_context::load_purchase_command_context_in_transaction(
+                &mut *self.conn,
+                household_id,
+                merchant_key,
+                &item_inputs,
+            )
+            .await
+            .map_err(CreatePurchaseWorkflowAdapterError::Context)?;
+        Ok(PurchaseAllocationContext {
+            allocation_rule_version: context.allocation_rule_version,
+            items: context
+                .items
+                .into_iter()
+                .map(|item| {
+                    bookkeeping_application::create_and_post_purchase::PurchaseItemAllocationContext {
+                        category_id: item.category_id.map(|id| id.to_string()),
+                        allocations: item
+                            .allocations
+                            .into_iter()
+                            .map(|allocation| {
+                                bookkeeping_application::create_and_post_purchase::ResolvedPurchaseAllocation {
+                                    pool_id: allocation.pool_id.to_string(),
+                                    weight: allocation.weight,
+                                    rule_version: allocation.rule_version,
+                                    rule_id: allocation.rule_id.map(|id| id.to_string()),
+                                }
+                            })
+                            .collect(),
+                        allocation_override: item.allocation_override,
+                    }
+                })
+                .collect(),
+        })
     }
 
     async fn persist_create(
@@ -202,10 +268,10 @@ impl application::CreatePurchaseOperations for PgCreatePurchaseOperations<'_> {
     }
 }
 
-async fn persist_create_purchase_in_transaction(
+pub(crate) async fn persist_create_purchase_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
     input: PersistCreatePurchase,
-    mut decision: CreatePurchaseDecision,
+    decision: CreatePurchaseDecision,
 ) -> Result<PersistedCreatePurchase, CreatePurchasePersistenceError> {
     if input.idempotency_key.is_empty() || input.idempotency_key.len() > 200 {
         return Err(CreatePurchasePersistenceError::InvalidIdempotencyKey);
@@ -314,7 +380,7 @@ async fn persist_create_purchase_in_transaction(
     .await?;
     let effective_purchase_id = confirmed_purchase.unwrap_or(purchase_id);
     if confirmed_purchase.is_none() {
-        validate_catalog_references(&mut *conn, household_id, &mut decision).await?;
+        validate_catalog_references(&mut *conn, household_id, &decision).await?;
     }
 
     let inserted = diesel::insert_into(idem::idempotency_records)
@@ -365,8 +431,9 @@ async fn persist_create_purchase_in_transaction(
             public::purchases::status.eq("DRAFT"),
             public::purchases::created_by.eq(actor_id),
             public::purchases::allocation_rule_version.eq(allocation_rule_version),
-            public::purchases::date_precision.eq(decision.date_precision.as_db_value()),
-            public::purchases::origin.eq(decision.origin.as_db_value()),
+            public::purchases::date_precision
+                .eq(persistence_values::date_precision(decision.date_precision)),
+            public::purchases::origin.eq(persistence_values::purchase_origin(decision.origin)),
         ))
         .execute(&mut *conn)
         .await?;
@@ -390,7 +457,7 @@ async fn persist_create_purchase_in_transaction(
                 (
                     Some(measure.numerator()),
                     Some(measure.denominator()),
-                    Some(measure.unit().as_db_value()),
+                    Some(persistence_values::quantity_unit(measure.unit())),
                 )
             })
             .unwrap_or((None, None, None));
@@ -402,7 +469,7 @@ async fn persist_create_purchase_in_transaction(
                     Some(price.amount_yen),
                     Some(price.basis.numerator()),
                     Some(price.basis.denominator()),
-                    Some(price.basis.unit().as_db_value()),
+                    Some(persistence_values::quantity_unit(price.basis.unit())),
                 )
             })
             .unwrap_or((None, None, None, None));
@@ -520,12 +587,11 @@ async fn persist_create_purchase_in_transaction(
 async fn validate_catalog_references(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
-    decision: &mut CreatePurchaseDecision,
+    decision: &CreatePurchaseDecision,
 ) -> Result<(), CreatePurchasePersistenceError> {
     use public::accounts::dsl as accounts;
     use public::allocation_defaults::dsl as defaults;
     use public::allocation_rule_weights::dsl as rule_weights;
-    use public::allocation_rules::dsl as rules;
     use public::categories::dsl as categories;
     use public::households::dsl as households;
     use public::pools::dsl as pools;
@@ -571,7 +637,7 @@ async fn validate_catalog_references(
         }
     }
 
-    for item in &mut decision.items {
+    for item in &decision.items {
         if let Some(category_id) = item.category_id.as_deref() {
             let category_id = parse_uuid(category_id, "category_id")?;
             let found = categories::categories
@@ -591,29 +657,27 @@ async fn validate_catalog_references(
         let mut concept_id = None;
         if let Some(variant_id) = item.product_variant_id.as_deref() {
             let variant_id = parse_uuid(variant_id, "product_variant_id")?;
-            let (found_concept_id, concept_category_id) = variants::product_variants
+            let found_concept_id = variants::product_variants
                 .filter(variants::household_id.eq(household_id))
                 .filter(variants::id.eq(variant_id))
                 .filter(variants::archived.eq(false))
                 .inner_join(concepts::product_concepts.on(concepts::id.eq(variants::concept_id)))
                 .filter(concepts::household_id.eq(household_id))
                 .filter(concepts::archived.eq(false))
-                .select((variants::concept_id, concepts::category_id))
-                .first::<(Uuid, Option<Uuid>)>(conn)
+                .select(variants::concept_id)
+                .first::<Uuid>(conn)
                 .await
                 .optional()?
                 .ok_or(CreatePurchasePersistenceError::ReferenceNotFound(
                     "product_variant",
                 ))?;
             concept_id = Some(found_concept_id);
-            if item.category_id.is_none() {
-                item.category_id = concept_category_id.map(|id| id.to_string());
-            }
         }
 
         let first = item
             .allocations
-            .get(0)
+            .as_slice()
+            .first()
             .ok_or(CreatePurchasePersistenceError::InvalidDecision)?;
         if item.allocations.iter().any(|allocation| {
             allocation.rule_version != first.rule_version || allocation.rule_id != first.rule_id
@@ -643,16 +707,29 @@ async fn validate_catalog_references(
             continue;
         }
 
-        let selected_rule = applicable_allocation_rule(
+        let merchant_key = decision
+            .merchant
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase();
+        let candidates = eligible_allocation_rule_candidates(
             conn,
             household_id,
-            item.category_id.as_deref(),
             concept_id,
+            item.category_id.as_deref(),
             item.product_variant_id.as_deref(),
-            &decision.merchant,
+            &merchant_key,
         )
         .await?;
-        if selected_rule.map(|id| id.to_string()) != first.rule_id {
+        let selected_rule = bookkeeping_application::create_purchase::select_allocation_rule(
+            &candidates,
+            item.product_variant_id.as_deref(),
+            concept_id.map(|id| id.to_string()).as_deref(),
+            item.category_id.as_deref(),
+            &merchant_key,
+        );
+        if selected_rule.map(|candidate| candidate.rule_id.as_str()) != first.rule_id.as_deref() {
             return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
         }
         if first.rule_id.is_none() && first.rule_version != decision.allocation_rule_version.value()
@@ -662,17 +739,10 @@ async fn validate_catalog_references(
 
         let expected = if let Some(rule_id) = first.rule_id.as_deref() {
             let rule_id = parse_uuid(rule_id, "allocation_rule_id")?;
-            let revision = rules::allocation_rules
-                .filter(rules::household_id.eq(household_id))
-                .filter(rules::id.eq(rule_id))
-                .select(rules::revision)
-                .first::<i64>(conn)
-                .await
-                .optional()?
-                .ok_or(CreatePurchasePersistenceError::ReferenceNotFound(
-                    "allocation_rule",
-                ))?;
-            if u64::try_from(revision).ok() != Some(first.rule_version) {
+            let revision_matches = candidates.iter().any(|candidate| {
+                candidate.rule_id == rule_id.to_string() && candidate.revision == first.rule_version
+            });
+            if !revision_matches {
                 return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
             }
             rule_weights::allocation_rule_weights
@@ -711,72 +781,82 @@ async fn validate_catalog_references(
     Ok(())
 }
 
-async fn applicable_allocation_rule(
+async fn eligible_allocation_rule_candidates(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
-    category_id: Option<&str>,
     concept_id: Option<Uuid>,
+    category_id: Option<&str>,
     variant_id: Option<&str>,
-    merchant: &str,
-) -> Result<Option<Uuid>, CreatePurchasePersistenceError> {
+    merchant_key: &str,
+) -> Result<
+    Vec<bookkeeping_application::create_purchase::AllocationRuleCandidate>,
+    CreatePurchasePersistenceError,
+> {
     use public::allocation_rules::dsl as rules;
 
+    let category_id = category_id
+        .map(|id| parse_uuid(id, "category_id"))
+        .transpose()?;
+    let variant_id = variant_id
+        .map(|id| parse_uuid(id, "product_variant_id"))
+        .transpose()?;
+    let mut query = rules::allocation_rules.into_boxed();
+    let mut has_candidate_scope = false;
     if let Some(variant_id) = variant_id {
-        let variant_id = parse_uuid(variant_id, "product_variant_id")?;
-        if let Some(id) = rules::allocation_rules
-            .filter(rules::household_id.eq(household_id))
-            .filter(rules::product_variant_id.eq(Some(variant_id)))
-            .select(rules::id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
-        {
-            return Ok(Some(id));
-        }
+        query = query.or_filter(rules::product_variant_id.eq(Some(variant_id)));
+        has_candidate_scope = true;
     }
     if let Some(concept_id) = concept_id {
-        if let Some(id) = rules::allocation_rules
-            .filter(rules::household_id.eq(household_id))
-            .filter(rules::product_concept_id.eq(Some(concept_id)))
-            .select(rules::id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
-        {
-            return Ok(Some(id));
-        }
+        query = query.or_filter(rules::product_concept_id.eq(Some(concept_id)));
+        has_candidate_scope = true;
     }
     if let Some(category_id) = category_id {
-        let category_id = parse_uuid(category_id, "category_id")?;
-        if let Some(id) = rules::allocation_rules
-            .filter(rules::household_id.eq(household_id))
-            .filter(rules::category_id.eq(Some(category_id)))
-            .select(rules::id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
-        {
-            return Ok(Some(id));
-        }
+        query = query.or_filter(rules::category_id.eq(Some(category_id)));
+        has_candidate_scope = true;
     }
-    let merchant_key = merchant
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase();
     if !merchant_key.is_empty() {
-        if let Some(id) = rules::allocation_rules
-            .filter(rules::household_id.eq(household_id))
-            .filter(rules::merchant_key.eq(Some(merchant_key)))
-            .select(rules::id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
-        {
-            return Ok(Some(id));
-        }
+        query = query.or_filter(rules::merchant_key.eq(Some(merchant_key.to_owned())));
+        has_candidate_scope = true;
     }
-    Ok(None)
+    if !has_candidate_scope {
+        return Ok(Vec::new());
+    }
+    query
+        .filter(rules::household_id.eq(household_id))
+        .select((
+            rules::id,
+            rules::revision,
+            rules::product_variant_id,
+            rules::product_concept_id,
+            rules::category_id,
+            rules::merchant_key,
+        ))
+        .load::<(
+            Uuid,
+            i64,
+            Option<Uuid>,
+            Option<Uuid>,
+            Option<Uuid>,
+            Option<String>,
+        )>(conn)
+        .await?
+        .into_iter()
+        .map(
+            |(id, revision, variant_id, concept_id, category_id, merchant)| {
+                Ok(
+                    bookkeeping_application::create_purchase::AllocationRuleCandidate {
+                        rule_id: id.to_string(),
+                        revision: u64::try_from(revision)
+                            .map_err(|_| CreatePurchasePersistenceError::AllocationRuleMismatch)?,
+                        product_variant_id: variant_id.map(|id| id.to_string()),
+                        product_concept_id: concept_id.map(|id| id.to_string()),
+                        category_id: category_id.map(|id| id.to_string()),
+                        merchant_key: merchant,
+                    },
+                )
+            },
+        )
+        .collect::<Result<Vec<_>, CreatePurchasePersistenceError>>()
 }
 
 async fn resolve_source_confirmation(
@@ -1024,14 +1104,16 @@ async fn persist_source_evidence(
             let item_id = parse_uuid(&item.item_id, "item_id")?;
             insert_evidence_link(
                 conn,
-                household_id,
-                source_document_id,
-                purchase_id,
-                Some(item_id),
-                receipt_item.get("region").cloned(),
-                value,
-                actor_id,
-                source_reference,
+                EvidenceLinkInput {
+                    household_id,
+                    source_document_id,
+                    purchase_id,
+                    item_id: Some(item_id),
+                    evidence_region: receipt_item.get("region").cloned(),
+                    observation: value,
+                    actor_id,
+                    source_reference,
+                },
             )
             .await?;
         }
@@ -1049,14 +1131,16 @@ async fn persist_source_evidence(
         }
         insert_evidence_link(
             conn,
-            household_id,
-            source_document_id,
-            purchase_id,
-            None,
-            None,
-            observation,
-            actor_id,
-            source_reference,
+            EvidenceLinkInput {
+                household_id,
+                source_document_id,
+                purchase_id,
+                item_id: None,
+                evidence_region: None,
+                observation,
+                actor_id,
+                source_reference,
+            },
         )
         .await?;
     }
@@ -1079,21 +1163,20 @@ fn confirmed_item_json(
         "quantity": item.quantity.as_ref().map(|measure| serde_json::json!({
             "numerator": measure.numerator(),
             "denominator": measure.denominator(),
-            "unit": measure.unit().as_db_value(),
+            "unit": persistence_values::quantity_unit(measure.unit()),
         })),
         "printedUnitPrice": item.printed_unit_price.as_ref().map(|price| serde_json::json!({
             "amountYen": price.amount_yen,
             "basis": {
                 "numerator": price.basis.numerator(),
                 "denominator": price.basis.denominator(),
-                "unit": price.basis.unit().as_db_value(),
+                "unit": persistence_values::quantity_unit(price.basis.unit()),
             },
         })),
     })
 }
 
-async fn insert_evidence_link(
-    conn: &mut diesel_async::AsyncPgConnection,
+struct EvidenceLinkInput<'a> {
     household_id: Uuid,
     source_document_id: Uuid,
     purchase_id: Uuid,
@@ -1101,21 +1184,26 @@ async fn insert_evidence_link(
     evidence_region: Option<serde_json::Value>,
     observation: serde_json::Value,
     actor_id: Uuid,
-    source_reference: &str,
+    source_reference: &'a str,
+}
+
+async fn insert_evidence_link(
+    conn: &mut diesel_async::AsyncPgConnection,
+    input: EvidenceLinkInput<'_>,
 ) -> Result<(), CreatePurchasePersistenceError> {
     diesel::insert_into(public::evidence_links::table)
         .values((
             public::evidence_links::id.eq(Uuid::new_v4()),
-            public::evidence_links::household_id.eq(household_id),
-            public::evidence_links::source_document_id.eq(source_document_id),
+            public::evidence_links::household_id.eq(input.household_id),
+            public::evidence_links::source_document_id.eq(input.source_document_id),
             public::evidence_links::observation_id.eq(None::<Uuid>),
-            public::evidence_links::source_reference.eq(source_reference),
+            public::evidence_links::source_reference.eq(input.source_reference),
             public::evidence_links::entity_kind.eq("purchase"),
-            public::evidence_links::entity_id.eq(purchase_id),
-            public::evidence_links::item_id.eq(item_id),
-            public::evidence_links::evidence_region.eq(evidence_region),
-            public::evidence_links::observation.eq(observation),
-            public::evidence_links::created_by.eq(actor_id),
+            public::evidence_links::entity_id.eq(input.purchase_id),
+            public::evidence_links::item_id.eq(input.item_id),
+            public::evidence_links::evidence_region.eq(input.evidence_region),
+            public::evidence_links::observation.eq(input.observation),
+            public::evidence_links::created_by.eq(input.actor_id),
             public::evidence_links::created_at.eq(now),
         ))
         .on_conflict_do_nothing()

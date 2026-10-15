@@ -56,39 +56,25 @@ impl From<recurring_expense::RecurringExpenseError> for PolicyPersistenceError {
 
 pub async fn persist_create_budget(
     pool: &PgPool,
-    decision: budget::BudgetDecision,
+    decision: budget::CreateBudgetDecision,
 ) -> Result<budget::Budget, PolicyPersistenceError> {
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
-    let household = parse_uuid(
-        decision
-            .household_id
-            .as_deref()
-            .ok_or(PolicyPersistenceError::InvalidWorkflow)?,
-        "household_id",
-    )?;
+    let household = parse_uuid(&decision.household_id, "household_id")?;
     let id = parse_uuid(&decision.id, "budget_id")?;
     let category = decision
         .category_id
         .as_deref()
         .map(|value| parse_uuid(value, "category_id"))
         .transpose()?;
-    let name = decision
-        .name
-        .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
-    let amount = decision
-        .amount_yen
-        .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
-    let starts = decision
-        .starts_on
-        .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
-    let ends = decision
-        .ends_on
-        .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
+    let name = decision.name;
+    let amount = decision.amount_yen;
+    let starts = decision.starts_on;
+    let ends = decision.ends_on;
     let mut pooled = pool
         .get()
         .await
         .map_err(|error| PolicyPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<budget::Budget, PolicyPersistenceError, _>(async |conn| {
             use public::{
                 budgets::dsl as budgets, categories::dsl as categories,
@@ -129,7 +115,7 @@ pub async fn persist_create_budget(
                     budgets::starts_on.eq(starts),
                     budgets::ends_on.eq(ends),
                 ))
-                .execute(&mut *conn)
+                .execute(conn)
                 .await?;
             record_event(
                 conn,
@@ -158,22 +144,16 @@ pub async fn persist_create_budget(
 
 pub async fn persist_update_budget(
     pool: &PgPool,
-    decision: budget::BudgetDecision,
+    decision: budget::UpdateBudgetDecision,
 ) -> Result<budget::Budget, PolicyPersistenceError> {
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
-    let household = parse_uuid(
-        decision
-            .household_id
-            .as_deref()
-            .ok_or(PolicyPersistenceError::InvalidWorkflow)?,
-        "household_id",
-    )?;
+    let household = parse_uuid(&decision.household_id, "household_id")?;
     let id = parse_uuid(&decision.id, "budget_id")?;
     let mut pooled = pool
         .get()
         .await
         .map_err(|error| PolicyPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<budget::Budget, PolicyPersistenceError, _>(async |conn| {
             use public::{budgets::dsl as budgets, categories::dsl as categories};
             let row = budgets::budgets
@@ -204,9 +184,7 @@ pub async fn persist_update_budget(
                 .optional()?
                 .ok_or(PolicyPersistenceError::BudgetNotFound)?;
             require_member(conn, row.0, actor).await?;
-            let expected = decision
-                .expected_revision
-                .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
+            let expected = decision.expected_revision;
             if row.7 != expected {
                 return Err(PolicyPersistenceError::Conflict);
             }
@@ -228,18 +206,13 @@ pub async fn persist_update_budget(
                     return Err(PolicyPersistenceError::CategoryNotFound);
                 }
             }
-            let name = decision
-                .name
-                .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
-            let amount = decision
-                .amount_yen
-                .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
-            let starts = decision
-                .starts_on
-                .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
-            let ends = decision
-                .ends_on
-                .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
+            let name = decision.name;
+            let amount = decision.amount_yen;
+            let starts = decision.starts_on;
+            let ends = match decision.ends_on {
+                budget::EndDateChange::Unchanged => row.5,
+                budget::EndDateChange::Set(value) => value,
+            };
             let revision = expected + 1;
             diesel::update(
                 budgets::budgets
@@ -255,7 +228,7 @@ pub async fn persist_update_budget(
                 budgets::revision.eq(revision),
                 budgets::updated_at.eq(now),
             ))
-            .execute(&mut *conn)
+            .execute(conn)
             .await?;
             record_event(
                 conn,
@@ -284,22 +257,16 @@ pub async fn persist_update_budget(
 
 pub async fn persist_archive_budget(
     pool: &PgPool,
-    decision: budget::BudgetDecision,
+    decision: budget::ArchiveBudgetDecision,
 ) -> Result<budget::Budget, PolicyPersistenceError> {
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
-    let household = parse_uuid(
-        decision
-            .household_id
-            .as_deref()
-            .ok_or(PolicyPersistenceError::InvalidWorkflow)?,
-        "household_id",
-    )?;
+    let household = parse_uuid(&decision.household_id, "household_id")?;
     let id = parse_uuid(&decision.id, "budget_id")?;
     let mut pooled = pool
         .get()
         .await
         .map_err(|error| PolicyPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<budget::Budget, PolicyPersistenceError, _>(async |conn| {
             use public::budgets::dsl as budgets;
             let row = budgets::budgets
@@ -330,15 +297,11 @@ pub async fn persist_archive_budget(
                 .optional()?
                 .ok_or(PolicyPersistenceError::BudgetNotFound)?;
             require_member(conn, row.0, actor).await?;
-            let expected = decision
-                .expected_revision
-                .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
+            let expected = decision.expected_revision;
             if row.7 != expected {
                 return Err(PolicyPersistenceError::Conflict);
             }
-            let archived = decision
-                .archived
-                .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
+            let archived = decision.archived;
             let revision = expected + 1;
             diesel::update(
                 budgets::budgets
@@ -350,7 +313,7 @@ pub async fn persist_archive_budget(
                 budgets::revision.eq(revision),
                 budgets::updated_at.eq(now),
             ))
-            .execute(&mut *conn)
+            .execute(conn)
             .await?;
             record_event(
                 conn,
@@ -426,7 +389,7 @@ pub async fn persist_create_recurring_expense(
         .get()
         .await
         .map_err(|error| PolicyPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<recurring_expense::RecurringExpense, PolicyPersistenceError, _>(
             async |conn| {
                 use public::{
@@ -485,7 +448,7 @@ pub async fn persist_create_recurring_expense(
                         expenses::next_due_on.eq(due),
                         expenses::ends_on.eq(ends),
                     ))
-                    .execute(&mut *conn)
+                    .execute(conn)
                     .await?;
                 record_event(
                     conn,
@@ -545,7 +508,7 @@ pub async fn persist_update_recurring_expense(
         .get()
         .await
         .map_err(|error| PolicyPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<recurring_expense::RecurringExpense, PolicyPersistenceError, _>(
             async |conn| {
                 use public::{
@@ -670,7 +633,7 @@ pub async fn persist_update_recurring_expense(
                     expenses::revision.eq(revision),
                     expenses::updated_at.eq(now),
                 ))
-                .execute(&mut *conn)
+                .execute(conn)
                 .await?;
                 record_event(
                     conn,
@@ -730,7 +693,7 @@ pub async fn persist_archive_recurring_expense(
         .get()
         .await
         .map_err(|error| PolicyPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<recurring_expense::RecurringExpense, PolicyPersistenceError, _>(
             async |conn| {
                 use public::recurring_expenses::dsl as expenses;
@@ -790,7 +753,7 @@ pub async fn persist_archive_recurring_expense(
                     expenses::revision.eq(revision),
                     expenses::updated_at.eq(now),
                 ))
-                .execute(&mut *conn)
+                .execute(conn)
                 .await?;
                 record_event(
                     conn,
@@ -837,7 +800,7 @@ pub async fn persist_match_recurring_expense(
         .get()
         .await
         .map_err(|error| PolicyPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<recurring_expense::RecurringExpense, PolicyPersistenceError, _>(
             async |conn| {
                 use public::{
@@ -926,7 +889,7 @@ pub async fn persist_match_recurring_expense(
                         matches::purchase_id.eq(purchase_id),
                         matches::matched_by.eq(actor),
                     ))
-                    .execute(&mut *conn)
+                    .execute(conn)
                     .await?;
                 let cadence = recurring_expense::Cadence::parse(&row.7)
                     .map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
@@ -943,7 +906,7 @@ pub async fn persist_match_recurring_expense(
                     expenses::revision.eq(revision),
                     expenses::updated_at.eq(now),
                 ))
-                .execute(&mut *conn)
+                .execute(conn)
                 .await?;
                 record_event(
                     conn,
@@ -1040,21 +1003,21 @@ impl budget::BudgetOperations for PolicyOperations<'_> {
 
     async fn persist_create(
         &mut self,
-        decision: budget::BudgetDecision,
+        decision: budget::CreateBudgetDecision,
     ) -> Result<budget::Budget, Self::Error> {
         persist_create_budget(self.pool, decision).await
     }
 
     async fn persist_update(
         &mut self,
-        decision: budget::BudgetDecision,
+        decision: budget::UpdateBudgetDecision,
     ) -> Result<budget::Budget, Self::Error> {
         persist_update_budget(self.pool, decision).await
     }
 
     async fn persist_archive(
         &mut self,
-        decision: budget::BudgetDecision,
+        decision: budget::ArchiveBudgetDecision,
     ) -> Result<budget::Budget, Self::Error> {
         persist_archive_budget(self.pool, decision).await
     }

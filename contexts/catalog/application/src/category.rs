@@ -382,7 +382,7 @@ pub async fn set_category_archived<O: SetCategoryArchivedOperations>(
     operations
         .require_member(&category.household_id, &decision.actor_id)
         .await?;
-    if category.archived == decision.archived {
+    if category.status.is_archived() == decision.archived {
         return Ok(category.into_category());
     }
     operations.persist(category, decision).await

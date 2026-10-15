@@ -37,7 +37,7 @@ pub struct UpdateBudgetCommand {
     pub name: String,
     pub amount_yen: i64,
     pub starts_on: NaiveDate,
-    pub ends_on: Option<NaiveDate>,
+    pub ends_on: Option<Option<NaiveDate>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,17 +50,43 @@ pub struct ArchiveBudgetCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BudgetDecision {
+pub struct CreateBudgetDecision {
     pub actor_id: String,
     pub id: String,
-    pub household_id: Option<String>,
-    pub expected_revision: Option<i64>,
+    pub household_id: String,
     pub category_id: Option<String>,
-    pub name: Option<String>,
-    pub amount_yen: Option<i64>,
-    pub starts_on: Option<NaiveDate>,
-    pub ends_on: Option<Option<NaiveDate>>,
-    pub archived: Option<bool>,
+    pub name: String,
+    pub amount_yen: i64,
+    pub starts_on: NaiveDate,
+    pub ends_on: Option<NaiveDate>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EndDateChange {
+    Unchanged,
+    Set(Option<NaiveDate>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateBudgetDecision {
+    pub actor_id: String,
+    pub id: String,
+    pub household_id: String,
+    pub expected_revision: i64,
+    pub category_id: Option<String>,
+    pub name: String,
+    pub amount_yen: i64,
+    pub starts_on: NaiveDate,
+    pub ends_on: EndDateChange,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArchiveBudgetDecision {
+    pub actor_id: String,
+    pub id: String,
+    pub household_id: String,
+    pub expected_revision: i64,
+    pub archived: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,9 +104,18 @@ pub enum BudgetError {
 pub trait BudgetOperations {
     type Error: From<BudgetError>;
 
-    async fn persist_create(&mut self, decision: BudgetDecision) -> Result<Budget, Self::Error>;
-    async fn persist_update(&mut self, decision: BudgetDecision) -> Result<Budget, Self::Error>;
-    async fn persist_archive(&mut self, decision: BudgetDecision) -> Result<Budget, Self::Error>;
+    async fn persist_create(
+        &mut self,
+        decision: CreateBudgetDecision,
+    ) -> Result<Budget, Self::Error>;
+    async fn persist_update(
+        &mut self,
+        decision: UpdateBudgetDecision,
+    ) -> Result<Budget, Self::Error>;
+    async fn persist_archive(
+        &mut self,
+        decision: ArchiveBudgetDecision,
+    ) -> Result<Budget, Self::Error>;
 }
 
 pub async fn create_budget<O: BudgetOperations>(
@@ -104,61 +139,57 @@ pub async fn archive_budget<O: BudgetOperations>(
     operations.persist_archive(decide_archive(command)?).await
 }
 
-pub fn decide_create(command: CreateBudgetCommand) -> Result<BudgetDecision, BudgetError> {
+pub fn decide_create(command: CreateBudgetCommand) -> Result<CreateBudgetDecision, BudgetError> {
     validate_identity(&command.actor_id, &command.household_id, &command.id)?;
     let category_id = validate_optional_id(command.category_id)?;
     let name = validate_name(command.name)?;
     validate_amount(command.amount_yen)?;
     validate_dates(command.starts_on, command.ends_on)?;
-    Ok(BudgetDecision {
+    Ok(CreateBudgetDecision {
         actor_id: command.actor_id,
         id: command.id,
-        household_id: Some(command.household_id),
-        expected_revision: None,
+        household_id: command.household_id,
         category_id,
-        name: Some(name),
-        amount_yen: Some(command.amount_yen),
-        starts_on: Some(command.starts_on),
-        ends_on: Some(command.ends_on),
-        archived: None,
+        name,
+        amount_yen: command.amount_yen,
+        starts_on: command.starts_on,
+        ends_on: command.ends_on,
     })
 }
 
-pub fn decide_update(command: UpdateBudgetCommand) -> Result<BudgetDecision, BudgetError> {
+pub fn decide_update(command: UpdateBudgetCommand) -> Result<UpdateBudgetDecision, BudgetError> {
     validate_identity(&command.actor_id, &command.household_id, &command.id)?;
     validate_revision(command.expected_revision)?;
     let category_id = validate_optional_id(command.category_id)?;
     let name = validate_name(command.name)?;
     validate_amount(command.amount_yen)?;
-    validate_dates(command.starts_on, command.ends_on)?;
-    Ok(BudgetDecision {
+    if let Some(ends_on) = command.ends_on {
+        validate_dates(command.starts_on, ends_on)?;
+    }
+    Ok(UpdateBudgetDecision {
         actor_id: command.actor_id,
         id: command.id,
-        household_id: Some(command.household_id),
-        expected_revision: Some(command.expected_revision),
+        household_id: command.household_id,
+        expected_revision: command.expected_revision,
         category_id,
-        name: Some(name),
-        amount_yen: Some(command.amount_yen),
-        starts_on: Some(command.starts_on),
-        ends_on: Some(command.ends_on),
-        archived: None,
+        name,
+        amount_yen: command.amount_yen,
+        starts_on: command.starts_on,
+        ends_on: command
+            .ends_on
+            .map_or(EndDateChange::Unchanged, EndDateChange::Set),
     })
 }
 
-pub fn decide_archive(command: ArchiveBudgetCommand) -> Result<BudgetDecision, BudgetError> {
+pub fn decide_archive(command: ArchiveBudgetCommand) -> Result<ArchiveBudgetDecision, BudgetError> {
     validate_identity(&command.actor_id, &command.household_id, &command.id)?;
     validate_revision(command.expected_revision)?;
-    Ok(BudgetDecision {
+    Ok(ArchiveBudgetDecision {
         actor_id: command.actor_id,
         id: command.id,
-        household_id: Some(command.household_id),
-        expected_revision: Some(command.expected_revision),
-        category_id: None,
-        name: None,
-        amount_yen: None,
-        starts_on: None,
-        ends_on: None,
-        archived: Some(command.archived),
+        household_id: command.household_id,
+        expected_revision: command.expected_revision,
+        archived: command.archived,
     })
 }
 

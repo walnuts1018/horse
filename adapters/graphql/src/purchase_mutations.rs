@@ -414,7 +414,7 @@ pub struct PostPurchaseSuccess {
 
 #[derive(Union)]
 pub enum CreatePurchaseResult {
-    Success(CreatePurchaseSuccess),
+    Success(Box<CreatePurchaseSuccess>),
     UserError(CreatePurchaseUserError),
 }
 #[derive(Clone, Debug, SimpleObject)]
@@ -424,7 +424,7 @@ pub struct CreatePurchaseUserError {
 }
 #[derive(Union)]
 pub enum CreateAndPostPurchaseResult {
-    Success(CreateAndPostPurchaseSuccess),
+    Success(Box<CreateAndPostPurchaseSuccess>),
     UserError(CreateAndPostPurchaseUserError),
 }
 #[derive(Clone, Debug, SimpleObject)]
@@ -434,7 +434,7 @@ pub struct CreateAndPostPurchaseUserError {
 }
 #[derive(Union)]
 pub enum PostPurchaseResult {
-    Success(PostPurchaseSuccess),
+    Success(Box<PostPurchaseSuccess>),
     UserError(PostPurchaseUserError),
 }
 #[derive(Clone, Debug, SimpleObject)]
@@ -490,9 +490,9 @@ pub async fn create_purchase(
             postgres_create::CreatePurchaseWorkflowAdapterError::Database(error),
         )) => return Err(crate::internal_error(error)),
     };
-    Ok(CreatePurchaseSuccess {
+    Ok(Box::new(CreatePurchaseSuccess {
         result: purchase_result(pool, parsed.household_id, &persisted.purchase_id).await?,
-    }
+    })
     .into())
 }
 
@@ -565,9 +565,9 @@ pub async fn create_and_post_purchase(
             return Err(crate::internal_error(error));
         }
     };
-    Ok(CreateAndPostPurchaseSuccess {
+    Ok(Box::new(CreateAndPostPurchaseSuccess {
         result: purchase_result(pool, parsed.household_id, &persisted.purchase_id).await?,
-    }
+    })
     .into())
 }
 
@@ -610,10 +610,10 @@ pub async fn post_purchase(
     .await
     {
         Ok(Some(value)) => {
-            return Ok(PostPurchaseSuccess {
+            return Ok(Box::new(PostPurchaseSuccess {
                 result: purchase_result(ctx.data::<PgPool>()?, household_id, &value.purchase_id)
                     .await?,
-            }
+            })
             .into());
         }
         Ok(None) => {}
@@ -643,10 +643,10 @@ pub async fn post_purchase(
     )
     .await;
     match result {
-        Ok(value) => Ok(PostPurchaseSuccess {
+        Ok(value) => Ok(Box::new(PostPurchaseSuccess {
             result: purchase_result(ctx.data::<PgPool>()?, household_id, &value.purchase_id)
                 .await?,
-        }
+        })
         .into()),
         Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Decision(_)) => {
             Ok(conflict().into())
@@ -1310,7 +1310,6 @@ fn post_load_user_error(error: &PostPurchaseLoadError) -> Option<PurchaseMutatio
         PostPurchaseLoadError::MissingPurchase | PostPurchaseLoadError::HouseholdMismatch(_) => {
             Some(not_found())
         }
-        PostPurchaseLoadError::MissingAccountingPeriod => Some(conflict()),
         PostPurchaseLoadError::Database(_) => None,
         _ => Some(bad_input()),
     }

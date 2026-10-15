@@ -46,7 +46,7 @@ pub async fn persist_set_card_last4(
         .get()
         .await
         .map_err(|error| SetCardLast4PersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedSetCardLast4, SetCardLast4PersistenceError, _>(async move |conn| {
             use public::accounts::dsl as accounts;
             use public::household_events::dsl as events;

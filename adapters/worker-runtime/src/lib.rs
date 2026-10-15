@@ -21,12 +21,11 @@ use std::{
 use chrono::Utc;
 use evidence_application::ingestion_job::{ExtractionExecutionOutcome, execute_extraction_job};
 use evidence_postgres::ingestion_job::{
-    ClaimedExtractionJob, claim_extraction_job_by_id, claim_next_extraction_job,
-    claim_next_local_extraction_job, record_extraction_failure, record_extraction_success,
-    recover_expired_extraction_jobs,
+    ClaimedExtractionJob, RecordExtractionFailureInput, claim_extraction_job_by_id,
+    claim_next_extraction_job, claim_next_local_extraction_job, record_extraction_failure,
+    record_extraction_success, recover_expired_extraction_jobs,
 };
 use horse_postgres_common::connect;
-use mailbox::MailboxConfig;
 use object_store::ObjectStore;
 use processing::{ProcessConfig, process};
 use serde_json::Value;
@@ -165,21 +164,32 @@ impl Worker {
                 append_previous_runs(&mut result, previous_result.as_ref());
                 record_extraction_success(pool, &success_job, result, Utc::now()).await
             },
-            |failure| async move {
-                let retry_delay_ms = failure.retry_delay_ms(failure_job.attempt_no, Utc::now());
-                record_extraction_failure(
-                    pool,
-                    &failure_job.id,
-                    failure_job.attempt_no,
-                    &failure_job.lease_token,
-                    failure.kind,
-                    &failure.code,
-                    failure.safe_message,
-                    Some(failure.partial_result.clone()),
-                    retry_delay_ms,
-                    Utc::now(),
-                )
-                .await
+            |failure| {
+                let job_id = failure_job.id.clone();
+                let attempt_no = failure_job.attempt_no;
+                let lease_token = failure_job.lease_token.clone();
+                let retry_delay_ms = failure.retry_delay_ms(attempt_no, Utc::now());
+                let kind = failure.kind;
+                let code = failure.code.clone();
+                let safe_message = failure.safe_message;
+                let partial_result = Some(failure.partial_result.clone());
+                async move {
+                    record_extraction_failure(
+                        pool,
+                        RecordExtractionFailureInput {
+                            job_id,
+                            attempt_no,
+                            lease_token,
+                            failure_kind: kind,
+                            error_code: code,
+                            error_message: safe_message.to_owned(),
+                            partial_result,
+                            retry_delay_ms,
+                            now: Utc::now(),
+                        },
+                    )
+                    .await
+                }
             },
         )
         .instrument(span.clone())

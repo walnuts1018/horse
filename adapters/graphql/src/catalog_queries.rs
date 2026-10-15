@@ -56,11 +56,13 @@ pub async fn graphql_tags(
         ctx.data::<PgPool>()?,
         actor.0,
         household_id,
-        include_archived,
-        after_cursor,
-        before_cursor,
-        first,
-        last,
+        postgres_query::TagQueryArgs {
+            include_archived,
+            after: after_cursor,
+            before: before_cursor,
+            first,
+            last,
+        },
     )
     .await
     .map_err(map_query_error)?;

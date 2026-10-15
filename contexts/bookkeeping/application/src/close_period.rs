@@ -242,6 +242,7 @@ pub fn decide_close_period(
     if !command.draft_purchases.is_empty() {
         return Err(ClosePeriodError::DraftPurchasesExist);
     }
+    let actual_revision = command.period.revision();
     let period = command
         .period
         .close(command.expected_revision)
@@ -250,7 +251,7 @@ pub fn decide_close_period(
             AccountingPeriodTransitionError::RevisionMismatch => {
                 ClosePeriodError::RevisionMismatch {
                     expected: command.expected_revision,
-                    actual: command.period.revision(),
+                    actual: actual_revision,
                 }
             }
             AccountingPeriodTransitionError::RevisionOverflow => ClosePeriodError::RevisionOverflow,

@@ -44,16 +44,41 @@ pub struct Page<T> {
     pub has_previous_page: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct BudgetsQuery<'a> {
+    pub actor_id: Uuid,
+    pub household_id: Uuid,
+    pub period: &'a str,
+    pub after_id: Option<Uuid>,
+    pub before_id: Option<Uuid>,
+    pub first: Option<i32>,
+    pub last: Option<i32>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RecurringExpensesQuery {
+    pub actor_id: Uuid,
+    pub household_id: Uuid,
+    pub include_archived: bool,
+    pub after_id: Option<Uuid>,
+    pub before_id: Option<Uuid>,
+    pub first: Option<i32>,
+    pub last: Option<i32>,
+}
+
 pub async fn budgets(
     pool: &PgPool,
-    actor_id: Uuid,
-    household_id: Uuid,
-    period: &str,
-    after_id: Option<Uuid>,
-    before_id: Option<Uuid>,
-    first: Option<i32>,
-    last: Option<i32>,
+    query: BudgetsQuery<'_>,
 ) -> Result<Page<BudgetReadModel>, PolicyQueryError> {
+    let BudgetsQuery {
+        actor_id,
+        household_id,
+        period,
+        after_id,
+        before_id,
+        first,
+        last,
+    } = query;
     let period_start = parse_period(period)?;
     let (limit, backwards) = page_limit(first, last)?;
     let period_end = period_start
@@ -244,14 +269,17 @@ pub async fn budget_for_current_period(
 
 pub async fn recurring_expenses(
     pool: &PgPool,
-    actor_id: Uuid,
-    household_id: Uuid,
-    include_archived: bool,
-    after_id: Option<Uuid>,
-    before_id: Option<Uuid>,
-    first: Option<i32>,
-    last: Option<i32>,
+    query: RecurringExpensesQuery,
 ) -> Result<Page<recurring_expense::RecurringExpense>, PolicyQueryError> {
+    let RecurringExpensesQuery {
+        actor_id,
+        household_id,
+        include_archived,
+        after_id,
+        before_id,
+        first,
+        last,
+    } = query;
     let (limit, backwards) = page_limit(first, last)?;
     let mut conn = pool
         .get()

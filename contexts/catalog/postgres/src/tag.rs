@@ -62,7 +62,7 @@ pub async fn persist_create_tag(
         .get()
         .await
         .map_err(|error| TagPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<Tag, TagPersistenceError, _>(async move |conn| {
             use public::household_events::dsl as events;
             use public::households::dsl as households;
@@ -129,7 +129,7 @@ pub async fn persist_update_tag(
         .get()
         .await
         .map_err(|error| TagPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<Tag, TagPersistenceError, _>(async move |conn| {
             use public::tags::dsl as tags;
 
@@ -209,7 +209,7 @@ pub async fn persist_set_tag_archived(
         .get()
         .await
         .map_err(|error| TagPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<Tag, TagPersistenceError, _>(async move |conn| {
             use public::tags::dsl as tags;
 

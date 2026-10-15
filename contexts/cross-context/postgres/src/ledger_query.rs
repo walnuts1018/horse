@@ -13,6 +13,16 @@ pub struct LedgerCursor {
     pub id: Uuid,
 }
 
+#[derive(Clone, Debug)]
+pub struct LedgerQuery {
+    pub actor_id: Uuid,
+    pub household_id: Uuid,
+    pub after: Option<LedgerCursor>,
+    pub before: Option<LedgerCursor>,
+    pub first: Option<i32>,
+    pub last: Option<i32>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LedgerRow {
     pub id: Uuid,
@@ -37,6 +47,19 @@ pub struct LedgerPage {
     pub before_has_next_page: bool,
 }
 
+type LedgerDatabaseRow = (
+    Uuid,
+    String,
+    Uuid,
+    Option<Uuid>,
+    DateTime<Utc>,
+    String,
+    i64,
+    Option<Uuid>,
+    Option<Uuid>,
+    DateTime<Utc>,
+);
+
 #[derive(Debug)]
 pub enum LedgerQueryError {
     Pool(String),
@@ -52,15 +75,15 @@ impl From<DieselError> for LedgerQueryError {
     }
 }
 
-pub async fn ledger(
-    pool: &PgPool,
-    actor_id: Uuid,
-    household_id: Uuid,
-    after: Option<LedgerCursor>,
-    before: Option<LedgerCursor>,
-    first: Option<i32>,
-    last: Option<i32>,
-) -> Result<LedgerPage, LedgerQueryError> {
+pub async fn ledger(pool: &PgPool, query: LedgerQuery) -> Result<LedgerPage, LedgerQueryError> {
+    let LedgerQuery {
+        actor_id,
+        household_id,
+        after,
+        before,
+        first,
+        last,
+    } = query;
     if !crate::household_access::is_active_member(pool, household_id, actor_id)
         .await
         .map_err(|error| match error {
@@ -160,36 +183,14 @@ pub async fn ledger(
     let values = if backward {
         selected
             .order((ledger::occurred_at.asc(), ledger::id.asc()))
-            .limit(i64::from(page_size) + 1)
-            .load::<(
-                Uuid,
-                String,
-                Uuid,
-                Option<Uuid>,
-                DateTime<Utc>,
-                String,
-                i64,
-                Option<Uuid>,
-                Option<Uuid>,
-                DateTime<Utc>,
-            )>(&mut *conn)
+            .limit(page_size + 1)
+            .load::<LedgerDatabaseRow>(&mut *conn)
             .await?
     } else {
         selected
             .order((ledger::occurred_at.desc(), ledger::id.desc()))
-            .limit(i64::from(page_size) + 1)
-            .load::<(
-                Uuid,
-                String,
-                Uuid,
-                Option<Uuid>,
-                DateTime<Utc>,
-                String,
-                i64,
-                Option<Uuid>,
-                Option<Uuid>,
-                DateTime<Utc>,
-            )>(&mut *conn)
+            .limit(page_size + 1)
+            .load::<LedgerDatabaseRow>(&mut *conn)
             .await?
     };
     let has_extra = values.len() > page_size as usize;

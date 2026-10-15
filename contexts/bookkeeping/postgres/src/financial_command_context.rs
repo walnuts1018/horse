@@ -51,6 +51,17 @@ pub struct RepaymentCommandContext {
     pub destination_account: Option<AccountId>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RepaymentCommandContextInput {
+    pub household_id: Uuid,
+    pub loan_id: Uuid,
+    pub payment_account_id: Option<Uuid>,
+    pub destination_account_id: Option<Uuid>,
+    pub from_member_id: Uuid,
+    pub to_member_id: Uuid,
+    pub occurred_at: DateTime<Utc>,
+}
+
 pub async fn load_transfer_command_context(
     pool: &PgPool,
     household_id: Uuid,
@@ -74,14 +85,17 @@ pub async fn load_transfer_command_context(
 
 pub async fn load_repayment_command_context(
     pool: &PgPool,
-    household_id: Uuid,
-    loan_id: Uuid,
-    payment_account_id: Option<Uuid>,
-    destination_account_id: Option<Uuid>,
-    from_member_id: Uuid,
-    to_member_id: Uuid,
-    occurred_at: DateTime<Utc>,
+    input: RepaymentCommandContextInput,
 ) -> Result<RepaymentCommandContext, FinancialCommandContextError> {
+    let RepaymentCommandContextInput {
+        household_id,
+        loan_id,
+        payment_account_id,
+        destination_account_id,
+        from_member_id,
+        to_member_id,
+        occurred_at,
+    } = input;
     let (_, accounting_period) = load_period(pool, household_id, occurred_at).await?;
     let mut conn = pool
         .get()

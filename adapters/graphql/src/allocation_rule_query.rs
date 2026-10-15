@@ -59,8 +59,7 @@ pub async fn graphql_allocation_rules(
             Ok(AllocationRuleEdge { cursor, node })
         })
         .collect::<Result<Vec<_>>>()?;
-    let total_count =
-        i32::try_from(page.total_count).map_err(|error| crate::internal_error(error))?;
+    let total_count = i32::try_from(page.total_count).map_err(crate::internal_error)?;
     Ok(AllocationRuleConnection {
         page_info: PageInfo {
             has_next_page: page.has_next_page,

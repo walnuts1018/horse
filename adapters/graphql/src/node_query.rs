@@ -64,12 +64,13 @@ async fn graphql_node_with_households(
                 return Err(Error::new(format!("unknown node type {type_name:?}")));
             }
             let id = decode_uuid_payload(type_name, &decoded.payload)?;
-            if type_name == "Household" {
-                if let Some(node) = preloaded_household_nodes
+            if type_name == "Household"
+                && let Some(node) = preloaded_household_nodes
                     .and_then(|nodes| nodes.get(&(type_name.to_owned(), id)))
-                {
-                    return Ok(Some(node.clone()));
-                }
+            {
+                return Ok(Some(node.clone()));
+            }
+            if type_name == "Household" {
                 return crate::household_query::graphql_household(
                     ctx,
                     encode_global_node_id("Household", id),
@@ -80,10 +81,10 @@ async fn graphql_node_with_households(
             if !is_supported_node_type(type_name) {
                 return Ok(None);
             }
-            if let Some(nodes) = preloaded_household_nodes {
-                if is_batched_node_type(type_name) {
-                    return Ok(nodes.get(&(type_name.to_owned(), id)).cloned());
-                }
+            if let Some(nodes) = preloaded_household_nodes
+                && is_batched_node_type(type_name)
+            {
+                return Ok(nodes.get(&(type_name.to_owned(), id)).cloned());
             }
             let household_ids = match known_households {
                 Some(household_ids) => household_ids.to_vec(),
@@ -399,10 +400,10 @@ pub async fn graphql_nodes(
             .await?;
             for (type_name, id) in &household_types {
                 if let Some(node) = crate::household_lifecycle::resolve_household_node_from_model(
-                    &household, type_name, **id,
+                    &household, type_name, *id,
                 ) {
                     household_nodes
-                        .entry(((*type_name).clone(), **id))
+                        .entry(((*type_name).clone(), *id))
                         .or_insert(node);
                 }
             }

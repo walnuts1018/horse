@@ -8,5 +8,7 @@ chrono = { workspace = true }
 diesel = { workspace = true, features = ["32-column-tables"] }
 diesel-async = { workspace = true }
 horse-postgres-common = { path = "../../../platform/postgres-common" }
+bookkeeping-application = { path = "../../bookkeeping/application" }
+cross-context-postgres = { path = "../../cross-context/postgres" }
 policy-application = { path = "../application" }
 uuid = { workspace = true }

@@ -88,13 +88,12 @@ async fn claim_extraction_job(
     now: DateTime<Utc>,
 ) -> Result<Option<ClaimedExtractionJob>, IngestionJobError> {
     let now_ms = now.timestamp_millis();
-    let now = db_time(now_ms)?;
     let lease_token = Uuid::now_v7().to_string();
     let mut pooled = pool
         .get()
         .await
         .map_err(|error| IngestionJobError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<Option<ClaimedExtractionJob>, IngestionJobError, _>(async move |conn| {
             let mut operations = PostgresClaimExtractionJobOperations { conn };
             let result = if let Some(job_id) = job_id {
@@ -149,7 +148,7 @@ impl ClaimExtractionJobOperations for PostgresClaimExtractionJobOperations<'_> {
     type Candidate = ClaimCandidate;
     type Claimed = ClaimedExtractionJob;
 
-    fn queued_job(&self, candidate: &Self::Candidate) -> &QueuedJob {
+    fn queued_job<'a>(&self, candidate: &'a Self::Candidate) -> &'a QueuedJob {
         &candidate.queued
     }
 
@@ -194,6 +193,7 @@ impl ClaimExtractionJobOperations for PostgresClaimExtractionJobOperations<'_> {
                         jobs::available_at,
                         jobs::lease_token,
                         jobs::lease_expires_at,
+                        jobs::finished_at,
                     ))
                     .first::<JobRow>(self.conn)
                     .await
@@ -221,7 +221,6 @@ impl ClaimExtractionJobOperations for PostgresClaimExtractionJobOperations<'_> {
         let ExtractionJob::Queued(queued) = row.job()? else {
             return Ok(None);
         };
-        use public::source_documents::dsl as documents;
         let document = documents::source_documents
             .filter(documents::id.eq(row.source_document_id))
             .filter(documents::household_id.eq(row.household_id))
@@ -339,42 +338,61 @@ pub async fn record_extraction_success(
     };
     finish_job(
         pool,
-        &job.id,
-        job.attempt_no,
-        &job.lease_token,
-        now,
-        |job, now_ms| finish_extraction_success(job, now_ms),
-        Some(result),
-        None,
-        Some(success),
+        FinishJobInput {
+            job_id: job.id.clone(),
+            attempt_no: job.attempt_no,
+            lease_token: job.lease_token.clone(),
+            now,
+            result: Some(result),
+            failure: None,
+            success: Some(success),
+        },
+        finish_extraction_success,
     )
     .await
 }
 
+pub struct RecordExtractionFailureInput {
+    pub job_id: String,
+    pub attempt_no: i32,
+    pub lease_token: String,
+    pub failure_kind: ExtractionFailureKind,
+    pub error_code: String,
+    pub error_message: String,
+    pub partial_result: Option<Value>,
+    pub retry_delay_ms: i64,
+    pub now: DateTime<Utc>,
+}
+
 pub async fn record_extraction_failure(
     pool: &PgPool,
-    job_id: &str,
-    attempt_no: i32,
-    lease_token: &str,
-    failure_kind: ExtractionFailureKind,
-    error_code: &str,
-    error_message: &str,
-    partial_result: Option<Value>,
-    retry_delay_ms: i64,
-    now: DateTime<Utc>,
+    input: RecordExtractionFailureInput,
 ) -> Result<bool, IngestionJobError> {
-    finish_job(
-        pool,
+    let RecordExtractionFailureInput {
         job_id,
         attempt_no,
         lease_token,
+        failure_kind,
+        error_code,
+        error_message,
+        partial_result,
+        retry_delay_ms,
         now,
-        |job, now_ms| {
+    } = input;
+    finish_job(
+        pool,
+        FinishJobInput {
+            job_id,
+            attempt_no,
+            lease_token,
+            now,
+            result: partial_result,
+            failure: Some((error_code, error_message)),
+            success: None,
+        },
+        move |job, now_ms| {
             finish_extraction_failure(job, now_ms, retry_delay_ms, failure_kind, job.max_attempts)
         },
-        partial_result,
-        Some((error_code.to_owned(), error_message.to_owned())),
-        None,
     )
     .await
 }
@@ -412,16 +430,20 @@ pub async fn save_interaction_reply_preview(
     Ok(updated == 1)
 }
 
-async fn finish_job<F>(
-    pool: &PgPool,
-    job_id: &str,
+struct FinishJobInput {
+    job_id: String,
     attempt_no: i32,
-    lease_token: &str,
+    lease_token: String,
     now: DateTime<Utc>,
-    decide: F,
     result: Option<Value>,
     failure: Option<(String, String)>,
     success: Option<SuccessMetadata>,
+}
+
+async fn finish_job<F>(
+    pool: &PgPool,
+    input: FinishJobInput,
+    decide: F,
 ) -> Result<bool, IngestionJobError>
 where
     F: FnOnce(
@@ -432,15 +454,24 @@ where
             FinishExtractionJobError,
         > + Send,
 {
-    let job_id = parse_uuid(job_id, "job_id")?;
-    let lease_token = parse_uuid(lease_token, "lease_token")?;
+    let FinishJobInput {
+        job_id,
+        attempt_no,
+        lease_token,
+        now,
+        result,
+        failure,
+        success,
+    } = input;
+    let job_id = parse_uuid(&job_id, "job_id")?;
+    let lease_token = parse_uuid(&lease_token, "lease_token")?;
     let now_ms = now.timestamp_millis();
     let now = db_time(now_ms)?;
     let mut pooled = pool
         .get()
         .await
         .map_err(|error| IngestionJobError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<bool, IngestionJobError, _>(async move |conn| {
             use public::extraction_job_attempts::dsl as attempts;
             use public::extraction_jobs::dsl as jobs;
@@ -461,6 +492,7 @@ where
                     jobs::lease_token,
                     jobs::lease_expires_at,
                     jobs::result,
+                    jobs::finished_at,
                 ))
                 .first::<StateRow>(&mut *conn)
                 .await
@@ -537,12 +569,11 @@ where
             if attempt_updated != 1 {
                 return Err(IngestionJobError::InvalidTransition);
             }
-            if failure.is_none() {
-                if let (Some(Some(result)), Some(success)) =
+            if failure.is_none()
+                && let (Some(Some(result)), Some(success)) =
                     (result_for_effects.as_ref(), success.as_ref())
-                {
-                    persist_success_effects(&mut *conn, job_id, result, success, now).await?;
-                }
+            {
+                persist_success_effects(&mut *conn, job_id, result, success, now).await?;
             }
             Ok(true)
         })
@@ -741,7 +772,7 @@ pub async fn recover_expired_extraction_jobs(
         .get()
         .await
         .map_err(|error| IngestionJobError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<usize, IngestionJobError, _>(async move |conn| {
             use public::extraction_job_attempts::dsl as attempts;
             use public::extraction_jobs::dsl as jobs;
@@ -761,6 +792,7 @@ pub async fn recover_expired_extraction_jobs(
                     jobs::lease_token,
                     jobs::lease_expires_at,
                     jobs::result,
+                    jobs::finished_at,
                 ))
                 .load::<StateRow>(conn)
                 .await?;
@@ -845,6 +877,7 @@ struct JobRow {
     available_at: DateTime<Utc>,
     lease_token: Option<Uuid>,
     lease_expires_at: Option<DateTime<Utc>>,
+    finished_at: Option<DateTime<Utc>>,
 }
 
 impl JobRow {
@@ -859,7 +892,8 @@ impl JobRow {
             self.lease_token.map(|token| token.to_string()),
             self.lease_expires_at
                 .map(|expires_at| expires_at.timestamp_millis()),
-            None,
+            self.finished_at
+                .map(|finished_at| finished_at.timestamp_millis()),
         )
     }
 }
@@ -875,6 +909,7 @@ struct StateRow {
     lease_token: Option<Uuid>,
     lease_expires_at: Option<DateTime<Utc>>,
     result: Option<Value>,
+    finished_at: Option<DateTime<Utc>>,
 }
 
 impl StateRow {
@@ -889,7 +924,8 @@ impl StateRow {
             self.lease_token.map(|token| token.to_string()),
             self.lease_expires_at
                 .map(|expires_at| expires_at.timestamp_millis()),
-            None,
+            self.finished_at
+                .map(|finished_at| finished_at.timestamp_millis()),
         )
     }
 }
@@ -919,30 +955,44 @@ fn job_from_parts(
             let (Some(token), Some(expires_at_ms)) = (lease_token, lease_expires_at_ms) else {
                 return Err(IngestionJobError::InvalidState);
             };
+            let lease = ValidLease::new(token, expires_at_ms)
+                .map_err(|_| IngestionJobError::InvalidState)?;
             Ok(ExtractionJob::Running(RunningJob {
                 id: id.to_owned(),
                 attempt_count,
                 max_attempts,
                 failure_count,
                 available_at_ms,
-                lease: ValidLease {
-                    token,
-                    expires_at_ms,
-                },
+                lease,
             }))
         }
-        ExtractionJobStatus::Succeeded => Ok(ExtractionJob::Succeeded(FinishedJob {
-            id: id.to_owned(),
-            finished_at_ms,
-        })),
-        ExtractionJobStatus::Failed => Ok(ExtractionJob::Failed(FinishedJob {
-            id: id.to_owned(),
-            finished_at_ms,
-        })),
-        ExtractionJobStatus::Cancelled => Ok(ExtractionJob::Cancelled(FinishedJob {
-            id: id.to_owned(),
-            finished_at_ms,
-        })),
+        ExtractionJobStatus::Succeeded => {
+            let Some(finished_at_ms) = finished_at_ms else {
+                return Err(IngestionJobError::InvalidState);
+            };
+            Ok(ExtractionJob::Succeeded(FinishedJob {
+                id: id.to_owned(),
+                finished_at_ms,
+            }))
+        }
+        ExtractionJobStatus::Failed => {
+            let Some(finished_at_ms) = finished_at_ms else {
+                return Err(IngestionJobError::InvalidState);
+            };
+            Ok(ExtractionJob::Failed(FinishedJob {
+                id: id.to_owned(),
+                finished_at_ms,
+            }))
+        }
+        ExtractionJobStatus::Cancelled => {
+            let Some(finished_at_ms) = finished_at_ms else {
+                return Err(IngestionJobError::InvalidState);
+            };
+            Ok(ExtractionJob::Cancelled(FinishedJob {
+                id: id.to_owned(),
+                finished_at_ms,
+            }))
+        }
     }
 }
 

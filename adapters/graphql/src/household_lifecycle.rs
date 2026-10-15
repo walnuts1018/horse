@@ -93,6 +93,7 @@ pub struct ExpiredHouseholdInvitation {
     created_at: crate::DateTime,
 }
 
+#[allow(clippy::duplicated_attributes)]
 #[derive(Clone, Debug, Interface)]
 #[graphql(
     field(name = "id", ty = "&ID"),
@@ -522,16 +523,17 @@ pub(crate) fn map_household(value: postgres_household::HouseholdReadModel) -> Re
         .categories
         .into_iter()
         .map(|category| {
-            catalog_application::category::Category {
-                id: category.id.to_string(),
-                household_id: value.id.to_string(),
-                parent_id: category.parent_id.map(|id| id.to_string()),
+            Ok(crate::category::Category {
+                id: encode_node_id("Category", &category.id.to_string())?,
                 name: category.name,
+                parent_id: category
+                    .parent_id
+                    .map(|id| encode_node_id("Category", &id.to_string()))
+                    .transpose()?,
                 archived: category.archived,
-            }
-            .into()
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     let default_allocation = value
         .default_allocation
         .into_iter()
@@ -590,7 +592,7 @@ pub(crate) fn resolve_household_node_from_model(
     id: Uuid,
 ) -> Option<crate::ledger_entry::Node> {
     let global_id = crate::node_query::encode_global_node_id(type_name, id);
-    let node = match type_name {
+    match type_name {
         "Account" => household
             .accounts
             .iter()
@@ -616,8 +618,7 @@ pub(crate) fn resolve_household_node_from_model(
             .cloned()
             .map(crate::ledger_entry::Node::Pool),
         _ => None,
-    };
-    node
+    }
 }
 
 pub(crate) fn map_invitation(

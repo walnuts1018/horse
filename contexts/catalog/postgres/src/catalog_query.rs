@@ -16,6 +16,15 @@ pub struct CatalogCursor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagQueryArgs {
+    pub include_archived: bool,
+    pub after: Option<CatalogCursor>,
+    pub before: Option<CatalogCursor>,
+    pub first: Option<i32>,
+    pub last: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagProjection {
     pub id: Uuid,
     pub household_id: Uuid,
@@ -580,12 +589,15 @@ pub async fn tags(
     pool: &PgPool,
     actor_id: Uuid,
     household_id: Uuid,
-    include_archived: bool,
-    after: Option<CatalogCursor>,
-    before: Option<CatalogCursor>,
-    first: Option<i32>,
-    last: Option<i32>,
+    args: TagQueryArgs,
 ) -> Result<TagPage, CatalogQueryError> {
+    let TagQueryArgs {
+        include_archived,
+        after,
+        before,
+        first,
+        last,
+    } = args;
     let (size, backward) = page_size(first, last)?;
     let mut conn = pool
         .get()

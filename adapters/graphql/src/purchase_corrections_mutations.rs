@@ -72,7 +72,7 @@ pub struct CorrectPurchaseUserError {
 
 #[derive(Union)]
 pub enum CorrectPurchaseResult {
-    Success(CorrectPurchaseSuccess),
+    Success(Box<CorrectPurchaseSuccess>),
     UserError(CorrectPurchaseUserError),
 }
 
@@ -250,14 +250,14 @@ async fn execute(
     let household_id = Uuid::parse_str(&request.household_id).map_err(crate::internal_error)?;
     let purchase_id = request.purchase_id.clone();
     match postgres_correct_purchase::correct_purchase(ctx.data::<PgPool>()?, request).await {
-        Ok(_) => Ok(CorrectPurchaseSuccess {
+        Ok(_) => Ok(Box::new(CorrectPurchaseSuccess {
             result: crate::purchase_mutations::purchase_result(
                 ctx.data::<PgPool>()?,
                 household_id,
                 &purchase_id,
             )
             .await?,
-        }
+        })
         .into()),
         Err(error) => match user_error(&error) {
             Some(error) => Ok(error.into()),

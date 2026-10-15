@@ -110,5 +110,4 @@ pub async fn account_balances(
                 .map_err(AccountBalancesReadError::from)
         })
         .await
-        .map_err(Into::into)
 }

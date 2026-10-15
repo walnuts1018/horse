@@ -93,7 +93,7 @@ async fn persist_validated(
         .get()
         .await
         .map_err(|error| SetAllocationRulePersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedAllocationRule, SetAllocationRulePersistenceError, _>(
             async move |conn| {
                 use public::allocation_rule_weights::dsl as weights;
@@ -117,7 +117,7 @@ async fn persist_validated(
                     .filter(members::member_id.eq(actor_id))
                     .filter(members::left_at.is_null())
                     .select(members::member_id)
-                    .first::<Uuid>(&mut *conn)
+                    .first::<Uuid>(conn)
                     .await
                     .optional()?
                     .is_some();
@@ -129,7 +129,7 @@ async fn persist_validated(
                     .filter(pools::household_id.eq(household_id))
                     .filter(pools::id.eq_any(&pool_ids))
                     .select(pools::id)
-                    .load::<Uuid>(&mut *conn)
+                    .load::<Uuid>(conn)
                     .await?
                     .into_iter()
                     .collect::<BTreeSet<_>>();
@@ -138,7 +138,7 @@ async fn persist_validated(
                 }
 
                 validate_target_reference(
-                    &mut *conn,
+                    conn,
                     household_id,
                     category_id,
                     product_concept_id,
@@ -147,7 +147,7 @@ async fn persist_validated(
                 .await?;
 
                 let existing = find_rule(
-                    &mut *conn,
+                    conn,
                     household_id,
                     &validated.target,
                     category_id,
@@ -183,12 +183,12 @@ async fn persist_validated(
                 if existing.is_some() {
                     diesel::update(rules::allocation_rules.filter(rules::id.eq(rule_id)))
                         .set((rules::revision.eq(revision), rules::updated_at.eq(now)))
-                        .execute(&mut *conn)
+                        .execute(conn)
                         .await?;
                     diesel::delete(
                         weights::allocation_rule_weights.filter(weights::rule_id.eq(rule_id)),
                     )
-                    .execute(&mut *conn)
+                    .execute(conn)
                     .await?;
                 } else {
                     diesel::insert_into(rules::allocation_rules)
@@ -201,7 +201,7 @@ async fn persist_validated(
                             rules::product_variant_id.eq(product_variant_id),
                             rules::revision.eq(revision),
                         ))
-                        .execute(&mut *conn)
+                        .execute(conn)
                         .await?;
                 }
 
@@ -214,7 +214,7 @@ async fn persist_validated(
                             weights::pool_id.eq(pool_id),
                             weights::weight.eq(weight.weight),
                         ))
-                        .execute(&mut *conn)
+                        .execute(conn)
                         .await?;
                 }
 
@@ -233,7 +233,7 @@ async fn persist_validated(
                             .collect::<Vec<_>>()),
                         events::actor_id.eq(actor_id),
                     ))
-                    .execute(&mut *conn)
+                    .execute(conn)
                     .await?;
 
                 Ok(PersistedAllocationRule {

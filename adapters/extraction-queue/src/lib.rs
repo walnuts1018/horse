@@ -46,11 +46,15 @@ impl ExtractionQueue {
         if url.trim().is_empty() {
             return Err(QueueError("RabbitMQ URL is empty".to_owned()));
         }
-        let properties = ConnectionProperties::default().with_heartbeat(10);
-        let connection = timeout(CONNECTION_TIMEOUT, Connection::connect(url, properties))
-            .await
-            .map_err(|_| QueueError("RabbitMQ connection timed out".to_owned()))?
-            .map_err(|_| QueueError("RabbitMQ connection failed".to_owned()))?;
+        let separator = if url.contains('?') { '&' } else { '?' };
+        let url = format!("{url}{separator}heartbeat=10");
+        let connection = timeout(
+            CONNECTION_TIMEOUT,
+            Connection::connect(&url, ConnectionProperties::default()),
+        )
+        .await
+        .map_err(|_| QueueError("RabbitMQ connection timed out".to_owned()))?
+        .map_err(|_| QueueError("RabbitMQ connection failed".to_owned()))?;
         let channel = connection
             .create_channel()
             .await
@@ -116,6 +120,7 @@ impl ExtractionQueue {
         delivery
             .ack(BasicAckOptions::default())
             .await
+            .map(|_| ())
             .map_err(|_| QueueError("RabbitMQ delivery acknowledgement failed".to_owned()))
     }
 
@@ -129,12 +134,13 @@ impl ExtractionQueue {
                 ..BasicNackOptions::default()
             })
             .await
+            .map(|_| ())
             .map_err(|_| QueueError("RabbitMQ delivery rejection failed".to_owned()))
     }
 
     pub async fn close(&self) {
-        let _ = self.channel.close(200, "shutdown").await;
-        let _ = self.connection.close(200, "shutdown").await;
+        let _ = self.channel.close(200, "shutdown".into()).await;
+        let _ = self.connection.close(200, "shutdown".into()).await;
     }
 }
 

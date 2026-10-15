@@ -451,24 +451,24 @@ async fn load_evidence(
         .map(|row| row.1)
         .collect::<Vec<_>>();
     for (id, _, household, kind, occurred, description, amount, member) in &ledger_rows {
-        if kind == "FUNDING" {
-            if let Some(member) = member {
-                for ((target, period), start) in starts {
-                    if *target == *household && accounting_period_start(*occurred) == *start {
-                        push_evidence(
-                            &mut result,
-                            (*target, period.clone()),
-                            SettlementEvidence {
-                                member_id: member.to_string(),
-                                kind: "PAID".into(),
-                                label: description.clone(),
-                                amount_yen: *amount,
-                                source_id: id.to_string(),
-                                purchase_id: None,
-                                occurred_at_micros: Some(occurred.timestamp_micros()),
-                            },
-                        );
-                    }
+        if kind == "FUNDING"
+            && let Some(member) = member
+        {
+            for ((target, period), start) in starts {
+                if *target == *household && accounting_period_start(*occurred) == *start {
+                    push_evidence(
+                        &mut result,
+                        (*target, period.clone()),
+                        SettlementEvidence {
+                            member_id: member.to_string(),
+                            kind: "PAID".into(),
+                            label: description.clone(),
+                            amount_yen: *amount,
+                            source_id: id.to_string(),
+                            purchase_id: None,
+                            occurred_at_micros: Some(occurred.timestamp_micros()),
+                        },
+                    );
                 }
             }
         }
@@ -652,33 +652,6 @@ fn accounting_period_start(instant: DateTime<Utc>) -> NaiveDate {
         .expect("first day of a month exists")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::accounting_period_start;
-    use chrono::{NaiveDate, TimeZone, Utc};
-
-    #[test]
-    fn evidence_period_uses_japan_month_boundary() {
-        let before = Utc
-            .with_ymd_and_hms(2026, 9, 30, 14, 59, 59)
-            .single()
-            .unwrap();
-        let boundary = Utc
-            .with_ymd_and_hms(2026, 9, 30, 15, 0, 0)
-            .single()
-            .unwrap();
-
-        assert_eq!(
-            accounting_period_start(before),
-            NaiveDate::from_ymd_opt(2026, 9, 1).unwrap()
-        );
-        assert_eq!(
-            accounting_period_start(boundary),
-            NaiveDate::from_ymd_opt(2026, 10, 1).unwrap()
-        );
-    }
-}
-
 fn schedule_amount(
     start: NaiveDate,
     end: NaiveDate,
@@ -715,5 +688,32 @@ fn schedule_amount(
             Ok(total)
         }
         _ => Err(SettlementQueryPersistenceError::InvalidDate),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::accounting_period_start;
+    use chrono::{NaiveDate, TimeZone, Utc};
+
+    #[test]
+    fn evidence_period_uses_japan_month_boundary() {
+        let before = Utc
+            .with_ymd_and_hms(2026, 9, 30, 14, 59, 59)
+            .single()
+            .unwrap();
+        let boundary = Utc
+            .with_ymd_and_hms(2026, 9, 30, 15, 0, 0)
+            .single()
+            .unwrap();
+
+        assert_eq!(
+            accounting_period_start(before),
+            NaiveDate::from_ymd_opt(2026, 9, 1).unwrap()
+        );
+        assert_eq!(
+            accounting_period_start(boundary),
+            NaiveDate::from_ymd_opt(2026, 10, 1).unwrap()
+        );
     }
 }

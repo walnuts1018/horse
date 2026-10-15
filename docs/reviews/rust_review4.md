@@ -18,7 +18,7 @@
 
 これらは、書籍の第5〜7章、第9〜12章に沿った良い選択です。
 
-しかし、特に次の2点は優先的に改善したいです。
+しかし、特に型による不変条件、Bounded Contextの境界、Workflowの実行責務は優先的に見直したいです。
 
 ## 1. 検証済みの値が、型として保証されていない
 
@@ -74,35 +74,7 @@ impl PurchaseItemName {
 
 また、金額単体の正当性と、明細合計・支払い合計などの集合全体の整合性は別です。後者も必要なら集約単位の構築経路で保証するべきです。
 
-## 2. アプリケーション層が、永続化表現を知っている
-
-重要度：高 ／ DMMF第3章 §3.5、第11章 §11.2〜11.4、第12章 §12.1〜12.5
-
-[同じファイルの冒頭](https://github.com/walnuts1018/horse/blob/b3218b75e8a0dbad28c134ccd43fda91e749ae20/contexts/bookkeeping/application/src/create_purchase.rs#L20-L105) には、以下のような実装があります。
-
-```
-impl PurchaseOrigin {
-    pub const fn as_db_value(self) -> &'static str {
-        match self {
-            Self::AiAssisted => "AI",
-            Self::Manual => "MANUAL",
-            Self::Unknown => "UNKNOWN",
-        }
-    }
-}
-```
-
-`DatePrecision` や `QuantityUnit` にも類似のDB変換があります。
-
-Domain/Application層の型がPostgreSQLの保存形式を知る必要はありません。
-
-DMMFに沿うなら、`PurchaseOrigin` は業務上の意味を表すだけにし、`AI`、`MANUAL` といった保存上の値への変換はPostgres Adapterが所有するのが自然です。
-
-これは小さな修正ですが、重要です。将来DB側の表現が変わったときに、ドメインの意味モデルまで変更する設計を避けられます。
-
-この2点は、現在の実装から具体的に確認できる改善事項です。
-
-## 3. `Validated*` という名前でも、不正状態を構築できる
+## 2. `Validated*` という名前でも、不正状態を構築できる
 
 重要度：高 ／ DMMF第4章 §4.3、第6章 §6.3〜6.4、第7章 §7.2
 
@@ -140,7 +112,7 @@ pub enum AllocationRuleTarget {
 
 これは書籍への厳密な準拠という意味でも、優先度の高い変更です。
 
-## 4. Bounded Contextの境界とデータ所有権が、まだ一致していない
+## 3. Bounded Contextの境界とデータ所有権が、まだ一致していない
 
 重要度：最優先 ／ DMMF第1章 §1.4〜1.5、第3章 §3.1〜3.4、第12章 §12.3、第13章 §13.3.6
 
@@ -168,43 +140,7 @@ pub enum AllocationRuleTarget {
 
 これはディレクトリ構造の整理よりも先に決めるべき、根本的な設計問題です。
 
-## 5. PostgreSQL Adapterに業務上の判断が残っている
-
-重要度：最優先 ／ DMMF第3章 §3.5、第9章 §9.5〜9.6、第12章 §12.1
-
-これは単なるレイヤー依存以上に、本質的な問題です。
-
-[bookkeeping/postgres/src/purchase_command_context.rs](https://github.com/walnuts1018/horse/blob/b3218b75e8a0dbad28c134ccd43fda91e749ae20/contexts/bookkeeping/postgres/src/purchase_command_context.rs#L149-L205) では、負担ルールの候補をProduct Variant、Product Concept、Category、Merchantの順に検索し、最初に見つかったものを採用しています。
-
-この「どのルールを優先するか」は、SQLの技術的な関心ではなく業務上のポリシーです。
-
-より適切な分担は次の形です。
-
-PostgreSQL Adapter
-
-必要なルール候補を読み取る
-
-Pure Domain Function
-
-候補から業務上適用すべきルールを決定する
-
-RuleCandidates → SelectedRule
-
-Purchase Workflow
-
-選ばれたルールを用いて配賦し、結果を構築する
-
-さらに、[bookkeeping/postgres/src/create_purchase.rs の](https://github.com/walnuts1018/horse/blob/b3218b75e8a0dbad28c134ccd43fda91e749ae20/contexts/bookkeeping/postgres/src/create_purchase.rs#L385-L476)[`validate_catalog_references`](https://github.com/walnuts1018/horse/blob/b3218b75e8a0dbad28c134ccd43fda91e749ae20/contexts/bookkeeping/postgres/src/create_purchase.rs#L385-L476) は、`&mut CreatePurchaseDecision` を受け取り、Catalogを参照した結果で `category_id` を変更しています。
-
-Pure Decisionが生成した結果を、永続化側が後から業務的に変更しているわけです。
-
-これではDecisionが最終的な業務判断を表せていません。
-
-参照値の取得はAdapterが担当して構いませんが、その結果を用いた選択・補完・最終Decision生成は純粋な関数に戻すべきです。
-
-一方、同時更新防止のためのrevision照合、行ロック、冪等性、DBの制約確認まで純粋関数へ移す必要はありません。これらはI/O境界で扱うべき整合性の責務です。
-
-## 6. Workflowの全体像がGraphQL・Application・Postgresに分散している
+## 4. Workflowの全体像がGraphQL・Application・Postgresに分散している
 
 重要度：高 ／ DMMF第3章 §3.4、第7章 §7.4〜7.8、第9章 §9.6、第12章 §12.1
 
@@ -220,78 +156,17 @@ DMMFの思想に近づけるには、業務操作の順序をApplication Workflo
 
 ただし、DMMFは `application` というcrateやクラス階層を要求していません。これは書籍の関数合成とI/O境界をRustで明瞭に実装するための私の提案です。
 
-## 7. Decisionが、業務上の結果ではなくSQL更新パッチになっている
-
-重要度：高 ／ DMMF第4章 §4.3、第5章 §5.5、第7章 §7.2〜7.3、第12章 §12.1
-
-[policy/application/src/budget.rs](https://github.com/walnuts1018/horse/blob/b3218b75e8a0dbad28c134ccd43fda91e749ae20/contexts/policy/application/src/budget.rs#L53-L64) の `BudgetDecision` は、`name`、`amount_yen`、`starts_on`、`expected_revision`、`archived` などを多数の `Option` で保持しています。
-
-Create・Update・Archiveの異なる結果を、DBに渡せる共通の更新データへ押し込めた形です。
-
-このような構造は、境界の入力DTOや、DB更新のための中間表現としてなら成立します。
-
-しかし業務上のDecisionとしては、`CreatedBudget`、`UpdatedBudget`、`ArchivedBudget` のような異なる結果を明示したほうがよいです。
-
-```
-pub enum BudgetDecision {
-    Created {
-        budget: ActiveBudget,
-        events: Vec<BudgetEvent>,
-    },
-    Updated {
-        budget: ActiveBudget,
-        events: Vec<BudgetEvent>,
-    },
-    Archived {
-        budget: ArchivedBudget,
-        events: Vec<BudgetEvent>,
-    },
-}
-```
-
-これは概念コードです。実際にはそれぞれの操作で必要な情報を、意味に応じて定義します。
-
-同様に [update_purchase_item.rs](https://github.com/walnuts1018/horse/blob/b3218b75e8a0dbad28c134ccd43fda91e749ae20/contexts/bookkeeping/application/src/update_purchase_item.rs#L8-L25) の `quantity_set: bool` と `quantity: Option<Measure>` の組み合わせも、独立したOR型にできます。
-
-ここでのポイントは、すべての `Option` を廃止することではありません。本当に任意の値と、操作の種類を区別するための値を混同しないことです。
-
-## 8. Bookkeepingの仕訳モデルを、全Workflowで統一したい
+## 5. Bookkeepingの仕訳モデルを、全Workflowで統一したい
 
 重要度：高 ／ DMMF第5章 §5.4〜5.8、第6章 §6.1〜6.5
 
-ここは、現在の実装で特に惜しいところです。
+[bookkeeping/domain/src/journal.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/journal.rs)には`BalancedJournal`があり、空でないこと、明細番号、貸借一致を構築時に保証しています。
 
-[bookkeeping/domain/src/journal.rs](https://github.com/walnuts1018/horse/blob/b3218b75e8a0dbad28c134ccd43fda91e749ae20/contexts/bookkeeping/domain/src/journal.rs) には `BalancedJournal` があり、空でないこと、明細番号、貸借一致を構築時に保証しています。
+[bookkeeping/application/src/record_transfer.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/record_transfer.rs)の転記先は`JournalTarget::{Account, Pool, Member, Clearing}`で表され、対象IDの不正な組み合わせは構築できません。
 
-一方、[bookkeeping/application/src/record_transfer.rs](https://github.com/walnuts1018/horse/blob/b3218b75e8a0dbad28c134ccd43fda91e749ae20/contexts/bookkeeping/application/src/record_transfer.rs#L116-L160) は独立した `JournalLine` 型を持っています。
+購入、振替、返済、訂正といった各Workflowの明細は、引き続きそれぞれの型と検証を持っています。共通の`BalancedJournal`が全Workflowの会計不変条件を担う構成にはなっていません。これらの型を統合する範囲と、Workflow固有の明細を残す範囲は引き続き整理が必要です。
 
-こちらの明細は次の3つを独立した `Option` で表現しています。
-
-```
-pub account_id: Option<AccountId>,
-pub pool_id: Option<PoolId>,
-pub member_id: Option<MemberId>,
-```
-
-この3つが表現する組み合わせのうち、どれが業務上正しいかは型から読み取れません。
-
-最も美しい形を目指すなら、Bookkeeping BC内でJournalの語彙を一度統一したいです。
-
-```
-pub enum JournalTarget {
-    Account(AccountId),
-    Pool(PoolId),
-    Member(MemberId),
-}
-```
-
-ただし、これも業務モデルに応じた概念例です。対象なしが正当な明細なら、それに対応する意味のあるバリアントを用意します。
-
-そしてPurchase、Transfer、Repayment、Correctionといった異なるWorkflowから、可能な限り共通の `BalancedJournal` を生成する設計にします。
-
-業務上同じ概念なのに、Workflowごとに独立した不変条件を実装する状態は避けたいです。
-
-## 9. Domain Eventと変更通知の契約を分離する
+## 6. Domain Eventと変更通知の契約を分離する
 
 重要度：中〜高 ／ DMMF第3章 §3.2〜3.4、第7章 §7.4、第13章 §13.3.6
 
@@ -313,7 +188,7 @@ pub enum JournalTarget {
 
 書籍の§3.4.2は、BC内部で処理の依存関係を隠すイベント配線を避けるよう勧めています。
 
-## 10. 永続化からの復元に、Aggregateの構築経路が必要
+## 7. 永続化からの復元に、Aggregateの構築経路が必要
 
 重要度：高 ／ DMMF第5章 §5.8、第6章 §6.5、第11章 §11.4、第12章 §12.5
 
@@ -342,23 +217,15 @@ impl DraftPurchase {
 
 また、DB復元時のエラーが、通常の業務エラーなのか、保存データ破損に相当するのかも区別するとよいです。
 
-## 11. Evidenceの状態型も、構築可能性まで厳密にしたい
+## 8. Evidenceの遷移結果も、構築可能性まで厳密にしたい
 
 重要度：中 ／ DMMF第6章 §6.3〜6.4、第7章 §7.3、§7.9
 
-[evidence/application/src/ingestion_job.rs](https://github.com/walnuts1018/horse/blob/b3218b75e8a0dbad28c134ccd43fda91e749ae20/contexts/evidence/application/src/ingestion_job.rs#L4-L58) は、`Queued`、`Running`、`Succeeded`、`Failed`、`Cancelled` をenumで区別しています。
+[`ValidLease`](https://github.com/walnuts1018/horse/blob/main/contexts/evidence/application/src/ingestion_job.rs)は非公開フィールドとSmart Constructorを持ち、空tokenと0以下の期限を拒否します。`FinishedJob.finished_at_ms`も必須値になっています。
 
-これは良い設計です。
+一方、完了・再試行を返す`FinishExtractionJob`などは`status`と`finished_at_ms: Option<i64>`を併用します。再試行時には非終端状態と完了時刻なしを表すため、型の不正な組み合わせをどこまで構築できるかを確認し、必要なら結果型を分ける余地があります。長時間Workflowの進捗をSaga / Process Managerとしてどう表すかは別途検討が必要です。
 
-ただし `ValidLease` には公開フィールドがあり、任意のtokenや期限で生成できます。`FinishedJob.finished_at_ms` も `Option<i64>` です。
-
-`ValidLease` という名前が保証することと、実際に構築できる値が一致していません。
-
-期限切れになること自体は時間依存なので型だけでは防げませんが、「取得時に検証されたLease」という保証ならSmart Constructorで与えられます。
-
-長時間実行するWorkflowについては、書籍§7.9のSaga / Process Managerに照らし、永続化する進捗と一時的な実行状態も区別すると、さらに一貫したモデルになります。
-
-## 12. エラー型を境界まで保持する
+## 9. エラー型を境界まで保持する
 
 重要度：中 ／ DMMF第10章 §10.1〜10.8
 
@@ -370,7 +237,7 @@ DMMFの `mapError` に対応する設計では、ステップ固有の失敗をW
 
 公開GraphQLエラーを統合すること自体は問題ありません。重要なのは、統合が明示的な公開契約上の判断であり、内部で偶然情報を失う結果ではないことです。
 
-## 13. Traitによる依存注入は、必要最小限の能力に絞る
+## 10. Traitによる依存注入は、必要最小限の能力に絞る
 
 重要度：改善提案 ／ DMMF第8章 §8.2、第9章 §9.6、第12章 §12.1.2
 

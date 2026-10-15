@@ -51,7 +51,7 @@ pub async fn post_purchase_workflow(
             error.to_string(),
         ))
     })?;
-    let result = (&mut *pooled)
+    (*pooled)
         .transaction::<
             Result<_, application::PostPurchaseWorkflowError<PostPurchaseWorkflowAdapterError>>,
             DieselError,
@@ -65,8 +65,7 @@ pub async fn post_purchase_workflow(
             application::PostPurchaseWorkflowError::Operations(
                 PostPurchaseWorkflowAdapterError::Database(error),
             )
-        })?;
-    result
+        })?
 }
 
 struct PurchasePostOperations<'a> {
@@ -89,7 +88,7 @@ impl application::PostPurchaseOperations for PurchasePostOperations<'_> {
             expected_revision,
         )
         .await
-        .map_err(|error| PostPurchaseWorkflowAdapterError::Load(error))?;
+        .map_err(PostPurchaseWorkflowAdapterError::Load)?;
         Ok(application::LoadedPostPurchase {
             command: loaded.command,
             resolved_payments: loaded
@@ -218,7 +217,7 @@ pub async fn find_idempotent_post_purchase(
     }))
 }
 
-async fn persist_post_purchase_in_transaction(
+pub(crate) async fn persist_post_purchase_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
     input: PersistPostPurchase,
     decision: PostPurchaseDecision,
@@ -384,8 +383,7 @@ async fn persist_post_purchase_in_transaction(
     for line in decision.journal_lines() {
         let line_no = i32::try_from(line.line_no())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal line_no"))?;
-        let amount = i64::try_from(line.amount().value())
-            .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal amount"))?;
+        let amount = line.amount().value();
         let (account_id, pool_id) = match line.target() {
             PostingTarget::Account(id) => (Some(parse_uuid(id.as_str(), "account_id")?), None),
             PostingTarget::Pool(id) => (None, Some(parse_uuid(id.as_str(), "pool_id")?)),
@@ -545,8 +543,7 @@ fn validate_decision(
         if number <= 0 || !lines.insert(number) {
             return Err(PostPurchasePersistenceError::InvalidDecision);
         }
-        let amount = i64::try_from(line.amount().value())
-            .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal amount"))?;
+        let amount = line.amount().value();
         match line.side() {
             Side::Debit => {
                 debit = debit.checked_add(amount).ok_or(
@@ -970,8 +967,7 @@ fn validate_journal_rows(
     }
     let mut actual_credits = BTreeMap::<Uuid, i64>::new();
     for line in decision.journal_lines() {
-        let amount = i64::try_from(line.amount().value())
-            .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal amount"))?;
+        let amount = line.amount().value();
         let id = match line.side() {
             Side::Debit => continue,
             Side::Credit => match line.target() {

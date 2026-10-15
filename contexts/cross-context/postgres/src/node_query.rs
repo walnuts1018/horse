@@ -501,7 +501,7 @@ async fn load_account_projections(
     account_ids: &[Uuid],
 ) -> Result<Vec<crate::account_history_query::AccountProjection>, NodeQueryError> {
     let rows = public::accounts::table
-        .filter(public::accounts::household_id.eq_any(household_ids))
+        .filter(public::accounts::household_id.eq(household_id))
         .filter(public::accounts::id.eq_any(account_ids))
         .select((
             public::accounts::id,

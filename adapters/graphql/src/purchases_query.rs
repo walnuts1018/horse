@@ -323,10 +323,11 @@ fn filter_purchase_items(
                 return false;
             }
         }
-        if let Some(search) = &search {
-            if !merchant_matches && !item.name.to_lowercase().contains(search) {
-                return false;
-            }
+        if let Some(search) = &search
+            && !merchant_matches
+            && !item.name.to_lowercase().contains(search)
+        {
+            return false;
         }
         true
     });

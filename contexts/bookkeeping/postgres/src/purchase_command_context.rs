@@ -4,6 +4,8 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
+use bookkeeping_application::create_purchase::{AllocationRuleCandidate, select_allocation_rule};
+
 use crate::{PgPool, schema::public};
 
 #[derive(Debug, Clone)]
@@ -62,13 +64,8 @@ pub async fn load_purchase_command_context(
         .get()
         .await
         .map_err(|error| PurchaseCommandContextError::Pool(error.to_string()))?;
-    load_purchase_command_context_in_transaction(
-        &mut *conn,
-        household_id,
-        merchant_key,
-        item_inputs,
-    )
-    .await
+    load_purchase_command_context_in_transaction(&mut conn, household_id, merchant_key, item_inputs)
+        .await
 }
 
 pub async fn load_purchase_command_context_in_transaction(
@@ -146,51 +143,73 @@ pub async fn load_purchase_command_context_in_transaction(
             continue;
         }
 
-        let mut selected = None;
+        let mut query = rules::allocation_rules.into_boxed();
+        let mut has_candidate_scope = false;
         if let Some(variant_id) = item.product_variant_id {
-            selected = rules::allocation_rules
-                .filter(rules::household_id.eq(household_id))
-                .filter(rules::product_variant_id.eq(Some(variant_id)))
-                .select((rules::id, rules::revision))
-                .first::<(Uuid, i64)>(&mut *conn)
-                .await
-                .optional()?;
+            query = query.or_filter(rules::product_variant_id.eq(Some(variant_id)));
+            has_candidate_scope = true;
         }
-        if selected.is_none()
-            && let Some(concept_id) = concept_id
-        {
-            selected = rules::allocation_rules
-                .filter(rules::household_id.eq(household_id))
-                .filter(rules::product_concept_id.eq(Some(concept_id)))
-                .select((rules::id, rules::revision))
-                .first::<(Uuid, i64)>(&mut *conn)
-                .await
-                .optional()?;
+        if let Some(concept_id) = concept_id {
+            query = query.or_filter(rules::product_concept_id.eq(Some(concept_id)));
+            has_candidate_scope = true;
         }
-        if selected.is_none()
-            && let Some(category_id) = category_id
-        {
-            selected = rules::allocation_rules
-                .filter(rules::household_id.eq(household_id))
-                .filter(rules::category_id.eq(Some(category_id)))
-                .select((rules::id, rules::revision))
-                .first::<(Uuid, i64)>(&mut *conn)
-                .await
-                .optional()?;
+        if let Some(category_id) = category_id {
+            query = query.or_filter(rules::category_id.eq(Some(category_id)));
+            has_candidate_scope = true;
         }
-        if selected.is_none() && !merchant_key.is_empty() {
-            selected = rules::allocation_rules
-                .filter(rules::household_id.eq(household_id))
-                .filter(rules::merchant_key.eq(Some(merchant_key.to_owned())))
-                .select((rules::id, rules::revision))
-                .first::<(Uuid, i64)>(&mut *conn)
-                .await
-                .optional()?;
+        if !merchant_key.is_empty() {
+            query = query.or_filter(rules::merchant_key.eq(Some(merchant_key.to_owned())));
+            has_candidate_scope = true;
         }
+        let candidates = if has_candidate_scope {
+            query
+                .filter(rules::household_id.eq(household_id))
+                .select((
+                    rules::id,
+                    rules::revision,
+                    rules::product_variant_id,
+                    rules::product_concept_id,
+                    rules::category_id,
+                    rules::merchant_key,
+                ))
+                .load::<(
+                    Uuid,
+                    i64,
+                    Option<Uuid>,
+                    Option<Uuid>,
+                    Option<Uuid>,
+                    Option<String>,
+                )>(&mut *conn)
+                .await?
+                .into_iter()
+                .map(
+                    |(id, revision, variant_id, concept_id, candidate_category_id, merchant)| {
+                        Ok(AllocationRuleCandidate {
+                            rule_id: id.to_string(),
+                            revision: u64::try_from(revision)
+                                .map_err(|_| PurchaseCommandContextError::InvalidVersion)?,
+                            product_variant_id: variant_id.map(|id| id.to_string()),
+                            product_concept_id: concept_id.map(|id| id.to_string()),
+                            category_id: candidate_category_id.map(|id| id.to_string()),
+                            merchant_key: merchant,
+                        })
+                    },
+                )
+                .collect::<Result<Vec<_>, PurchaseCommandContextError>>()?
+        } else {
+            Vec::new()
+        };
+        let selected = select_allocation_rule(
+            &candidates,
+            item.product_variant_id.map(|id| id.to_string()).as_deref(),
+            concept_id.map(|id| id.to_string()).as_deref(),
+            category_id.map(|id| id.to_string()).as_deref(),
+            merchant_key,
+        );
         let (rule_id, rule_version, resolved_weights) = match selected {
-            Some((rule_id, rule_revision)) => {
-                let rule_version = u64::try_from(rule_revision)
-                    .map_err(|_| PurchaseCommandContextError::InvalidVersion)?;
+            Some(selected) => {
+                let rule_id = Uuid::parse_str(&selected.rule_id)
+                    .map_err(|_| PurchaseCommandContextError::MissingAllocationRule)?;
                 let resolved_weights = weights::allocation_rule_weights
                     .filter(weights::household_id.eq(household_id))
                     .filter(weights::rule_id.eq(rule_id))
@@ -200,7 +219,7 @@ pub async fn load_purchase_command_context_in_transaction(
                 if resolved_weights.is_empty() {
                     return Err(PurchaseCommandContextError::MissingAllocationRule);
                 }
-                (Some(rule_id), rule_version, resolved_weights)
+                (Some(rule_id), selected.revision, resolved_weights)
             }
             None => (None, version, default_weights.clone()),
         };

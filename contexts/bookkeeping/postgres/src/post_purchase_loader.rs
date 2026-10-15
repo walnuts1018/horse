@@ -255,10 +255,10 @@ pub async fn load_post_purchase_command(
             (household_id, line_no, account_id, amount_yen, false)
         })
         .collect::<Vec<_>>();
-    if payment_rows.is_empty() {
-        if let Some(account_id) = purchase.4 {
-            payment_rows.push((household_id, 1, account_id, total.value(), true));
-        }
+    if payment_rows.is_empty()
+        && let Some(account_id) = purchase.4
+    {
+        payment_rows.push((household_id, 1, account_id, total.value(), true));
     }
     let mut raw_payments = Vec::with_capacity(payment_rows.len());
     let mut account_ids = BTreeSet::new();

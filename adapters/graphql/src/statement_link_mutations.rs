@@ -63,7 +63,7 @@ pub struct LinkStatementAccountMovementUserError {
 
 #[derive(Union)]
 pub enum LinkStatementAccountMovementResult {
-    Success(LinkStatementAccountMovementSuccess),
+    Success(Box<LinkStatementAccountMovementSuccess>),
     UserError(LinkStatementAccountMovementUserError),
 }
 
@@ -80,7 +80,7 @@ pub struct LinkStatementAccountIncomeUserError {
 
 #[derive(Union)]
 pub enum LinkStatementAccountIncomeResult {
-    Success(LinkStatementAccountIncomeSuccess),
+    Success(Box<LinkStatementAccountIncomeSuccess>),
     UserError(LinkStatementAccountIncomeUserError),
 }
 
@@ -97,7 +97,7 @@ pub struct LinkStatementTransferUserError {
 
 #[derive(Union)]
 pub enum LinkStatementTransferResult {
-    Success(LinkStatementTransferSuccess),
+    Success(Box<LinkStatementTransferSuccess>),
     UserError(LinkStatementTransferUserError),
 }
 
@@ -114,7 +114,7 @@ pub struct LinkStatementRefundCorrectionUserError {
 
 #[derive(Union)]
 pub enum LinkStatementRefundCorrectionResult {
-    Success(LinkStatementRefundCorrectionSuccess),
+    Success(Box<LinkStatementRefundCorrectionSuccess>),
     UserError(LinkStatementRefundCorrectionUserError),
 }
 
@@ -170,9 +170,9 @@ pub async fn link_statement_account_movement(
             )
             .await
             .map_err(crate::internal_error)?;
-            Ok(LinkStatementAccountMovementSuccess {
+            Ok(Box::new(LinkStatementAccountMovementSuccess {
                 result: map_movement(projection)?,
-            }
+            })
             .into())
         }
         Err(error) => movement_persistence_error(error),
@@ -232,9 +232,9 @@ pub async fn link_statement_account_income(
             )
             .await
             .map_err(crate::internal_error)?;
-            Ok(LinkStatementAccountIncomeSuccess {
+            Ok(Box::new(LinkStatementAccountIncomeSuccess {
                 result: map_income(projection),
-            }
+            })
             .into())
         }
         Err(error) => income_persistence_error(error),
@@ -287,10 +287,10 @@ pub async fn link_statement_transfer(
             )
             .await
             .map_err(crate::internal_error)?;
-            Ok(LinkStatementTransferSuccess {
+            Ok(Box::new(LinkStatementTransferSuccess {
                 result: ledger_entry::LedgerEntry::try_from(projection)
                     .map_err(crate::internal_error)?,
-            }
+            })
             .into())
         }
         Err(error) => transfer_persistence_error(error),
@@ -339,10 +339,10 @@ pub async fn link_statement_refund_correction(
             )
             .await
             .map_err(crate::internal_error)?;
-            Ok(LinkStatementRefundCorrectionSuccess {
+            Ok(Box::new(LinkStatementRefundCorrectionSuccess {
                 result: crate::purchase_mutations::PurchaseObject::try_from(projection)
                     .map_err(crate::internal_error)?,
-            }
+            })
             .into())
         }
         Err(error) => refund_persistence_error(error),

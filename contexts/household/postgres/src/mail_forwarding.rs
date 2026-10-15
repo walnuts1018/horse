@@ -35,7 +35,7 @@ pub async fn active(pool: &PgPool, command: Command) -> Result<Status, MailForwa
         .get()
         .await
         .map_err(|error| MailForwardingError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<Status, MailForwardingError, _>(async |conn| {
             use public::{household_mail_forwardings as forwardings, households};
             households::table
@@ -86,7 +86,8 @@ async fn create(
     let household_id = parse_uuid(&command.command.household_id, "household_id")?;
     let actor_id = parse_uuid(&command.command.actor_id, "actor_id")?;
     let mut token_bytes = [0_u8; 32];
-    for chunk in token_bytes.chunks_exact_mut(8) {
+    let (chunks, _) = token_bytes.as_chunks_mut::<8>();
+    for chunk in chunks {
         chunk.copy_from_slice(&Uuid::new_v4().as_bytes()[..8]);
     }
     let token = base32_lower(&token_bytes);
@@ -96,7 +97,7 @@ async fn create(
         .get()
         .await
         .map_err(|error| MailForwardingError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<ForwardingAddress, MailForwardingError, _>(async |conn| {
             use public::{household_mail_forwardings as forwardings, households};
             households::table
@@ -165,7 +166,7 @@ pub async fn revoke(pool: &PgPool, command: Command) -> Result<Status, MailForwa
         .get()
         .await
         .map_err(|error| MailForwardingError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<Status, MailForwardingError, _>(async |conn| {
             use public::{household_mail_forwardings as forwardings, households};
             households::table

@@ -17,10 +17,10 @@ pub struct TestPostgres {
 impl TestPostgres {
     pub async fn start() -> Result<Self, Box<dyn Error + Send + Sync>> {
         let container = Postgres::default()
-            .with_tag("18")
             .with_db_name(POSTGRES_DATABASE)
             .with_user(POSTGRES_USER)
             .with_password(POSTGRES_PASSWORD)
+            .with_tag("18")
             .start()
             .await?;
         let host = container.get_host().await?;

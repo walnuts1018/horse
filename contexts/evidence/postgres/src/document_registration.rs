@@ -29,7 +29,7 @@ pub async fn register_document(
         .get()
         .await
         .map_err(|error| RegisterDocumentError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<RegisteredDocument, RegisterDocumentError, _>(async move |conn| {
             register_document_in_transaction(conn, command).await
         })
@@ -138,7 +138,7 @@ pub async fn register_document_in_transaction(
                 household_events::entity_id.eq(document_id),
                 household_events::revision.eq(1_i64),
                 household_events::changed_fields.eq(vec![Some("status".to_owned())]),
-                household_events::payload.eq(serde_json::json!({"jobId": id})),
+                household_events::payload.eq(serde_json::json!({"jobId": id.to_string()})),
                 household_events::actor_id.eq(command.created_by),
                 household_events::created_at.eq(now),
             ))
@@ -262,16 +262,29 @@ pub async fn register_document_in_transaction(
     })
 }
 
+pub struct EnqueueExtractionJobInput {
+    pub household_id: Uuid,
+    pub document_id: Uuid,
+    pub actor_id: Uuid,
+    pub provider: String,
+    pub model: String,
+    pub idempotency_key: String,
+    pub request: serde_json::Value,
+}
+
 pub async fn enqueue_extraction_job(
     pool: &PgPool,
-    household_id: Uuid,
-    document_id: Uuid,
-    actor_id: Uuid,
-    provider: &str,
-    model: &str,
-    idempotency_key: &str,
-    request: serde_json::Value,
+    input: EnqueueExtractionJobInput,
 ) -> Result<Uuid, RegisterDocumentError> {
+    let EnqueueExtractionJobInput {
+        household_id,
+        document_id,
+        actor_id,
+        provider,
+        model,
+        idempotency_key,
+        request,
+    } = input;
     if provider.is_empty() || provider.len() > 128 || model.len() > 256 {
         return Err(RegisterDocumentError::InvalidInput("provider/model"));
     }
@@ -282,7 +295,7 @@ pub async fn enqueue_extraction_job(
         .get()
         .await
         .map_err(|error| RegisterDocumentError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<Uuid, RegisterDocumentError, _>(async move |conn| {
             use horse_postgres_common::schema::public::{
                 extraction_jobs, household_events, source_documents,
@@ -301,7 +314,7 @@ pub async fn enqueue_extraction_job(
             }
             let existing = extraction_jobs::table
                 .filter(extraction_jobs::household_id.eq(household_id))
-                .filter(extraction_jobs::idempotency_key.eq(idempotency_key))
+                .filter(extraction_jobs::idempotency_key.eq(&idempotency_key))
                 .select(extraction_jobs::id)
                 .first::<Uuid>(conn)
                 .await
@@ -346,7 +359,7 @@ pub async fn enqueue_extraction_job(
                     household_events::entity_id.eq(document_id),
                     household_events::revision.eq(i64::from(version)),
                     household_events::changed_fields.eq(vec![Some("status".to_owned())]),
-                    household_events::payload.eq(serde_json::json!({"jobId": id})),
+                    household_events::payload.eq(serde_json::json!({"jobId": id.to_string()})),
                     household_events::actor_id.eq(actor_id),
                     household_events::created_at.eq(now),
                 ))

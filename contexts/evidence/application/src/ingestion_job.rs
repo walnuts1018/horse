@@ -11,8 +11,38 @@ pub struct QueuedJob {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidLease {
-    pub token: String,
-    pub expires_at_ms: i64,
+    token: String,
+    expires_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValidLeaseError {
+    EmptyToken,
+    InvalidExpiry,
+}
+
+impl ValidLease {
+    pub fn new(token: impl Into<String>, expires_at_ms: i64) -> Result<Self, ValidLeaseError> {
+        let token = token.into();
+        if token.is_empty() {
+            return Err(ValidLeaseError::EmptyToken);
+        }
+        if expires_at_ms <= 0 {
+            return Err(ValidLeaseError::InvalidExpiry);
+        }
+        Ok(Self {
+            token,
+            expires_at_ms,
+        })
+    }
+
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+
+    pub fn expires_at_ms(&self) -> i64 {
+        self.expires_at_ms
+    }
 }
 
 // 実行中のジョブは必ず有効なリースを持つ。リースなしのRunning状態は型で表現できない。
@@ -29,7 +59,7 @@ pub struct RunningJob {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FinishedJob {
     pub id: String,
-    pub finished_at_ms: Option<i64>,
+    pub finished_at_ms: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,7 +92,7 @@ pub trait ClaimExtractionJobOperations {
     type Candidate;
     type Claimed;
 
-    fn queued_job(&self, candidate: &Self::Candidate) -> &QueuedJob;
+    fn queued_job<'a>(&self, candidate: &'a Self::Candidate) -> &'a QueuedJob;
 
     async fn load_candidate(
         &mut self,
@@ -289,7 +319,7 @@ pub fn finish_extraction_failure(
     failure_kind: ExtractionFailureKind,
     max_failures: i32,
 ) -> Result<FinishExtractionJob, FinishExtractionJobError> {
-    if job.lease.expires_at_ms <= now_ms {
+    if job.lease.expires_at_ms() <= now_ms {
         return Err(FinishExtractionJobError::StaleLease);
     }
     if job.failure_count < 0 || max_failures <= 0 {
@@ -331,7 +361,7 @@ pub fn finish_extraction_success(
     now_ms: i64,
 ) -> Result<FinishExtractionJob, FinishExtractionJobError> {
     // リース所有者の一致は呼び出し側の条件付き更新で保証し、ここでは有効期限のみ検証する。
-    if job.lease.expires_at_ms <= now_ms {
+    if job.lease.expires_at_ms() <= now_ms {
         return Err(FinishExtractionJobError::StaleLease);
     }
     Ok(FinishExtractionJob {
@@ -355,7 +385,7 @@ pub fn recover_expired_extraction_job(
     now_ms: i64,
     max_failures: i32,
 ) -> Result<RecoverExpiredExtractionJob, FinishExtractionJobError> {
-    if job.lease.expires_at_ms > now_ms {
+    if job.lease.expires_at_ms() > now_ms {
         return Err(FinishExtractionJobError::StaleLease);
     }
     if job.failure_count < 0 || max_failures <= 0 {
@@ -389,10 +419,7 @@ mod tests {
             max_attempts: 5,
             failure_count: 1,
             available_at_ms: 0,
-            lease: ValidLease {
-                token: "active-token".to_owned(),
-                expires_at_ms: 10_000,
-            },
+            lease: ValidLease::new("active-token", 10_000).expect("token is valid"),
         }
     }
 
@@ -427,5 +454,19 @@ mod tests {
         assert_eq!(transition.status, ExtractionJobStatus::Failed);
         assert_eq!(transition.failure_count, 5);
         assert_eq!(transition.finished_at_ms, Some(10_000));
+    }
+
+    #[test]
+    fn lease_rejects_non_positive_expiry_without_rejecting_expired_lease() {
+        assert_eq!(
+            ValidLease::new("token", 0),
+            Err(ValidLeaseError::InvalidExpiry)
+        );
+        assert_eq!(
+            ValidLease::new("token", -1),
+            Err(ValidLeaseError::InvalidExpiry)
+        );
+        assert!(ValidLease::new("token", 1).is_ok());
+        assert!(ValidLease::new("token", 10_000).is_ok());
     }
 }

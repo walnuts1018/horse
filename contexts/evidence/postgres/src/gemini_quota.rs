@@ -1,5 +1,8 @@
 use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, insert_into, upsert::excluded};
+use diesel::{
+    ExpressionMethods, Insertable, OptionalExtension, QueryDsl, Queryable, insert_into,
+    result::Error as DieselError, upsert::excluded,
+};
 use diesel_async::{AsyncConnection, RunQueryDsl as AsyncRunQueryDsl};
 use uuid::Uuid;
 
@@ -54,16 +57,19 @@ pub enum QuotaError {
     InputTooLarge,
 }
 
-#[derive(Queryable, Selectable)]
-#[diesel(table_name = gemini_quota_reservations)]
+impl From<DieselError> for QuotaError {
+    fn from(_: DieselError) -> Self {
+        Self::Database
+    }
+}
+
+#[derive(Debug, Queryable)]
 struct Reservation {
-    id: Uuid,
     project_route: String,
     model: String,
     reserved_at: DateTime<Utc>,
     input_tokens: i64,
     actual_input_tokens: Option<i64>,
-    settled_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Insertable)]
@@ -113,7 +119,7 @@ pub async fn record_cooldown(
                 updated_at: now,
             };
             insert_into(gemini_quota_reservation_locks::table)
-                .values(&lock)
+                .values(lock)
                 .on_conflict((
                     gemini_quota_reservation_locks::project_route,
                     gemini_quota_reservation_locks::model,
@@ -141,7 +147,7 @@ pub async fn record_cooldown(
                 updated_at: now,
             };
             insert_into(gemini_quota_cooldowns::table)
-                .values(&cooldown)
+                .values(cooldown)
                 .on_conflict((
                     gemini_quota_cooldowns::project_route,
                     gemini_quota_cooldowns::model,
@@ -192,7 +198,7 @@ pub async fn reserve(
                 updated_at: now,
             };
             insert_into(gemini_quota_reservation_locks::table)
-                .values(&lock)
+                .values(lock)
                 .on_conflict((
                     gemini_quota_reservation_locks::project_route,
                     gemini_quota_reservation_locks::model,
@@ -232,7 +238,13 @@ pub async fn reserve(
                 .filter(gemini_quota_reservations::project_route.eq(route))
                 .filter(gemini_quota_reservations::model.eq(model))
                 .filter(gemini_quota_reservations::reserved_at.ge(day_start))
-                .select(Reservation::as_select())
+                .select((
+                    gemini_quota_reservations::project_route,
+                    gemini_quota_reservations::model,
+                    gemini_quota_reservations::reserved_at,
+                    gemini_quota_reservations::input_tokens,
+                    gemini_quota_reservations::actual_input_tokens,
+                ))
                 .load::<Reservation>(conn)
                 .await
                 .map_err(|_| QuotaError::Database)?;
@@ -272,7 +284,7 @@ pub async fn reserve(
                 input_tokens,
             };
             insert_into(gemini_quota_reservations::table)
-                .values(&reservation)
+                .values(reservation)
                 .execute(conn)
                 .await
                 .map_err(|_| QuotaError::Database)?;
@@ -350,7 +362,13 @@ pub async fn settle(
         .transaction::<(), QuotaError, _>(async move |conn| {
             let row = gemini_quota_reservations::table
                 .filter(gemini_quota_reservations::id.eq(reservation_id))
-                .select(Reservation::as_select())
+                .select((
+                    gemini_quota_reservations::project_route,
+                    gemini_quota_reservations::model,
+                    gemini_quota_reservations::reserved_at,
+                    gemini_quota_reservations::input_tokens,
+                    gemini_quota_reservations::actual_input_tokens,
+                ))
                 .first::<Reservation>(conn)
                 .await
                 .map_err(|_| QuotaError::Database)?;
@@ -360,7 +378,7 @@ pub async fn settle(
                 updated_at: now,
             };
             insert_into(gemini_quota_reservation_locks::table)
-                .values(&lock)
+                .values(lock)
                 .on_conflict((
                     gemini_quota_reservation_locks::project_route,
                     gemini_quota_reservation_locks::model,

@@ -7,6 +7,17 @@ use uuid::Uuid;
 
 use crate::{ledger_entry, purchase_mutations};
 
+type PurchaseCorrectionRow = (
+    Uuid,
+    Uuid,
+    Uuid,
+    Option<Uuid>,
+    i64,
+    String,
+    chrono::NaiveDate,
+    chrono::DateTime<chrono::Utc>,
+);
+
 pub(crate) async fn load(
     ctx: &Context<'_>,
     household_ids: &[Uuid],
@@ -75,16 +86,7 @@ pub(crate) async fn load(
                 public::purchase_corrections::effective_period_start,
                 public::journals::occurred_at,
             ))
-            .load::<(
-                Uuid,
-                Uuid,
-                Uuid,
-                Option<Uuid>,
-                i64,
-                String,
-                chrono::NaiveDate,
-                chrono::DateTime<chrono::Utc>,
-            )>(&mut *conn)
+            .load::<PurchaseCorrectionRow>(&mut *conn)
             .await
             .map_err(crate::internal_error)?
     };
@@ -189,16 +191,7 @@ pub(crate) async fn load(
 async fn load_correction_payments(
     pool: &PgPool,
     household_ids: &[Uuid],
-    correction_rows: &[(
-        Uuid,
-        Uuid,
-        Uuid,
-        Option<Uuid>,
-        i64,
-        String,
-        chrono::NaiveDate,
-        chrono::DateTime<chrono::Utc>,
-    )],
+    correction_rows: &[PurchaseCorrectionRow],
 ) -> Result<HashMap<Uuid, Vec<purchase_mutations::PurchasePayment>>> {
     let correction_ids = correction_rows.iter().map(|row| row.2).collect::<Vec<_>>();
     if correction_ids.is_empty() {

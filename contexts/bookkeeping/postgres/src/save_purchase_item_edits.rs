@@ -72,8 +72,9 @@ pub async fn persist_save_purchase_item_edits(
         .get()
         .await
         .map_err(|error| SavePurchaseItemEditsPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<Vec<String>, SavePurchaseItemEditsPersistenceError, _>(async move |conn| {
+            use public::accounting_periods::dsl as periods;
             use public::household_members::dsl as members;
             use public::purchase_items::dsl as items_table;
             use public::purchase_member_burdens::dsl as burdens;
@@ -139,7 +140,7 @@ pub async fn persist_save_purchase_item_edits(
                 ))
                 .load::<(Uuid, Uuid, Uuid, i32, i64, Option<String>, String)>(conn)
                 .await?;
-            if item_ids.len() != 0 {
+            if !item_ids.is_empty() {
                 let matching_ids = items_table::purchase_items
                     .filter(items_table::id.eq_any(&item_ids))
                     .filter(items_table::household_id.eq(household_id))
@@ -210,6 +211,31 @@ pub async fn persist_save_purchase_item_edits(
                         .await
                         .optional()?
                         .ok_or(SavePurchaseItemEditsPersistenceError::PurchaseNotFound)?;
+                let lifecycle = match status.as_str() {
+                    "DRAFT" => bookkeeping_application::PurchaseLifecycle::Draft,
+                    "POSTED" => bookkeeping_application::PurchaseLifecycle::Posted,
+                    _ => {
+                        return Err(SavePurchaseItemEditsPersistenceError::InvalidPurchaseUpdate(
+                            update_purchase::UpdatePurchasePersistenceError::InvalidDecision(
+                                bookkeeping_application::update_purchase::UpdatePurchaseError::NotEditable,
+                            ),
+                        ));
+                    }
+                };
+                let period_start = update_purchase::period_start(occurred_at)
+                    .map_err(SavePurchaseItemEditsPersistenceError::InvalidPurchaseUpdate)?;
+                let (period_status, period_revision) = periods::accounting_periods
+                    .filter(periods::household_id.eq(household_id))
+                    .filter(periods::period_start.eq(period_start))
+                    .select((periods::status, periods::revision))
+                    .first::<(String, i64)>(conn)
+                    .await?;
+                let accounting_period = update_purchase::accounting_period(
+                    &period_status,
+                    period_revision,
+                    occurred_at,
+                )
+                .map_err(SavePurchaseItemEditsPersistenceError::InvalidPurchaseUpdate)?;
                 let current = UpdatePurchaseDraft {
                     revision: u64::try_from(revision).map_err(|_| {
                         SavePurchaseItemEditsPersistenceError::InvalidPurchaseUpdate(
@@ -218,7 +244,8 @@ pub async fn persist_save_purchase_item_edits(
                             ),
                         )
                     })?,
-                    status,
+                    lifecycle,
+                    accounting_period,
                     occurred_at: occurred_at.to_rfc3339(),
                     date_precision,
                     merchant,
@@ -257,15 +284,17 @@ pub async fn persist_save_purchase_item_edits(
                     .ok_or(SavePurchaseItemEditsPersistenceError::PurchaseNotFound)?;
                 update_purchase_item::sync_posted_accounting(
                     conn,
-                    household_id,
-                    purchase_id,
-                    occurred_at,
-                    &merchant,
-                    revision,
-                    &previous_burdens,
-                    &previous_payment_accounts,
-                    &previous_payment_snapshots,
-                    payments_changed || purchase_patch_changes_payments,
+                    update_purchase_item::PostedAccountingSync {
+                        household_id,
+                        purchase_id,
+                        occurred_at,
+                        merchant: &merchant,
+                        revision,
+                        previous_burdens: &previous_burdens,
+                        previous_payment_accounts: &previous_payment_accounts,
+                        previous_payment_snapshots: &previous_payment_snapshots,
+                        payments_changed: payments_changed || purchase_patch_changes_payments,
+                    },
                 )
                 .await
                 .map_err(SavePurchaseItemEditsPersistenceError::InvalidItemUpdate)?;

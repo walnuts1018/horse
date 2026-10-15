@@ -35,12 +35,14 @@ pub async fn graphql_ledger(
     let before_cursor = decode_cursor(before.as_deref())?;
     let page = postgres_query::ledger(
         ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        after_cursor,
-        before_cursor,
-        first,
-        last,
+        postgres_query::LedgerQuery {
+            actor_id: actor.0,
+            household_id,
+            after: after_cursor,
+            before: before_cursor,
+            first,
+            last,
+        },
     )
     .await
     .map_err(map_query_error)?;

@@ -9,9 +9,9 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
+use diesel::{BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl};
 use diesel_async::{AsyncConnection, RunQueryDsl};
-use futures_util::{Stream, stream};
+use futures_util::{Stream, StreamExt, stream};
 use horse_auth::{AuthService, Cookie, OidcError, resolve_cookie, revoke_cookie};
 use horse_extraction_queue::ExtractionQueue;
 use horse_graphql_api::{Actor, Schema as GraphqlSchema, viewer_query::ViewerIdentity};
@@ -163,6 +163,17 @@ async fn graphql(State(state): State<ApiState>, request: Request<Body>) -> Respo
         }
     };
 
+    let accepts_event_stream = request
+        .headers()
+        .get(header::ACCEPT)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value.split(',').any(|media_type| {
+                media_type.split(';').next().is_some_and(|media_type| {
+                    media_type.trim().eq_ignore_ascii_case("text/event-stream")
+                })
+            })
+        });
     let is_json = request
         .headers()
         .get(header::CONTENT_TYPE)
@@ -184,17 +195,32 @@ async fn graphql(State(state): State<ApiState>, request: Request<Body>) -> Respo
         Ok(request) => request,
         Err(_) => return StatusCode::BAD_REQUEST.into_response(),
     };
-    let response = GraphqlSchema::execute(
-        &state.graphql_schema,
-        request
-            .data(Actor(principal.member_id))
-            .data(ViewerIdentity {
-                member_id: principal.member_id,
-                subject: principal.subject,
-                display_name: principal.display_name,
-            }),
-    )
-    .await;
+    let request = request
+        .data(Actor(principal.member_id))
+        .data(ViewerIdentity {
+            member_id: principal.member_id,
+            subject: principal.subject,
+            display_name: principal.display_name,
+        });
+    if accepts_event_stream {
+        let responses = state.graphql_schema.execute_stream(request);
+        let events = responses
+            .map(|response| {
+                let payload = serde_json::to_string(&response).unwrap_or_else(|_| {
+                    "{\"errors\":[{\"message\":\"internal server error\"}]}".to_owned()
+                });
+                Ok::<_, Infallible>(Event::default().event("next").data(payload))
+            })
+            .chain(stream::once(async {
+                Ok::<_, Infallible>(Event::default().event("complete"))
+            }));
+        return Sse::new(events)
+            .keep_alive(
+                axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)),
+            )
+            .into_response();
+    }
+    let response = GraphqlSchema::execute(&state.graphql_schema, request).await;
     Json(response).into_response()
 }
 
@@ -491,7 +517,7 @@ async fn upload_document(
     };
     let cleanup_object_key = object_key.clone();
     let cleanup_analysis_key = stored_analysis.as_ref().map(|(key, _, _)| key.clone());
-    let mut cleanup_attachment_keys = Vec::new();
+    let mut cleanup_attachment_keys: Vec<String> = Vec::new();
     let mut attachments = Vec::new();
     if mime_type == "message/rfc822" {
         let parsed = match horse_worker_runtime::parse_email_attachments(&data) {
@@ -666,13 +692,10 @@ async fn delete_unreferenced_object(pool: &PgPool, store: &ObjectStore, object_k
         .first::<uuid::Uuid>(&mut *connection)
         .await
         .optional();
-    match referenced {
-        Ok(None) => {
-            if let Err(error) = store.delete(object_key).await {
-                tracing::warn!(error = ?error, "Unreferenced document object cleanup failed");
-            }
-        }
-        Ok(Some(_)) | Err(_) => {}
+    if let Ok(None) = referenced
+        && let Err(error) = store.delete(object_key).await
+    {
+        tracing::warn!(error = ?error, "Unreferenced document object cleanup failed");
     }
 }
 
@@ -759,8 +782,7 @@ async fn list_documents(
         None => None,
     };
     use horse_postgres_common::schema::public::{
-        correction_evidence_links, evidence_links, extraction_jobs, household_members,
-        source_documents,
+        evidence_links, extraction_jobs, household_members, source_documents,
     };
     let mut pooled = match state.pool.get().await {
         Ok(pooled) => pooled,
@@ -907,18 +929,11 @@ async fn list_documents(
                 }
             };
         }
-        let has_evidence = diesel::select(
-            diesel::dsl::exists(
-                evidence_links::table
-                    .filter(evidence_links::household_id.eq(household_id))
-                    .filter(evidence_links::source_document_id.eq(id)),
-            )
-            .or(diesel::dsl::exists(
-                correction_evidence_links::table
-                    .filter(correction_evidence_links::household_id.eq(household_id))
-                    .filter(correction_evidence_links::source_document_id.eq(id)),
-            )),
-        )
+        let has_evidence = diesel::select(diesel::dsl::exists(
+            evidence_links::table
+                .filter(evidence_links::household_id.eq(household_id))
+                .filter(evidence_links::source_document_id.eq(id)),
+        ))
         .get_result::<bool>(&mut *pooled)
         .await;
         let has_evidence = match has_evidence {
@@ -1252,8 +1267,7 @@ async fn read_document(
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
     use horse_postgres_common::schema::public::{
-        correction_evidence_links, evidence_links, extraction_jobs, household_members,
-        source_documents,
+        evidence_links, extraction_jobs, household_members, source_documents,
     };
     let mut pooled = match state.pool.get().await {
         Ok(pooled) => pooled,
@@ -1338,18 +1352,11 @@ async fn read_document(
             .unwrap_or(None)
             .flatten();
     }
-    let has_evidence = diesel::select(
-        diesel::dsl::exists(
-            evidence_links::table
-                .filter(evidence_links::household_id.eq(household_id))
-                .filter(evidence_links::source_document_id.eq(document_id)),
-        )
-        .or(diesel::dsl::exists(
-            correction_evidence_links::table
-                .filter(correction_evidence_links::household_id.eq(household_id))
-                .filter(correction_evidence_links::source_document_id.eq(document_id)),
-        )),
-    )
+    let has_evidence = diesel::select(diesel::dsl::exists(
+        evidence_links::table
+            .filter(evidence_links::household_id.eq(household_id))
+            .filter(evidence_links::source_document_id.eq(document_id)),
+    ))
     .get_result::<bool>(&mut *pooled)
     .await
     .unwrap_or(false);
@@ -1414,14 +1421,14 @@ async fn delete_document(
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
     use horse_postgres_common::schema::public::{
-        correction_evidence_links, evidence_links, extraction_jobs, household_members,
-        source_confirmations, source_document_attachments, source_documents,
+        evidence_links, extraction_jobs, household_members, source_confirmations,
+        source_document_attachments, source_documents,
     };
     let mut pooled = match state.pool.get().await {
         Ok(pooled) => pooled,
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
-    let pending = (&mut *pooled)
+    let pending = (*pooled)
         .transaction::<(String, Option<String>), diesel::result::Error, _>(async |conn| {
             let document = source_documents::table
                 .filter(source_documents::id.eq(document_id))
@@ -1462,13 +1469,6 @@ async fn delete_document(
             ))
             .get_result::<bool>(conn)
             .await?;
-            let has_correction_evidence = diesel::select(diesel::dsl::exists(
-                correction_evidence_links::table
-                    .filter(correction_evidence_links::household_id.eq(household_id))
-                    .filter(correction_evidence_links::source_document_id.eq(document_id)),
-            ))
-            .get_result::<bool>(conn)
-            .await?;
             let has_confirmation = diesel::select(diesel::dsl::exists(
                 source_confirmations::table
                     .filter(source_confirmations::household_id.eq(household_id))
@@ -1485,7 +1485,7 @@ async fn delete_document(
             ))
             .get_result::<bool>(conn)
             .await?;
-            if has_evidence || has_correction_evidence || has_confirmation || has_attachments {
+            if has_evidence || has_confirmation || has_attachments {
                 return Err(diesel::result::Error::RollbackTransaction);
             }
             let mut metadata = document.3;
@@ -1513,10 +1513,10 @@ async fn delete_document(
     };
     drop(pooled);
     let mut keys = vec![object_key];
-    if let Some(key) = analysis_key {
-        if !keys.contains(&key) {
-            keys.push(key);
-        }
+    if let Some(key) = analysis_key
+        && !keys.contains(&key)
+    {
+        keys.push(key);
     }
     for key in &keys {
         let mut connection = match state.pool.get().await {
@@ -1552,7 +1552,7 @@ async fn delete_document(
         Ok(connection) => connection,
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
-    let deleted = (&mut *connection)
+    let deleted = (*connection)
         .transaction::<usize, diesel::result::Error, _>(async |conn| {
             let metadata = source_documents::table
                 .filter(source_documents::id.eq(document_id))
@@ -1565,12 +1565,6 @@ async fn delete_document(
             }
             let has_evidence = diesel::select(diesel::dsl::exists(
                 evidence_links::table.filter(evidence_links::source_document_id.eq(document_id)),
-            ))
-            .get_result::<bool>(conn)
-            .await?;
-            let has_correction_evidence = diesel::select(diesel::dsl::exists(
-                correction_evidence_links::table
-                    .filter(correction_evidence_links::source_document_id.eq(document_id)),
             ))
             .get_result::<bool>(conn)
             .await?;
@@ -1589,7 +1583,7 @@ async fn delete_document(
             ))
             .get_result::<bool>(conn)
             .await?;
-            if has_evidence || has_correction_evidence || has_confirmation || has_attachments {
+            if has_evidence || has_confirmation || has_attachments {
                 return Err(diesel::result::Error::RollbackTransaction);
             }
             diesel::delete(source_documents::table.filter(source_documents::id.eq(document_id)))
@@ -1792,8 +1786,8 @@ async fn retry_document(
         return (StatusCode::BAD_REQUEST, "invalid extraction retry input").into_response();
     }
     use horse_postgres_common::schema::public::{
-        correction_evidence_links, evidence_links, extraction_jobs, household_events,
-        household_members, source_confirmations, source_document_attachments, source_documents,
+        evidence_links, extraction_jobs, household_events, household_members, source_confirmations,
+        source_document_attachments, source_documents,
     };
     let mut pooled = match state.pool.get().await {
         Ok(pooled) => pooled,
@@ -1805,7 +1799,7 @@ async fn retry_document(
     let requested_kind = source_kind.map(str::to_owned);
     let crop = input.get("crop").cloned();
     let now = chrono::Utc::now();
-    let result = (&mut *pooled)
+    let result = (*pooled)
         .transaction::<Result<uuid::Uuid, RetryError>, diesel::result::Error, _>(async |conn| {
             let (household_id, current_kind, mime_type) = source_documents::table
                 .inner_join(
@@ -1891,14 +1885,7 @@ async fn retry_document(
                     ))
                     .get_result::<bool>(conn)
                     .await?;
-                    let has_correction = diesel::select(diesel::dsl::exists(
-                        correction_evidence_links::table
-                            .filter(correction_evidence_links::household_id.eq(household_id))
-                            .filter(correction_evidence_links::source_document_id.eq(document_id)),
-                    ))
-                    .get_result::<bool>(conn)
-                    .await?;
-                    if has_confirmation || has_evidence || has_correction {
+                    if has_confirmation || has_evidence {
                         return Ok(Err(RetryError::EvidenceConflict));
                     }
                 }
@@ -2434,6 +2421,25 @@ async fn interact_with_document(
         }
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
+    let latest_success_id = extraction_jobs::table
+        .filter(extraction_jobs::household_id.eq(household_id))
+        .filter(extraction_jobs::source_document_id.eq(document_id))
+        .filter(extraction_jobs::status.eq("succeeded"))
+        .order_by(extraction_jobs::version.desc())
+        .select(extraction_jobs::id)
+        .first::<uuid::Uuid>(&mut *pooled)
+        .await;
+    let latest_success_id = match latest_success_id {
+        Ok(id) => id,
+        Err(diesel::result::Error::NotFound) => {
+            return (
+                StatusCode::CONFLICT,
+                "document interaction requires a successful extraction",
+            )
+                .into_response();
+        }
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
     let base_job_query = extraction_jobs::table
         .filter(extraction_jobs::household_id.eq(household_id))
         .filter(extraction_jobs::source_document_id.eq(document_id))
@@ -2498,6 +2504,8 @@ async fn interact_with_document(
     let conversation_id = extraction
         .get("conversationId")
         .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .filter(|_| base_job_id == latest_success_id)
         .map(str::to_owned)
         .unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
     let model = if requested_model == "pro" {
@@ -2540,13 +2548,15 @@ async fn interact_with_document(
     }
     let job = evidence_postgres::document_registration::enqueue_extraction_job(
         &state.pool,
-        household_id,
-        document_id,
-        principal.member_id,
-        "gemini_developer_api",
-        model,
-        &format!("interaction:{}", uuid::Uuid::now_v7()),
-        Value::Object(request),
+        evidence_postgres::document_registration::EnqueueExtractionJobInput {
+            household_id,
+            document_id,
+            actor_id: principal.member_id,
+            provider: "gemini_developer_api".to_owned(),
+            model: model.to_owned(),
+            idempotency_key: format!("interaction:{}", uuid::Uuid::now_v7()),
+            request: Value::Object(request),
+        },
     )
     .await;
     match job {
@@ -2637,9 +2647,10 @@ async fn document_interaction_events(
     {
         return StatusCode::NOT_FOUND.into_response();
     }
+    drop(connection);
     let stream = stream::unfold(
         (
-            state.pool,
+            state.pool.clone(),
             household_id,
             principal.member_id,
             document_id,
@@ -2922,7 +2933,6 @@ struct ReconciliationObservation {
     source_kind: String,
     transaction_kind: String,
     order_id: String,
-    transaction_id: String,
     merchant: String,
     occurred_at: Option<chrono::DateTime<chrono::Utc>>,
     amount: i64,
@@ -2996,7 +3006,6 @@ async fn document_matches(
             source_observations::source_kind,
             source_observations::transaction_kind,
             source_observations::external_order_id,
-            source_observations::external_transaction_id,
             source_observations::merchant,
             source_observations::occurred_at,
             source_observations::amount_yen,
@@ -3004,7 +3013,6 @@ async fn document_matches(
         ))
         .load::<(
             uuid::Uuid,
-            String,
             String,
             String,
             String,
@@ -3024,7 +3032,7 @@ async fn document_matches(
     let incoming = incoming_rows
         .into_iter()
         .take(100)
-        .map(|row| reconciliation_observation(row))
+        .map(reconciliation_observation)
         .collect::<Vec<_>>();
     if incoming.is_empty() {
         return Json(json!({"observations": [], "truncated": truncated})).into_response();
@@ -3041,7 +3049,6 @@ async fn document_matches(
             source_observations::source_kind,
             source_observations::transaction_kind,
             source_observations::external_order_id,
-            source_observations::external_transaction_id,
             source_observations::merchant,
             source_observations::occurred_at,
             source_observations::amount_yen,
@@ -3049,7 +3056,6 @@ async fn document_matches(
         ))
         .load::<(
             uuid::Uuid,
-            String,
             String,
             String,
             String,
@@ -3069,7 +3075,7 @@ async fn document_matches(
     let existing = existing_rows
         .into_iter()
         .take(5000)
-        .map(|row| reconciliation_observation(row))
+        .map(reconciliation_observation)
         .collect::<Vec<_>>();
     let observations = incoming
         .iter()
@@ -3085,21 +3091,20 @@ async fn document_matches(
     Json(json!({"observations": observations, "truncated": truncated})).into_response()
 }
 
-fn reconciliation_observation(
-    row: (
-        uuid::Uuid,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        Option<chrono::DateTime<chrono::Utc>>,
-        Option<i64>,
-        String,
-    ),
-) -> ReconciliationObservation {
+type ReconciliationObservationRow = (
+    uuid::Uuid,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    Option<chrono::DateTime<chrono::Utc>>,
+    Option<i64>,
+    String,
+);
+
+fn reconciliation_observation(row: ReconciliationObservationRow) -> ReconciliationObservation {
     let (
         document_id,
         source_reference,
@@ -3107,7 +3112,6 @@ fn reconciliation_observation(
         source_kind,
         transaction_kind,
         order_id,
-        transaction_id,
         merchant,
         occurred_at,
         amount,
@@ -3120,7 +3124,6 @@ fn reconciliation_observation(
         source_kind,
         transaction_kind,
         order_id,
-        transaction_id,
         merchant,
         occurred_at,
         amount: amount.unwrap_or_default(),
@@ -3255,7 +3258,7 @@ async fn document_preview(
     if pages.len() > 1 {
         return (StatusCode::BAD_REQUEST, "invalid page").into_response();
     }
-    let page = match pages.first() {
+    let page = match pages.as_slice().first() {
         Some(value) => match value.parse::<u32>() {
             Ok(page) => page,
             Err(_) => return (StatusCode::BAD_REQUEST, "invalid page").into_response(),
@@ -3560,7 +3563,7 @@ async fn confirm_purchase_sources(
         Ok(pooled) => pooled,
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
-    let result = (&mut *pooled)
+    let result = (*pooled)
         .transaction::<i64, diesel::result::Error, _>(async |conn| {
             let (household_id, revision) = purchases::table
                 .filter(purchases::id.eq(purchase_id))
@@ -3748,6 +3751,7 @@ async fn confirm_purchase_sources(
     }
 }
 
+#[allow(clippy::result_large_err)]
 async fn events(
     State(state): State<ApiState>,
     headers: HeaderMap,
@@ -3814,25 +3818,26 @@ async fn events(
     drop(pooled);
     use horse_postgres_common::schema::public::household_events;
     let stream = stream::unfold(
-        (state.pool, household_id, cursor),
+        (state.pool.clone(), household_id, cursor),
         |(pool, household_id, cursor)| async move {
+            let next_pool = pool.clone();
             let mut connection = match pool.get().await {
                 Ok(connection) => connection,
                 Err(_) => {
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     return Some((
                         Ok(Event::default().comment("keepalive")),
-                        (pool, household_id, cursor),
+                        (next_pool, household_id, cursor),
                     ));
                 }
             };
             let events = household_events::table
                 .filter(household_events::household_id.eq(household_id))
-                .filter(household_events::cursor.gt(cursor))
-                .order_by(household_events::cursor.asc())
+                .filter(household_events::stream_cursor.gt(cursor))
+                .order_by(household_events::stream_cursor.asc())
                 .limit(100)
                 .select((
-                    household_events::cursor,
+                    household_events::stream_cursor,
                     household_events::event_type,
                     household_events::entity_id,
                     household_events::revision,
@@ -3848,6 +3853,7 @@ async fn events(
                     chrono::DateTime<chrono::Utc>,
                 )>(&mut *connection)
                 .await;
+            drop(connection);
             let events = match events {
                 Ok(events) => events,
                 Err(error) => {
@@ -3862,7 +3868,7 @@ async fn events(
                 revision,
                 changed_fields,
                 created_at,
-            )) = events.first()
+            )) = events.as_slice().first()
             {
                 let event = json!({
                     "cursor": event_cursor,
@@ -3876,13 +3882,12 @@ async fn events(
                     .id(event_cursor.to_string())
                     .json_data(event)
                     .unwrap_or_else(|_| Event::default().comment("event encoding failed"));
-                return Some((Ok(stream_event), (pool, household_id, *event_cursor)));
+                return Some((Ok(stream_event), (next_pool, household_id, *event_cursor)));
             }
-            drop(connection);
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             Some((
                 Ok(Event::default().comment("keepalive")),
-                (pool, household_id, cursor),
+                (next_pool, household_id, cursor),
             ))
         },
     );

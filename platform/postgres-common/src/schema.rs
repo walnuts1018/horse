@@ -239,7 +239,6 @@ pub mod public {
             request -> Jsonb,
             result -> Nullable<Jsonb>,
             attempt_count -> Int4,
-            failure_count -> Int4,
             max_attempts -> Int4,
             available_at -> Timestamptz,
             started_at -> Nullable<Timestamptz>,
@@ -248,9 +247,10 @@ pub mod public {
             lease_expires_at -> Nullable<Timestamptz>,
             error_code -> Nullable<Text>,
             error_message -> Nullable<Text>,
-            interaction_reply_preview -> Text,
             created_at -> Timestamptz,
             updated_at -> Timestamptz,
+            failure_count -> Int4,
+            interaction_reply_preview -> Text,
         }
     }
 
@@ -284,6 +284,13 @@ pub mod public {
     }
 
     diesel::table! {
+        household_event_stream_cursors (household_id) {
+            household_id -> Uuid,
+            cursor -> Int8,
+        }
+    }
+
+    diesel::table! {
         household_events (cursor) {
             cursor -> Int8,
             household_id -> Uuid,
@@ -295,6 +302,22 @@ pub mod public {
             payload -> Jsonb,
             actor_id -> Uuid,
             created_at -> Timestamptz,
+            stream_cursor -> Int8,
+        }
+    }
+
+    diesel::table! {
+        household_invitations (id) {
+            id -> Uuid,
+            household_id -> Uuid,
+            token_hash -> Bytea,
+            role -> Text,
+            expires_at -> Timestamptz,
+            created_by -> Uuid,
+            created_at -> Timestamptz,
+            revoked_at -> Nullable<Timestamptz>,
+            accepted_by -> Nullable<Uuid>,
+            accepted_at -> Nullable<Timestamptz>,
         }
     }
 
@@ -316,21 +339,6 @@ pub mod public {
             role -> Text,
             joined_at -> Timestamptz,
             left_at -> Nullable<Timestamptz>,
-        }
-    }
-
-    diesel::table! {
-        household_invitations (id) {
-            id -> Uuid,
-            household_id -> Uuid,
-            token_hash -> Bytea,
-            role -> Text,
-            expires_at -> Timestamptz,
-            created_by -> Uuid,
-            created_at -> Timestamptz,
-            revoked_at -> Nullable<Timestamptz>,
-            accepted_by -> Nullable<Uuid>,
-            accepted_at -> Nullable<Timestamptz>,
         }
     }
 
@@ -377,10 +385,10 @@ pub mod public {
             household_id -> Uuid,
             source_kind -> Text,
             source_id -> Uuid,
-            idempotency_key -> Text,
             occurred_at -> Timestamptz,
             created_by -> Uuid,
             created_at -> Timestamptz,
+            idempotency_key -> Text,
         }
     }
 
@@ -394,9 +402,9 @@ pub mod public {
             occurred_at -> Timestamptz,
             description -> Text,
             amount_yen -> Int8,
+            created_at -> Timestamptz,
             from_member_id -> Nullable<Uuid>,
             pool_id -> Nullable<Uuid>,
-            created_at -> Timestamptz,
         }
     }
 
@@ -580,6 +588,15 @@ pub mod public {
     }
 
     diesel::table! {
+        purchase_item_tags (item_id, tag_id) {
+            household_id -> Uuid,
+            purchase_id -> Uuid,
+            item_id -> Uuid,
+            tag_id -> Uuid,
+        }
+    }
+
+    diesel::table! {
         purchase_items (id) {
             id -> Uuid,
             household_id -> Uuid,
@@ -663,6 +680,17 @@ pub mod public {
     }
 
     diesel::table! {
+        recurring_expense_matches (household_id, recurring_expense_id, due_on) {
+            household_id -> Uuid,
+            recurring_expense_id -> Uuid,
+            due_on -> Date,
+            purchase_id -> Uuid,
+            matched_by -> Uuid,
+            created_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
         recurring_expenses (id) {
             id -> Uuid,
             household_id -> Uuid,
@@ -678,28 +706,6 @@ pub mod public {
             ends_on -> Nullable<Date>,
             archived -> Bool,
             revision -> Int8,
-            created_at -> Timestamptz,
-            updated_at -> Timestamptz,
-        }
-    }
-
-    diesel::table! {
-        recurring_expense_matches (household_id, recurring_expense_id, due_on) {
-            household_id -> Uuid,
-            recurring_expense_id -> Uuid,
-            due_on -> Date,
-            purchase_id -> Uuid,
-            matched_by -> Uuid,
-            created_at -> Timestamptz,
-        }
-    }
-
-    diesel::table! {
-        shared_purchase_drafts (id) {
-            id -> Uuid,
-            household_id -> Uuid,
-            revision -> Int8,
-            payload -> Jsonb,
             created_at -> Timestamptz,
             updated_at -> Timestamptz,
         }
@@ -766,6 +772,17 @@ pub mod public {
     }
 
     diesel::table! {
+        shared_purchase_drafts (id) {
+            id -> Uuid,
+            household_id -> Uuid,
+            revision -> Int8,
+            payload -> Jsonb,
+            created_at -> Timestamptz,
+            updated_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
         source_confirmations (id) {
             id -> Uuid,
             household_id -> Uuid,
@@ -808,11 +825,11 @@ pub mod public {
             source_kind -> Text,
             original_filename -> Text,
             metadata -> Jsonb,
+            created_by -> Uuid,
+            created_at -> Timestamptz,
             analysis_object_key -> Nullable<Text>,
             analysis_mime_type -> Nullable<Text>,
             analysis_transform -> Nullable<Jsonb>,
-            created_by -> Uuid,
-            created_at -> Timestamptz,
         }
     }
 
@@ -868,15 +885,6 @@ pub mod public {
     }
 
     diesel::table! {
-        purchase_item_tags (item_id, tag_id) {
-            household_id -> Uuid,
-            purchase_id -> Uuid,
-            item_id -> Uuid,
-            tag_id -> Uuid,
-        }
-    }
-
-    diesel::table! {
         transfers (id) {
             id -> Uuid,
             household_id -> Uuid,
@@ -893,21 +901,20 @@ pub mod public {
         }
     }
 
-    diesel::joinable!(accounting_periods -> households (household_id));
     diesel::joinable!(account_incomes -> households (household_id));
     diesel::joinable!(account_movements -> households (household_id));
+    diesel::joinable!(accounting_periods -> households (household_id));
     diesel::joinable!(accounts -> households (household_id));
     diesel::joinable!(allocation_defaults -> households (household_id));
     diesel::joinable!(allocation_rules -> households (household_id));
-    diesel::joinable!(categories -> households (household_id));
     diesel::joinable!(budgets -> households (household_id));
-    diesel::joinable!(recurring_expenses -> households (household_id));
-    diesel::joinable!(recurring_expense_matches -> households (household_id));
-    diesel::joinable!(shared_purchase_drafts -> households (household_id));
-    diesel::joinable!(household_mail_forwardings -> households (household_id));
+    diesel::joinable!(categories -> households (household_id));
     diesel::joinable!(evidence_links -> households (household_id));
+    diesel::joinable!(household_event_stream_cursors -> households (household_id));
     diesel::joinable!(household_events -> households (household_id));
     diesel::joinable!(household_invitations -> households (household_id));
+    diesel::joinable!(household_mail_forwardings -> households (household_id));
+    diesel::joinable!(household_mail_forwardings -> members (created_by));
     diesel::joinable!(household_members -> households (household_id));
     diesel::joinable!(household_members -> members (member_id));
     diesel::joinable!(idempotency_records -> households (household_id));
@@ -917,6 +924,8 @@ pub mod public {
     diesel::joinable!(pools -> households (household_id));
     diesel::joinable!(product_concepts -> households (household_id));
     diesel::joinable!(purchases -> households (household_id));
+    diesel::joinable!(recurring_expenses -> households (household_id));
+    diesel::joinable!(shared_purchase_drafts -> households (household_id));
     diesel::joinable!(source_documents -> households (household_id));
     diesel::joinable!(tags -> households (household_id));
 
@@ -939,6 +948,7 @@ pub mod public {
         extraction_jobs,
         funding_obligations,
         funding_schedules,
+        household_event_stream_cursors,
         household_events,
         household_invitations,
         household_mail_forwardings,
@@ -963,20 +973,20 @@ pub mod public {
         purchase_correction_allocations,
         purchase_correction_payments,
         purchase_corrections,
+        purchase_item_tags,
         purchase_items,
         purchase_member_burdens,
         purchase_payment_funding_snapshots,
         purchase_payments,
         purchases,
-        purchase_item_tags,
-        recurring_expenses,
         recurring_expense_matches,
-        shared_purchase_drafts,
+        recurring_expenses,
         settlement_adjustments,
         settlement_run_adjustments,
         settlement_run_lines,
         settlement_run_purchase_snapshots,
         settlement_runs,
+        shared_purchase_drafts,
         source_confirmations,
         source_document_attachments,
         source_documents,

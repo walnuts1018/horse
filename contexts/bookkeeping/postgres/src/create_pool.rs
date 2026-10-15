@@ -44,7 +44,7 @@ pub async fn persist_create_pool(
         .get()
         .await
         .map_err(|error| CreatePoolPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedCreatePool, CreatePoolPersistenceError, _>(async |conn| {
             use public::allocation_defaults::dsl as defaults;
             use public::households::dsl as households;

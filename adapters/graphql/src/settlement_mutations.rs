@@ -1,5 +1,6 @@
 use async_graphql::{Context, ID, InputObject, Interface, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use bookkeeping_application::close_period::{ClosePeriodError, ClosePeriodWorkflowError};
 use bookkeeping_application::settlement_query::GetSettlementQuery;
 use bookkeeping_postgres::{
     close_period as postgres_close_period, loan_balance_query as postgres_loan_balances,
@@ -55,6 +56,7 @@ pub struct ClosedSettlement {
     created_at: DateTime,
 }
 
+#[allow(clippy::duplicated_attributes)]
 #[derive(Clone, Debug, Interface)]
 #[graphql(
     field(name = "id", ty = "&ID"),
@@ -126,31 +128,56 @@ pub async fn close_period(ctx: &Context<'_>, input: ClosePeriodInput) -> Result<
                 load_settlement(ctx.data::<PgPool>()?, household_id, input.period.as_str()).await?;
             Ok(ClosePeriodResult::Success(ClosePeriodSuccess { result }))
         }
-        Err(
+        Err(ClosePeriodWorkflowError::Decision(error)) => match error {
+            ClosePeriodError::PeriodAlreadyClosed | ClosePeriodError::RevisionMismatch { .. } => {
+                Ok(ClosePeriodResult::UserError(user_error(
+                    MutationErrorCode::Conflict,
+                )))
+            }
+            ClosePeriodError::DraftPurchasesExist => {
+                Ok(ClosePeriodResult::UserError(ClosePeriodUserError {
+                    code: MutationErrorCode::Conflict,
+                    message: "未確定の購入があるため締められません。".to_owned(),
+                }))
+            }
+            ClosePeriodError::InvalidPeriod
+            | ClosePeriodError::EmptyMemberId
+            | ClosePeriodError::EmptyMemberName
+            | ClosePeriodError::DuplicateMember
+            | ClosePeriodError::DuplicatePurchase
+            | ClosePeriodError::NegativeNonnegativeAmount
+            | ClosePeriodError::AmountOverflow
+            | ClosePeriodError::RevisionOverflow
+            | ClosePeriodError::InvalidFundingSchedule
+            | ClosePeriodError::FundingAmountOverflow => {
+                Ok(ClosePeriodResult::UserError(bad_input()))
+            }
+        },
+        Err(ClosePeriodWorkflowError::Operations(
             postgres_close_period::ClosePeriodPersistenceError::PeriodAlreadyClosed
             | postgres_close_period::ClosePeriodPersistenceError::StalePeriod
             | postgres_close_period::ClosePeriodPersistenceError::StalePurchase,
-        ) => Ok(ClosePeriodResult::UserError(user_error(
+        )) => Ok(ClosePeriodResult::UserError(user_error(
             MutationErrorCode::Conflict,
         ))),
-        Err(postgres_close_period::ClosePeriodPersistenceError::DraftPurchasesExist) => {
-            Ok(ClosePeriodResult::UserError(ClosePeriodUserError {
-                code: MutationErrorCode::Conflict,
-                message: "未確定の購入があるため締められません。".to_owned(),
-            }))
-        }
-        Err(
+        Err(ClosePeriodWorkflowError::Operations(
+            postgres_close_period::ClosePeriodPersistenceError::DraftPurchasesExist,
+        )) => Ok(ClosePeriodResult::UserError(ClosePeriodUserError {
+            code: MutationErrorCode::Conflict,
+            message: "未確定の購入があるため締められません。".to_owned(),
+        })),
+        Err(ClosePeriodWorkflowError::Operations(
             postgres_close_period::ClosePeriodPersistenceError::InvalidPeriod
             | postgres_close_period::ClosePeriodPersistenceError::InvalidDecision
             | postgres_close_period::ClosePeriodPersistenceError::InvalidUuid(_),
-        ) => Ok(ClosePeriodResult::UserError(bad_input())),
-        Err(
+        )) => Ok(ClosePeriodResult::UserError(bad_input())),
+        Err(ClosePeriodWorkflowError::Operations(
             postgres_close_period::ClosePeriodPersistenceError::HouseholdNotFound
             | postgres_close_period::ClosePeriodPersistenceError::PeriodNotFound,
-        ) => Ok(ClosePeriodResult::UserError(user_error(
+        )) => Ok(ClosePeriodResult::UserError(user_error(
             MutationErrorCode::NotFound,
         ))),
-        Err(error) => Err(crate::internal_error(error)),
+        Err(ClosePeriodWorkflowError::Operations(error)) => Err(crate::internal_error(error)),
     }
 }
 

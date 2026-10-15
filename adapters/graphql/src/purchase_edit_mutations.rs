@@ -2,6 +2,7 @@ use async_graphql::{
     Context, ID, InputObject, MaybeUndefined, OneofObject, Result, SimpleObject, Union,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use bookkeeping_application::{AccountingPeriod, PurchaseLifecycle, YearMonth};
 use bookkeeping_application::{
     bulk_delete_items::BulkDeleteItemTarget,
     bulk_update_items::{BulkUpdateItemPatch, BulkUpdateItemTarget, ItemAllocationWeight},
@@ -18,6 +19,7 @@ use bookkeeping_postgres::{
     update_purchase::{self, PersistUpdatePurchase},
     update_purchase_item::{self, PersistUpdatePurchaseItem},
 };
+use chrono::Datelike;
 use horse_postgres_common::PgPool;
 use household_postgres::household_access;
 use std::collections::{BTreeMap, BTreeSet};
@@ -132,7 +134,7 @@ pub struct UpdatePurchaseUserError {
 }
 #[derive(Union)]
 pub enum UpdatePurchaseResult {
-    Success(UpdatePurchaseSuccess),
+    Success(Box<UpdatePurchaseSuccess>),
     UserError(UpdatePurchaseUserError),
 }
 
@@ -147,7 +149,7 @@ pub struct UpdatePurchaseItemUserError {
 }
 #[derive(Union)]
 pub enum UpdatePurchaseItemResult {
-    Success(UpdatePurchaseItemSuccess),
+    Success(Box<UpdatePurchaseItemSuccess>),
     UserError(UpdatePurchaseItemUserError),
 }
 
@@ -162,7 +164,7 @@ pub struct BulkUpdatePurchaseItemsUserError {
 }
 #[derive(Union)]
 pub enum BulkUpdatePurchaseItemsResult {
-    Success(BulkUpdatePurchaseItemsSuccess),
+    Success(Box<BulkUpdatePurchaseItemsSuccess>),
     UserError(BulkUpdatePurchaseItemsUserError),
 }
 
@@ -239,9 +241,9 @@ pub async fn update_purchase(
     )
     .await;
     match persisted {
-        Ok(_) => Ok(UpdatePurchaseSuccess {
+        Ok(_) => Ok(Box::new(UpdatePurchaseSuccess {
             result: load_purchase(pool, household_id, purchase_id).await?,
-        }
+        })
         .into()),
         Err(error) => match update_persistence_error(&error) {
             Some(code) => Ok(update_error(code).into()),
@@ -298,7 +300,7 @@ pub async fn update_purchase_item(
             else {
                 return Ok(update_item_error(MutationErrorCode::NotFound).into());
             };
-            Ok(UpdatePurchaseItemSuccess { result: item }.into())
+            Ok(Box::new(UpdatePurchaseItemSuccess { result: item }).into())
         }
         Err(error) => match update_item_persistence_error(&error) {
             Some(code) => Ok(update_item_error(code).into()),
@@ -345,11 +347,10 @@ pub async fn bulk_update_purchase_items(
             for (item_id, purchase_id) in value.items {
                 let item_id = parse_uuid(&item_id)?;
                 let purchase_id = parse_uuid(&purchase_id)?;
-                if !purchases.contains_key(&purchase_id) {
-                    purchases.insert(
-                        purchase_id,
-                        load_purchase(pool, household_id, purchase_id).await?,
-                    );
+                if let std::collections::btree_map::Entry::Vacant(entry) =
+                    purchases.entry(purchase_id)
+                {
+                    entry.insert(load_purchase(pool, household_id, purchase_id).await?);
                 }
                 let Some(item) = purchases[&purchase_id]
                     .items
@@ -361,7 +362,7 @@ pub async fn bulk_update_purchase_items(
                 };
                 items.push(item);
             }
-            Ok(BulkUpdatePurchaseItemsSuccess { items }.into())
+            Ok(Box::new(BulkUpdatePurchaseItemsSuccess { items }).into())
         }
         Err(error) => match bulk_update_persistence_error(&error) {
             Some(code) => Ok(bulk_update_error(code).into()),
@@ -500,7 +501,25 @@ fn update_purchase_draft(
         .collect::<std::result::Result<BTreeMap<_, _>, _>>()?;
     Ok(UpdatePurchaseDraft {
         revision: u64::try_from(value.revision).map_err(|_| ())?,
-        status: value.status,
+        lifecycle: match value.status.as_str() {
+            "DRAFT" => PurchaseLifecycle::Draft,
+            "POSTED" | "CLOSED" => PurchaseLifecycle::Posted,
+            _ => return Err(()),
+        },
+        accounting_period: {
+            let tokyo = chrono::FixedOffset::east_opt(9 * 60 * 60).ok_or(())?;
+            let local_date = value.occurred_at.with_timezone(&tokyo).date_naive();
+            let year_month = YearMonth::new(
+                u16::try_from(local_date.year()).map_err(|_| ())?,
+                u8::try_from(local_date.month()).map_err(|_| ())?,
+            )
+            .map_err(|_| ())?;
+            if value.status == "CLOSED" {
+                AccountingPeriod::closed(year_month, 1).map_err(|_| ())?
+            } else {
+                AccountingPeriod::open(year_month, 1).map_err(|_| ())?
+            }
+        },
         occurred_at: value.occurred_at.to_rfc3339(),
         date_precision: value.date_precision,
         merchant: value.merchant,
@@ -634,12 +653,14 @@ pub(crate) fn item_update_command(
 fn parse_measure(
     value: UpdatePurchaseItemQuantityInput,
 ) -> std::result::Result<bookkeeping_application::create_purchase::Measure, ()> {
-    let unit = bookkeeping_application::create_purchase::QuantityUnit::parse(&value.unit)?;
+    let unit = bookkeeping_application::create_purchase::QuantityUnit::parse(&value.unit)
+        .map_err(|_| ())?;
     bookkeeping_application::create_purchase::Measure::new(
         value.numerator.parse().map_err(|_| ())?,
         value.denominator.parse().map_err(|_| ())?,
         unit,
     )
+    .map_err(|_| ())
 }
 
 fn parse_printed_unit_price(

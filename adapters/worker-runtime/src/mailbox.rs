@@ -70,7 +70,7 @@ pub async fn poll_database(
         .map_err(|_| MailboxError("mailbox database connection failed"))?;
     let uploaded_keys = Arc::new(Mutex::new(Vec::new()));
     let transaction_keys = Arc::clone(&uploaded_keys);
-    let result = (&mut *pooled)
+    let result = pooled
         .transaction::<MailboxBatch, MailboxError, _>(async |conn| {
             use public::{household_events, mailbox_cursors::dsl as cursors};
             let (uid_validity, uid) = cursors::mailbox_cursors
@@ -525,7 +525,7 @@ async fn fetch_size<T>(
     uid: u32,
 ) -> Result<usize, MailboxError>
 where
-    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + fmt::Debug,
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + fmt::Debug + Send,
 {
     let messages = session
         .uid_fetch(uid.to_string(), "(UID RFC822.SIZE)")
@@ -549,7 +549,7 @@ async fn fetch_body<T>(
     max_bytes: usize,
 ) -> Result<Option<Vec<u8>>, MailboxError>
 where
-    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + fmt::Debug,
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + fmt::Debug + Send,
 {
     let messages = session
         .uid_fetch(uid.to_string(), format!("(UID BODY.PEEK[]<0.{max_bytes}>)"))

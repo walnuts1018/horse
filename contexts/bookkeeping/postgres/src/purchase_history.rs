@@ -1,5 +1,5 @@
 use diesel::{
-    BoolExpressionMethods, ExpressionMethods, NullableExpressionMethods, QueryDsl,
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl,
     result::Error as DieselError,
 };
 use diesel_async::RunQueryDsl;

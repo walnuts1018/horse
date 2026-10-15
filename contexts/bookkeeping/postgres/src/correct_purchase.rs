@@ -138,8 +138,8 @@ pub async fn correct_purchase(
         .get()
         .await
         .map_err(|error| CorrectPurchasePersistenceError::Pool(error.to_string()))?;
-    let result = (&mut *pooled)
-        .transaction::<Result<_, CorrectPurchasePersistenceError>, DieselError, _>(async |conn| {
+    (*pooled)
+        .transaction::<PersistedCorrectPurchase, CorrectPurchasePersistenceError, _>(async |conn| {
             let mut operations = PgCorrectPurchaseOperations {
                 conn,
                 request,
@@ -168,8 +168,6 @@ pub async fn correct_purchase(
             })
         })
         .await
-        .map_err(CorrectPurchasePersistenceError::Database)?;
-    result
 }
 
 struct PgCorrectPurchaseOperations<'a> {
@@ -206,15 +204,11 @@ impl bookkeeping_application::correct_purchase_workflow::CorrectPurchaseOperatio
             purchases,
         };
 
-        let (occurred_at_hint, status_hint, legacy_payment_account_id) = purchases::table
+        let (occurred_at_hint, status_hint) = purchases::table
             .filter(purchases::household_id.eq(household_id))
             .filter(purchases::id.eq(purchase_id))
-            .select((
-                purchases::occurred_at,
-                purchases::status,
-                purchases::payment_account_id,
-            ))
-            .first::<(DateTime<Utc>, String, Option<Uuid>)>(conn)
+            .select((purchases::occurred_at, purchases::status))
+            .first::<(DateTime<Utc>, String)>(conn)
             .await
             .optional()?
             .ok_or(CorrectPurchasePersistenceError::PurchaseNotFound)?;
@@ -508,11 +502,11 @@ impl bookkeeping_application::correct_purchase_workflow::CorrectPurchaseOperatio
                     .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
                 weights.push((account_id.to_string(), amount));
             }
-            if weights.is_empty() {
-                if let Some(account_id) = legacy_payment_account_id {
-                    weights.push((account_id.to_string(), original_total));
-                    total = original_total;
-                }
+            if weights.is_empty()
+                && let Some(account_id) = legacy_payment_account_id
+            {
+                weights.push((account_id.to_string(), original_total));
+                total = original_total;
             }
             if !weights.is_empty() && total != original_total {
                 return Err(CorrectPurchasePersistenceError::InvalidDecision);
@@ -568,8 +562,7 @@ impl bookkeeping_application::correct_purchase_workflow::CorrectPurchaseOperatio
             })
             .collect::<Result<Vec<_>, CorrectPurchasePersistenceError>>()?;
         let item_balance = item_id
-            .map(|id| item_refundable.get(&id).copied())
-            .flatten()
+            .and_then(|id| item_refundable.get(&id).copied())
             .map(Yen::new)
             .transpose()
             .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
@@ -665,7 +658,7 @@ pub async fn link_statement_refund_correction(
         .await
         .map_err(|error| CorrectPurchasePersistenceError::Pool(error.to_string()))?;
 
-    (&mut *pooled)
+    (*pooled)
         .transaction::<String, CorrectPurchasePersistenceError, _>(async |conn| {
             use public::evidence_links::dsl as evidence;
             use public::household_members::dsl as members;
@@ -977,8 +970,12 @@ async fn persist_correct_purchase_in_transaction(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::id.eq(purchase_id))
         .for_update()
-        .select((purchases::occurred_at, purchases::status))
-        .first::<(DateTime<Utc>, String)>(&mut *conn)
+        .select((
+            purchases::occurred_at,
+            purchases::status,
+            purchases::revision,
+        ))
+        .first::<(DateTime<Utc>, String, i64)>(&mut *conn)
         .await?;
     let japan_offset =
         FixedOffset::east_opt(9 * 60 * 60).ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
@@ -1040,6 +1037,24 @@ async fn persist_correct_purchase_in_transaction(
     if purchase.1 == "DRAFT" {
         return Err(CorrectPurchasePersistenceError::PurchaseNotPosted);
     }
+    let next_purchase_revision = purchase
+        .2
+        .checked_add(1)
+        .filter(|revision| *revision > 0)
+        .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?;
+    diesel::update(
+        purchases::purchases
+            .filter(purchases::household_id.eq(household_id))
+            .filter(purchases::id.eq(purchase_id))
+            .filter(purchases::revision.eq(purchase.2)),
+    )
+    .set((
+        purchases::revision.eq(next_purchase_revision),
+        purchases::updated_at.eq(recorded_at),
+    ))
+    .returning(purchases::revision)
+    .get_result::<i64>(&mut *conn)
+    .await?;
 
     validate_references(&mut *conn, household_id, actor_id, purchase_id, &decision).await?;
     validate_refundable_balance(&mut *conn, household_id, purchase_id, &decision).await?;
@@ -1199,7 +1214,7 @@ async fn persist_correct_purchase_in_transaction(
             events::event_type.eq(decision.event.event_type),
             events::entity_kind.eq("purchase"),
             events::entity_id.eq(purchase_id),
-            events::revision.eq(1_i64),
+            events::revision.eq(next_purchase_revision),
             events::changed_fields.eq(decision
                 .event
                 .changed_fields
@@ -1267,7 +1282,6 @@ async fn load_statement_refund_entry(
         .first::<(Uuid, Option<serde_json::Value>)>(conn)
         .await
         .optional()?
-        .map(|(job_id, result)| (job_id, result))
         .and_then(|(job_id, result)| result.map(|result| (job_id, result)))
         .ok_or(CorrectPurchasePersistenceError::StatementExtractionUnavailable)?;
     let statements = result
@@ -1325,7 +1339,7 @@ fn parse_linked_refund_observation(
     Ok(observation)
 }
 
-pub(crate) fn statement_observation(
+pub fn statement_observation(
     value: &serde_json::Value,
     source_reference: &str,
 ) -> Result<StatementRefundObservation, CorrectPurchasePersistenceError> {

@@ -329,25 +329,25 @@ pub async fn load_funding_ledger_entry_results(
         let mut owner_member_id = None;
         let mut settlement_policy = None;
         let mut funding_shares = Vec::new();
-        if let Some(version) = current_version {
-            if let Some((owner, policy)) = rules.get(&(household_id, pool_id, version)) {
-                owner_member_id = *owner;
-                if let Some(policy) = policy.as_deref() {
-                    settlement_policy = Some(match policy {
-                        "BALANCE_TO_STANDARD" => SettlementPolicy::BalanceToStandard,
-                        "REIMBURSE_PERSONAL" => SettlementPolicy::ReimbursePersonal,
-                        value => {
-                            return Err(FundingCommandResultError::InvalidSettlementPolicy(
-                                value.to_owned(),
-                            ));
-                        }
-                    });
-                }
-                funding_shares = shares_by_rule
-                    .get(&(household_id, pool_id, version))
-                    .cloned()
-                    .unwrap_or_default();
+        if let Some(version) = current_version
+            && let Some((owner, policy)) = rules.get(&(household_id, pool_id, version))
+        {
+            owner_member_id = *owner;
+            if let Some(policy) = policy.as_deref() {
+                settlement_policy = Some(match policy {
+                    "BALANCE_TO_STANDARD" => SettlementPolicy::BalanceToStandard,
+                    "REIMBURSE_PERSONAL" => SettlementPolicy::ReimbursePersonal,
+                    value => {
+                        return Err(FundingCommandResultError::InvalidSettlementPolicy(
+                            value.to_owned(),
+                        ));
+                    }
+                });
             }
+            funding_shares = shares_by_rule
+                .get(&(household_id, pool_id, version))
+                .cloned()
+                .unwrap_or_default();
         }
         result.insert(
             id,

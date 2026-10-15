@@ -184,14 +184,12 @@ pub async fn purchases(
                     .filter(public::purchase_allocations::pool_id.eq(pool_id)),
             ));
         }
-        if item_target {
-            if let Some(pattern) = search.clone() {
-                items = items.filter(
-                    purchases::merchant
-                        .ilike(pattern.clone())
-                        .or(purchase_items::name.ilike(pattern.clone())),
-                );
-            }
+        if item_target && let Some(pattern) = search.clone() {
+            items = items.filter(
+                purchases::merchant
+                    .ilike(pattern.clone())
+                    .or(purchase_items::name.ilike(pattern.clone())),
+            );
         }
         let purchase_ids = items
             .select(purchase_items::purchase_id)
@@ -200,16 +198,16 @@ pub async fn purchases(
             .await?;
         query = query.filter(purchases::id.eq_any(purchase_ids));
     }
-    if let Some(pattern) = search.clone() {
-        if !item_target {
-            query = query.filter(
-                purchases::merchant.ilike(pattern.clone()).or(exists(
-                    purchase_items::table
-                        .filter(purchase_items::purchase_id.eq(purchases::id))
-                        .filter(purchase_items::name.ilike(pattern.clone())),
-                )),
-            );
-        }
+    if let Some(pattern) = search.clone()
+        && !item_target
+    {
+        query = query.filter(
+            purchases::merchant.ilike(pattern.clone()).or(exists(
+                purchase_items::table
+                    .filter(purchase_items::purchase_id.eq(purchases::id))
+                    .filter(purchase_items::name.ilike(pattern.clone())),
+            )),
+        );
     }
     if !item_target && (filter.minimum_amount.is_some() || filter.maximum_amount.is_some()) {
         let totals = purchase_items::table
@@ -246,7 +244,7 @@ pub async fn purchases(
         .into_boxed::<Pg>();
     let sync_cursor = household_events::table
         .filter(household_events::household_id.eq(filter.household_id))
-        .select(max(household_events::cursor))
+        .select(max(household_events::stream_cursor))
         .first::<Option<i64>>(&mut conn)
         .await?
         .unwrap_or_default();

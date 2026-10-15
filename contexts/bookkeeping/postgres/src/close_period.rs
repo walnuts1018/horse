@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use bookkeeping_application::close_period::{
-    ClosePeriodCommand, ClosePeriodDecision, FundingCadence, FundingScheduleInput,
-    PurchaseSnapshot, SettlementInput, close_period as close_period_workflow,
+    ClosePeriodCommand, ClosePeriodDecision, ClosePeriodWorkflowError, FundingCadence,
+    FundingScheduleInput, PurchaseSnapshot, SettlementInput, close_period as close_period_workflow,
     decide_funding_obligations,
 };
 use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, YearMonth};
@@ -11,7 +11,7 @@ use diesel::{
     BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, dsl::now,
     result::Error as DieselError,
 };
-use diesel_async::{AsyncConnection, RunQueryDsl};
+use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -51,17 +51,20 @@ pub async fn close_period(
     actor_id: &str,
     period: &str,
     expected_revision: u64,
-) -> Result<PersistedClosePeriod, ClosePeriodPersistenceError> {
-    let household_id = parse_uuid(household_id, "household_id")?;
-    let actor_id = parse_uuid(actor_id, "actor_id")?;
-    let year_month =
-        YearMonth::parse(period).map_err(|_| ClosePeriodPersistenceError::InvalidPeriod)?;
-    let (period_start, period_end) = period_bounds(year_month)?;
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| ClosePeriodPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+) -> Result<PersistedClosePeriod, ClosePeriodWorkflowError<ClosePeriodPersistenceError>> {
+    let household_id =
+        parse_uuid(household_id, "household_id").map_err(ClosePeriodWorkflowError::Operations)?;
+    let actor_id =
+        parse_uuid(actor_id, "actor_id").map_err(ClosePeriodWorkflowError::Operations)?;
+    let year_month = YearMonth::parse(period).map_err(|_| {
+        ClosePeriodWorkflowError::Operations(ClosePeriodPersistenceError::InvalidPeriod)
+    })?;
+    let (period_start, period_end) =
+        period_bounds(year_month).map_err(ClosePeriodWorkflowError::Operations)?;
+    let mut pooled = pool.get().await.map_err(|error| {
+        ClosePeriodWorkflowError::Operations(ClosePeriodPersistenceError::Pool(error.to_string()))
+    })?;
+    pooled
         .build_transaction()
         .serializable()
         .run(async |conn| {
@@ -74,23 +77,12 @@ pub async fn close_period(
                 expected_revision,
                 actor_id,
             };
-            close_period_workflow(&mut operations)
-                .await
-                .map_err(|error| match error {
-                    bookkeeping_application::close_period::ClosePeriodWorkflowError::Decision(
-                        bookkeeping_application::close_period::ClosePeriodError::PeriodAlreadyClosed,
-                    ) => ClosePeriodPersistenceError::PeriodAlreadyClosed,
-                    bookkeeping_application::close_period::ClosePeriodWorkflowError::Decision(
-                        bookkeeping_application::close_period::ClosePeriodError::RevisionMismatch { .. },
-                    ) => ClosePeriodPersistenceError::StalePeriod,
-                    bookkeeping_application::close_period::ClosePeriodWorkflowError::Decision(
-                        bookkeeping_application::close_period::ClosePeriodError::DraftPurchasesExist,
-                    ) => ClosePeriodPersistenceError::DraftPurchasesExist,
-                    bookkeeping_application::close_period::ClosePeriodWorkflowError::Operations(error) => error,
-                    _ => ClosePeriodPersistenceError::InvalidDecision,
-                })
+            Ok::<_, DieselError>(close_period_workflow(&mut operations).await)
         })
         .await
+        .map_err(|error| {
+            ClosePeriodWorkflowError::Operations(ClosePeriodPersistenceError::Database(error))
+        })?
 }
 
 struct PgClosePeriodOperations<'a> {
@@ -239,21 +231,22 @@ impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePer
         validate_decision(&decision, self.period_start, revision, self.actor_id)?;
         persist_close_period_in_transaction(
             self.conn,
-            self.household_id,
-            decision,
-            self.period_start,
-            self.period_end,
-            revision,
-            expected_revision,
-            self.actor_id,
-            Uuid::now_v7(),
+            PersistClosePeriodInput {
+                household_id: self.household_id,
+                decision,
+                period_start: self.period_start,
+                period_end: self.period_end,
+                revision,
+                expected_revision,
+                actor_id: self.actor_id,
+                settlement_run_id: Uuid::now_v7(),
+            },
         )
         .await
     }
 }
 
-async fn persist_close_period_in_transaction(
-    conn: &mut diesel_async::AsyncPgConnection,
+struct PersistClosePeriodInput {
     household_id: Uuid,
     decision: ClosePeriodDecision,
     period_start: NaiveDate,
@@ -262,7 +255,22 @@ async fn persist_close_period_in_transaction(
     expected_revision: i64,
     actor_id: Uuid,
     settlement_run_id: Uuid,
+}
+
+async fn persist_close_period_in_transaction(
+    conn: &mut diesel_async::AsyncPgConnection,
+    input: PersistClosePeriodInput,
 ) -> Result<PersistedClosePeriod, ClosePeriodPersistenceError> {
+    let PersistClosePeriodInput {
+        household_id,
+        decision,
+        period_start,
+        period_end,
+        revision,
+        expected_revision,
+        actor_id,
+        settlement_run_id,
+    } = input;
     use public::accounting_periods::dsl as periods;
     use public::households::dsl as households;
     use public::purchases::dsl as purchases;
@@ -651,8 +659,7 @@ async fn persist_close_period_in_transaction(
                 .await?;
         }
         if line.advance_credit_yen != 0 {
-            let credit = i64::try_from(line.advance_credit_yen)
-                .map_err(|_| ClosePeriodPersistenceError::NumericOutOfRange("advance credit"))?;
+            let credit = line.advance_credit_yen;
             diesel::insert_into(public::settlement_run_adjustments::table)
                 .values((
                     public::settlement_run_adjustments::household_id.eq(household_id),

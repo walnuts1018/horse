@@ -74,7 +74,7 @@ pub async fn create_shared_purchase_draft(
         .get()
         .await
         .map_err(|error| SharedPurchaseDraftPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<SharedPurchaseDraft, SharedPurchaseDraftPersistenceError, _>(
             async move |conn| {
                 validate_household_and_membership(conn, household_id, actor_id).await?;
@@ -152,7 +152,7 @@ pub async fn update_shared_purchase_draft(
         .get()
         .await
         .map_err(|error| SharedPurchaseDraftPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<UpdateSharedPurchaseDraftResult, SharedPurchaseDraftPersistenceError, _>(
             async move |conn| {
                 use public::shared_purchase_drafts::dsl as drafts;

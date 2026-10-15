@@ -9,4 +9,5 @@ diesel = { workspace = true, features = ["32-column-tables"] }
 diesel-async = { workspace = true }
 horse-postgres-common = { path = "../../../platform/postgres-common" }
 household-application = { path = "../application" }
+sha2 = { workspace = true }
 uuid = { workspace = true }

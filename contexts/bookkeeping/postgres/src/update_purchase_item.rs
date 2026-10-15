@@ -16,7 +16,35 @@ use diesel::{
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
-use crate::{PgPool, schema::public};
+use crate::{PgPool, persistence_values, schema::public};
+
+pub(crate) type BurdenSnapshot = (Uuid, Uuid, Uuid, i32, i64, Option<String>, String);
+pub(crate) type PaymentSnapshot = (Uuid, Uuid, Uuid, i32, i64, Option<String>, String);
+
+pub(crate) struct PostedAccountingSync<'a> {
+    pub(crate) household_id: Uuid,
+    pub(crate) purchase_id: Uuid,
+    pub(crate) occurred_at: DateTime<Utc>,
+    pub(crate) merchant: &'a str,
+    pub(crate) revision: i64,
+    pub(crate) previous_burdens: &'a [BurdenSnapshot],
+    pub(crate) previous_payment_accounts: &'a [(Uuid, i64)],
+    pub(crate) previous_payment_snapshots: &'a [PaymentSnapshot],
+    pub(crate) payments_changed: bool,
+}
+
+struct ProductLearningContext<'a> {
+    household_id: Uuid,
+    actor_id: Uuid,
+    purchase_id: Uuid,
+    item_id: Uuid,
+    raw_name: &'a str,
+    previous_variant_id: Option<Uuid>,
+    variant_id: Option<Uuid>,
+    variant_changed: bool,
+    merchant: &'a str,
+    learning: Option<&'a ProductLearning>,
+}
 
 #[derive(Debug, Clone)]
 pub struct PersistUpdatePurchaseItem {
@@ -68,7 +96,7 @@ pub async fn persist_update_purchase_item(
         .get()
         .await
         .map_err(|error| UpdatePurchaseItemPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError, _>(
             async move |conn| {
                 persist_update_purchase_item_in_transaction(
@@ -393,7 +421,7 @@ pub async fn persist_update_purchase_item_in_transaction(
         Some(Some(value)) => (
             Some(value.numerator()),
             Some(value.denominator()),
-            Some(value.unit().as_db_value().to_owned()),
+            Some(persistence_values::quantity_unit(value.unit()).to_owned()),
         ),
     };
     let (
@@ -408,7 +436,7 @@ pub async fn persist_update_purchase_item_in_transaction(
             Some(value.amount_yen),
             Some(value.basis.numerator()),
             Some(value.basis.denominator()),
-            Some(value.basis.unit().as_db_value().to_owned()),
+            Some(persistence_values::quantity_unit(value.basis.unit()).to_owned()),
         ),
     };
     let category_id = match &decision.category_id {
@@ -445,16 +473,18 @@ pub async fn persist_update_purchase_item_in_transaction(
 
     persist_product_learning(
         &mut *conn,
-        household_id,
-        actor_id,
-        observed.1,
-        item_id,
-        &locked.2,
-        locked.5,
-        product_variant_id,
-        command.product_variant_id_set,
-        &purchase.3,
-        decision.product_learning.as_ref(),
+        ProductLearningContext {
+            household_id,
+            actor_id,
+            purchase_id: observed.1,
+            item_id,
+            raw_name: &locked.2,
+            previous_variant_id: locked.5,
+            variant_id: product_variant_id,
+            variant_changed: command.product_variant_id_set,
+            merchant: &purchase.3,
+            learning: decision.product_learning.as_ref(),
+        },
     )
     .await?;
 
@@ -519,15 +549,17 @@ pub async fn persist_update_purchase_item_in_transaction(
     if purchase.1 == "POSTED" && decision.allocations_changed && !defer_accounting_sync {
         sync_posted_accounting(
             &mut *conn,
-            household_id,
-            observed.1,
-            purchase.2,
-            &purchase.3,
-            purchase.4,
-            &previous_burdens,
-            &previous_payment_accounts,
-            &previous_payment_snapshots,
-            payment_changed,
+            PostedAccountingSync {
+                household_id,
+                purchase_id: observed.1,
+                occurred_at: purchase.2,
+                merchant: &purchase.3,
+                revision: purchase.4,
+                previous_burdens: &previous_burdens,
+                previous_payment_accounts: &previous_payment_accounts,
+                previous_payment_snapshots: &previous_payment_snapshots,
+                payments_changed: payment_changed,
+            },
         )
         .await?;
     }
@@ -653,15 +685,15 @@ async fn load_automatic_basis(
     if let Some(id) = variant_id {
         rule = find_rule!(rules::product_variant_id.eq(Some(id)));
     }
-    if rule.is_none() {
-        if let Some(id) = concept_id {
-            rule = find_rule!(rules::product_concept_id.eq(Some(id)));
-        }
+    if rule.is_none()
+        && let Some(id) = concept_id
+    {
+        rule = find_rule!(rules::product_concept_id.eq(Some(id)));
     }
-    if rule.is_none() {
-        if let Some(id) = category_id {
-            rule = find_rule!(rules::category_id.eq(Some(id)));
-        }
+    if rule.is_none()
+        && let Some(id) = category_id
+    {
+        rule = find_rule!(rules::category_id.eq(Some(id)));
     }
     if rule.is_none() && !merchant.trim().is_empty() {
         rule = find_rule!(rules::merchant_key.eq(Some(normalize_merchant(merchant))));
@@ -849,16 +881,19 @@ async fn adjust_purchase_payments(
 
 pub(crate) async fn sync_posted_accounting(
     conn: &mut crate::AsyncPgConnection,
-    household_id: Uuid,
-    purchase_id: Uuid,
-    occurred_at: DateTime<Utc>,
-    merchant: &str,
-    revision: i64,
-    previous_burdens: &[(Uuid, Uuid, Uuid, i32, i64, Option<String>, String)],
-    previous_payment_accounts: &[(Uuid, i64)],
-    previous_payment_snapshots: &[(Uuid, Uuid, Uuid, i32, i64, Option<String>, String)],
-    payments_changed: bool,
+    sync: PostedAccountingSync<'_>,
 ) -> Result<(), UpdatePurchaseItemPersistenceError> {
+    let PostedAccountingSync {
+        household_id,
+        purchase_id,
+        occurred_at,
+        merchant,
+        revision,
+        previous_burdens,
+        previous_payment_accounts,
+        previous_payment_snapshots,
+        payments_changed,
+    } = sync;
     let mut burden_basis_rows =
         BTreeMap::<(Uuid, Uuid), Vec<(Uuid, i32, i64, Option<String>)>>::new();
     let burden_sources = previous_burdens
@@ -1153,13 +1188,13 @@ fn funding_basis(
         let weights = rows
             .into_iter()
             .map(|(member_id, _, weight, _)| {
-                Ok(MemberWeight::new(
+                MemberWeight::new(
                     MemberId::new(member_id.to_string())
                         .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidFundingSnapshot)?,
                     u64::try_from(weight)
                         .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidFundingSnapshot)?,
                 )
-                .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidFundingSnapshot)?)
+                .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidFundingSnapshot)
             })
             .collect::<Result<Vec<_>, UpdatePurchaseItemPersistenceError>>()?;
         MemberFundingBasis::shared(version, weights, policy)
@@ -1196,8 +1231,8 @@ fn measure(
     match (numerator, denominator, unit) {
         (None, None, None) => Ok(None),
         (Some(numerator), Some(denominator), Some(unit)) => {
-            let unit = bookkeeping_application::create_purchase::QuantityUnit::parse(&unit)
-                .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidDecision)?;
+            let unit = persistence_values::parse_quantity_unit(&unit)
+                .ok_or(UpdatePurchaseItemPersistenceError::InvalidDecision)?;
             let measure = bookkeeping_application::create_purchase::Measure::new(
                 numerator,
                 denominator,
@@ -1279,17 +1314,20 @@ fn normalize_merchant(value: &str) -> String {
 
 async fn persist_product_learning(
     conn: &mut crate::AsyncPgConnection,
-    household_id: Uuid,
-    actor_id: Uuid,
-    purchase_id: Uuid,
-    item_id: Uuid,
-    raw_name: &str,
-    previous_variant_id: Option<Uuid>,
-    variant_id: Option<Uuid>,
-    variant_changed: bool,
-    merchant: &str,
-    learning: Option<&ProductLearning>,
+    context: ProductLearningContext<'_>,
 ) -> Result<(), UpdatePurchaseItemPersistenceError> {
+    let ProductLearningContext {
+        household_id,
+        actor_id,
+        purchase_id,
+        item_id,
+        raw_name,
+        previous_variant_id,
+        variant_id,
+        variant_changed,
+        merchant,
+        learning,
+    } = context;
     use public::household_events::dsl as events;
     use public::product_aliases::dsl as aliases;
     use public::product_corrections::dsl as corrections;

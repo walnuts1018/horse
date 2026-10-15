@@ -71,7 +71,7 @@ pub async fn persist_bulk_update_purchase_items(
         .await
         .map_err(|error| BulkUpdatePurchaseItemsPersistenceError::Pool(error.to_string()))?;
 
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedBulkUpdatePurchaseItems, BulkUpdatePurchaseItemsPersistenceError, _>(
             async move |conn| {
                 use public::accounting_periods::dsl as periods;
@@ -451,15 +451,15 @@ async fn load_automatic_basis(
     if let Some(id) = variant_id {
         selected = find_rule!(rules::product_variant_id.eq(Some(id)));
     }
-    if selected.is_none() {
-        if let Some(id) = concept_id {
-            selected = find_rule!(rules::product_concept_id.eq(Some(id)));
-        }
+    if selected.is_none()
+        && let Some(id) = concept_id
+    {
+        selected = find_rule!(rules::product_concept_id.eq(Some(id)));
     }
-    if selected.is_none() {
-        if let Some(id) = category_id {
-            selected = find_rule!(rules::category_id.eq(Some(id)));
-        }
+    if selected.is_none()
+        && let Some(id) = category_id
+    {
+        selected = find_rule!(rules::category_id.eq(Some(id)));
     }
     if selected.is_none() && !merchant.trim().is_empty() {
         let merchant_key = merchant

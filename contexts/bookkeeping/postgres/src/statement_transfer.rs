@@ -68,7 +68,7 @@ pub async fn persist_link_statement_transfer(
         .get()
         .await
         .map_err(|error| StatementTransferPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedStatementTransfer, StatementTransferPersistenceError, _>(
             async |conn| {
                 let household_exists = public::households::table

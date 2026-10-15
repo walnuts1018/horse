@@ -116,7 +116,7 @@ pub async fn persist_bulk_delete_purchase_items(
         .await
         .map_err(|error| BulkDeletePurchaseItemsPersistenceError::Pool(error.to_string()))?;
 
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedBulkDeletePurchaseItems, BulkDeletePurchaseItemsPersistenceError, _>(
             async move |conn| {
                 use public::accounting_periods::dsl as periods;

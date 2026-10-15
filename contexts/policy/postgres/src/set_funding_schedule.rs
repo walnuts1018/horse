@@ -58,7 +58,7 @@ pub async fn persist_set_funding_schedule(
         .get()
         .await
         .map_err(|error| SetFundingSchedulePersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedFundingSchedule, SetFundingSchedulePersistenceError, _>(
             async move |conn| {
                 use public::funding_schedules::dsl as schedules;
@@ -81,7 +81,7 @@ pub async fn persist_set_funding_schedule(
                     .filter(members::member_id.eq(actor_id))
                     .filter(members::left_at.is_null())
                     .select(members::member_id)
-                    .first::<Uuid>(&mut *conn)
+                    .first::<Uuid>(conn)
                     .await
                     .optional()?
                     .is_some();
@@ -94,7 +94,7 @@ pub async fn persist_set_funding_schedule(
                     .filter(members::member_id.eq(member_id))
                     .filter(members::left_at.is_null())
                     .select(members::member_id)
-                    .first::<Uuid>(&mut *conn)
+                    .first::<Uuid>(conn)
                     .await
                     .optional()?
                     .is_some();
@@ -106,7 +106,7 @@ pub async fn persist_set_funding_schedule(
                     .filter(pools::household_id.eq(household_id))
                     .filter(pools::id.eq(pool_id))
                     .select(pools::id)
-                    .first::<Uuid>(&mut *conn)
+                    .first::<Uuid>(conn)
                     .await
                     .optional()?
                     .is_some();
@@ -121,7 +121,7 @@ pub async fn persist_set_funding_schedule(
                     .filter(schedules::active.eq(true))
                     .for_update()
                     .select((schedules::id, schedules::starts_on, schedules::ends_on))
-                    .load::<(Uuid, NaiveDate, Option<NaiveDate>)>(&mut *conn)
+                    .load::<(Uuid, NaiveDate, Option<NaiveDate>)>(conn)
                     .await?;
                 let active_schedules = active_rows
                     .iter()
@@ -157,7 +157,7 @@ pub async fn persist_set_funding_schedule(
                         .transpose()?;
                     diesel::update(schedules::funding_schedules.filter(schedules::id.eq(id)))
                         .set((schedules::ends_on.eq(end), schedules::active.eq(false)))
-                        .execute(&mut *conn)
+                        .execute(conn)
                         .await?;
                 }
 
@@ -180,7 +180,7 @@ pub async fn persist_set_funding_schedule(
                         schedules::active.eq(true),
                     ))
                     .returning((schedules::id, schedules::created_at))
-                    .get_result::<(Uuid, chrono::DateTime<chrono::Utc>)>(&mut *conn)
+                    .get_result::<(Uuid, chrono::DateTime<chrono::Utc>)>(conn)
                     .await?;
 
                 let changed_fields = decision
@@ -198,7 +198,7 @@ pub async fn persist_set_funding_schedule(
                         events::changed_fields.eq(changed_fields),
                         events::actor_id.eq(actor_id),
                     ))
-                    .execute(&mut *conn)
+                    .execute(conn)
                     .await?;
 
                 Ok(PersistedFundingSchedule {

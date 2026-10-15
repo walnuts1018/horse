@@ -2,7 +2,7 @@ use std::{collections::HashMap, env, error::Error, fmt};
 
 use aes_gcm::{
     Aes256Gcm, KeyInit, Nonce,
-    aead::{Aead, AeadCore, OsRng},
+    aead::{Aead, Generate},
 };
 use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
 use aws_credential_types::Credentials;
@@ -26,6 +26,11 @@ pub struct ObjectStore {
     bucket: String,
     email_keys: HashMap<String, Vec<u8>>,
     active_email_key_id: Option<String>,
+}
+
+struct EmailKeyring {
+    keys: HashMap<String, Vec<u8>>,
+    active_key_id: Option<String>,
 }
 
 #[derive(Debug)]
@@ -79,13 +84,13 @@ impl ObjectStore {
             .force_path_style(true)
             .build();
         let client = Client::from_conf(s3_config);
-        let (email_keys, active_email_key_id) =
+        let email_keyring =
             parse_email_keys(&env::var("EMAIL_BODY_ENCRYPTION_KEYS").unwrap_or_default())?;
         Ok(Self {
             client,
             bucket,
-            email_keys,
-            active_email_key_id,
+            email_keys: email_keyring.keys,
+            active_email_key_id: email_keyring.active_key_id,
         })
     }
 
@@ -220,11 +225,12 @@ impl ObjectStore {
     }
 }
 
-fn parse_email_keys(
-    configuration: &str,
-) -> Result<(HashMap<String, Vec<u8>>, Option<String>), StoreError> {
+fn parse_email_keys(configuration: &str) -> Result<EmailKeyring, StoreError> {
     if configuration.is_empty() {
-        return Ok((HashMap::new(), None));
+        return Ok(EmailKeyring {
+            keys: HashMap::new(),
+            active_key_id: None,
+        });
     }
     let mut keys = HashMap::new();
     let mut active_key_id = None;
@@ -246,7 +252,10 @@ fn parse_email_keys(
         }
         keys.insert(key_id.to_owned(), key);
     }
-    Ok((keys, active_key_id))
+    Ok(EmailKeyring {
+        keys,
+        active_key_id,
+    })
 }
 
 fn encrypt_email_body(
@@ -256,7 +265,7 @@ fn encrypt_email_body(
 ) -> Result<Vec<u8>, StoreError> {
     let cipher = Aes256Gcm::new_from_slice(key)
         .map_err(|_| StoreError("encrypt original document failed"))?;
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let nonce = Nonce::generate();
     let encrypted = cipher
         .encrypt(
             &nonce,
@@ -312,17 +321,6 @@ fn decrypt_email_body(
             },
         )
         .map_err(|_| StoreError("decrypt original document failed"))
-}
-
-fn email_fingerprint(key: &[u8], plaintext: &[u8]) -> Result<String, StoreError> {
-    let mut derivation = <Hmac<Sha256> as hmac::digest::KeyInit>::new_from_slice(key)
-        .map_err(|_| StoreError("decrypt original document failed"))?;
-    derivation.update(b"horse/email-object-fingerprint-key/v1");
-    let derived = derivation.finalize().into_bytes();
-    let mut fingerprint = <Hmac<Sha256> as hmac::digest::KeyInit>::new_from_slice(&derived)
-        .map_err(|_| StoreError("decrypt original document failed"))?;
-    fingerprint.update(plaintext);
-    Ok(hex::encode(fingerprint.finalize().into_bytes()))
 }
 
 fn verify_object_hash(object_key: &str, data: &[u8]) -> Result<(), StoreError> {

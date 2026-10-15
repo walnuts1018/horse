@@ -26,3 +26,4 @@ tokio-rustls = { workspace = true }
 webpki-roots = { workspace = true }
 humantime = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }

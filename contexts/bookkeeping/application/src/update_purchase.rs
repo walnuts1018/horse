@@ -98,10 +98,10 @@ pub fn decide_update_purchase(
     if command.date_precision.is_some() && (!has("occurredAt") || command.occurred_at.is_none()) {
         return Err(UpdatePurchaseError::InvalidDatePrecision);
     }
-    if let Some(precision) = &command.date_precision {
-        if !matches!(precision.as_str(), "DATE_TIME" | "DATE_ONLY") {
-            return Err(UpdatePurchaseError::InvalidDatePrecision);
-        }
+    if let Some(precision) = &command.date_precision
+        && !matches!(precision.as_str(), "DATE_TIME" | "DATE_ONLY")
+    {
+        return Err(UpdatePurchaseError::InvalidDatePrecision);
     }
     if has("merchant") && command.merchant.is_none() {
         return Err(UpdatePurchaseError::MissingChangedValue);

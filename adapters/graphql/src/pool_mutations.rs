@@ -3,7 +3,6 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_application::{
     create_pool::CreatePoolCommand, set_funding_schedule::SetFundingScheduleCommand,
 };
-use bookkeeping_postgres::set_funding_schedule as postgres_funding_schedule;
 use cross_context_postgres::pool_mutations as postgres_pool_mutations;
 use horse_postgres_common::PgPool;
 use household_postgres::create_household;
@@ -17,6 +16,7 @@ use policy_application::{
 use policy_postgres::{
     set_allocation_rule as postgres_allocation_rule,
     set_default_allocation as postgres_default_allocation,
+    set_funding_schedule as postgres_funding_schedule,
 };
 use uuid::Uuid;
 
@@ -187,7 +187,7 @@ macro_rules! mutation_result {
     ($name:ident, $success:ident, $error:ident) => {
         #[derive(Union)]
         pub enum $name {
-            Success($success),
+            Success(Box<$success>),
             UserError($error),
         }
     };
@@ -252,9 +252,9 @@ pub async fn create_pool(ctx: &Context<'_>, input: CreatePoolInput) -> Result<Cr
         Ok(value) => value,
         Err(error) => return pool_read_error(error),
     };
-    Ok(CreatePoolSuccess {
+    Ok(Box::new(CreatePoolSuccess {
         result: map_pool_projection(projection)?,
-    }
+    })
     .into())
 }
 
@@ -335,9 +335,9 @@ pub async fn set_pool_funding_rule(
                 Ok(value) => value,
                 Err(error) => return pool_read_error(error),
             };
-            Ok(SetPoolFundingRuleSuccess {
+            Ok(Box::new(SetPoolFundingRuleSuccess {
                 result: map_pool_projection(projection)?,
-            }
+            })
             .into())
         }
         Err(error) => set_pool_funding_rule_persistence_error(error),
@@ -376,14 +376,14 @@ pub async fn set_default_allocation(
     )
     .await
     {
-        Ok(_) => Ok(SetDefaultAllocationSuccess {
+        Ok(_) => Ok(Box::new(SetDefaultAllocationSuccess {
             result: crate::household_lifecycle::load_household_graphql(
                 ctx.data::<PgPool>()?,
                 actor.0,
                 household_id,
             )
             .await?,
-        }
+        })
         .into()),
         Err(error) => set_default_allocation_persistence_error(error),
     }
@@ -480,9 +480,9 @@ pub async fn set_allocation_rule(
         Ok(value) => value,
         Err(error) => return allocation_rule_projection_error(error),
     };
-    Ok(SetAllocationRuleSuccess {
+    Ok(Box::new(SetAllocationRuleSuccess {
         result: map_allocation_rule_projection(projection)?,
-    }
+    })
     .into())
 }
 
@@ -521,9 +521,9 @@ pub async fn set_funding_schedule(
     match postgres_funding_schedule::persist_set_funding_schedule(ctx.data::<PgPool>()?, command)
         .await
     {
-        Ok(value) => Ok(SetFundingScheduleSuccess {
+        Ok(value) => Ok(Box::new(SetFundingScheduleSuccess {
             result: map_funding_schedule_projection(value)?,
-        }
+        })
         .into()),
         Err(error) => set_funding_schedule_persistence_error(error),
     }
@@ -573,16 +573,16 @@ pub(crate) fn map_allocation_rule_projection(
     let target = crate::catalog_mutations::allocation_rule_target_from_projection(value.target)
         .map_err(crate::internal_error)?;
     Ok(AllocationRuleObject {
-        id: encode_node_id("AllocationRule", &value.id.to_string())?.into(),
-        household_id: encode_node_id("Household", &value.household_id.to_string())?.into(),
+        id: encode_node_id("AllocationRule", &value.id.to_string())?,
+        household_id: encode_node_id("Household", &value.household_id.to_string())?,
         target,
-        revision: i32::try_from(value.revision).map_err(|error| crate::internal_error(error))?,
+        revision: i32::try_from(value.revision).map_err(crate::internal_error)?,
         allocations: value
             .allocations
             .into_iter()
             .map(|allocation| {
                 Ok(AllocationObject {
-                    pool_id: encode_node_id("Pool", &allocation.pool_id.to_string())?.into(),
+                    pool_id: encode_node_id("Pool", &allocation.pool_id.to_string())?,
                     pool_name: allocation.pool_name,
                     weight: Long(allocation.weight),
                 })
@@ -595,10 +595,10 @@ pub(crate) fn map_funding_schedule_projection(
     value: postgres_funding_schedule::PersistedFundingSchedule,
 ) -> Result<FundingScheduleObject> {
     Ok(FundingScheduleObject {
-        id: encode_node_id("FundingSchedule", &value.id)?.into(),
-        household_id: encode_node_id("Household", &value.household_id)?.into(),
-        member_id: encode_node_id("Member", &value.member_id)?.into(),
-        pool_id: encode_node_id("Pool", &value.pool_id)?.into(),
+        id: encode_node_id("FundingSchedule", &value.id)?,
+        household_id: encode_node_id("Household", &value.household_id)?,
+        member_id: encode_node_id("Member", &value.member_id)?,
+        pool_id: encode_node_id("Pool", &value.pool_id)?,
         amount_yen: Long(value.amount_yen),
         cadence: FundingScheduleCadence::Monthly,
         starts_on: crate::policy_mutations::Date(

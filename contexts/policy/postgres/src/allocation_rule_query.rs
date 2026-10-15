@@ -5,7 +5,8 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-use crate::{PgPool, pool_mutations, schema::public};
+use crate::{PgPool, schema::public};
+use cross_context_postgres::pool_mutations;
 
 #[derive(Debug)]
 pub enum AllocationRulesQueryError {

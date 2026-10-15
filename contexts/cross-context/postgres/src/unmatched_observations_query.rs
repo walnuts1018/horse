@@ -53,19 +53,48 @@ pub struct ObservationCursor {
     pub source_reference: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct UnmatchedObservationsQuery<'a> {
+    pub actor_id: Uuid,
+    pub household_id: Uuid,
+    pub from: Option<&'a str>,
+    pub to: Option<&'a str>,
+    pub source_kind: Option<&'a str>,
+    pub state: Option<&'a str>,
+    pub after: Option<ObservationCursor>,
+    pub before: Option<ObservationCursor>,
+    pub first: Option<i32>,
+    pub last: Option<i32>,
+}
+
+type ObservationDatabaseRow = (
+    Uuid,
+    String,
+    String,
+    String,
+    Option<DateTime<Utc>>,
+    Option<i64>,
+    String,
+    String,
+    DateTime<Utc>,
+);
+
 pub async fn unmatched_observations(
     pool: &PgPool,
-    actor_id: Uuid,
-    household_id: Uuid,
-    from: Option<&str>,
-    to: Option<&str>,
-    source_kind: Option<&str>,
-    state: Option<&str>,
-    after: Option<ObservationCursor>,
-    before: Option<ObservationCursor>,
-    first: Option<i32>,
-    last: Option<i32>,
+    query: UnmatchedObservationsQuery<'_>,
 ) -> Result<ObservationPage, UnmatchedObservationsError> {
+    let UnmatchedObservationsQuery {
+        actor_id,
+        household_id,
+        from,
+        to,
+        source_kind,
+        state,
+        after,
+        before,
+        first,
+        last,
+    } = query;
     if !crate::household_access::is_active_member(pool, household_id, actor_id)
         .await
         .map_err(|e| match e {
@@ -137,17 +166,7 @@ pub async fn unmatched_observations(
             observations::external_transaction_id,
             documents::created_at,
         ))
-        .load::<(
-            Uuid,
-            String,
-            String,
-            String,
-            Option<DateTime<Utc>>,
-            Option<i64>,
-            String,
-            String,
-            DateTime<Utc>,
-        )>(&mut *conn)
+        .load::<ObservationDatabaseRow>(&mut *conn)
         .await?;
     let total_count = i64::try_from(all.len()).unwrap_or(i64::MAX);
     all.sort_by(|a, b| {
@@ -156,18 +175,7 @@ pub async fn unmatched_observations(
             .then_with(|| ordinal_cmp(row_ordinal(&a.1), row_ordinal(&b.1)))
             .then_with(|| a.1.cmp(&b.1))
     });
-    let cursor_position = |cursor: &ObservationCursor,
-                           rows: &[(
-        Uuid,
-        String,
-        String,
-        String,
-        Option<DateTime<Utc>>,
-        Option<i64>,
-        String,
-        String,
-        DateTime<Utc>,
-    )]| {
+    let cursor_position = |cursor: &ObservationCursor, rows: &[ObservationDatabaseRow]| {
         rows.iter()
             .position(|row| row.0 == cursor.document_id && row.1 == cursor.source_reference)
     };

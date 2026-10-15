@@ -114,12 +114,18 @@ pub enum PostingSide {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JournalTarget {
+    Account(AccountId),
+    Pool(PoolId),
+    Member(MemberId),
+    Clearing,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JournalLine {
     pub line_no: u32,
     pub side: PostingSide,
-    pub account_id: Option<AccountId>,
-    pub pool_id: Option<PoolId>,
-    pub member_id: Option<MemberId>,
+    pub target: JournalTarget,
     pub amount: PositiveYen,
     pub memo: &'static str,
 }
@@ -243,18 +249,14 @@ fn build_journal_lines(
         JournalLine {
             line_no: 1,
             side: PostingSide::Debit,
-            account_id: None,
-            pool_id: None,
-            member_id: Some(base.to_member_id.clone()),
+            target: JournalTarget::Member(base.to_member_id.clone()),
             amount: base.amount,
             memo: kind.as_str(),
         },
         JournalLine {
             line_no: 2,
             side: PostingSide::Credit,
-            account_id: None,
-            pool_id: None,
-            member_id: Some(base.from_member_id.clone()),
+            target: JournalTarget::Member(base.from_member_id.clone()),
             amount: base.amount,
             memo: kind.as_str(),
         },
@@ -264,36 +266,28 @@ fn build_journal_lines(
         lines.push(JournalLine {
             line_no: next_line_no(&lines)?,
             side: PostingSide::Credit,
-            account_id: None,
-            pool_id: Some(account.pool_id.clone()),
-            member_id: None,
+            target: JournalTarget::Pool(account.pool_id.clone()),
             amount: base.amount,
             memo: "Transfer settlement",
         });
         lines.push(JournalLine {
             line_no: next_line_no(&lines)?,
             side: PostingSide::Debit,
-            account_id: None,
-            pool_id: None,
-            member_id: None,
+            target: JournalTarget::Clearing,
             amount: base.amount,
             memo: "Transfer settlement offset",
         });
         lines.push(JournalLine {
             line_no: next_line_no(&lines)?,
             side: PostingSide::Credit,
-            account_id: Some(account.id.clone()),
-            pool_id: None,
-            member_id: None,
+            target: JournalTarget::Account(account.id.clone()),
             amount: base.amount,
             memo: "Transfer source account",
         });
         lines.push(JournalLine {
             line_no: next_line_no(&lines)?,
             side: PostingSide::Debit,
-            account_id: None,
-            pool_id: None,
-            member_id: None,
+            target: JournalTarget::Clearing,
             amount: base.amount,
             memo: "Transfer source account offset",
         });
@@ -303,18 +297,14 @@ fn build_journal_lines(
         lines.push(JournalLine {
             line_no: next_line_no(&lines)?,
             side: PostingSide::Debit,
-            account_id: Some(account.id.clone()),
-            pool_id: None,
-            member_id: None,
+            target: JournalTarget::Account(account.id.clone()),
             amount: base.amount,
             memo: "Transfer destination account",
         });
         lines.push(JournalLine {
             line_no: next_line_no(&lines)?,
             side: PostingSide::Credit,
-            account_id: None,
-            pool_id: None,
-            member_id: None,
+            target: JournalTarget::Clearing,
             amount: base.amount,
             memo: "Transfer destination account offset",
         });

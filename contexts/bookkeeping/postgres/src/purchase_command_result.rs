@@ -285,8 +285,7 @@ pub async fn load_purchase_command_result(
         .await?;
     if payment_rows.is_empty()
         && let Some(account_id) = base.8
-    {
-        if let Some(account) = accounts::accounts
+        && let Some(account) = accounts::accounts
             .filter(accounts::household_id.eq(household_id))
             .filter(accounts::id.eq(account_id))
             .select((
@@ -299,11 +298,10 @@ pub async fn load_purchase_command_result(
             .first::<(Uuid, String, String, Option<String>, Option<Uuid>)>(&mut *conn)
             .await
             .optional()?
-        {
-            payment_rows.push((
-                account.0, account.1, account.2, account.3, account.4, total_yen,
-            ));
-        }
+    {
+        payment_rows.push((
+            account.0, account.1, account.2, account.3, account.4, total_yen,
+        ));
     }
     let payment_results = payment_rows
         .into_iter()

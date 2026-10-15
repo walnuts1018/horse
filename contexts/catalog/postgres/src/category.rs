@@ -1,12 +1,14 @@
 use catalog_application::category::{
     ActorId, CategoryError, CategoryEvent, CategoryId, CategoryName, CategoryView,
     CreateCategoryDecision, CreateCategoryOperations, HouseholdId, LoadedCategory,
-    SetCategoryArchivedDecision, SetCategoryArchivedOperations, UpdateCategoryNameCommand,
-    UpdateCategoryNameDecision, UpdateCategoryNameOperations,
+    SetCategoryArchivedDecision, SetCategoryArchivedOperations, UpdateCategoryNameDecision,
+    UpdateCategoryNameOperations,
 };
 use chrono::Utc;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
-use diesel_async::{RunQueryDsl, pooled_connection::bb8::RunError as PoolRunError};
+use diesel_async::{
+    AsyncConnection, RunQueryDsl, pooled_connection::bb8::RunError as PoolRunError,
+};
 use std::{future::Future, pin::Pin};
 use uuid::Uuid;
 
@@ -95,7 +97,7 @@ where
     T: Send,
 {
     let mut pooled = pool.get().await.map_err(CategoryWorkflowError::from)?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<T, CategoryWorkflowError, _>(async |conn| operation(conn).await)
         .await
 }
@@ -204,13 +206,13 @@ impl CreateCategoryOperations for PostgresCreateCategoryOperations<'_> {
             .execute(self.conn)
             .await?;
 
-        Ok(CategoryView::try_from(PersistedCategory {
+        CategoryView::try_from(PersistedCategory {
             id: category_id,
             household_id,
             parent_id,
             name: decision.name.as_str().to_owned(),
             archived: false,
-        })?)
+        })
     }
 }
 

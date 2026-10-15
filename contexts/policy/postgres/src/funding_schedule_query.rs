@@ -3,7 +3,8 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as Di
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-use crate::{PgPool, schema::public, set_funding_schedule::PersistedFundingSchedule};
+use crate::set_funding_schedule::PersistedFundingSchedule;
+use crate::{PgPool, schema::public};
 
 #[derive(Debug)]
 pub enum FundingSchedulesQueryError {
@@ -27,17 +28,46 @@ pub struct FundingSchedulesPage {
     pub has_previous_page: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct FundingSchedulesQuery {
+    pub actor_id: Uuid,
+    pub household_id: Uuid,
+    pub active: Option<bool>,
+    pub after_id: Option<Uuid>,
+    pub before_id: Option<Uuid>,
+    pub page_size: usize,
+    pub backward: bool,
+}
+
+#[derive(diesel::Queryable)]
+struct FundingScheduleRow {
+    id: Uuid,
+    household_id: Uuid,
+    member_id: Uuid,
+    pool_id: Uuid,
+    amount_yen: i64,
+    cadence: String,
+    starts_on: NaiveDate,
+    ends_on: Option<NaiveDate>,
+    active: bool,
+    created_at: DateTime<Utc>,
+}
+
 pub async fn funding_schedules(
     pool: &PgPool,
-    actor_id: Uuid,
-    household_id: Uuid,
-    active: Option<bool>,
-    after_id: Option<Uuid>,
-    before_id: Option<Uuid>,
-    page_size: usize,
-    backward: bool,
+    query: FundingSchedulesQuery,
 ) -> Result<FundingSchedulesPage, FundingSchedulesQueryError> {
     use public::{funding_schedules as schedules, household_members as members, households};
+
+    let FundingSchedulesQuery {
+        actor_id,
+        household_id,
+        active,
+        after_id,
+        before_id,
+        page_size,
+        backward,
+    } = query;
 
     let mut conn = pool
         .get()
@@ -86,18 +116,7 @@ pub async fn funding_schedules(
             schedules::active,
             schedules::created_at,
         ))
-        .load::<(
-            Uuid,
-            Uuid,
-            Uuid,
-            Uuid,
-            i64,
-            String,
-            NaiveDate,
-            Option<NaiveDate>,
-            bool,
-            DateTime<Utc>,
-        )>(&mut *conn)
+        .load::<FundingScheduleRow>(&mut *conn)
         .await?;
     let total_count = i64::try_from(ordered_rows.len()).unwrap_or(i64::MAX);
     let after_index = find_cursor_index(&ordered_rows, after_id)?;
@@ -116,16 +135,16 @@ pub async fn funding_schedules(
     let mut rows = page_slice
         .iter()
         .map(|row| PersistedFundingSchedule {
-            id: row.0.to_string(),
-            household_id: row.1.to_string(),
-            member_id: row.2.to_string(),
-            pool_id: row.3.to_string(),
-            amount_yen: row.4,
-            cadence: row.5.clone(),
-            starts_on: row.6.format("%Y-%m-%d").to_string(),
-            ends_on: row.7.map(|date| date.format("%Y-%m-%d").to_string()),
-            active: row.8,
-            created_at: row.9,
+            id: row.id.to_string(),
+            household_id: row.household_id.to_string(),
+            member_id: row.member_id.to_string(),
+            pool_id: row.pool_id.to_string(),
+            amount_yen: row.amount_yen,
+            cadence: row.cadence.clone(),
+            starts_on: row.starts_on.format("%Y-%m-%d").to_string(),
+            ends_on: row.ends_on.map(|date| date.format("%Y-%m-%d").to_string()),
+            active: row.active,
+            created_at: row.created_at,
         })
         .collect::<Vec<_>>();
     if backward {
@@ -148,24 +167,13 @@ pub async fn funding_schedules(
 }
 
 fn find_cursor_index(
-    rows: &[(
-        Uuid,
-        Uuid,
-        Uuid,
-        Uuid,
-        i64,
-        String,
-        NaiveDate,
-        Option<NaiveDate>,
-        bool,
-        DateTime<Utc>,
-    )],
+    rows: &[FundingScheduleRow],
     cursor_id: Option<Uuid>,
 ) -> Result<Option<usize>, FundingSchedulesQueryError> {
     cursor_id
         .map(|id| {
             rows.iter()
-                .position(|row| row.0 == id)
+                .position(|row| row.id == id)
                 .ok_or(FundingSchedulesQueryError::CursorNotFound)
         })
         .transpose()

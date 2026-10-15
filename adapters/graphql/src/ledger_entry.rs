@@ -101,6 +101,7 @@ pub struct LoanBalance {
     pub(crate) created_at: crate::DateTime,
 }
 
+#[allow(clippy::duplicated_attributes)]
 #[derive(Clone, Debug, Interface)]
 #[graphql(
     field(name = "id", ty = "&ID"),
@@ -163,6 +164,7 @@ pub enum Node {
     ClosedSettlement(crate::settlement_mutations::ClosedSettlement),
 }
 
+#[allow(clippy::duplicated_attributes)]
 #[derive(Clone, Debug, Interface)]
 #[graphql(
     field(name = "id", ty = "&ID"),

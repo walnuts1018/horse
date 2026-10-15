@@ -142,8 +142,8 @@ pub async fn graphql_record_account_movement(
             Ok(RecordAccountMovementUserError::from(error).into())
         }
         AccountMutationOutcome::Persisted(value) => {
-            let household_id = Uuid::parse_str(&value.household_id)
-                .map_err(|error| crate::internal_error(error))?;
+            let household_id =
+                Uuid::parse_str(&value.household_id).map_err(crate::internal_error)?;
             let movement_id = Uuid::parse_str(&value.id).map_err(crate::internal_error)?;
             let result = account_command_result::load_account_movement_command_result(
                 pool,
@@ -161,7 +161,7 @@ pub async fn graphql_record_account_movement(
                     ));
                 }
             };
-            Ok(RecordAccountMovementSuccess {
+            Ok(Box::new(RecordAccountMovementSuccess {
                 result: AccountMovementObject {
                     id: encode_node_id("AccountMovement", &result.id.to_string()),
                     household_id: encode_node_id("Household", &result.household_id.to_string()),
@@ -176,7 +176,7 @@ pub async fn graphql_record_account_movement(
                     description: result.description,
                     created_at: result.created_at.into(),
                 },
-            }
+            })
             .into())
         }
     }
@@ -241,7 +241,7 @@ fn account_object(account: account_command_result::AccountCommandAccount) -> Res
 
 #[derive(Union)]
 pub enum RecordAccountMovementResult {
-    Success(RecordAccountMovementSuccess),
+    Success(Box<RecordAccountMovementSuccess>),
     UserError(RecordAccountMovementUserError),
 }
 

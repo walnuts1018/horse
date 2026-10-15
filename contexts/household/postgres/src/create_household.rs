@@ -342,8 +342,8 @@ async fn persist_create_household_decision(
         .get()
         .await
         .map_err(|error| CreateHouseholdPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
-        .transaction::<PersistedHousehold, CreateHouseholdPersistenceError, _>(async |conn| {
+    (*pooled)
+        .transaction::<String, CreateHouseholdPersistenceError, _>(async |conn| {
             use public::household_events::dsl as events;
             use public::household_members::dsl as members;
             use public::households::dsl as households;

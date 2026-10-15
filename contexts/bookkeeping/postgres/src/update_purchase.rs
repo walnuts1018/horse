@@ -7,7 +7,7 @@ use bookkeeping_application::{
     MemberFundingBasis, MemberId, MemberWeight, PostingTarget, SettlementPolicy,
     decide_post_purchase,
 };
-use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, YearMonth};
+use bookkeeping_domain::{AccountingPeriod, YearMonth};
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
@@ -16,6 +16,19 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
+
+type PaymentSnapshot = (Uuid, Uuid, Uuid, i32, i64, Option<String>, String);
+
+struct PostedPurchaseAccounting<'a> {
+    household_id: Uuid,
+    purchase_id: Uuid,
+    occurred_at: DateTime<Utc>,
+    merchant: &'a str,
+    revision: i64,
+    previous_payment_accounts: &'a [(Uuid, i64)],
+    previous_payment_snapshots: &'a [PaymentSnapshot],
+    payments_changed: bool,
+}
 
 #[derive(Debug, Clone)]
 pub struct PersistUpdatePurchase {
@@ -64,7 +77,7 @@ pub async fn persist_update_purchase(
         .get()
         .await
         .map_err(|error| UpdatePurchasePersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedUpdatePurchase, UpdatePurchasePersistenceError, _>(
             async move |conn| {
                 persist_update_purchase_in_transaction(
@@ -365,15 +378,16 @@ pub async fn persist_update_purchase_in_transaction(
         if accounting_changed {
             sync_posted_purchase_accounting(
                 &mut *conn,
-                household_id,
-                actor_id,
-                purchase_id,
-                occurred_at.unwrap_or(locked.3),
-                decision.merchant.as_deref().unwrap_or(&locked.5),
-                revision,
-                &previous_payment_accounts,
-                &previous_payment_snapshots,
-                decision.payment_allocations.is_some(),
+                PostedPurchaseAccounting {
+                    household_id,
+                    purchase_id,
+                    occurred_at: occurred_at.unwrap_or(locked.3),
+                    merchant: decision.merchant.as_deref().unwrap_or(&locked.5),
+                    revision,
+                    previous_payment_accounts: &previous_payment_accounts,
+                    previous_payment_snapshots: &previous_payment_snapshots,
+                    payments_changed: decision.payment_allocations.is_some(),
+                },
             )
             .await?;
         } else if decision.merchant.is_some() {
@@ -451,16 +465,18 @@ async fn purchase_total(
 
 async fn sync_posted_purchase_accounting(
     conn: &mut crate::AsyncPgConnection,
-    household_id: Uuid,
-    _actor_id: Uuid,
-    purchase_id: Uuid,
-    occurred_at: DateTime<Utc>,
-    merchant: &str,
-    revision: i64,
-    previous_payment_accounts: &[(Uuid, i64)],
-    previous_payment_snapshots: &[(Uuid, Uuid, Uuid, i32, i64, Option<String>, String)],
-    payments_changed: bool,
+    accounting: PostedPurchaseAccounting<'_>,
 ) -> Result<(), UpdatePurchasePersistenceError> {
+    let PostedPurchaseAccounting {
+        household_id,
+        purchase_id,
+        occurred_at,
+        merchant,
+        revision,
+        previous_payment_accounts,
+        previous_payment_snapshots,
+        payments_changed,
+    } = accounting;
     let previous_burdens = public::purchase_member_burdens::dsl::purchase_member_burdens
         .filter(public::purchase_member_burdens::dsl::household_id.eq(household_id))
         .filter(public::purchase_member_burdens::dsl::purchase_id.eq(purchase_id))
@@ -473,7 +489,7 @@ async fn sync_posted_purchase_accounting(
             public::purchase_member_burdens::dsl::settlement_policy,
             public::purchase_member_burdens::dsl::snapshot_source,
         ))
-        .load::<(Uuid, Uuid, Uuid, i32, i64, Option<String>, String)>(conn)
+        .load::<PaymentSnapshot>(conn)
         .await?;
     let burden_sources = previous_burdens
         .iter()
@@ -796,13 +812,13 @@ fn funding_basis(
         let weights = rows
             .into_iter()
             .map(|(member_id, _, weight, _)| {
-                Ok(MemberWeight::new(
+                MemberWeight::new(
                     MemberId::new(member_id.to_string())
                         .map_err(|_| UpdatePurchasePersistenceError::InvalidFundingSnapshot)?,
                     u64::try_from(weight)
                         .map_err(|_| UpdatePurchasePersistenceError::InvalidFundingSnapshot)?,
                 )
-                .map_err(|_| UpdatePurchasePersistenceError::InvalidFundingSnapshot)?)
+                .map_err(|_| UpdatePurchasePersistenceError::InvalidFundingSnapshot)
             })
             .collect::<Result<Vec<_>, UpdatePurchasePersistenceError>>()?;
         MemberFundingBasis::shared(version, weights, policy)
@@ -843,6 +859,33 @@ pub(crate) fn period_start(
         1,
     )
     .ok_or(UpdatePurchasePersistenceError::InvalidOccurredAt)
+}
+
+pub(crate) fn accounting_period(
+    status: &str,
+    revision: i64,
+    occurred_at: DateTime<Utc>,
+) -> Result<AccountingPeriod, UpdatePurchasePersistenceError> {
+    let start = period_start(occurred_at)?;
+    let year = u16::try_from(start.year())
+        .map_err(|_| UpdatePurchasePersistenceError::InvalidOccurredAt)?;
+    let month = u8::try_from(start.month())
+        .map_err(|_| UpdatePurchasePersistenceError::InvalidOccurredAt)?;
+    let year_month = YearMonth::new(year, month)
+        .map_err(|_| UpdatePurchasePersistenceError::InvalidOccurredAt)?;
+    let revision = u64::try_from(revision).map_err(|_| {
+        UpdatePurchasePersistenceError::NumericOutOfRange("accounting_period.revision")
+    })?;
+    match status {
+        "OPEN" => AccountingPeriod::open(year_month, revision),
+        "CLOSED" => AccountingPeriod::closed(year_month, revision),
+        _ => {
+            return Err(UpdatePurchasePersistenceError::InvalidDecision(
+                UpdatePurchaseError::NotEditable,
+            ));
+        }
+    }
+    .map_err(|_| UpdatePurchasePersistenceError::InvalidDecision(UpdatePurchaseError::NotEditable))
 }
 
 pub(crate) fn json_revisions(

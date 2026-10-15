@@ -244,7 +244,7 @@ pub fn decide_create(
     command: CreateRecurringExpenseCommand,
 ) -> Result<RecurringExpenseDecision, RecurringExpenseError> {
     identity(&command.actor_id, Some(&command.household_id), &command.id)?;
-    let (name, merchant, category_id, payment_account_id, cadence) = validate_fields(
+    let fields = validate_fields(
         command.name,
         command.merchant,
         command.category_id,
@@ -258,12 +258,12 @@ pub fn decide_create(
         id: command.id,
         household_id: Some(command.household_id),
         expected_revision: None,
-        name: Some(name),
-        merchant: Some(merchant),
+        name: Some(fields.name),
+        merchant: Some(fields.merchant),
         amount_yen: Some(command.amount_yen),
-        category_id,
-        payment_account_id,
-        cadence: Some(cadence),
+        category_id: fields.category_id,
+        payment_account_id: fields.payment_account_id,
+        cadence: Some(fields.cadence),
         starts_on: Some(command.starts_on),
         next_due_on: Some(command.next_due_on),
         ends_on: Some(command.ends_on),
@@ -278,7 +278,7 @@ pub fn decide_update(
     if command.expected_revision <= 0 {
         return Err(RecurringExpenseError::InvalidRevision);
     }
-    let (name, merchant, category_id, payment_account_id, cadence) = validate_fields(
+    let fields = validate_fields(
         command.name,
         command.merchant,
         command.category_id,
@@ -292,12 +292,12 @@ pub fn decide_update(
         id: command.id,
         household_id: Some(command.household_id),
         expected_revision: Some(command.expected_revision),
-        name: Some(name),
-        merchant: Some(merchant),
+        name: Some(fields.name),
+        merchant: Some(fields.merchant),
         amount_yen: Some(command.amount_yen),
-        category_id,
-        payment_account_id,
-        cadence: Some(cadence),
+        category_id: fields.category_id,
+        payment_account_id: fields.payment_account_id,
+        cadence: Some(fields.cadence),
         starts_on: Some(command.starts_on),
         next_due_on: Some(command.next_due_on),
         ends_on: Some(command.ends_on),
@@ -342,6 +342,14 @@ fn identity(actor: &str, household: Option<&str>, id: &str) -> Result<(), Recurr
     }
     Ok(())
 }
+struct ValidatedRecurringExpenseFields {
+    name: String,
+    merchant: String,
+    category_id: Option<String>,
+    payment_account_id: Option<String>,
+    cadence: Cadence,
+}
+
 fn validate_fields(
     name: String,
     merchant: String,
@@ -349,7 +357,7 @@ fn validate_fields(
     account: Option<String>,
     amount: i64,
     cadence: &str,
-) -> Result<(String, String, Option<String>, Option<String>, Cadence), RecurringExpenseError> {
+) -> Result<ValidatedRecurringExpenseFields, RecurringExpenseError> {
     let name = name.trim().to_owned();
     let merchant = merchant.trim().to_owned();
     if name.is_empty() || name.chars().count() > 160 {
@@ -363,7 +371,13 @@ fn validate_fields(
     }
     let category = validate_id(category, RecurringExpenseError::InvalidCategoryId)?;
     let account = validate_id(account, RecurringExpenseError::InvalidPaymentAccountId)?;
-    Ok((name, merchant, category, account, Cadence::parse(cadence)?))
+    Ok(ValidatedRecurringExpenseFields {
+        name,
+        merchant,
+        category_id: category,
+        payment_account_id: account,
+        cadence: Cadence::parse(cadence)?,
+    })
 }
 fn validate_id(
     value: Option<String>,

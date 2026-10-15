@@ -72,7 +72,7 @@ pub async fn persist_create_account(
         .get()
         .await
         .map_err(|error| CreateAccountPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedCreateAccount, CreateAccountPersistenceError, _>(async |conn| {
             use public::accounting_periods::dsl as periods;
             use public::accounts::dsl as accounts;

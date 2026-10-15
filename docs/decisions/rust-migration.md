@@ -2,7 +2,7 @@
 
 ## 状態
 
-進行中。Rust WorkspaceをBounded ContextごとのDomain・Application・PostgreSQL Adapterへ再編し、GraphQL APIとWorkerをComposition Rootから組み立てる。Rust APIとWorkerへ全機能を移し、契約・業務動作・運用確認を完了した後にGo APIとWorkerを一括で置き換える。
+進行中。Rust WorkspaceへのBackend移行とGo Backendの削除を実施した。Rustのコンパイル、テスト、GraphQL・Workerの動作、DB切替、Kubernetesデプロイの確認が残っている。
 
 ## 決定
 
@@ -16,19 +16,14 @@ Workspaceは`apps/`にComposition Root、`contexts/<bounded-context>/{domain,app
 
 Application Workflowは業務操作のLoad・Decision・Persistの順序を所有し、小さな操作契約を通じてPostgreSQL AdapterへI/Oを要求する。PostgreSQL AdapterがDieselのtransactionとロックを維持し、Workflow全体を原子的に実行する。GraphQL ResolverはDTOを認証済みActor付きCommandへ変換し、Application Workflowを呼び出す。
 
-## 移行順序
+購入訂正の`journals.occurred_at`とLedger Entryの日時には訂正を記録した時刻を保存する。`effective_period`は訂正対象として指定したOpen会計期間と月次精算を決める値であり、記録日時を過去へ変更しない。
 
-Rust APIで既存のGraphQL契約とHTTP契約を実装し、Go APIの業務動作と一致することを検証する。Rust Workerへ非同期処理を移し、ジョブ状態、再試行、冪等性、停止後の回復を既存の外部契約と整合させる。全機能の検証後にGo APIとWorkerをRust実装へ一括で置き換える。
+## 残作業
 
-## Go実装の終了条件
-
-GoのBackend実装を削除できるのは、次の条件をすべて満たした後とする。
-
-- GraphQL Schemaと公開APIの入出力・エラー・認可の契約が維持されている。
-- APIとWorkerの全業務機能、定期処理、外部サービス連携がRustで実行できる。
-- 一括切り替え時の本番DBリセットと新schema作成の手順を検証している。
-- 再試行、重複実行、同時更新、停止後の回復を含め、運用上必要な処理保証がRust側で成立している。
-- デプロイ、監視、障害対応の手順がRustのAPIとWorkerを対象としている。
+- Rust Workspace全体のコンパイル、テスト、lintを通す。
+- Go版とGraphQL・HTTP・Workerの契約を照合し、購読、冪等性、再試行、停止後の回復を確認する。
+- Rust用Atlas設定と新schemaをKubernetesへ反映し、承認済みの本番DB再作成を実施する。
+- Rust APIとWorkerをデプロイし、稼働と主要な家計操作を実環境で確認する。
 
 ## 理由
 

@@ -249,7 +249,7 @@ pub async fn leave_household(
         .get()
         .await
         .map_err(|error| HouseholdMembershipError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedMembershipChange, HouseholdMembershipError, _>(async |conn| {
             let mut operations = PostgresMembershipOperations::new(conn);
             let household_id =
@@ -268,7 +268,7 @@ pub async fn remove_household_member(
         .get()
         .await
         .map_err(|error| HouseholdMembershipError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedMembershipChange, HouseholdMembershipError, _>(async |conn| {
             let mut operations = PostgresMembershipOperations::new(conn);
             let household_id = household_application::membership::remove_household_member(
@@ -289,7 +289,7 @@ pub async fn transfer_owner(
         .get()
         .await
         .map_err(|error| HouseholdMembershipError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedMembershipChange, HouseholdMembershipError, _>(async |conn| {
             let mut operations = PostgresMembershipOperations::new(conn);
             let household_id =

@@ -41,7 +41,7 @@ pub struct RecordFundingSuccess {
 
 #[derive(Union)]
 pub enum RecordFundingResult {
-    Success(RecordFundingSuccess),
+    Success(Box<RecordFundingSuccess>),
     UserError(RecordFundingUserError),
 }
 
@@ -79,12 +79,14 @@ pub async fn record_funding(
         record: parsed.command,
     };
     match postgres_funding::record_funding_workflow(ctx.data::<PgPool>()?, workflow_command).await {
-        Ok(result) => Ok(funding_success(
-            ctx.data::<PgPool>()?,
-            parsed.household_id,
-            result.ledger_entry_id,
+        Ok(result) => Ok(Box::new(
+            funding_success(
+                ctx.data::<PgPool>()?,
+                parsed.household_id,
+                result.ledger_entry_id,
+            )
+            .await?,
         )
-        .await?
         .into()),
         Err(bookkeeping_application::funding_record::RecordFundingWorkflowError::Decision(
             error,
@@ -109,8 +111,7 @@ async fn funding_success(
     household_id: Uuid,
     ledger_entry_id: String,
 ) -> Result<RecordFundingSuccess> {
-    let ledger_entry_id =
-        Uuid::parse_str(&ledger_entry_id).map_err(|error| internal_error(error))?;
+    let ledger_entry_id = Uuid::parse_str(&ledger_entry_id).map_err(internal_error)?;
     let projection = postgres_funding_result::load_funding_ledger_entry_result(
         pool,
         household_id,
@@ -254,7 +255,7 @@ fn command_context_error(
     use postgres_funding_context::FundingCommandContextError as E;
     match error {
         E::HouseholdNotFound | E::PoolNotFound | E::AccountNotFound(_) => Some(not_found_error()),
-        E::Pool(_) | E::Database(_) => None,
+        E::Database(_) => None,
         E::InvalidTokyoOffset
         | E::InvalidAccountingPeriodStatus(_)
         | E::InvalidPoolKind(_)

@@ -48,7 +48,7 @@ pub async fn persist_set_product_alias(
         .get()
         .await
         .map_err(|error| SetProductAliasPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedProductAlias, SetProductAliasPersistenceError, _>(
             async move |conn| {
                 use public::household_events::dsl as events;

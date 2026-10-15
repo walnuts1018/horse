@@ -310,7 +310,7 @@ pub(crate) async fn load_loan_balances(
         .load::<(Option<Uuid>, i64)>(&mut conn)
         .await
         .map_err(crate::internal_error)?;
-    let mut repaid_by_id = HashMap::with_capacity(loans.len());
+    let mut repaid_by_id: HashMap<Uuid, i64> = HashMap::with_capacity(loans.len());
     for (loan_id, amount_yen) in repayments {
         if let Some(loan_id) = loan_id {
             let total = repaid_by_id

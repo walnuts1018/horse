@@ -1,5 +1,5 @@
 use bookkeeping_application::create_and_post_purchase as application;
-use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, YearMonth};
+use bookkeeping_domain::{AccountingPeriod, YearMonth};
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -37,6 +37,12 @@ pub enum CreateAndPostPurchaseError {
     CreatedPurchaseMissing,
 }
 
+impl From<DieselError> for CreateAndPostPurchaseError {
+    fn from(error: DieselError) -> Self {
+        Self::Database(error)
+    }
+}
+
 pub async fn create_and_post_purchase(
     pool: &PgPool,
     command: application::CreateAndPostPurchaseCommand,
@@ -45,7 +51,7 @@ pub async fn create_and_post_purchase(
         .get()
         .await
         .map_err(|error| CreateAndPostPurchaseError::Pool(error.to_string()))?;
-    (&mut *conn)
+    (*conn)
         .transaction::<application::CreateAndPostPurchaseResult, CreateAndPostPurchaseError, _>(
             async |conn| {
                 let mut operations = PurchaseCreateAndPostOperations { conn };

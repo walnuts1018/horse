@@ -1,3 +1,5 @@
+#![allow(async_fn_in_trait)]
+
 pub mod account_balances;
 pub mod account_card_last4;
 pub mod account_income;
@@ -30,7 +32,7 @@ pub use bookkeeping_domain::{
     AccountId, AccountingPeriod, AccountingPeriodError, AccountingPeriodStatus, BalancedJournal,
     DraftPurchase, FundingBasisError, IdentifierError, ItemId, JournalError, JournalLine,
     MemberBurdenSnapshot, MemberFundingBasis, MemberId, MemberWeight, Payment, PaymentFundingBasis,
-    PaymentFundingSnapshot, PoolAllocation, PostPurchaseCommand, PostPurchaseDecision,
+    PaymentFundingSnapshot, PoolAllocation, PoolId, PostPurchaseCommand, PostPurchaseDecision,
     PostPurchaseError, PostingTarget, Purchase, PurchaseEvent, PurchaseId, PurchaseItem,
     PurchaseLifecycle, SettlementPolicy, Side, YearMonth, decide_post_purchase,
 };

@@ -72,7 +72,7 @@ pub async fn persist_create_concept(
         .get()
         .await
         .map_err(|error| CreateProductPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<String, CreateProductPersistenceError, _>(async |conn| {
             use public::categories::dsl as categories;
             use public::household_events::dsl as events;
@@ -171,7 +171,7 @@ pub async fn persist_create_variant(
         .get()
         .await
         .map_err(|error| CreateProductPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<String, CreateProductPersistenceError, _>(async |conn| {
             use public::household_events::dsl as events;
             use public::household_members::dsl as members;

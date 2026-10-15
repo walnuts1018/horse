@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use uuid::Uuid;
 
 use bookkeeping_application::{
-    record_transfer::{PostingSide, RecordTransferDecision, TransferKind},
+    record_transfer::{JournalTarget, PostingSide, RecordTransferDecision, TransferKind},
     statement_transfer::{
         LinkStatementTransferCommand, StatementTransferObservation, decide_link_statement_transfer,
     },
@@ -137,7 +137,7 @@ pub async fn persist_record_transfer(
         .get()
         .await
         .map_err(|error| RecordTransferPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedTransfer, RecordTransferPersistenceError, _>(async |conn| {
             use public::households::dsl as households;
             use public::idempotency_records::dsl as idem;
@@ -257,13 +257,15 @@ pub async fn persist_record_transfer(
             }
             let statement_decision = prepare_statement_transfer(
                 &mut *conn,
-                household_id,
-                actor_id,
-                ledger_entry_id,
-                input.occurred_at,
-                amount,
-                &decision,
-                &input,
+                StatementTransferContext {
+                    household_id,
+                    actor_id,
+                    ledger_entry_id,
+                    occurred_at: input.occurred_at,
+                    amount,
+                    decision: &decision,
+                    input: &input,
+                },
             )
             .await?;
 
@@ -284,26 +286,26 @@ pub async fn persist_record_transfer(
                     RecordTransferPersistenceError::NumericOutOfRange("journal line_no")
                 })?;
                 let line_amount = line.amount.value();
+                let (account_id, pool_id, member_id) = match &line.target {
+                    JournalTarget::Account(id) => {
+                        (Some(parse_uuid(id.as_str(), "account_id")?), None, None)
+                    }
+                    JournalTarget::Pool(id) => {
+                        (None, Some(parse_uuid(id.as_str(), "pool_id")?), None)
+                    }
+                    JournalTarget::Member(id) => {
+                        (None, None, Some(parse_uuid(id.as_str(), "member_id")?))
+                    }
+                    JournalTarget::Clearing => (None, None, None),
+                };
                 diesel::insert_into(public::journal_entries::table)
                     .values((
                         public::journal_entries::household_id.eq(household_id),
                         public::journal_entries::journal_id.eq(journal_id),
                         public::journal_entries::line_no.eq(line_no),
-                        public::journal_entries::account_id.eq(line
-                            .account_id
-                            .as_ref()
-                            .map(|id| parse_uuid(id.as_str(), "account_id"))
-                            .transpose()?),
-                        public::journal_entries::pool_id.eq(line
-                            .pool_id
-                            .as_ref()
-                            .map(|id| parse_uuid(id.as_str(), "pool_id"))
-                            .transpose()?),
-                        public::journal_entries::member_id.eq(line
-                            .member_id
-                            .as_ref()
-                            .map(|id| parse_uuid(id.as_str(), "member_id"))
-                            .transpose()?),
+                        public::journal_entries::account_id.eq(account_id),
+                        public::journal_entries::pool_id.eq(pool_id),
+                        public::journal_entries::member_id.eq(member_id),
                         public::journal_entries::debit_yen.eq(if line.side == PostingSide::Debit {
                             line_amount
                         } else {
@@ -519,16 +521,29 @@ fn validate_statement_input(
     Ok(())
 }
 
-async fn prepare_statement_transfer(
-    conn: &mut diesel_async::AsyncPgConnection,
+struct StatementTransferContext<'a> {
     household_id: Uuid,
     actor_id: Uuid,
     ledger_entry_id: Uuid,
     occurred_at: DateTime<Utc>,
     amount: i64,
-    decision: &RecordTransferDecision,
-    input: &PersistRecordTransfer,
+    decision: &'a RecordTransferDecision,
+    input: &'a PersistRecordTransfer,
+}
+
+async fn prepare_statement_transfer(
+    conn: &mut diesel_async::AsyncPgConnection,
+    context: StatementTransferContext<'_>,
 ) -> Result<Option<StatementConfirmation>, RecordTransferPersistenceError> {
+    let StatementTransferContext {
+        household_id,
+        actor_id,
+        ledger_entry_id,
+        occurred_at,
+        amount,
+        decision,
+        input,
+    } = context;
     let (Some(document_id), Some(reference), Some(source_account_id)) = (
         input.source_document_id.as_deref(),
         input.source_reference.as_deref(),
@@ -759,33 +774,36 @@ async fn validate_members_and_references(
             .ok_or(RecordTransferPersistenceError::MemberNotFound)?;
     }
     for line in &decision.journal_lines {
-        if let Some(id) = &line.member_id {
-            members::household_members
-                .filter(members::household_id.eq(household_id))
-                .filter(members::member_id.eq(parse_uuid(id.as_str(), "journal member_id")?))
-                .select(members::member_id)
-                .first::<Uuid>(conn)
-                .await?;
-        }
-        if let Some(id) = &line.account_id {
-            public::accounts::table
-                .filter(public::accounts::household_id.eq(household_id))
-                .filter(public::accounts::id.eq(parse_uuid(id.as_str(), "account_id")?))
-                .select(public::accounts::id)
-                .first::<Uuid>(conn)
-                .await
-                .optional()?
-                .ok_or(RecordTransferPersistenceError::AccountNotFound)?;
-        }
-        if let Some(id) = &line.pool_id {
-            public::pools::table
-                .filter(public::pools::household_id.eq(household_id))
-                .filter(public::pools::id.eq(parse_uuid(id.as_str(), "pool_id")?))
-                .select(public::pools::id)
-                .first::<Uuid>(conn)
-                .await
-                .optional()?
-                .ok_or(RecordTransferPersistenceError::PoolNotFound)?;
+        match &line.target {
+            JournalTarget::Member(id) => {
+                members::household_members
+                    .filter(members::household_id.eq(household_id))
+                    .filter(members::member_id.eq(parse_uuid(id.as_str(), "journal member_id")?))
+                    .select(members::member_id)
+                    .first::<Uuid>(conn)
+                    .await?;
+            }
+            JournalTarget::Account(id) => {
+                public::accounts::table
+                    .filter(public::accounts::household_id.eq(household_id))
+                    .filter(public::accounts::id.eq(parse_uuid(id.as_str(), "account_id")?))
+                    .select(public::accounts::id)
+                    .first::<Uuid>(conn)
+                    .await
+                    .optional()?
+                    .ok_or(RecordTransferPersistenceError::AccountNotFound)?;
+            }
+            JournalTarget::Pool(id) => {
+                public::pools::table
+                    .filter(public::pools::household_id.eq(household_id))
+                    .filter(public::pools::id.eq(parse_uuid(id.as_str(), "pool_id")?))
+                    .select(public::pools::id)
+                    .first::<Uuid>(conn)
+                    .await
+                    .optional()?
+                    .ok_or(RecordTransferPersistenceError::PoolNotFound)?;
+            }
+            JournalTarget::Clearing => {}
         }
     }
     for adjustment in &decision.settlement_adjustments {
@@ -1009,18 +1027,13 @@ fn validate_decision(
         || decision.journal_lines[1].line_no != 2
         || decision.journal_lines[0].amount != decision.amount
         || decision.journal_lines[1].amount != decision.amount
-        || decision.journal_lines.iter().any(|line| {
-            line.memo.is_empty()
-                || [
-                    line.account_id.is_some(),
-                    line.pool_id.is_some(),
-                    line.member_id.is_some(),
-                ]
-                .into_iter()
-                .filter(|present| *present)
-                .count()
-                    > 1
-        })
+        || decision.journal_lines[0].target != JournalTarget::Member(decision.to_member_id.clone())
+        || decision.journal_lines[1].target
+            != JournalTarget::Member(decision.from_member_id.clone())
+        || decision
+            .journal_lines
+            .iter()
+            .any(|line| line.memo.is_empty())
         || decision.settlement_adjustments.iter().any(|adjustment| {
             adjustment.amount_yen == 0 || adjustment.amount_yen.unsigned_abs() > 1_000_000_000_000
         })
@@ -1035,7 +1048,7 @@ fn validate_decision(
             let matching_lines = decision
                 .journal_lines
                 .iter()
-                .filter(|line| line.account_id.as_ref() == Some(account_id))
+                .filter(|line| line.target == JournalTarget::Account((*account_id).clone()))
                 .collect::<Vec<_>>();
             if matching_lines.len() != 1
                 || matching_lines[0].side != expected_side
@@ -1045,12 +1058,17 @@ fn validate_decision(
             }
         }
     }
-    if decision.journal_lines.iter().any(|line| {
-        line.account_id.as_ref().is_some_and(|account_id| {
-            decision.payment_account_id.as_ref() != Some(account_id)
-                && decision.destination_account_id.as_ref() != Some(account_id)
+    if decision
+        .journal_lines
+        .iter()
+        .any(|line| match &line.target {
+            JournalTarget::Account(account_id) => {
+                decision.payment_account_id.as_ref() != Some(account_id)
+                    && decision.destination_account_id.as_ref() != Some(account_id)
+            }
+            JournalTarget::Pool(_) | JournalTarget::Member(_) | JournalTarget::Clearing => false,
         })
-    }) {
+    {
         return Err(RecordTransferPersistenceError::InvalidDecision);
     }
     Ok(())

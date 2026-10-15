@@ -125,7 +125,7 @@ pub async fn calculate_preview_with_connection(
 
     let earliest = earliest_period(conn, household_id, target_start).await?;
     let first_period = previous_period
-        .map(|date| first_of_next_month(date))
+        .map(first_of_next_month)
         .or(earliest)
         .unwrap_or(target_start)
         .min(target_start);
@@ -185,7 +185,7 @@ async fn earliest_period(
         .select(diesel::dsl::min(purchases::occurred_at))
         .first::<Option<DateTime<Utc>>>(conn)
         .await?
-        .map(|instant| accounting_period_start(instant));
+        .map(accounting_period_start);
     let _ = target_start;
     Ok([obligation_period, schedule_start, purchase_start]
         .into_iter()

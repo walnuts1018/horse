@@ -48,7 +48,7 @@ pub async fn persist_bulk_update_purchases(
         .get()
         .await
         .map_err(|error| BulkUpdatePurchasesPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<Vec<String>, BulkUpdatePurchasesPersistenceError, _>(async move |conn| {
             use public::accounting_periods::dsl as periods;
             use public::household_members::dsl as members;
@@ -213,6 +213,31 @@ pub async fn persist_bulk_update_purchases(
                     .get(&id)
                     .ok_or(BulkUpdatePurchasesPersistenceError::PurchaseNotFound)?
                     .clone();
+                let lifecycle = match status.as_str() {
+                    "DRAFT" => bookkeeping_application::PurchaseLifecycle::Draft,
+                    "POSTED" => bookkeeping_application::PurchaseLifecycle::Posted,
+                    _ => {
+                        return Err(BulkUpdatePurchasesPersistenceError::InvalidUpdate(
+                            update_purchase::UpdatePurchasePersistenceError::InvalidDecision(
+                                bookkeeping_application::update_purchase::UpdatePurchaseError::NotEditable,
+                            ),
+                        ));
+                    }
+                };
+                let period_start = update_purchase::period_start(occurred_at)
+                    .map_err(BulkUpdatePurchasesPersistenceError::InvalidUpdate)?;
+                let (period_status, period_revision) = periods::accounting_periods
+                    .filter(periods::household_id.eq(household_id))
+                    .filter(periods::period_start.eq(period_start))
+                    .select((periods::status, periods::revision))
+                    .first::<(String, i64)>(&mut *conn)
+                    .await?;
+                let accounting_period = update_purchase::accounting_period(
+                    &period_status,
+                    period_revision,
+                    occurred_at,
+                )
+                .map_err(BulkUpdatePurchasesPersistenceError::InvalidUpdate)?;
                 let current = UpdatePurchaseDraft {
                     revision: u64::try_from(revision).map_err(|_| {
                         BulkUpdatePurchasesPersistenceError::InvalidUpdate(
@@ -221,7 +246,8 @@ pub async fn persist_bulk_update_purchases(
                             ),
                         )
                     })?,
-                    status,
+                    lifecycle,
+                    accounting_period,
                     occurred_at: occurred_at.to_rfc3339(),
                     date_precision,
                     merchant,

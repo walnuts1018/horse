@@ -120,7 +120,7 @@ pub async fn persist_record_account_movement(
         .get()
         .await
         .map_err(|error| AccountMovementPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedAccountMovement, AccountMovementPersistenceError, _>(async |conn| {
             use public::account_movements::dsl as movements;
             use public::idempotency_records::dsl as idem;
@@ -354,7 +354,7 @@ pub async fn persist_link_statement_movement(
         .get()
         .await
         .map_err(|error| AccountMovementPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedAccountMovement, AccountMovementPersistenceError, _>(async |conn| {
             let household_exists = public::households::table
                 .filter(public::households::id.eq(household_id))

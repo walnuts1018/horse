@@ -105,7 +105,7 @@ pub async fn persist_record_account_income(
         .get()
         .await
         .map_err(|error| AccountIncomePersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedAccountIncome, AccountIncomePersistenceError, _>(async |conn| {
             use public::account_incomes::dsl as incomes;
             use public::idempotency_records::dsl as idem;
@@ -355,7 +355,7 @@ pub async fn persist_link_statement_income(
         .get()
         .await
         .map_err(|error| AccountIncomePersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedAccountIncome, AccountIncomePersistenceError, _>(async |conn| {
             let household_exists = public::households::table
                 .filter(public::households::id.eq(household_id))

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, YearMonth};
+use bookkeeping_domain::{AccountingPeriod, YearMonth};
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;

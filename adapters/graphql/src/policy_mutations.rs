@@ -1,6 +1,6 @@
 use async_graphql::{
-    Context, Enum, ID, InputObject, InputValueError, InputValueResult, Result, Scalar, ScalarType,
-    SimpleObject, Union, Value,
+    Context, Enum, ID, InputObject, InputValueError, InputValueResult, MaybeUndefined, Result,
+    Scalar, ScalarType, SimpleObject, Union, Value,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::NaiveDate;
@@ -88,7 +88,7 @@ pub struct UpdateBudgetInput {
     pub name: String,
     pub amount_yen: Long,
     pub starts_on: Date,
-    pub ends_on: Option<Date>,
+    pub ends_on: MaybeUndefined<Date>,
 }
 
 #[derive(Clone, Debug, InputObject)]
@@ -403,7 +403,11 @@ pub async fn update_budget(
         name: input.name,
         amount_yen: input.amount_yen.0,
         starts_on: input.starts_on.0,
-        ends_on: input.ends_on.map(|value| value.0),
+        ends_on: match input.ends_on {
+            MaybeUndefined::Undefined => None,
+            MaybeUndefined::Null => Some(None),
+            MaybeUndefined::Value(value) => Some(Some(value.0)),
+        },
     };
     let pool = ctx.data::<PgPool>()?;
     let mut operations = postgres_policy::PolicyOperations::new(pool);
@@ -637,13 +641,15 @@ pub async fn graphql_budgets(
     let before_id = decode_cursor(before.as_deref(), "Budget")?;
     let page = postgres_policy_query::budgets(
         ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        &period.0,
-        after_id,
-        before_id,
-        first,
-        last,
+        postgres_policy_query::BudgetsQuery {
+            actor_id: actor.0,
+            household_id,
+            period: &period.0,
+            after_id,
+            before_id,
+            first,
+            last,
+        },
     )
     .await
     .map_err(policy_query_graphql_error)?;
@@ -658,8 +664,7 @@ pub async fn graphql_budgets(
             }
         })
         .collect::<Vec<_>>();
-    let total_count =
-        i32::try_from(page.total_count).map_err(|error| crate::internal_error(error))?;
+    let total_count = i32::try_from(page.total_count).map_err(crate::internal_error)?;
     Ok(BudgetConnection {
         page_info: PageInfo {
             has_next_page: page.has_next_page,
@@ -688,13 +693,15 @@ pub async fn graphql_recurring_expenses(
     let before_id = decode_cursor(before.as_deref(), "RecurringExpense")?;
     let page = postgres_policy_query::recurring_expenses(
         ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        include_archived,
-        after_id,
-        before_id,
-        first,
-        last,
+        postgres_policy_query::RecurringExpensesQuery {
+            actor_id: actor.0,
+            household_id,
+            include_archived,
+            after_id,
+            before_id,
+            first,
+            last,
+        },
     )
     .await
     .map_err(policy_query_graphql_error)?;
@@ -706,8 +713,7 @@ pub async fn graphql_recurring_expenses(
             node: value.into(),
         })
         .collect::<Vec<_>>();
-    let total_count =
-        i32::try_from(page.total_count).map_err(|error| crate::internal_error(error))?;
+    let total_count = i32::try_from(page.total_count).map_err(crate::internal_error)?;
     Ok(RecurringExpenseConnection {
         page_info: PageInfo {
             has_next_page: page.has_next_page,

@@ -82,7 +82,7 @@ async fn persist_validated(
         .get()
         .await
         .map_err(|error| SetDefaultAllocationPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedDefaultAllocation, SetDefaultAllocationPersistenceError, _>(
             async move |conn| {
                 use public::allocation_defaults::dsl as defaults;
@@ -105,7 +105,7 @@ async fn persist_validated(
                     .filter(members::member_id.eq(actor_id))
                     .filter(members::left_at.is_null())
                     .select(members::member_id)
-                    .first::<Uuid>(&mut *conn)
+                    .first::<Uuid>(conn)
                     .await
                     .optional()?
                     .is_some();
@@ -117,7 +117,7 @@ async fn persist_validated(
                     .filter(pools::household_id.eq(household_id))
                     .filter(pools::id.eq_any(&pool_ids))
                     .select(pools::id)
-                    .load::<Uuid>(&mut *conn)
+                    .load::<Uuid>(conn)
                     .await?
                     .into_iter()
                     .collect::<BTreeSet<_>>();
@@ -150,7 +150,7 @@ async fn persist_validated(
                             defaults::pool_id.eq(pool_id),
                             defaults::weight.eq(weight.weight),
                         ))
-                        .execute(&mut *conn)
+                        .execute(conn)
                         .await?;
                 }
 
@@ -160,7 +160,7 @@ async fn persist_validated(
                         households::revision.eq(revision),
                         households::updated_at.eq(now),
                     ))
-                    .execute(&mut *conn)
+                    .execute(conn)
                     .await?;
 
                 let changed_fields = decision
@@ -179,7 +179,7 @@ async fn persist_validated(
                         events::changed_fields.eq(changed_fields),
                         events::actor_id.eq(actor_id),
                     ))
-                    .execute(&mut *conn)
+                    .execute(conn)
                     .await?;
 
                 Ok(PersistedDefaultAllocation {

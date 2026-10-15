@@ -1,3 +1,5 @@
+#![allow(async_fn_in_trait)]
+
 pub mod category;
 pub mod create_product;
 pub mod product_alias;

@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    AccountingPeriod, AccountingPeriodStatus, AllocationShares, AllocationWeight, PoolId,
-    PositiveYen, Yen, allocate,
+    AccountingPeriod, AccountingPeriodStatus, AllocationShares, AllocationWeight, BalancedJournal,
+    PoolId, PositiveYen, Yen, allocate,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -603,10 +603,7 @@ pub fn decide_post_purchase(
                 amount: part.amount(),
                 funding_rule_version: allocation.funding.rule_version(),
                 funding_weight: weight.weight,
-                settlement_policy: allocation
-                    .funding
-                    .settlement_policy()
-                    .map(|policy| policy.as_str().to_owned()),
+                settlement_policy: allocation.funding.settlement_policy(),
             });
         }
     }
@@ -628,11 +625,7 @@ pub fn decide_post_purchase(
                 member_id: weight.member_id.clone(),
                 funding_rule_version: payment.funding.rule.rule_version(),
                 funding_weight: weight.weight,
-                settlement_policy: payment
-                    .funding
-                    .rule
-                    .settlement_policy()
-                    .map(|policy| policy.as_str().to_owned()),
+                settlement_policy: payment.funding.rule.settlement_policy(),
             });
         }
     }

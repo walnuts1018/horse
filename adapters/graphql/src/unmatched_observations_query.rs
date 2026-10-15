@@ -45,6 +45,7 @@ pub struct ConfirmedObservation {
     pub(crate) purchase: PurchaseObject,
 }
 
+#[allow(clippy::duplicated_attributes)]
 #[derive(Clone, Debug, Interface)]
 #[graphql(
     field(name = "id", ty = "&ID"),
@@ -58,8 +59,8 @@ pub struct ConfirmedObservation {
     field(name = "transaction_id", ty = "&String")
 )]
 pub enum Observation {
-    UnmatchedObservation(UnmatchedObservation),
-    ConfirmedObservation(ConfirmedObservation),
+    UnmatchedObservation(Box<UnmatchedObservation>),
+    ConfirmedObservation(Box<ConfirmedObservation>),
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -81,39 +82,56 @@ struct CursorPayload {
     source_reference: String,
 }
 
-pub async fn graphql_unmatched_observations(
+pub(crate) struct UnmatchedObservationsParams {
+    pub(crate) household_id: ID,
+    pub(crate) from: Option<YearMonth>,
+    pub(crate) to: Option<YearMonth>,
+    pub(crate) source_kind: Option<SourceKind>,
+    pub(crate) state: Option<UnmatchedObservationState>,
+    pub(crate) after: Option<String>,
+    pub(crate) before: Option<String>,
+    pub(crate) first: Option<i32>,
+    pub(crate) last: Option<i32>,
+}
+
+pub(crate) async fn graphql_unmatched_observations(
     ctx: &Context<'_>,
-    household_id: ID,
-    from: Option<YearMonth>,
-    to: Option<YearMonth>,
-    source_kind: Option<SourceKind>,
-    state: Option<UnmatchedObservationState>,
-    after: Option<String>,
-    before: Option<String>,
-    first: Option<i32>,
-    last: Option<i32>,
+    params: UnmatchedObservationsParams,
 ) -> Result<UnmatchedObservationConnection> {
-    let actor = crate::actor(ctx)?;
-    let household_id = crate::decode_household_id(&household_id)?;
-    let after = decode_cursor(after.as_deref())?;
-    let before = decode_cursor(before.as_deref())?;
-    let page = postgres_query::unmatched_observations(
-        ctx.data::<PgPool>()?,
-        actor.0,
+    let UnmatchedObservationsParams {
         household_id,
-        from.as_ref().map(YearMonth::as_str),
-        to.as_ref().map(YearMonth::as_str),
-        source_kind
-            .map(|v| format!("{v:?}").to_ascii_lowercase())
-            .as_deref(),
-        state.map(|v| match v {
-            UnmatchedObservationState::Confirmed => "CONFIRMED",
-            UnmatchedObservationState::Unmatched => "UNMATCHED",
-        }),
+        from,
+        to,
+        source_kind,
+        state,
         after,
         before,
         first,
         last,
+    } = params;
+    let actor = crate::actor(ctx)?;
+    let household_id = crate::decode_household_id(&household_id)?;
+    let after = decode_cursor(after.as_deref())?;
+    let before = decode_cursor(before.as_deref())?;
+    let source_kind = source_kind.map(|value| format!("{value:?}").to_ascii_lowercase());
+    let state = state.map(|value| match value {
+        UnmatchedObservationState::Confirmed => "CONFIRMED",
+        UnmatchedObservationState::Unmatched => "UNMATCHED",
+    });
+    let page = postgres_query::unmatched_observations(
+        ctx.data::<PgPool>()?,
+        postgres_query::UnmatchedObservationsQuery {
+            actor_id: actor.0,
+            household_id,
+            from: from.as_ref().map(YearMonth::as_str),
+            to: to.as_ref().map(YearMonth::as_str),
+            source_kind: source_kind.as_deref(),
+            state,
+            after,
+            before,
+            first,
+            last,
+        },
     )
     .await
     .map_err(map_error)?;
@@ -131,7 +149,7 @@ pub async fn graphql_unmatched_observations(
                 &purchase_id.to_string(),
             )
             .await?;
-            Observation::ConfirmedObservation(ConfirmedObservation {
+            Observation::ConfirmedObservation(Box::new(ConfirmedObservation {
                 id,
                 document_id: ID(row.document_id.to_string()),
                 source_reference: row.source_reference,
@@ -142,9 +160,9 @@ pub async fn graphql_unmatched_observations(
                 order_id: row.order_id,
                 transaction_id: row.transaction_id,
                 purchase,
-            })
+            }))
         } else {
-            Observation::UnmatchedObservation(UnmatchedObservation {
+            Observation::UnmatchedObservation(Box::new(UnmatchedObservation {
                 id,
                 document_id: ID(row.document_id.to_string()),
                 source_reference: row.source_reference,
@@ -154,7 +172,7 @@ pub async fn graphql_unmatched_observations(
                 amount_yen,
                 order_id: row.order_id,
                 transaction_id: row.transaction_id,
-            })
+            }))
         };
         edges.push(UnmatchedObservationEdge { cursor, node });
     }
@@ -209,7 +227,7 @@ pub(crate) async fn resolve_unmatched_observation(
             &purchase_id.to_string(),
         )
         .await?;
-        Observation::ConfirmedObservation(ConfirmedObservation {
+        Observation::ConfirmedObservation(Box::new(ConfirmedObservation {
             id,
             document_id: ID(document_id.to_string()),
             source_reference: source_reference.to_owned(),
@@ -220,9 +238,9 @@ pub(crate) async fn resolve_unmatched_observation(
             order_id: row.order_id,
             transaction_id: row.transaction_id,
             purchase,
-        })
+        }))
     } else {
-        Observation::UnmatchedObservation(UnmatchedObservation {
+        Observation::UnmatchedObservation(Box::new(UnmatchedObservation {
             id,
             document_id: ID(document_id.to_string()),
             source_reference: source_reference.to_owned(),
@@ -232,7 +250,7 @@ pub(crate) async fn resolve_unmatched_observation(
             amount_yen,
             order_id: row.order_id,
             transaction_id: row.transaction_id,
-        })
+        }))
     };
     Ok(Some(node))
 }

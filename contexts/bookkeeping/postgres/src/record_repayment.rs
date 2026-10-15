@@ -130,7 +130,7 @@ pub async fn persist_record_repayment(
         .get()
         .await
         .map_err(|error| RecordRepaymentPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<PersistedRepayment, RecordRepaymentPersistenceError, _>(async |conn| {
             use public::idempotency_records::dsl as idem;
             use public::journals::dsl as journals;
@@ -209,13 +209,15 @@ pub async fn persist_record_repayment(
             validate_members_and_accounts(&mut *conn, household_id, actor_id, &decision).await?;
             let statement_decision = prepare_statement_transfer(
                 &mut *conn,
-                household_id,
-                actor_id,
-                ledger_entry_id,
-                input.occurred_at,
-                amount,
-                &decision,
-                &input,
+                StatementTransferContext {
+                    household_id,
+                    actor_id,
+                    ledger_entry_id,
+                    occurred_at: input.occurred_at,
+                    amount,
+                    decision: &decision,
+                    input: &input,
+                },
             )
             .await?;
             diesel::insert_into(journals::journals)
@@ -496,16 +498,29 @@ fn validate_statement_input(
     Ok(())
 }
 
-async fn prepare_statement_transfer(
-    conn: &mut diesel_async::AsyncPgConnection,
+struct StatementTransferContext<'a> {
     household_id: Uuid,
     actor_id: Uuid,
     ledger_entry_id: Uuid,
     occurred_at: DateTime<Utc>,
     amount: i64,
-    decision: &RecordRepaymentDecision,
-    input: &PersistRecordRepayment,
+    decision: &'a RecordRepaymentDecision,
+    input: &'a PersistRecordRepayment,
+}
+
+async fn prepare_statement_transfer(
+    conn: &mut diesel_async::AsyncPgConnection,
+    context: StatementTransferContext<'_>,
 ) -> Result<Option<StatementConfirmation>, RecordRepaymentPersistenceError> {
+    let StatementTransferContext {
+        household_id,
+        actor_id,
+        ledger_entry_id,
+        occurred_at,
+        amount,
+        decision,
+        input,
+    } = context;
     let (Some(document_id), Some(reference), Some(source_account_id)) = (
         input.source_document_id.as_deref(),
         input.source_reference.as_deref(),
@@ -758,7 +773,8 @@ async fn ensure_outstanding(
         .ok_or(RecordRepaymentPersistenceError::LoanNotFound)?;
     let journal_lender = decision
         .journal_lines
-        .get(0)
+        .as_slice()
+        .first()
         .and_then(|line| line.member_id.as_ref())
         .map(|id| parse_uuid(id.as_str(), "lender_id"))
         .transpose()?;

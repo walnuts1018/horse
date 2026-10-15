@@ -187,12 +187,11 @@ pub fn decide_update_purchase_item(
     {
         return Err(UpdatePurchaseItemError::InvalidAmount);
     }
-    if command.printed_unit_price_set {
-        if let Some(price) = &command.printed_unit_price {
-            if !(0..=bookkeeping_domain::MAX_YEN).contains(&price.amount_yen) {
-                return Err(UpdatePurchaseItemError::InvalidMeasure);
-            }
-        }
+    if command.printed_unit_price_set
+        && let Some(price) = &command.printed_unit_price
+        && !(0..=bookkeeping_domain::MAX_YEN).contains(&price.amount_yen)
+    {
+        return Err(UpdatePurchaseItemError::InvalidMeasure);
     }
     validate_optional_id(command.category_id.as_deref())?;
     validate_optional_id(command.product_variant_id.as_deref())?;

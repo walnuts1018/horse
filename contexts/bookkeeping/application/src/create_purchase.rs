@@ -23,30 +23,11 @@ pub enum DatePrecision {
     DateOnly,
 }
 
-impl DatePrecision {
-    pub const fn as_db_value(self) -> &'static str {
-        match self {
-            Self::DateTime => "DATE_TIME",
-            Self::DateOnly => "DATE_ONLY",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PurchaseOrigin {
     AiAssisted,
     Manual,
     Unknown,
-}
-
-impl PurchaseOrigin {
-    pub const fn as_db_value(self) -> &'static str {
-        match self {
-            Self::AiAssisted => "AI",
-            Self::Manual => "MANUAL",
-            Self::Unknown => "UNKNOWN",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,20 +57,6 @@ pub enum QuantityUnit {
 }
 
 impl QuantityUnit {
-    pub const fn as_db_value(self) -> &'static str {
-        match self {
-            Self::Piece => "個",
-            Self::Bottle => "本",
-            Self::Sheet => "枚",
-            Self::Bag => "袋",
-            Self::Box => "箱",
-            Self::Gram => "g",
-            Self::Kilogram => "kg",
-            Self::Milliliter => "ml",
-            Self::Liter => "L",
-        }
-    }
-
     pub fn parse(value: &str) -> Result<Self, MeasureError> {
         match value {
             "個" => Ok(Self::Piece),
@@ -234,6 +201,54 @@ pub struct DecidedPurchaseAllocation {
     pub rule_id: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AllocationRuleCandidate {
+    pub rule_id: String,
+    pub revision: u64,
+    pub product_variant_id: Option<String>,
+    pub product_concept_id: Option<String>,
+    pub category_id: Option<String>,
+    pub merchant_key: Option<String>,
+}
+
+pub fn select_allocation_rule<'a>(
+    candidates: &'a [AllocationRuleCandidate],
+    product_variant_id: Option<&str>,
+    product_concept_id: Option<&str>,
+    category_id: Option<&str>,
+    merchant_key: &str,
+) -> Option<&'a AllocationRuleCandidate> {
+    product_variant_id
+        .and_then(|id| {
+            candidates
+                .iter()
+                .find(|candidate| candidate.product_variant_id.as_deref() == Some(id))
+        })
+        .or_else(|| {
+            product_concept_id.and_then(|id| {
+                candidates
+                    .iter()
+                    .find(|candidate| candidate.product_concept_id.as_deref() == Some(id))
+            })
+        })
+        .or_else(|| {
+            category_id.and_then(|id| {
+                candidates
+                    .iter()
+                    .find(|candidate| candidate.category_id.as_deref() == Some(id))
+            })
+        })
+        .or_else(|| {
+            if merchant_key.is_empty() {
+                None
+            } else {
+                candidates
+                    .iter()
+                    .find(|candidate| candidate.merchant_key.as_deref() == Some(merchant_key))
+            }
+        })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CreatePurchaseError {
     InvalidPurchaseId,
@@ -257,13 +272,12 @@ pub fn decide_create_purchase(
     if command.purchase_id.is_empty() {
         return Err(CreatePurchaseError::InvalidPurchaseId);
     }
-    if let Some(reference) = &command.source_reference {
-        if command.source_document_id.is_none()
+    if let Some(reference) = &command.source_reference
+        && (command.source_document_id.is_none()
             || reference.len() > 256
-            || reference.contains(['\r', '\n'])
-        {
-            return Err(CreatePurchaseError::InvalidSourceReference);
-        }
+            || reference.contains(['\r', '\n']))
+    {
+        return Err(CreatePurchaseError::InvalidSourceReference);
     }
     if command
         .manual_amount_override_reason
@@ -298,10 +312,10 @@ pub fn decide_create_purchase(
         total = total
             .checked_add(item.amount_yen)
             .ok_or(CreatePurchaseError::AmountOverflow)?;
-        if let Some(price) = &item.printed_unit_price {
-            if !(0..=1_000_000_000_000).contains(&price.amount_yen) {
-                return Err(CreatePurchaseError::InvalidAmount);
-            }
+        if let Some(price) = &item.printed_unit_price
+            && !(0..=1_000_000_000_000).contains(&price.amount_yen)
+        {
+            return Err(CreatePurchaseError::InvalidAmount);
         }
         let mut seen_pools = BTreeSet::new();
         let mut weights = Vec::with_capacity(item.allocations.len());
@@ -454,6 +468,56 @@ mod tests {
         assert_eq!(
             decide_create_purchase(input),
             Err(CreatePurchaseError::DuplicatePaymentAccount)
+        );
+    }
+
+    #[test]
+    fn allocation_rule_selection_uses_scope_precedence() {
+        let candidates = vec![
+            AllocationRuleCandidate {
+                rule_id: "merchant".to_owned(),
+                revision: 1,
+                product_variant_id: None,
+                product_concept_id: None,
+                category_id: None,
+                merchant_key: Some("market".to_owned()),
+            },
+            AllocationRuleCandidate {
+                rule_id: "category".to_owned(),
+                revision: 1,
+                product_variant_id: None,
+                product_concept_id: None,
+                category_id: Some("category-1".to_owned()),
+                merchant_key: None,
+            },
+            AllocationRuleCandidate {
+                rule_id: "concept".to_owned(),
+                revision: 1,
+                product_variant_id: None,
+                product_concept_id: Some("concept-1".to_owned()),
+                category_id: None,
+                merchant_key: None,
+            },
+            AllocationRuleCandidate {
+                rule_id: "variant".to_owned(),
+                revision: 1,
+                product_variant_id: Some("variant-1".to_owned()),
+                product_concept_id: None,
+                category_id: None,
+                merchant_key: None,
+            },
+        ];
+
+        assert_eq!(
+            select_allocation_rule(
+                &candidates,
+                Some("variant-1"),
+                Some("concept-1"),
+                Some("category-1"),
+                "market",
+            )
+            .map(|candidate| candidate.rule_id.as_str()),
+            Some("variant")
         );
     }
 }

@@ -256,7 +256,7 @@ pub async fn create_invitation(
         .get()
         .await
         .map_err(|error| HouseholdInvitationError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<CreatedInvitationDto, HouseholdInvitationError, _>(async |conn| {
             let mut operations = PostgresCreateInvitationOperations {
                 conn,
@@ -358,7 +358,7 @@ pub async fn accept_invitation_by_token(
         .get()
         .await
         .map_err(|error| HouseholdInvitationError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<String, HouseholdInvitationError, _>(async |conn| {
             let mut operations = PostgresAcceptInvitationOperations { conn, token_hash };
             household_application::invitation::accept_invitation_by_token(
@@ -522,7 +522,7 @@ pub async fn revoke_invitation(
         .get()
         .await
         .map_err(|error| HouseholdInvitationError::Pool(error.to_string()))?;
-    (&mut *pooled)
+    (*pooled)
         .transaction::<InvitationStateDto, HouseholdInvitationError, _>(async |conn| {
             let mut operations = PostgresRevokeInvitationOperations { conn, row: None };
             household_application::invitation::revoke_invitation(
@@ -537,12 +537,15 @@ pub async fn revoke_invitation(
 
 struct PostgresRevokeInvitationOperations<'a> {
     conn: &'a mut crate::AsyncPgConnection,
-    row: Option<(
-        DateTime<Utc>,
-        DateTime<Utc>,
-        Option<DateTime<Utc>>,
-        Option<DateTime<Utc>>,
-    )>,
+    row: Option<RevokeInvitationRow>,
+}
+
+#[derive(diesel::Queryable)]
+struct RevokeInvitationRow {
+    created_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    accepted_at: Option<DateTime<Utc>>,
+    revoked_at: Option<DateTime<Utc>>,
 }
 
 impl RevokeInvitationOperations for PostgresRevokeInvitationOperations<'_> {
@@ -600,16 +603,16 @@ impl RevokeInvitationOperations for PostgresRevokeInvitationOperations<'_> {
                 invitations::accepted_at,
                 invitations::revoked_at,
             ))
-            .first::<(
-                DateTime<Utc>,
-                DateTime<Utc>,
-                Option<DateTime<Utc>>,
-                Option<DateTime<Utc>>,
-            )>(&mut *self.conn)
+            .first::<RevokeInvitationRow>(&mut *self.conn)
             .await
             .optional()?
             .ok_or(HouseholdInvitationError::InvitationNotFound)?;
-        let facts = (row.0, row.1, row.2.is_some(), row.3.is_some());
+        let facts = (
+            row.created_at,
+            row.expires_at,
+            row.accepted_at.is_some(),
+            row.revoked_at.is_some(),
+        );
         self.row = Some(row);
         Ok(facts)
     }
@@ -646,11 +649,11 @@ impl RevokeInvitationOperations for PostgresRevokeInvitationOperations<'_> {
         Ok(InvitationStateDto {
             id: invitation_id.to_string(),
             household_id: household_id.to_string(),
-            created_at: row.0,
-            expires_at: row.1,
-            accepted_at: row.2,
+            created_at: row.created_at,
+            expires_at: row.expires_at,
+            accepted_at: row.accepted_at,
             revoked_at: if decision.already_revoked {
-                row.3
+                row.revoked_at
             } else {
                 Some(now_value)
             },
