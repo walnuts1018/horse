@@ -12,6 +12,7 @@ chrono = { version = "0.4", features = ["serde"] }
 catalog-workflows = { path = "../catalog-workflows" }
 diesel = { workspace = true }
 diesel-async = { workspace = true }
+futures-util = { workspace = true }
 horse-postgres = { path = "../postgres" }
 household-workflows = { path = "../household-workflows" }
 policy-workflows = { path = "../policy-workflows" }
@@ -20,3 +21,4 @@ serde = { workspace = true }
 sha2 = { workspace = true }
 uuid = { version = "1", features = ["std"] }
 tracing = "0.1"
+tokio = { workspace = true }
