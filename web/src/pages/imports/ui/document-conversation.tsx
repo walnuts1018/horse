@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   importModels,
@@ -20,7 +20,12 @@ export function DocumentConversation({
 }) {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [pendingMessage, setPendingMessage] = useState("");
+  const [pendingMessage, setPendingMessage] = useState<{
+    text: string;
+    conversationLength: number;
+    status: "processing" | "failed";
+  } | null>(null);
+  const sendingRef = useRef(false);
   const messages = document.result?.conversation ?? [];
   const hasExtraction = !!document.result?.receipt || !!document.result?.statements?.length;
   const selectedModel = importModels.find((option) => option.value === document.model);
@@ -31,33 +36,48 @@ export function DocumentConversation({
   const processing = ["queued", "running"].includes(document.status.toLowerCase());
 
   useEffect(() => {
+    if (!pendingMessage) return;
     if (
-      pendingMessage &&
-      messages.some((entry) => entry.role === "user" && entry.text === pendingMessage)
+      messages
+        .slice(pendingMessage.conversationLength)
+        .some((entry) => entry.role === "user" && entry.text === pendingMessage.text)
     ) {
-      setPendingMessage("");
-    } else if (pendingMessage && document.status.toLowerCase() === "failed") {
-      setPendingMessage("");
+      setPendingMessage(null);
+    } else if (
+      pendingMessage.status === "processing" &&
+      document.status.toLowerCase() === "failed"
+    ) {
+      setPendingMessage({ ...pendingMessage, status: "failed" });
     }
   }, [document.status, messages, pendingMessage]);
 
-  const send = async (modelOverride?: string) => {
-    if (!message.trim() || sending) return;
+  const send = async (text: string, modelOverride?: string) => {
+    const instruction = text.trim();
+    if (!instruction || sendingRef.current || processing) return;
+    sendingRef.current = true;
     setSending(true);
     try {
       const response = await fetch(`/documents/${encodeURIComponent(document.id)}/interaction`, {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message, ...(modelOverride ? { model: modelOverride } : {}) }),
+        body: JSON.stringify({
+          message: instruction,
+          ...(modelOverride ? { model: modelOverride } : {}),
+        }),
       });
       if (!response.ok) throw new Error(`再確認を開始できませんでした (${response.status})`);
-      setPendingMessage(message.trim());
-      setMessage("");
+      setPendingMessage({
+        text: instruction,
+        conversationLength: messages.length,
+        status: "processing",
+      });
+      if (instruction === message.trim()) setMessage("");
       await onUpdated();
     } catch (reason) {
       onError(reason instanceof Error ? reason.message : "再確認を開始できませんでした");
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   };
@@ -78,9 +98,35 @@ export function DocumentConversation({
             </li>
           ))}
           {pendingMessage && (
-            <li className={styles.userMessage}>
-              <span>あなた</span>
-              <p>{pendingMessage}</p>
+            <li
+              className={
+                pendingMessage.status === "failed" ? styles.failedMessage : styles.userMessage
+              }
+            >
+              <span role={pendingMessage.status === "failed" ? "status" : undefined}>
+                {pendingMessage.status === "failed" ? "再確認に失敗しました" : "あなた"}
+              </span>
+              <p>{pendingMessage.text}</p>
+              {pendingMessage.status === "failed" && (
+                <div className={styles.retryActions}>
+                  <button
+                    type="button"
+                    disabled={sending || processing}
+                    onClick={() => void send(pendingMessage.text)}
+                  >
+                    {paidModel ? "有料モデルで同じ指示を再送" : "同じ指示を再送"}
+                  </button>
+                  {quotaLimited && !paidModel && (
+                    <button
+                      type="button"
+                      disabled={sending || processing}
+                      onClick={() => void send(pendingMessage.text, proImportModel)}
+                    >
+                      Gemini 3.1 Pro Previewで同じ指示を再送・有料
+                    </button>
+                  )}
+                </div>
+              )}
             </li>
           )}
         </ol>
@@ -89,7 +135,7 @@ export function DocumentConversation({
         className={styles.form}
         onSubmit={(event) => {
           event.preventDefault();
-          void send();
+          void send(message);
         }}
       >
         <label htmlFor={`document-interaction-${document.id}`}>AIに追加指示</label>
@@ -123,7 +169,7 @@ export function DocumentConversation({
             <button
               type="button"
               disabled={sending || !message.trim() || processing}
-              onClick={() => void send(proImportModel)}
+              onClick={() => void send(message, proImportModel)}
             >
               Gemini 3.1 Pro Previewで再確認・有料
             </button>
