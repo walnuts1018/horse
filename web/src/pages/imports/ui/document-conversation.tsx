@@ -22,6 +22,12 @@ import {
 import styles from "./document-conversation.module.css";
 
 type PendingInteraction = NonNullable<DocumentReview["pendingInteraction"]>;
+type InteractionStatus = PendingInteraction["status"] | "succeeded";
+type AcceptedInteraction = Omit<PendingInteraction, "status"> & { status: InteractionStatus };
+
+function isInteractionStatus(value: unknown): value is InteractionStatus {
+  return value === "queued" || value === "running" || value === "succeeded" || value === "failed";
+}
 
 type ConversationMessage = NonNullable<
   NonNullable<DocumentReview["result"]>["conversation"]
@@ -80,8 +86,9 @@ export function DocumentConversation({
   const [selectedVersionId, setSelectedVersionId] = useState("");
   const [selectedExtraction, setSelectedExtraction] = useState<DocumentExtraction | null>(null);
   const [branchJobId, setBranchJobId] = useState("");
-  const [acceptedInteraction, setAcceptedInteraction] = useState<PendingInteraction | null>(null);
+  const [acceptedInteraction, setAcceptedInteraction] = useState<AcceptedInteraction | null>(null);
   const sendingRef = useRef(false);
+  const onUpdatedRef = useRef(onUpdated);
   const messages = selectedExtraction?.result.conversation ?? document.result?.conversation;
   const keyedMessages = withConversationKeys(messages);
   const activeResult = selectedExtraction?.result ?? document.result;
@@ -93,6 +100,9 @@ export function DocumentConversation({
   const paidModel = selectedModel?.tier === "paid" || activeModel === "pro";
   const quotaLimited = isQuotaLimitedExtraction(document);
   const pendingInteraction = acceptedInteraction ?? document.pendingInteraction;
+  const pendingInteractionJobID = pendingInteraction?.jobId;
+  const pendingInteractionStatus = pendingInteraction?.status;
+  const pendingInteractionRef = useRef(pendingInteraction);
   const interactionProcessing =
     pendingInteraction?.status === "queued" || pendingInteraction?.status === "running";
   const processing =
@@ -106,6 +116,53 @@ export function DocumentConversation({
     document.status.toLowerCase() === "succeeded"
       ? compareExtractions(previousExtraction, document.result ?? {})
       : null;
+  useEffect(() => {
+    onUpdatedRef.current = onUpdated;
+  }, [onUpdated]);
+
+  useEffect(() => {
+    pendingInteractionRef.current = pendingInteraction;
+  }, [pendingInteraction]);
+
+  useEffect(() => {
+    if (!pendingInteractionJobID || !["queued", "running"].includes(pendingInteractionStatus ?? ""))
+      return;
+    const source = new EventSource(
+      `/documents/${encodeURIComponent(document.id)}/interactions/${encodeURIComponent(pendingInteractionJobID)}/events`,
+      { withCredentials: true },
+    );
+    source.onmessage = (messageEvent) => {
+      try {
+        const update: unknown = JSON.parse(messageEvent.data);
+        if (
+          typeof update !== "object" ||
+          update === null ||
+          !("status" in update) ||
+          !("reply" in update) ||
+          !isInteractionStatus(update.status) ||
+          typeof update.reply !== "string"
+        ) {
+          return;
+        }
+        const status = update.status;
+        const reply = update.reply;
+        if (!isInteractionStatus(status) || typeof reply !== "string") return;
+        setAcceptedInteraction((current) => {
+          const fallback = pendingInteractionRef.current;
+          if (!fallback || fallback.jobId !== pendingInteractionJobID) return current;
+          const accepted = current?.jobId === pendingInteractionJobID ? current : fallback;
+          return { ...accepted, status, replyPreview: reply };
+        });
+        if (!["queued", "running"].includes(status)) {
+          source.close();
+          void onUpdatedRef.current();
+        }
+      } catch {
+        source.close();
+      }
+    };
+    return () => source.close();
+  }, [document.id, pendingInteractionJobID, pendingInteractionStatus]);
   const hasExtractionDiff = Boolean(
     extractionDiff &&
     (extractionDiff.receiptChanges.length > 0 ||
@@ -141,7 +198,7 @@ export function DocumentConversation({
         if (!controller.signal.aborted) setHistoryLoading(false);
       });
     return () => controller.abort();
-  }, [document.id, historyOpened, onError]);
+  }, [document.id, document.jobId, document.status, historyOpened, onError]);
 
   useEffect(() => {
     if (!historyOpened || !selectedVersionId) {
@@ -188,7 +245,12 @@ export function DocumentConversation({
   }, [branchJobId, document.id, document.jobId, document.status, historyOpened, onError]);
 
   useEffect(() => {
-    if (document.pendingInteraction?.jobId === acceptedInteraction?.jobId) {
+    if (
+      acceptedInteraction &&
+      document.pendingInteraction?.jobId === acceptedInteraction.jobId &&
+      document.pendingInteraction.status === acceptedInteraction.status &&
+      document.pendingInteraction.replyPreview === acceptedInteraction.replyPreview
+    ) {
       setAcceptedInteraction(null);
       return;
     }
@@ -238,6 +300,7 @@ export function DocumentConversation({
           jobId: nextJobId,
           status: "queued",
           message: instruction,
+          replyPreview: "",
           ...(interactionModel ? { model: interactionModel } : {}),
           ...(baseJobId ? { baseJobId } : {}),
         });
@@ -397,6 +460,12 @@ export function DocumentConversation({
                   )}
                 </div>
               )}
+            </li>
+          )}
+          {interactionProcessing && (
+            <li className={styles.assistantMessage}>
+              <span>{pendingInteraction.replyPreview ? "AI" : "確認中"}</span>
+              <p>{pendingInteraction.replyPreview || "原本を確認しています"}</p>
             </li>
           )}
         </ol>

@@ -79,8 +79,9 @@ func (w *Worker) claim(ctx context.Context, jobID string) (job, bool, error) {
 	nextAttempt := candidate.Attempt + 1
 	updatedAt := time.Now().UTC()
 	noErrorCode := sql.Null[string]{}
+	emptyReplyPreview := ""
 	if err := candidate.Update(claimCtx, executor, &models.ExtractionJobSetter{
-		Status: &nextStatus, Attempt: &nextAttempt, UpdatedAt: &updatedAt, ErrorCode: &noErrorCode,
+		Status: &nextStatus, Attempt: &nextAttempt, UpdatedAt: &updatedAt, ErrorCode: &noErrorCode, InteractionReplyPreview: &emptyReplyPreview,
 	}); err != nil {
 		return job{}, false, fmt.Errorf("claim extraction job: %w", err)
 	}

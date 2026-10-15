@@ -253,6 +253,7 @@ export type DocumentReview = {
     jobId: string;
     status: "queued" | "running" | "failed";
     message: string;
+    replyPreview?: string;
     model?: string;
     baseJobId?: string;
   };

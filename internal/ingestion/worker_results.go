@@ -59,9 +59,10 @@ func (w *Worker) recordExtractionFailure(finishCtx context.Context, j job, resul
 	code := sql.Null[string]{V: workerErrorCode(extractErr), Valid: true}
 	updatedAt := time.Now().UTC()
 	availableAt := updatedAt.Add(retryDelay(extractErr, j.Attempt))
+	emptyReplyPreview := ""
 	setter := models.ExtractionJobSetter{
 		Status: &updatedStatus, ErrorCode: &code, FailureCount: &failureCountValue,
-		AvailableAt: &availableAt, UpdatedAt: &updatedAt,
+		AvailableAt: &availableAt, UpdatedAt: &updatedAt, InteractionReplyPreview: &emptyReplyPreview,
 	}
 	if len(result.Runs) > 0 {
 		previous := make(map[string]stdjson.RawMessage)
@@ -130,11 +131,12 @@ func (w *Worker) recordExtractionSuccess(finishCtx context.Context, j job, resul
 	status := extractionStatusSucceeded
 	completionAt := time.Now().UTC()
 	completionErrorCode := sql.Null[string]{}
+	emptyReplyPreview := ""
 	resultValue := sql.Null[types.JSON[stdjson.RawMessage]]{
 		V: types.JSON[stdjson.RawMessage]{Val: stdjson.RawMessage(payload)}, Valid: true,
 	}
 	updated, err := models.ExtractionJobs.Update((&models.ExtractionJobSetter{
-		Status: &status, Result: &resultValue, ErrorCode: &completionErrorCode, UpdatedAt: &completionAt,
+		Status: &status, Result: &resultValue, ErrorCode: &completionErrorCode, UpdatedAt: &completionAt, InteractionReplyPreview: &emptyReplyPreview,
 	}).UpdateMod(), um.Where(psql.And(
 		models.ExtractionJobs.Columns.ID.EQ(psql.Arg(jobUUID)),
 		models.ExtractionJobs.Columns.Status.EQ(psql.Arg("running")),

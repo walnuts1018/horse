@@ -134,7 +134,9 @@ func (w *Worker) clarify(ctx context.Context, router GeminiRouter, j job, docume
 	if request.ConversationID == "" || request.Model == "" || len(request.CurrentExtraction) == 0 || request.Clarification == "" {
 		return Verification{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "invalid_interaction_input"}
 	}
-	receipt, reply, run, err := router.Interact(ctx, request.Model, j.SourceKind, document, request.CurrentExtraction, request.Conversation, request.Clarification, j.Attempt)
+	receipt, reply, run, err := router.InteractStreaming(ctx, request.Model, j.SourceKind, document, request.CurrentExtraction, request.Conversation, request.Clarification, j.Attempt, func(preview string) error {
+		return w.saveInteractionReplyPreview(ctx, j, preview)
+	})
 	if err != nil {
 		return Verification{Runs: []ExtractionRun{run}}, err
 	}

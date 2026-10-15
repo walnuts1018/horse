@@ -132,6 +132,15 @@ var ExtractionJobs = Table[
 			Generated: false,
 			AutoIncr:  false,
 		},
+		InteractionReplyPreview: column{
+			Name:      "interaction_reply_preview",
+			DBType:    "text",
+			Default:   "''::text",
+			Comment:   "",
+			Nullable:  false,
+			Generated: false,
+			AutoIncr:  false,
+		},
 	},
 	Indexes: extractionJobIndexes{
 		ExtractionJobsPkey: index{
@@ -261,24 +270,25 @@ var ExtractionJobs = Table[
 }
 
 type extractionJobColumns struct {
-	ID               column
-	HouseholdID      column
-	SourceDocumentID column
-	Version          column
-	Status           column
-	Request          column
-	Result           column
-	ErrorCode        column
-	Attempt          column
-	AvailableAt      column
-	CreatedAt        column
-	UpdatedAt        column
-	FailureCount     column
+	ID                      column
+	HouseholdID             column
+	SourceDocumentID        column
+	Version                 column
+	Status                  column
+	Request                 column
+	Result                  column
+	ErrorCode               column
+	Attempt                 column
+	AvailableAt             column
+	CreatedAt               column
+	UpdatedAt               column
+	FailureCount            column
+	InteractionReplyPreview column
 }
 
 func (c extractionJobColumns) AsSlice() []column {
 	return []column{
-		c.ID, c.HouseholdID, c.SourceDocumentID, c.Version, c.Status, c.Request, c.Result, c.ErrorCode, c.Attempt, c.AvailableAt, c.CreatedAt, c.UpdatedAt, c.FailureCount,
+		c.ID, c.HouseholdID, c.SourceDocumentID, c.Version, c.Status, c.Request, c.Result, c.ErrorCode, c.Attempt, c.AvailableAt, c.CreatedAt, c.UpdatedAt, c.FailureCount, c.InteractionReplyPreview,
 	}
 }
 

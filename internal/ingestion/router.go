@@ -278,6 +278,10 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 }
 
 func (r GeminiRouter) Interact(ctx context.Context, selection, sourceKind string, document Document, currentExtraction []byte, history []ConversationMessage, clarification string, attempt int) (Receipt, string, ExtractionRun, error) {
+	return r.InteractStreaming(ctx, selection, sourceKind, document, currentExtraction, history, clarification, attempt, nil)
+}
+
+func (r GeminiRouter) InteractStreaming(ctx context.Context, selection, sourceKind string, document Document, currentExtraction []byte, history []ConversationMessage, clarification string, attempt int, onReply func(string) error) (Receipt, string, ExtractionRun, error) {
 	options, err := r.selectedOptions(selection, sourceKind, document.MIMEType, JobPurposeInteractive, attempt)
 	if err != nil {
 		return Receipt{}, "", ExtractionRun{}, err
@@ -322,7 +326,7 @@ func (r GeminiRouter) Interact(ctx context.Context, selection, sourceKind string
 	}
 	requestOptions.ReserveInputTokens = r.inputTokenReservation(route, model)
 	started := time.Now()
-	receipt, reply, usage, err := client.Interact(ctx, document, sourceKind, currentExtraction, history, clarification, requestOptions)
+	receipt, reply, usage, err := client.InteractStreaming(ctx, document, sourceKind, currentExtraction, history, clarification, requestOptions, onReply)
 	run := ExtractionRun{
 		Route: route, Project: client.Project, Model: model, PromptVersion: PromptVersion, ThinkingLevel: thinking,
 		ServiceTier: tier, InputTokens: usage.inputTokens, OutputTokens: usage.outputTokens, LatencyMillis: time.Since(started).Milliseconds(),

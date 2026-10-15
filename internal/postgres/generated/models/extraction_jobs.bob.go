@@ -28,19 +28,20 @@ import (
 
 // ExtractionJob is an object representing the database table.
 type ExtractionJob struct {
-	ID               uuid.UUID                             `db:"id,pk" `
-	HouseholdID      uuid.UUID                             `db:"household_id" `
-	SourceDocumentID uuid.UUID                             `db:"source_document_id" `
-	Version          int32                                 `db:"version" `
-	Status           string                                `db:"status" `
-	Request          types.JSON[json.RawMessage]           `db:"request" `
-	Result           sql.Null[types.JSON[json.RawMessage]] `db:"result" `
-	ErrorCode        sql.Null[string]                      `db:"error_code" `
-	Attempt          int32                                 `db:"attempt" `
-	AvailableAt      time.Time                             `db:"available_at" `
-	CreatedAt        time.Time                             `db:"created_at" `
-	UpdatedAt        time.Time                             `db:"updated_at" `
-	FailureCount     int32                                 `db:"failure_count" `
+	ID                      uuid.UUID                             `db:"id,pk" `
+	HouseholdID             uuid.UUID                             `db:"household_id" `
+	SourceDocumentID        uuid.UUID                             `db:"source_document_id" `
+	Version                 int32                                 `db:"version" `
+	Status                  string                                `db:"status" `
+	Request                 types.JSON[json.RawMessage]           `db:"request" `
+	Result                  sql.Null[types.JSON[json.RawMessage]] `db:"result" `
+	ErrorCode               sql.Null[string]                      `db:"error_code" `
+	Attempt                 int32                                 `db:"attempt" `
+	AvailableAt             time.Time                             `db:"available_at" `
+	CreatedAt               time.Time                             `db:"created_at" `
+	UpdatedAt               time.Time                             `db:"updated_at" `
+	FailureCount            int32                                 `db:"failure_count" `
+	InteractionReplyPreview string                                `db:"interaction_reply_preview" `
 
 	R extractionJobR `db:"-" `
 }
@@ -73,7 +74,7 @@ type extractionJobRLoaded struct {
 
 func buildExtractionJobColumns(tableName string) extractionJobColumns {
 	columnsExpr := expr.NewColumnsExpr(
-		"id", "household_id", "source_document_id", "version", "status", "request", "result", "error_code", "attempt", "available_at", "created_at", "updated_at", "failure_count",
+		"id", "household_id", "source_document_id", "version", "status", "request", "result", "error_code", "attempt", "available_at", "created_at", "updated_at", "failure_count", "interaction_reply_preview",
 	)
 
 	if tableName != "" {
@@ -81,40 +82,42 @@ func buildExtractionJobColumns(tableName string) extractionJobColumns {
 	}
 
 	return extractionJobColumns{
-		ColumnsExpr:      columnsExpr,
-		tableAlias:       tableName,
-		ID:               buildExtractionJobColumn(tableName, "id"),
-		HouseholdID:      buildExtractionJobColumn(tableName, "household_id"),
-		SourceDocumentID: buildExtractionJobColumn(tableName, "source_document_id"),
-		Version:          buildExtractionJobColumn(tableName, "version"),
-		Status:           buildExtractionJobColumn(tableName, "status"),
-		Request:          buildExtractionJobColumn(tableName, "request"),
-		Result:           buildExtractionJobColumn(tableName, "result"),
-		ErrorCode:        buildExtractionJobColumn(tableName, "error_code"),
-		Attempt:          buildExtractionJobColumn(tableName, "attempt"),
-		AvailableAt:      buildExtractionJobColumn(tableName, "available_at"),
-		CreatedAt:        buildExtractionJobColumn(tableName, "created_at"),
-		UpdatedAt:        buildExtractionJobColumn(tableName, "updated_at"),
-		FailureCount:     buildExtractionJobColumn(tableName, "failure_count"),
+		ColumnsExpr:             columnsExpr,
+		tableAlias:              tableName,
+		ID:                      buildExtractionJobColumn(tableName, "id"),
+		HouseholdID:             buildExtractionJobColumn(tableName, "household_id"),
+		SourceDocumentID:        buildExtractionJobColumn(tableName, "source_document_id"),
+		Version:                 buildExtractionJobColumn(tableName, "version"),
+		Status:                  buildExtractionJobColumn(tableName, "status"),
+		Request:                 buildExtractionJobColumn(tableName, "request"),
+		Result:                  buildExtractionJobColumn(tableName, "result"),
+		ErrorCode:               buildExtractionJobColumn(tableName, "error_code"),
+		Attempt:                 buildExtractionJobColumn(tableName, "attempt"),
+		AvailableAt:             buildExtractionJobColumn(tableName, "available_at"),
+		CreatedAt:               buildExtractionJobColumn(tableName, "created_at"),
+		UpdatedAt:               buildExtractionJobColumn(tableName, "updated_at"),
+		FailureCount:            buildExtractionJobColumn(tableName, "failure_count"),
+		InteractionReplyPreview: buildExtractionJobColumn(tableName, "interaction_reply_preview"),
 	}
 }
 
 type extractionJobColumns struct {
 	expr.ColumnsExpr
-	tableAlias       string
-	ID               extractionJobColumn
-	HouseholdID      extractionJobColumn
-	SourceDocumentID extractionJobColumn
-	Version          extractionJobColumn
-	Status           extractionJobColumn
-	Request          extractionJobColumn
-	Result           extractionJobColumn
-	ErrorCode        extractionJobColumn
-	Attempt          extractionJobColumn
-	AvailableAt      extractionJobColumn
-	CreatedAt        extractionJobColumn
-	UpdatedAt        extractionJobColumn
-	FailureCount     extractionJobColumn
+	tableAlias              string
+	ID                      extractionJobColumn
+	HouseholdID             extractionJobColumn
+	SourceDocumentID        extractionJobColumn
+	Version                 extractionJobColumn
+	Status                  extractionJobColumn
+	Request                 extractionJobColumn
+	Result                  extractionJobColumn
+	ErrorCode               extractionJobColumn
+	Attempt                 extractionJobColumn
+	AvailableAt             extractionJobColumn
+	CreatedAt               extractionJobColumn
+	UpdatedAt               extractionJobColumn
+	FailureCount            extractionJobColumn
+	InteractionReplyPreview extractionJobColumn
 }
 
 // Alias returns the current table alias for the columns set.
@@ -160,23 +163,24 @@ func (c extractionJobColumn) ShouldOmitParens() bool {
 // All values are optional, and do not have to be set
 // Generated columns are not included
 type ExtractionJobSetter struct {
-	ID               *uuid.UUID                             `db:"id,pk" `
-	HouseholdID      *uuid.UUID                             `db:"household_id" `
-	SourceDocumentID *uuid.UUID                             `db:"source_document_id" `
-	Version          *int32                                 `db:"version" `
-	Status           *string                                `db:"status" `
-	Request          *types.JSON[json.RawMessage]           `db:"request" `
-	Result           *sql.Null[types.JSON[json.RawMessage]] `db:"result" `
-	ErrorCode        *sql.Null[string]                      `db:"error_code" `
-	Attempt          *int32                                 `db:"attempt" `
-	AvailableAt      *time.Time                             `db:"available_at" `
-	CreatedAt        *time.Time                             `db:"created_at" `
-	UpdatedAt        *time.Time                             `db:"updated_at" `
-	FailureCount     *int32                                 `db:"failure_count" `
+	ID                      *uuid.UUID                             `db:"id,pk" `
+	HouseholdID             *uuid.UUID                             `db:"household_id" `
+	SourceDocumentID        *uuid.UUID                             `db:"source_document_id" `
+	Version                 *int32                                 `db:"version" `
+	Status                  *string                                `db:"status" `
+	Request                 *types.JSON[json.RawMessage]           `db:"request" `
+	Result                  *sql.Null[types.JSON[json.RawMessage]] `db:"result" `
+	ErrorCode               *sql.Null[string]                      `db:"error_code" `
+	Attempt                 *int32                                 `db:"attempt" `
+	AvailableAt             *time.Time                             `db:"available_at" `
+	CreatedAt               *time.Time                             `db:"created_at" `
+	UpdatedAt               *time.Time                             `db:"updated_at" `
+	FailureCount            *int32                                 `db:"failure_count" `
+	InteractionReplyPreview *string                                `db:"interaction_reply_preview" `
 }
 
 func (s ExtractionJobSetter) SetColumns() []string {
-	vals := make([]string, 0, 13)
+	vals := make([]string, 0, 14)
 	if s.ID != nil {
 		vals = append(vals, "id")
 	}
@@ -215,6 +219,9 @@ func (s ExtractionJobSetter) SetColumns() []string {
 	}
 	if s.FailureCount != nil {
 		vals = append(vals, "failure_count")
+	}
+	if s.InteractionReplyPreview != nil {
+		vals = append(vals, "interaction_reply_preview")
 	}
 	return vals
 }
@@ -324,6 +331,14 @@ func (s ExtractionJobSetter) Overwrite(t *ExtractionJob) {
 				return *new(int32)
 			}
 			return *s.FailureCount
+		}()
+	}
+	if s.InteractionReplyPreview != nil {
+		t.InteractionReplyPreview = func() string {
+			if s.InteractionReplyPreview == nil {
+				return *new(string)
+			}
+			return *s.InteractionReplyPreview
 		}()
 	}
 }
@@ -466,6 +481,16 @@ func (s *ExtractionJobSetter) Apply(q *dialect.InsertQuery) {
 				}
 				return *s.FailureCount
 			}()).WriteSQL(ctx, w, d, start)
+		}), bob.ExpressionFunc(func(ctx context.Context, w io.StringWriter, d bob.Dialect, start int) ([]any, error) {
+			if s.InteractionReplyPreview == nil {
+				return psql.Raw("DEFAULT").WriteSQL(ctx, w, d, start)
+			}
+			return psql.Arg(func() string {
+				if s.InteractionReplyPreview == nil {
+					return *new(string)
+				}
+				return *s.InteractionReplyPreview
+			}()).WriteSQL(ctx, w, d, start)
 		}))
 }
 
@@ -474,7 +499,7 @@ func (s ExtractionJobSetter) UpdateMod() bob.Mod[*dialect.UpdateQuery] {
 }
 
 func (s ExtractionJobSetter) Expressions(prefix ...string) []bob.Expression {
-	exprs := make([]bob.Expression, 0, 13)
+	exprs := make([]bob.Expression, 0, 14)
 
 	if s.ID != nil {
 		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
@@ -567,6 +592,13 @@ func (s ExtractionJobSetter) Expressions(prefix ...string) []bob.Expression {
 		}})
 	}
 
+	if s.InteractionReplyPreview != nil {
+		exprs = append(exprs, expr.Join{Sep: " = ", Exprs: []bob.Expression{
+			psql.Quote(append(prefix, "interaction_reply_preview")...),
+			psql.Arg(s.InteractionReplyPreview),
+		}})
+	}
+
 	return exprs
 }
 
@@ -577,7 +609,7 @@ func extractionJobScanMapper(ctx context.Context, cols []string) (scan.BeforeFun
 		idx int
 		dst func(o *ExtractionJob) any
 	}
-	targets := make([]target, 0, 13)
+	targets := make([]target, 0, 14)
 	for i, col := range cols {
 		switch col {
 		case "id":
@@ -606,6 +638,8 @@ func extractionJobScanMapper(ctx context.Context, cols []string) (scan.BeforeFun
 			targets = append(targets, target{i, func(o *ExtractionJob) any { return &o.UpdatedAt }})
 		case "failure_count":
 			targets = append(targets, target{i, func(o *ExtractionJob) any { return &o.FailureCount }})
+		case "interaction_reply_preview":
+			targets = append(targets, target{i, func(o *ExtractionJob) any { return &o.InteractionReplyPreview }})
 		}
 	}
 
@@ -1042,21 +1076,22 @@ func (extractionJob0 *ExtractionJob) AttachSourceDocument(ctx context.Context, e
 }
 
 type extractionJobWhere[Q psql.Filterable] struct {
-	cols             extractionJobColumns
-	ID               psql.WhereMod[Q, uuid.UUID]
-	HouseholdID      psql.WhereMod[Q, uuid.UUID]
-	SourceDocumentID psql.WhereMod[Q, uuid.UUID]
-	Version          psql.WhereMod[Q, int32]
-	Status           psql.WhereMod[Q, string]
-	Request          psql.WhereMod[Q, types.JSON[json.RawMessage]]
-	Result           psql.WhereNullMod[Q, types.JSON[json.RawMessage]]
-	ErrorCode        psql.WhereNullMod[Q, string]
-	Attempt          psql.WhereMod[Q, int32]
-	AvailableAt      psql.WhereMod[Q, time.Time]
-	CreatedAt        psql.WhereMod[Q, time.Time]
-	UpdatedAt        psql.WhereMod[Q, time.Time]
-	FailureCount     psql.WhereMod[Q, int32]
-	R                extractionJobWhereR[Q]
+	cols                    extractionJobColumns
+	ID                      psql.WhereMod[Q, uuid.UUID]
+	HouseholdID             psql.WhereMod[Q, uuid.UUID]
+	SourceDocumentID        psql.WhereMod[Q, uuid.UUID]
+	Version                 psql.WhereMod[Q, int32]
+	Status                  psql.WhereMod[Q, string]
+	Request                 psql.WhereMod[Q, types.JSON[json.RawMessage]]
+	Result                  psql.WhereNullMod[Q, types.JSON[json.RawMessage]]
+	ErrorCode               psql.WhereNullMod[Q, string]
+	Attempt                 psql.WhereMod[Q, int32]
+	AvailableAt             psql.WhereMod[Q, time.Time]
+	CreatedAt               psql.WhereMod[Q, time.Time]
+	UpdatedAt               psql.WhereMod[Q, time.Time]
+	FailureCount            psql.WhereMod[Q, int32]
+	InteractionReplyPreview psql.WhereMod[Q, string]
+	R                       extractionJobWhereR[Q]
 }
 
 func (extractionJobWhere[Q]) AliasedAs(alias string) extractionJobWhere[Q] {
@@ -1065,21 +1100,22 @@ func (extractionJobWhere[Q]) AliasedAs(alias string) extractionJobWhere[Q] {
 
 func buildExtractionJobWhere[Q psql.Filterable](cols extractionJobColumns) extractionJobWhere[Q] {
 	return extractionJobWhere[Q]{
-		cols:             cols,
-		ID:               psql.Where[Q, uuid.UUID](cols.ID.Expression),
-		HouseholdID:      psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
-		SourceDocumentID: psql.Where[Q, uuid.UUID](cols.SourceDocumentID.Expression),
-		Version:          psql.Where[Q, int32](cols.Version.Expression),
-		Status:           psql.Where[Q, string](cols.Status.Expression),
-		Request:          psql.Where[Q, types.JSON[json.RawMessage]](cols.Request.Expression),
-		Result:           psql.WhereNull[Q, types.JSON[json.RawMessage]](cols.Result.Expression),
-		ErrorCode:        psql.WhereNull[Q, string](cols.ErrorCode.Expression),
-		Attempt:          psql.Where[Q, int32](cols.Attempt.Expression),
-		AvailableAt:      psql.Where[Q, time.Time](cols.AvailableAt.Expression),
-		CreatedAt:        psql.Where[Q, time.Time](cols.CreatedAt.Expression),
-		UpdatedAt:        psql.Where[Q, time.Time](cols.UpdatedAt.Expression),
-		FailureCount:     psql.Where[Q, int32](cols.FailureCount.Expression),
-		R:                extractionJobWhereR[Q]{cols: cols},
+		cols:                    cols,
+		ID:                      psql.Where[Q, uuid.UUID](cols.ID.Expression),
+		HouseholdID:             psql.Where[Q, uuid.UUID](cols.HouseholdID.Expression),
+		SourceDocumentID:        psql.Where[Q, uuid.UUID](cols.SourceDocumentID.Expression),
+		Version:                 psql.Where[Q, int32](cols.Version.Expression),
+		Status:                  psql.Where[Q, string](cols.Status.Expression),
+		Request:                 psql.Where[Q, types.JSON[json.RawMessage]](cols.Request.Expression),
+		Result:                  psql.WhereNull[Q, types.JSON[json.RawMessage]](cols.Result.Expression),
+		ErrorCode:               psql.WhereNull[Q, string](cols.ErrorCode.Expression),
+		Attempt:                 psql.Where[Q, int32](cols.Attempt.Expression),
+		AvailableAt:             psql.Where[Q, time.Time](cols.AvailableAt.Expression),
+		CreatedAt:               psql.Where[Q, time.Time](cols.CreatedAt.Expression),
+		UpdatedAt:               psql.Where[Q, time.Time](cols.UpdatedAt.Expression),
+		FailureCount:            psql.Where[Q, int32](cols.FailureCount.Expression),
+		InteractionReplyPreview: psql.Where[Q, string](cols.InteractionReplyPreview.Expression),
+		R:                       extractionJobWhereR[Q]{cols: cols},
 	}
 }
 

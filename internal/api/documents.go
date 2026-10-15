@@ -66,11 +66,12 @@ type documentResponse struct {
 }
 
 type documentPendingInteraction struct {
-	JobID     string `json:"jobId"`
-	Status    string `json:"status"`
-	Message   string `json:"message"`
-	Model     string `json:"model,omitempty"`
-	BaseJobID string `json:"baseJobId,omitempty"`
+	JobID        string `json:"jobId"`
+	Status       string `json:"status"`
+	Message      string `json:"message"`
+	ReplyPreview string `json:"replyPreview,omitempty"`
+	Model        string `json:"model,omitempty"`
+	BaseJobID    string `json:"baseJobId,omitempty"`
 }
 
 type documentAttachment struct {
@@ -783,7 +784,7 @@ func pendingDocumentInteraction(job *models.ExtractionJob) *documentPendingInter
 	}
 	return &documentPendingInteraction{
 		JobID: job.ID.String(), Status: job.Status, Message: request.Clarification,
-		Model: request.Model, BaseJobID: request.BaseJobID,
+		ReplyPreview: job.InteractionReplyPreview, Model: request.Model, BaseJobID: request.BaseJobID,
 	}
 }
 

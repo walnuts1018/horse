@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -117,6 +118,20 @@ func TestDocumentInteractionBranchesFromSelectedExtractionVersion(t *testing.T) 
 	if _, err := models.OidcSessions.Insert(&models.OidcSessionSetter{TokenHash: &cookieHashBytes, MemberID: &memberID, Expiry: &expiresAt}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
+	unauthorizedMemberID := mustIntegrationUUID(t, uuid.NewV7().String())
+	unauthorizedSubject := "document-interaction-outsider:" + unauthorizedMemberID.String()
+	if _, err := models.Members.Insert(&models.MemberSetter{ID: &unauthorizedMemberID, OidcSubject: &unauthorizedSubject, DisplayName: &unauthorizedSubject}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	unauthorizedCookieValue := "document-interaction-outsider-session-" + uuid.NewV7().String()
+	unauthorizedCookieHash := sha256.Sum256([]byte(unauthorizedCookieValue))
+	unauthorizedCookieHashBytes := unauthorizedCookieHash[:]
+	if _, err := models.OidcSessions.Insert(&models.OidcSessionSetter{TokenHash: &unauthorizedCookieHashBytes, MemberID: &unauthorizedMemberID, Expiry: &expiresAt}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(unauthorizedMemberID)))).Exec(context.Background(), executor)
+	}()
 	server := New(db, authService, slog.New(slog.DiscardHandler), Config{PublicOrigin: "http://horse.test", Store: &previewTestStore{}}).Handler()
 	request := httptest.NewRequest(http.MethodGet, "/documents/"+documentID.String()+"/extractions", nil)
 	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: cookieValue})
@@ -193,9 +208,64 @@ func TestDocumentInteractionBranchesFromSelectedExtractionVersion(t *testing.T) 
 		}
 	}
 	assertPendingInteraction("queued")
+	runningStatus := "running"
+	replyPreview := "原本の金額を確認しました。"
+	if err := createdJob.Update(ctx, executor, &models.ExtractionJobSetter{Status: &runningStatus, InteractionReplyPreview: &replyPreview}); err != nil {
+		t.Fatal(err)
+	}
+	assertSSE := func(cookie string, wantCode int, wantStatus, wantReply string) {
+		t.Helper()
+		requestCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		streamServer := httptest.NewServer(server)
+		defer streamServer.Close()
+		streamRequest, err := http.NewRequestWithContext(requestCtx, http.MethodGet, streamServer.URL+"/documents/"+documentID.String()+"/interactions/"+createdJobID.String()+"/events", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		streamRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: cookie})
+		streamResponse, err := http.DefaultClient.Do(streamRequest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer streamResponse.Body.Close()
+		if streamResponse.StatusCode != wantCode {
+			t.Fatalf("interaction stream status = %d, want %d", streamResponse.StatusCode, wantCode)
+		}
+		if wantCode != http.StatusOK {
+			return
+		}
+		line, err := bufio.NewReader(streamResponse.Body).ReadString('\n')
+		if err != nil || !strings.HasPrefix(line, "data: ") {
+			t.Fatalf("interaction stream event = %q, error %v", line, err)
+		}
+		var event documentInteractionEvent
+		if err := stdjson.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data: "))), &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.Status != wantStatus || event.Reply != wantReply {
+			t.Fatalf("interaction stream event = %#v, want status %q and reply %q", event, wantStatus, wantReply)
+		}
+	}
+	assertSSE(cookieValue, http.StatusOK, "running", replyPreview)
+	assertSSE(unauthorizedCookieValue, http.StatusNotFound, "", "")
+	otherJobID := mustIntegrationUUID(t, uuid.NewV7().String())
+	request = httptest.NewRequest(http.MethodGet, "/documents/"+documentID.String()+"/interactions/"+otherJobID.String()+"/events", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: cookieValue})
+	response = httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("unrelated interaction stream status = %d, want not found", response.Code)
+	}
+	succeededStatus := "succeeded"
+	if err := createdJob.Update(ctx, executor, &models.ExtractionJobSetter{Status: &succeededStatus}); err != nil {
+		t.Fatal(err)
+	}
+	assertSSE(cookieValue, http.StatusOK, "succeeded", "")
 	failedStatus := "failed"
 	errorCode := sql.Null[string]{V: "provider_unavailable", Valid: true}
-	if err := createdJob.Update(ctx, executor, &models.ExtractionJobSetter{Status: &failedStatus, ErrorCode: &errorCode}); err != nil {
+	emptyReplyPreview := ""
+	if err := createdJob.Update(ctx, executor, &models.ExtractionJobSetter{Status: &failedStatus, ErrorCode: &errorCode, InteractionReplyPreview: &emptyReplyPreview}); err != nil {
 		t.Fatal(err)
 	}
 	assertPendingInteraction("failed")

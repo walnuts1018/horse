@@ -96,6 +96,7 @@ func (s *Server) Handler() http.Handler {
 	add(http.MethodDelete, "/documents/:id", s.deleteDocument)
 	add(http.MethodPost, "/documents/:id/retry", s.retryDocument)
 	add(http.MethodPost, "/documents/:id/interaction", s.interactWithDocument)
+	add(http.MethodGet, "/documents/:id/interactions/:jobId/events", s.documentInteractionEvents)
 	add(http.MethodPost, "/documents/:id/confirm", s.confirmEvidence)
 	add(http.MethodPost, "/purchases/:id/evidence", s.confirmPurchaseEvidence)
 	add(http.MethodGet, "/purchases/:id/evidence", s.purchaseEvidence)
