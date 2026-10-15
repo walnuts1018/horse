@@ -362,7 +362,8 @@ pub async fn create_budget(
         ends_on: input.ends_on.map(|value| value.0),
     };
     let pool = ctx.data::<PgPool>()?;
-    match postgres_policy::persist_create_budget(pool, command).await {
+    let mut operations = postgres_policy::PolicyOperations::new(pool);
+    match budget::create_budget(&mut operations, command).await {
         Ok(value) => {
             let result = load_budget_result(
                 pool,
@@ -405,7 +406,8 @@ pub async fn update_budget(
         ends_on: input.ends_on.map(|value| value.0),
     };
     let pool = ctx.data::<PgPool>()?;
-    match postgres_policy::persist_update_budget(pool, command).await {
+    let mut operations = postgres_policy::PolicyOperations::new(pool);
+    match budget::update_budget(&mut operations, command).await {
         Ok(value) => {
             let result = load_budget_result(
                 pool,
@@ -442,7 +444,8 @@ pub async fn archive_budget(
         expected_revision: i64::from(input.base_revision),
         archived: input.archived,
     };
-    match postgres_policy::persist_archive_budget(pool, command).await {
+    let mut operations = postgres_policy::PolicyOperations::new(pool);
+    match budget::archive_budget(&mut operations, command).await {
         Ok(value) => {
             let result = load_budget_result(
                 pool,
@@ -489,7 +492,9 @@ pub async fn create_recurring_expense(
         next_due_on: input.next_due_on.0,
         ends_on: input.ends_on.map(|value| value.0),
     };
-    match postgres_policy::persist_create_recurring_expense(ctx.data::<PgPool>()?, command).await {
+    let mut operations =
+        postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
+    match recurring_expense::create_recurring_expense(&mut operations, command).await {
         Ok(value) => Ok(CreateRecurringExpenseSuccess {
             result: value.into(),
         }
@@ -536,7 +541,9 @@ pub async fn update_recurring_expense(
         next_due_on: input.next_due_on.0,
         ends_on: input.ends_on.map(|value| value.0),
     };
-    match postgres_policy::persist_update_recurring_expense(ctx.data::<PgPool>()?, command).await {
+    let mut operations =
+        postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
+    match recurring_expense::update_recurring_expense(&mut operations, command).await {
         Ok(value) => Ok(UpdateRecurringExpenseSuccess {
             result: value.into(),
         }
@@ -572,7 +579,9 @@ pub async fn archive_recurring_expense(
         expected_revision: i64::from(input.base_revision),
         archived: input.archived,
     };
-    match postgres_policy::persist_archive_recurring_expense(ctx.data::<PgPool>()?, command).await {
+    let mut operations =
+        postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
+    match recurring_expense::archive_recurring_expense(&mut operations, command).await {
         Ok(value) => Ok(ArchiveRecurringExpenseSuccess {
             result: value.into(),
         }
@@ -605,7 +614,9 @@ pub async fn match_recurring_expense(
         purchase_id: purchase_id.to_string(),
         expected_revision: i64::from(input.base_revision),
     };
-    match postgres_policy::persist_match_recurring_expense(ctx.data::<PgPool>()?, command).await {
+    let mut operations =
+        postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
+    match recurring_expense::match_recurring_expense(&mut operations, command).await {
         Ok(value) => Ok(MatchRecurringExpenseSuccess {
             result: value.into(),
         }

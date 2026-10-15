@@ -6,7 +6,7 @@
 
 特に重要なのは、次の3点です。
 
-1. `bookkeeping-domain` と `bookkeeping-workflows` の間でドメインモデルが二重化しており、真の業務モデルが後者に偏っていること。
+1. `bookkeeping-domain` と `bookkeeping-application` の間でドメインモデルが二重化しており、真の業務モデルが後者に偏っていること。
 2. Workflow が純粋な意思決定関数として実装されている一方、そのロード・実行・永続化を含む業務操作全体は PostgreSQL 実装の内部に埋め込まれていること。
 3. Smart Constructor や型による不正状態の排除が一部に適用されているものの、業務上重要な構造にはまだ `String`、`bool`、`Option`、公開フィールドの組み合わせが多く残っていること。
 
@@ -18,7 +18,7 @@
 
 参照 HEAD: [`a3603e2`](https://github.com/walnuts1018/horse/commit/a3603e2acf71d352b461d9ced275741312cfabc1)（2026年10月16日 01:48 JST 頃）
 
-対象には `bookkeeping-domain`、各 `*-workflows`、`postgres`、`graphql-api`、Worker 関連、および既存の `docs/reviews/rust.md` を含めています。以下では、コードから確認できた事実と、書籍を踏まえた設計上の提案を区別します。
+対象にはBookkeepingと各ContextのDomain・Application・PostgreSQL Adapter、GraphQL・Worker Adapter、および既存の`docs/reviews/rust.md`を含めています。以下では、コードから確認できた事実と、書籍を踏まえた設計上の提案を区別します。
 
 なお、今回は GitHub 上のソースレビューです。`cargo test` の実行や PostgreSQL を使った統合テストまでは実施していません。したがって、設計上の欠点と実際に再現するバグは区別して評価します。
 
@@ -37,9 +37,9 @@
 | DB Transaction 内でのイベント保存 | 業務更新とイベント記録を原子的に扱おうとしている |
 | GraphQL の `Success` / `UserError` union | 予期される失敗を明示的に扱っている |
 
-特に [money.rs](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-domain/src/money.rs)、[allocation.rs](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-domain/src/allocation.rs)、[journal.rs](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-domain/src/journal.rs) は、今後のドメイン型実装の基本として活かせます。
+特に[ money.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/money.rs)、[allocation.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/allocation.rs)、[journal.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/journal.rs)は、今後のドメイン型実装の基本として活かせます。
 
-また、[post_purchase_loader.rs](https://github.com/walnuts1018/horse/blob/main/crates/postgres/src/post_purchase_loader.rs) では購入と会計期間のロック取得があり、[post_purchase.rs](https://github.com/walnuts1018/horse/blob/main/crates/postgres/src/post_purchase.rs) では永続化時の再チェックが実装されています。
+また、[post_purchase_loader.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/postgres/src/post_purchase_loader.rs)では購入と会計期間のロック取得があり、[post_purchase.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/postgres/src/post_purchase.rs)では永続化時の再チェックが実装されています。
 
 これは重要です。DMMF の「型で不正状態を排除する」を、データベースの競合制御まで型だけで実現できると誤解していません。
 
@@ -51,26 +51,26 @@
 
 該当コード：
 
-- [bookkeeping-domain/src/purchase.rs](https://github.com/walnuts1018/horse/blob/a3603e2/crates/bookkeeping-domain/src/purchase.rs)
-- [bookkeeping-workflows/src/lib.rs](https://github.com/walnuts1018/horse/blob/a3603e2/crates/bookkeeping-workflows/src/lib.rs#L28-L105)
+- [bookkeeping-domain/src/purchase.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/purchase.rs)
+- [bookkeeping-application/src/lib.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/lib.rs)
 
 現在、両方に `PurchaseId` があり、両方に `decide_post_purchase` があります。しかし、意味は同じではありません。
 
 `bookkeeping-domain` 側は、`DraftPurchase` を `PostedPurchase` に遷移させ、`BalancedJournal` を保持するモデルです。
 
-一方、`bookkeeping-workflows` 側は、Purchase の状態、品目、支払、負担配賦、資金負担スナップショット、仕訳明細までを扱う、実際の業務に近いモデルです。
+一方、`bookkeeping-application`側は、Purchaseの状態、品目、支払、負担配賦、資金負担スナップショット、仕訳明細までを扱う、実際の業務に近いモデルです。
 
 この二重化は解消するべきです。
 
 理想は、Bookkeeping BC に Purchase の意味を表すモデルを一つだけ持たせ、そのモデルに基づいて Workflow を定義することです。
 
-`bookkeeping-domain` を実際の中核ドメインモデルに育て、`bookkeeping-workflows` にある `PurchaseId`、`PurchaseDraft`、`Payment`、`MemberFundingBasis`、仕訳関連の型を、意味に応じて移動・統合することを推奨します。
+`bookkeeping-domain`を実際の中核ドメインモデルに育て、`bookkeeping-application`にある`PurchaseId`、`PurchaseDraft`、`Payment`、`MemberFundingBasis`、仕訳関連の型を、意味に応じて移動・統合することを推奨します。
 
 ここで重要なのは、単純に型を別ファイルへ移動することではありません。`BalancedJournal` と、実際の記帳 Workflow が返す `Vec<JournalLine>` を、同じ不変条件に基づくモデルとして再構成する必要があります。
 
 ### P0-3. 永続化状態を bool と汎用 enum の組み合わせで表現している
 
-[bookkeeping-workflows/src/lib.rs L91–105, L240–249](https://github.com/walnuts1018/horse/blob/a3603e2/crates/bookkeeping-workflows/src/lib.rs#L91-L105) の構造では、
+[bookkeeping-application/src/lib.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/lib.rs)の構造では、
 
 ```
 pub enum PurchaseStatus {
@@ -102,7 +102,7 @@ pub struct PurchaseDraft {
 
 特に、購入が Posted かどうかと、その購入を含む会計期間が Closed かどうかは別の状態軸です。
 
-現状の [postgres/src/close_period.rs L480–492](https://github.com/walnuts1018/horse/blob/a3603e2/crates/postgres/src/close_period.rs#L480-L492) は、月次締め時に Purchase 自体を `CLOSED` に変更しています。
+現状の[close_period.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/postgres/src/close_period.rs)は、月次締め時にPurchase自体を`CLOSED`に変更しています。
 
 以前のレビューで指摘されていた締め後訂正の拒否は、現在の `correct_purchase.rs` では `Draft` だけを拒否するよう変更されており、その点は改善されています。
 
@@ -110,15 +110,15 @@ pub struct PurchaseDraft {
 
 ### P0-4. Workflow の責任と Transaction の責任が不明瞭
 
-[postgres/src/category.rs](https://github.com/walnuts1018/horse/blob/a3603e2/crates/postgres/src/category.rs) では、PostgreSQL の `persist_create_category()` が `decide_create_category()` を呼び出しています。
+[category.rs](https://github.com/walnuts1018/horse/blob/main/contexts/catalog/postgres/src/category.rs)では、PostgreSQL AdapterがApplication Workflowの操作契約を実装しています。
 
-[postgres/src/purchase_create_and_post.rs](https://github.com/walnuts1018/horse/blob/a3603e2/crates/postgres/src/purchase_create_and_post.rs) でも、作成・ロード・意思決定・記帳の結合を PostgreSQL Adapter が担当しています。
+[purchase_create_and_post.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/postgres/src/purchase_create_and_post.rs)は、現在、Application Workflowが指定する操作を同じAsyncPgConnection上で実行します。
 
 これらは直ちに不正な実装ではありません。特に `persist_create_and_post_purchase()` は同一トランザクション内で処理しており、以前のレビューで懸念されていた別接続間のロック問題を回避しています。
 
-カテゴリ作成については、業務操作の定義を`catalog-workflows`へ移しました。Postgres Adapterはプール接続上でトランザクションを開始し、Workflowが要求する読み書きを実装します。購入作成・記帳とカテゴリ更新・アーカイブはまだ同じ構造へ移行していません。
+カテゴリ作成については、業務操作の定義を`catalog-application`へ移しました。Postgres Adapterはプール接続上でトランザクションを開始し、Workflowが要求する読み書きを実装します。購入作成・即時計上も同じ責務分離へ移行しました。単独購入作成、単独投稿、購入訂正、カテゴリ更新・アーカイブ、月次締め、資金設定には、ResolverまたはPostgreSQL Adapterに処理順序や意思決定が残っています。
 
-しかし、設計上は業務操作全体の定義が Infrastructure に存在しています。
+したがって、購入作成・即時計上では解消しましたが、ほかの未移行操作には業務操作全体の定義がInfrastructureに残っています。
 
 DMMF により近づけるなら、PostgreSQL Adapter の公開責務は「DB 操作を提供すること」に寄せ、Application Workflow が業務操作の手順を明示し、その実行境界がトランザクションを所有する構造にしたいです。
 

@@ -35,6 +35,224 @@ impl From<DieselError> for HouseholdMembershipError {
     }
 }
 
+impl From<MembershipError> for HouseholdMembershipError {
+    fn from(error: MembershipError) -> Self {
+        map_workflow_error(error)
+    }
+}
+
+struct PostgresMembershipOperations<'a> {
+    conn: &'a mut crate::AsyncPgConnection,
+}
+
+impl<'a> PostgresMembershipOperations<'a> {
+    fn new(conn: &'a mut crate::AsyncPgConnection) -> Self {
+        Self { conn }
+    }
+
+    async fn load_facts(
+        &mut self,
+        household_id: &str,
+        actor_id: &str,
+        target_id: &str,
+    ) -> Result<MembershipFacts, HouseholdMembershipError> {
+        use public::{household_members as members, households};
+        let household_id = parse_uuid(household_id, "household_id")?;
+        let actor_id = parse_uuid(actor_id, "actor_id")?;
+        let target_id = parse_uuid(target_id, "member_id")?;
+        households::table
+            .filter(households::id.eq(household_id))
+            .for_update()
+            .select(households::id)
+            .first::<Uuid>(&mut *self.conn)
+            .await
+            .optional()?
+            .ok_or(HouseholdMembershipError::HouseholdNotFound)?;
+        let actor_role = members::table
+            .filter(members::household_id.eq(household_id))
+            .filter(members::member_id.eq(actor_id))
+            .filter(members::left_at.is_null())
+            .select(members::role)
+            .first::<String>(&mut *self.conn)
+            .await
+            .optional()?;
+        let target_role = members::table
+            .filter(members::household_id.eq(household_id))
+            .filter(members::member_id.eq(target_id))
+            .filter(members::left_at.is_null())
+            .for_update()
+            .select(members::role)
+            .first::<String>(&mut *self.conn)
+            .await
+            .optional()?;
+        let owner_count = members::table
+            .filter(members::household_id.eq(household_id))
+            .filter(members::left_at.is_null())
+            .filter(members::role.eq("OWNER"))
+            .count()
+            .get_result::<i64>(&mut *self.conn)
+            .await?;
+        let has_active_funding_reference =
+            has_active_funding_reference(self.conn, household_id, target_id).await?;
+        Ok(MembershipFacts {
+            actor_role,
+            target_role,
+            owner_count: usize::try_from(owner_count).unwrap_or(0),
+            has_active_funding_reference,
+        })
+    }
+
+    async fn persist(
+        &mut self,
+        decision: MembershipChangeDecision,
+    ) -> Result<String, HouseholdMembershipError> {
+        use public::{household_members as members, households};
+        let household_id = parse_uuid(&decision.household_id, "household_id")?;
+        let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
+        let member_id = parse_uuid(&decision.member_id, "member_id")?;
+        households::table
+            .filter(households::id.eq(household_id))
+            .select(households::id)
+            .first::<Uuid>(&mut *self.conn)
+            .await
+            .optional()?
+            .ok_or(HouseholdMembershipError::HouseholdNotFound)?;
+        let (event_type, changed_fields) = match decision.change {
+            MembershipChange::Leave => {
+                let affected = diesel::update(
+                    members::table
+                        .filter(members::household_id.eq(household_id))
+                        .filter(members::member_id.eq(member_id))
+                        .filter(members::left_at.is_null()),
+                )
+                .set(members::left_at.eq(now))
+                .execute(&mut *self.conn)
+                .await?;
+                if affected != 1 {
+                    return Err(HouseholdMembershipError::MemberNotFound);
+                }
+                ("household.member.left", vec![Some("members".to_owned())])
+            }
+            MembershipChange::Remove => {
+                let affected = diesel::update(
+                    members::table
+                        .filter(members::household_id.eq(household_id))
+                        .filter(members::member_id.eq(member_id))
+                        .filter(members::left_at.is_null()),
+                )
+                .set(members::left_at.eq(now))
+                .execute(&mut *self.conn)
+                .await?;
+                if affected != 1 {
+                    return Err(HouseholdMembershipError::MemberNotFound);
+                }
+                (
+                    "household.member.removed",
+                    vec![Some("members".to_owned())],
+                )
+            }
+            MembershipChange::TransferOwner {
+                new_owner_was_owner,
+            } => {
+                diesel::update(
+                    members::table
+                        .filter(members::household_id.eq(household_id))
+                        .filter(members::member_id.eq(actor_id))
+                        .filter(members::left_at.is_null()),
+                )
+                .set(members::role.eq("MEMBER"))
+                .execute(&mut *self.conn)
+                .await?;
+                if !new_owner_was_owner {
+                    diesel::update(
+                        members::table
+                            .filter(members::household_id.eq(household_id))
+                            .filter(members::member_id.eq(member_id))
+                            .filter(members::left_at.is_null()),
+                    )
+                    .set(members::role.eq("OWNER"))
+                    .execute(&mut *self.conn)
+                    .await?;
+                }
+                (
+                    "household.owner.transferred",
+                    vec![Some("members".to_owned()), Some("owner".to_owned())],
+                )
+            }
+        };
+        record_change(
+            self.conn,
+            household_id,
+            member_id,
+            actor_id,
+            event_type,
+            changed_fields,
+        )
+        .await?;
+        Ok(household_id.to_string())
+    }
+}
+
+impl LeaveHouseholdOperations for PostgresMembershipOperations<'_> {
+    type Error = HouseholdMembershipError;
+
+    async fn load_facts(
+        &mut self,
+        household_id: &str,
+        actor_id: &str,
+        target_id: &str,
+    ) -> Result<MembershipFacts, Self::Error> {
+        PostgresMembershipOperations::load_facts(self, household_id, actor_id, target_id).await
+    }
+
+    async fn persist(
+        &mut self,
+        decision: MembershipChangeDecision,
+    ) -> Result<String, Self::Error> {
+        PostgresMembershipOperations::persist(self, decision).await
+    }
+}
+
+impl RemoveHouseholdMemberOperations for PostgresMembershipOperations<'_> {
+    type Error = HouseholdMembershipError;
+
+    async fn load_facts(
+        &mut self,
+        household_id: &str,
+        actor_id: &str,
+        target_id: &str,
+    ) -> Result<MembershipFacts, Self::Error> {
+        PostgresMembershipOperations::load_facts(self, household_id, actor_id, target_id).await
+    }
+
+    async fn persist(
+        &mut self,
+        decision: MembershipChangeDecision,
+    ) -> Result<String, Self::Error> {
+        PostgresMembershipOperations::persist(self, decision).await
+    }
+}
+
+impl TransferHouseholdOwnerOperations for PostgresMembershipOperations<'_> {
+    type Error = HouseholdMembershipError;
+
+    async fn load_facts(
+        &mut self,
+        household_id: &str,
+        actor_id: &str,
+        target_id: &str,
+    ) -> Result<MembershipFacts, Self::Error> {
+        PostgresMembershipOperations::load_facts(self, household_id, actor_id, target_id).await
+    }
+
+    async fn persist(
+        &mut self,
+        decision: MembershipChangeDecision,
+    ) -> Result<String, Self::Error> {
+        PostgresMembershipOperations::persist(self, decision).await
+    }
+}
+
 pub async fn leave_household(
     pool: &PgPool,
     command: LeaveHouseholdCommand,
