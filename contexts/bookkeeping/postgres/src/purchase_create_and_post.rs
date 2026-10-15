@@ -10,7 +10,7 @@ use crate::{
         persist_create_purchase_in_transaction,
     },
     post_purchase::{
-        PersistPostPurchase, PostPurchasePersistenceError, PersistedPostPurchase,
+        PersistPostPurchase, PersistedPostPurchase, PostPurchasePersistenceError,
         persist_post_purchase_in_transaction,
     },
     post_purchase_loader::{PostPurchaseLoadError, load_post_purchase_command},
@@ -125,7 +125,7 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
             })
             .collect::<Result<Vec<_>, CreateAndPostPurchaseError>>()?;
         let context = load_purchase_command_context_in_transaction(
-            self.conn,
+            &mut *self.conn,
             household_id,
             merchant_key,
             &inputs,
@@ -161,7 +161,7 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
         decision: bookkeeping_application::create_purchase::CreatePurchaseDecision,
     ) -> Result<application::CreatedPurchase, Self::Error> {
         let persisted = persist_create_purchase_in_transaction(
-            self.conn,
+            &mut *self.conn,
             PersistCreatePurchase {
                 household_id: persistence.household_id,
                 actor_id: persistence.actor_id,
@@ -221,7 +221,7 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
         expected_revision: u64,
     ) -> Result<application::LoadedPostPurchase, Self::Error> {
         let loaded = load_post_purchase_command(
-            self.conn,
+            &mut *self.conn,
             household_id,
             purchase_id,
             expected_revision,
@@ -249,7 +249,7 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
         decision: bookkeeping_application::PostPurchaseDecision,
     ) -> Result<application::PostedPurchase, Self::Error> {
         let persisted = persist_post_purchase_in_transaction(
-            self.conn,
+            &mut *self.conn,
             PersistPostPurchase {
                 household_id: persistence.household_id,
                 actor_id: persistence.actor_id,
@@ -260,14 +260,14 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
                 resolved_payments: persistence
                     .resolved_payments
                     .into_iter()
-                    .map(|payment| {
-                        crate::post_purchase_loader::ResolvedPostPurchasePayment {
+                    .map(
+                        |payment| crate::post_purchase_loader::ResolvedPostPurchasePayment {
                             line_no: payment.line_no,
                             account_id: payment.account_id,
                             amount: payment.amount,
                             is_fallback: payment.is_fallback,
-                        }
-                    })
+                        },
+                    )
                     .collect(),
             },
             decision,

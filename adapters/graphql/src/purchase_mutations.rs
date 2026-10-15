@@ -533,67 +533,26 @@ pub async fn create_and_post_purchase(
         Err(error) => return Ok(error.into()),
     };
     let pool = ctx.data::<PgPool>()?;
-    match postgres_household_access::is_active_member(pool, parsed.household_id, actor.0).await {
-        Ok(true) => {}
-        Ok(false) => return Ok(not_found().into()),
-        Err(error) => return Err(crate::internal_error(error)),
-    }
-    let allocation_inputs = parsed
-        .command
-        .items
-        .iter()
-        .map(|item| PurchaseItemAllocationInput {
-            category_id: item
-                .category_id
-                .as_deref()
-                .and_then(|id| Uuid::parse_str(id).ok()),
-            product_variant_id: item
-                .product_variant_id
-                .as_deref()
-                .and_then(|id| Uuid::parse_str(id).ok()),
-            merchant_key: normalize_merchant(&parsed.command.merchant),
-            allocations: item
-                .allocations
-                .iter()
-                .map(|allocation| {
-                    (
-                        Uuid::parse_str(&allocation.pool_id).expect("parsed pool identifier"),
-                        allocation.weight,
-                    )
-                })
-                .collect(),
-        })
-        .collect::<Vec<_>>();
-    let context = match purchase_command_context::load_purchase_command_context(
-        pool,
-        parsed.household_id,
-        &normalize_merchant(&parsed.command.merchant),
-        &allocation_inputs,
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(error) => match context_user_error(&error) {
-            Some(error) => return Ok(error.into()),
-            None => return Err(crate::internal_error(error)),
-        },
-    };
     let post_fingerprint = post_fingerprint(&parsed.command.purchase_id, 1)?;
-    let command =
-        apply_allocation_context(parsed.command, context).map_err(crate::internal_error)?;
-    let decision = match decide_create_purchase(command) {
-        Ok(value) => value,
-        Err(_) => return Ok(bad_input().into()),
-    };
-    let persisted = match purchase_create_and_post::persist_create_and_post_purchase(
-        pool,
-        parsed.persistence,
-        decision,
-        post_fingerprint,
-    )
-    .await
+    let workflow_command =
+        bookkeeping_application::create_and_post_purchase::CreateAndPostPurchaseCommand {
+            actor_id: parsed.persistence.actor_id,
+            household_id: parsed.persistence.household_id,
+            idempotency_key: parsed.persistence.idempotency_key,
+            create_request_fingerprint: parsed.persistence.request_fingerprint,
+            post_request_fingerprint: post_fingerprint,
+            purchase: parsed.command,
+        };
+    let persisted = match purchase_create_and_post::create_and_post_purchase(pool, workflow_command)
+        .await
     {
         Ok(value) => value,
+        Err(purchase_create_and_post::CreateAndPostPurchaseError::Context(error)) => {
+            return match context_user_error(&error) {
+                Some(error) => Ok(error.into()),
+                None => Err(crate::internal_error(error)),
+            };
+        }
         Err(purchase_create_and_post::CreateAndPostPurchaseError::Create(error)) => {
             return match create_user_error(&error) {
                 Some(error) => Ok(error.into()),
@@ -612,7 +571,26 @@ pub async fn create_and_post_purchase(
                 None => Err(crate::internal_error(error)),
             };
         }
-        Err(error) => return Err(crate::internal_error(error)),
+        Err(
+            purchase_create_and_post::CreateAndPostPurchaseError::CreateDecision(_)
+            | purchase_create_and_post::CreateAndPostPurchaseError::PostDecision(_),
+        ) => {
+            return Ok(bad_input().into());
+        }
+        Err(purchase_create_and_post::CreateAndPostPurchaseError::CreatedPurchaseMissing) => {
+            return Ok(not_found().into());
+        }
+        Err(purchase_create_and_post::CreateAndPostPurchaseError::AllocationContextMismatch) => {
+            return Err(crate::internal_error(
+                "purchase allocation context mismatch",
+            ));
+        }
+        Err(purchase_create_and_post::CreateAndPostPurchaseError::Pool(error)) => {
+            return Err(crate::internal_error(error));
+        }
+        Err(purchase_create_and_post::CreateAndPostPurchaseError::Database(error)) => {
+            return Err(crate::internal_error(error));
+        }
     };
     Ok(CreateAndPostPurchaseSuccess {
         result: purchase_result(pool, parsed.household_id, &persisted.purchase_id).await?,

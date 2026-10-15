@@ -7,9 +7,10 @@ use catalog_application::category::{
 use chrono::Utc;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{RunQueryDsl, pooled_connection::bb8::RunError as PoolRunError};
+use std::{future::Future, pin::Pin};
 use uuid::Uuid;
 
-use crate::schema::public;
+use crate::{PgPool, schema::public};
 
 #[derive(Debug)]
 struct PersistedCategory {
@@ -80,6 +81,23 @@ impl From<CategoryError> for CategoryWorkflowError {
             CategoryError::InvalidName => Self::InvalidName,
         }
     }
+}
+
+pub async fn with_transaction<T>(
+    pool: &PgPool,
+    operation: impl for<'connection> FnOnce(
+        &'connection mut diesel_async::AsyncPgConnection,
+    ) -> Pin<
+        Box<dyn Future<Output = Result<T, CategoryWorkflowError>> + Send + 'connection>,
+    > + Send,
+) -> Result<T, CategoryWorkflowError>
+where
+    T: Send,
+{
+    let mut pooled = pool.get().await.map_err(CategoryWorkflowError::from)?;
+    (&mut *pooled)
+        .transaction::<T, CategoryWorkflowError, _>(async |conn| operation(conn).await)
+        .await
 }
 
 pub struct PostgresCreateCategoryOperations<'a> {

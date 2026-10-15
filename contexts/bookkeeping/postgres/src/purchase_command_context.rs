@@ -62,13 +62,8 @@ pub async fn load_purchase_command_context(
         .get()
         .await
         .map_err(|error| PurchaseCommandContextError::Pool(error.to_string()))?;
-    load_purchase_command_context_in_transaction(
-        &mut conn,
-        household_id,
-        merchant_key,
-        item_inputs,
-    )
-    .await
+    load_purchase_command_context_in_transaction(&mut conn, household_id, merchant_key, item_inputs)
+        .await
 }
 
 pub async fn load_purchase_command_context_in_transaction(

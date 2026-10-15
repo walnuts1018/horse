@@ -194,8 +194,8 @@ pub async fn create_and_post_purchase<O: CreateAndPostPurchaseOperations>(
         .map_err(CreateAndPostPurchaseError::Operations)?;
     let purchase = apply_allocation_context(command.purchase, allocation_context)
         .map_err(|_| CreateAndPostPurchaseError::AllocationContextMismatch)?;
-    let decision = decide_create_purchase(purchase)
-        .map_err(CreateAndPostPurchaseError::CreateDecision)?;
+    let decision =
+        decide_create_purchase(purchase).map_err(CreateAndPostPurchaseError::CreateDecision)?;
 
     let created = operations
         .persist_create(
@@ -226,8 +226,8 @@ pub async fn create_and_post_purchase<O: CreateAndPostPurchaseOperations>(
         .load_post_purchase(&command.household_id, &created.purchase_id, state.revision)
         .await
         .map_err(CreateAndPostPurchaseError::Operations)?;
-    let post_decision = decide_post_purchase(loaded.command)
-        .map_err(CreateAndPostPurchaseError::PostDecision)?;
+    let post_decision =
+        decide_post_purchase(loaded.command).map_err(CreateAndPostPurchaseError::PostDecision)?;
     operations
         .persist_post(
             PostPurchasePersistence {

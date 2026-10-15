@@ -6,7 +6,6 @@ use catalog_application::category::{
     CreateCategoryCommand, SetCategoryArchivedCommand, UpdateCategoryNameCommand,
 };
 use catalog_postgres::category as postgres_category;
-use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_postgres_common::PgPool;
 use uuid::Uuid;
 
@@ -113,15 +112,13 @@ pub async fn create_category(
         parent_id,
         name: input.name,
     };
-    let mut pooled = ctx.data::<PgPool>()?.get().await.map_err(|error| {
-        crate::internal_error(postgres_category::CategoryWorkflowError::from(error))
-    })?;
-    let result = (&mut *pooled)
-        .transaction::<DomainCategory, postgres_category::CategoryWorkflowError, _>(async |conn| {
+    let result = postgres_category::with_transaction(ctx.data::<PgPool>()?, move |conn| {
+        Box::pin(async move {
             let mut operations = postgres_category::PostgresCreateCategoryOperations::new(conn);
             application_category::create_category(&mut operations, command).await
         })
-        .await;
+    })
+    .await;
     match result {
         Ok(category) => Ok(CreateCategorySuccess {
             result: category.into(),
@@ -148,15 +145,13 @@ pub async fn update_category_name(
         category_id: category_id.to_string(),
         name: input.name,
     };
-    let mut pooled = ctx.data::<PgPool>()?.get().await.map_err(|error| {
-        crate::internal_error(postgres_category::CategoryWorkflowError::from(error))
-    })?;
-    let result = (&mut *pooled)
-        .transaction::<DomainCategory, postgres_category::CategoryWorkflowError, _>(async |conn| {
+    let result = postgres_category::with_transaction(ctx.data::<PgPool>()?, move |conn| {
+        Box::pin(async move {
             let mut operations = postgres_category::PostgresUpdateCategoryNameOperations::new(conn);
             application_category::update_category_name(&mut operations, command).await
         })
-        .await;
+    })
+    .await;
     match result {
         Ok(category) => Ok(UpdateCategoryNameSuccess {
             result: category.into(),
@@ -183,16 +178,14 @@ pub async fn set_category_archived(
         category_id: category_id.to_string(),
         archived: input.archived,
     };
-    let mut pooled = ctx.data::<PgPool>()?.get().await.map_err(|error| {
-        crate::internal_error(postgres_category::CategoryWorkflowError::from(error))
-    })?;
-    let result = (&mut *pooled)
-        .transaction::<DomainCategory, postgres_category::CategoryWorkflowError, _>(async |conn| {
+    let result = postgres_category::with_transaction(ctx.data::<PgPool>()?, move |conn| {
+        Box::pin(async move {
             let mut operations =
                 postgres_category::PostgresSetCategoryArchivedOperations::new(conn);
             application_category::set_category_archived(&mut operations, command).await
         })
-        .await;
+    })
+    .await;
     match result {
         Ok(category) => Ok(SetCategoryArchivedSuccess {
             result: category.into(),
