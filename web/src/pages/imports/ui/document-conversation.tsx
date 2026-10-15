@@ -16,7 +16,7 @@ export function DocumentConversation({
 }: {
   document: DocumentReview;
   onError: (message: string) => void;
-  onUpdated: () => Promise<unknown> | unknown;
+  onUpdated: () => Promise<void> | void;
 }) {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -26,7 +26,7 @@ export function DocumentConversation({
     status: "processing" | "failed";
   } | null>(null);
   const sendingRef = useRef(false);
-  const messages = document.result?.conversation ?? [];
+  const messages = document.result?.conversation;
   const hasExtraction = !!document.result?.receipt || !!document.result?.statements?.length;
   const selectedModel = importModels.find((option) => option.value === document.model);
   const model =
@@ -39,7 +39,7 @@ export function DocumentConversation({
     if (!pendingMessage) return;
     if (
       messages
-        .slice(pendingMessage.conversationLength)
+        ?.slice(pendingMessage.conversationLength)
         .some((entry) => entry.role === "user" && entry.text === pendingMessage.text)
     ) {
       setPendingMessage(null);
@@ -69,7 +69,7 @@ export function DocumentConversation({
       if (!response.ok) throw new Error(`再確認を開始できませんでした (${response.status})`);
       setPendingMessage({
         text: instruction,
-        conversationLength: messages.length,
+        conversationLength: messages?.length ?? 0,
         status: "processing",
       });
       if (instruction === message.trim()) setMessage("");
@@ -86,9 +86,9 @@ export function DocumentConversation({
 
   return (
     <section className={styles.conversation} aria-label="AIとの再確認">
-      {(messages.length > 0 || pendingMessage) && (
+      {((messages?.length ?? 0) > 0 || pendingMessage) && (
         <ol className={styles.messages}>
-          {messages.map((entry, index) => (
+          {messages?.map((entry, index) => (
             <li
               className={entry.role === "user" ? styles.userMessage : styles.assistantMessage}
               key={`${index}-${entry.role}`}

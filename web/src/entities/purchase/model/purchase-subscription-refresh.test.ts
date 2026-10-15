@@ -5,11 +5,13 @@ import {
   type PurchaseChange,
 } from "./purchase-subscription-refresh";
 
+const updated = (changedFields: PurchaseChange["changedFields"]) =>
+  purchaseChange("UPDATED", changedFields);
+const itemUpdated = (changedFields: PurchaseChange["changedFields"]) =>
+  purchaseChange("ITEM_UPDATED", changedFields);
+
 describe("purchaseChangeAffectsMembership", () => {
   it("refetches only when changed fields can affect the active purchase list", () => {
-    const updated = (changedFields: string[]) => purchaseChange("UPDATED", changedFields);
-    const itemUpdated = (changedFields: string[]) => purchaseChange("ITEM_UPDATED", changedFields);
-
     expect(purchaseChangeAffectsMembership(updated(["STATUS"]), {})).toBe(false);
     expect(purchaseChangeAffectsMembership(updated(["OCCURRED_AT"]), {})).toBe(true);
     expect(purchaseChangeAffectsMembership(updated(["MERCHANT"]), {})).toBe(false);
@@ -46,13 +48,35 @@ describe("purchaseChangeAffectsMembership", () => {
   });
 });
 
-function purchaseChange(kind: PurchaseChange["kind"], changedFields: string[]): PurchaseChange {
+function purchaseChange(
+  kind: PurchaseChange["kind"],
+  changedFields: PurchaseChange["changedFields"],
+): PurchaseChange {
   return {
     cursor: "1",
     entityId: "id",
     entityKind: kind === "ITEM_UPDATED" || kind === "ITEM_DELETED" ? "PURCHASE_ITEM" : "PURCHASE",
     kind,
-    changedFields: changedFields as PurchaseChange["changedFields"],
-    purchase: {} as PurchaseChange["purchase"],
+    changedFields,
+    purchase: {
+      correctionAmountYen: 0,
+      correctionCount: 0,
+      createdAt: "2025-01-01T00:00:00Z",
+      datePrecision: "DATE_TIME",
+      hasEvidence: false,
+      householdId: "household-id",
+      id: "purchase-id",
+      items: [],
+      merchant: "",
+      occurredAt: "2025-01-01T00:00:00Z",
+      origin: "MANUAL",
+      paymentAllocations: [],
+      remainingRefundableAmountYen: 0,
+      revision: 1,
+      sourceKinds: [],
+      status: "POSTED",
+      totalYen: 0,
+      updatedAt: "2025-01-01T00:00:00Z",
+    },
   };
 }
