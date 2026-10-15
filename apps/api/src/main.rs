@@ -1,22 +1,22 @@
 use std::{env, error::Error, net::SocketAddr, sync::Arc};
 
+use axum::middleware;
 use horse_auth::{AuthConfig, AuthService};
 use horse_extraction_queue::ExtractionQueue;
 use horse_graphql_api::{Config as GraphqlConfig, schema};
 use horse_http_api::{Config, router};
 use horse_object_storage::ObjectStore;
+use horse_observability::Telemetry;
 use horse_postgres_common::connect;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
+mod telemetry;
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    tracing_subscriber::fmt()
-        .json()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let telemetry = Telemetry::init("horse-api", filter)?;
 
     let database_url = env::var("DATABASE_URL")?;
     let port = env::var("PORT")
@@ -80,7 +80,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     };
     let listener = TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], port))).await?;
-    axum::serve(
+    let server_result = axum::serve(
         listener,
         router(
             pool,
@@ -93,10 +93,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 extraction_queue,
             },
             graphql_schema,
-        ),
+        )
+        .layer(middleware::from_fn(telemetry::trace_request)),
     )
     .with_graceful_shutdown(shutdown_signal())
-    .await?;
+    .await;
+    let telemetry_result = telemetry.shutdown();
+    server_result?;
+    telemetry_result?;
     Ok(())
 }
 

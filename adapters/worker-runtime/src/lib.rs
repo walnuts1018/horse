@@ -11,7 +11,12 @@ pub fn parse_email_attachments(data: &[u8]) -> Result<Vec<EmailAttachment>, &'st
     email::parse_email(data).map(|email| email.attachments)
 }
 
-use std::{env, error::Error, time::Duration};
+use std::{
+    env,
+    error::Error,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use chrono::Utc;
 use evidence_application::ingestion_job::{ExtractionExecutionOutcome, execute_extraction_job};
@@ -25,6 +30,7 @@ use mailbox::MailboxConfig;
 use object_store::ObjectStore;
 use processing::{ProcessConfig, process};
 use serde_json::Value;
+use tracing::{Instrument, field::Empty};
 
 pub struct Worker {
     pool: horse_postgres_common::PgPool,
@@ -130,13 +136,32 @@ impl Worker {
     }
 
     async fn process_one(&self, job: ClaimedExtractionJob) -> Result<(), String> {
+        let span = tracing::info_span!(
+            "extract.document",
+            extraction.attempt = job.attempt_no,
+            document.mime_type = %job.mime_type,
+            document.source_kind = %job.source_kind,
+            extraction.balanced = Empty,
+            extraction.issue_count = Empty,
+            otel.status_code = Empty,
+            otel.status_description = Empty,
+        );
         let success_job = job.clone();
         let failure_job = job.clone();
+        let result_attributes = Arc::new(Mutex::new(None));
+        let success_attributes = Arc::clone(&result_attributes);
         let pool = &self.pool;
         let previous_result = job.previous_result.clone();
         let outcome = execute_extraction_job(
             process(&self.pool, &self.store, &self.config, &job),
             |mut result| async move {
+                let balanced = result.get("balanced").and_then(Value::as_bool);
+                let issue_count = result.get("issues").and_then(Value::as_array).map(Vec::len);
+                if let (Some(balanced), Some(issue_count)) = (balanced, issue_count)
+                    && let Ok(mut attributes) = success_attributes.lock()
+                {
+                    *attributes = Some((balanced, issue_count));
+                }
                 append_previous_runs(&mut result, previous_result.as_ref());
                 record_extraction_success(pool, &success_job, result, Utc::now()).await
             },
@@ -157,9 +182,21 @@ impl Worker {
                 .await
             },
         )
+        .instrument(span.clone())
         .await;
+        let _entered = span.enter();
+        if matches!(&outcome, ExtractionExecutionOutcome::Failed { .. }) {
+            span.record("otel.status_code", "ERROR");
+            span.record("otel.status_description", "extraction_failed");
+        }
         match outcome {
             ExtractionExecutionOutcome::Succeeded(Ok(true)) => {
+                if let Ok(attributes) = result_attributes.lock()
+                    && let Some((balanced, issue_count)) = *attributes
+                {
+                    span.record("extraction.balanced", balanced);
+                    span.record("extraction.issue_count", issue_count);
+                }
                 tracing::info!(job_id = %job.id, attempt = job.attempt_no, "extraction completed")
             }
             ExtractionExecutionOutcome::Succeeded(Ok(false)) => {

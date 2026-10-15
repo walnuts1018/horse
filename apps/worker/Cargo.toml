@@ -6,7 +6,9 @@ edition = "2024"
 [dependencies]
 horse-worker-runtime = { path = "../../adapters/worker-runtime" }
 horse-extraction-queue = { path = "../../adapters/extraction-queue" }
+horse-observability = { path = "../../platform/observability" }
 axum = "0.8.9"
 tokio = { workspace = true }
+tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }

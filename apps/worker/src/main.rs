@@ -2,17 +2,17 @@ use std::{net::SocketAddr, sync::Arc};
 
 use axum::{Router, extract::State, http::StatusCode, routing::get};
 use horse_extraction_queue::{ExtractionQueue, next_delivery};
+use horse_observability::Telemetry;
 use horse_worker_runtime::Worker;
 use tokio::net::TcpListener;
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let log_filter =
-        tracing_subscriber::EnvFilter::from_default_env().add_directive("async_imap=off".parse()?);
-    tracing_subscriber::fmt()
-        .json()
-        .with_env_filter(log_filter)
-        .init();
+    let log_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"))
+        .add_directive("async_imap=off".parse()?);
+    let telemetry = Telemetry::init("horse-worker", log_filter)?;
 
     let listener = TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], 8081))).await?;
     let worker = Arc::new(Worker::from_env().await?);
@@ -32,9 +32,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with_graceful_shutdown(shutdown_signal(shutdown_tx.clone()))
         .await;
     let _ = shutdown_tx.send(true);
-    worker_task.await??;
-    queue_task.await?;
+    let worker_result = worker_task.await?;
+    let queue_result = queue_task.await;
+    let telemetry_result = telemetry.shutdown();
     server_result?;
+    worker_result?;
+    queue_result?;
+    telemetry_result?;
     Ok(())
 }
 
@@ -106,7 +110,9 @@ async fn run_queue(worker: Arc<Worker>, mut shutdown: tokio::sync::watch::Receiv
                             }
                         }
                     },
-                    Err(error) => tracing::warn!(error = %error, "Start extraction queue consumer failed"),
+                    Err(error) => {
+                        tracing::warn!(error = %error, "Start extraction queue consumer failed")
+                    }
                 }
                 queue.close().await;
                 if wait_for_shutdown(&mut shutdown, std::time::Duration::from_secs(5)).await {
