@@ -17,6 +17,7 @@ pub mod funding;
 pub mod household_membership;
 pub mod ledger_entry;
 pub mod member_pool;
+pub mod pagination;
 pub mod scalars;
 pub use scalars::{DateTime, Long};
 

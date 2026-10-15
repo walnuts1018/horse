@@ -143,7 +143,7 @@ pub async fn list_invitations(
             );
         }
         let mut rows = query
-            .order_by((invitations::created_at.asc(), invitations::id.asc()))
+            .order_by((invitations::created_at.asc(), invitations::id.desc()))
             .limit(i64::try_from(page_size + 1).unwrap_or(i64::MAX))
             .select((
                 invitations::id,

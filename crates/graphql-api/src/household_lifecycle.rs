@@ -412,16 +412,14 @@ pub async fn household_invitations(
         .into_iter()
         .map(|row| map_invitation(row, Utc::now()))
         .collect::<Result<Vec<_>>>()?;
-    let edges = rows
-        .into_iter()
-        .map(|node| {
-            let id = invitation_raw_id(&node).expect("mapped invitation IDs are valid");
-            HouseholdInvitationEdge {
-                cursor: encode_cursor(&id),
-                node,
-            }
-        })
-        .collect::<Vec<_>>();
+    let mut edges = Vec::with_capacity(rows.len());
+    for node in rows {
+        let id = invitation_raw_id(&node)?;
+        edges.push(HouseholdInvitationEdge {
+            cursor: encode_cursor(&id),
+            node,
+        });
+    }
     let start_cursor = edges.first().map(|edge| edge.cursor.clone());
     let end_cursor = edges.last().map(|edge| edge.cursor.clone());
     let total_count = i32::try_from(page.total_count)
@@ -571,6 +569,7 @@ fn map_invitation(
     value: postgres_invitation::InvitationStateDto,
     now: chrono::DateTime<Utc>,
 ) -> Result<HouseholdInvitation> {
+    let expired = value.expires_at <= now;
     let id = encode_node_id("HouseholdInvitation", &value.id)?;
     let household_id = encode_node_id("Household", &value.household_id)?;
     let expires_at: crate::DateTime = value.expires_at.into();
@@ -593,7 +592,7 @@ fn map_invitation(
             revoked_at: revoked_at.into(),
         }
         .into())
-    } else if value.expires_at <= now {
+    } else if expired {
         Ok(ExpiredHouseholdInvitation {
             id,
             household_id,
