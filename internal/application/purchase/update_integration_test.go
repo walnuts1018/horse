@@ -204,3 +204,120 @@ func TestServiceUpdatePersistsRevisionEventAndRejectsClosedPeriod(t *testing.T) 
 		t.Fatalf("purchase after failed update has merchant %q and revision %d; want %q and 4", updated.Merchant, updated.Revision, bulkMerchant)
 	}
 }
+
+func TestServiceSaveItemEditsUpdatesMultipleItemsAndPurchase(t *testing.T) {
+	t.Parallel()
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("HORSE_TEST_DATABASE_URL is not set")
+	}
+	ctx := t.Context()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(db.Close)
+	if err := db.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	memberID, err := gofrsuuid.NewV7()
+	if err != nil {
+		t.Fatal(err)
+	}
+	subject := "purchase-save-item-edits-integration:" + memberID.String()
+	displayName := "Purchase save item edits integration"
+	if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberID, OidcSubject: &subject, DisplayName: &displayName}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx := context.WithoutCancel(t.Context())
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberID)))).Exec(cleanupCtx, bobpgx.NewPool(db))
+	})
+
+	householdID, err := gofrsuuid.NewV7()
+	if err != nil {
+		t.Fatal(err)
+	}
+	householdName := "Purchase save item edits integration"
+	if _, err := models.Households.Insert(&models.HouseholdSetter{ID: &householdID, Name: &householdName}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	role := "OWNER"
+	if _, err := models.HouseholdMembers.Insert(&models.HouseholdMemberSetter{HouseholdID: &householdID, MemberID: &memberID, Role: &role}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx := context.WithoutCancel(t.Context())
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID)))).Exec(cleanupCtx, bobpgx.NewPool(db))
+	})
+
+	purchaseID, err := gofrsuuid.NewV7()
+	if err != nil {
+		t.Fatal(err)
+	}
+	occurredAt := time.Date(2026, time.October, 13, 12, 0, 0, 0, time.FixedZone("JST", 9*60*60))
+	merchant, status, origin := "Before save", "DRAFT", "MANUAL"
+	allocationVersion := int64(0)
+	if _, err := models.Purchases.Insert(&models.PurchaseSetter{
+		ID: &purchaseID, HouseholdID: &householdID, OccurredAt: &occurredAt, Merchant: &merchant,
+		Status: &status, AllocationRuleVersion: &allocationVersion, CreatedBy: &memberID, Origin: &origin,
+	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+
+	firstItemID, err := gofrsuuid.NewV7()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondItemID, err := gofrsuuid.NewV7()
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstName, secondName, itemAmount := "First before save", "Second before save", int64(0)
+	for _, item := range []struct {
+		id   gofrsuuid.UUID
+		name *string
+	}{{firstItemID, &firstName}, {secondItemID, &secondName}} {
+		if _, err := models.PurchaseItems.Insert(&models.PurchaseItemSetter{
+			ID: &item.id, HouseholdID: &householdID, PurchaseID: &purchaseID, Name: item.name, AmountYen: &itemAmount,
+		}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	firstUpdatedName, secondUpdatedName, updatedMerchant := "First saved", "Second saved", "After save"
+	result, err := NewService(db).SaveItemEdits(ctx, SaveItemEditsCommand{
+		ActorID: memberID.String(), PurchaseID: purchaseID.String(),
+		Items: []UpdateItemCommand{
+			{ItemID: secondItemID.String(), BaseRevision: 1, ChangedFields: []string{itemFieldName}, Name: &secondUpdatedName},
+			{ItemID: firstItemID.String(), BaseRevision: 1, ChangedFields: []string{itemFieldName}, Name: &firstUpdatedName},
+		},
+		PurchaseUpdate: &UpdateCommand{BaseRevision: 1, Merchant: &updatedMerchant, ChangedFields: []string{updateFieldMerchant}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Items) != 2 || result.Items[0].ID != secondItemID.String() || result.Items[1].ID != firstItemID.String() {
+		t.Fatalf("SaveItemEdits returned items %#v; want command order [%s, %s]", result.Items, secondItemID, firstItemID)
+	}
+	for _, expected := range []struct {
+		id   gofrsuuid.UUID
+		name string
+	}{{firstItemID, firstUpdatedName}, {secondItemID, secondUpdatedName}} {
+		item, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(expected.id)))).One(ctx, bobpgx.NewPool(db))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if item.Name != expected.name || item.Revision != 2 {
+			t.Fatalf("item %s after save has name %q and revision %d; want %q and 2", expected.id, item.Name, item.Revision, expected.name)
+		}
+	}
+	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if purchase.Merchant != updatedMerchant || purchase.Revision != 4 {
+		t.Fatalf("purchase after save has merchant %q and revision %d; want %q and 4", purchase.Merchant, purchase.Revision, updatedMerchant)
+	}
+}

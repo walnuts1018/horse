@@ -61,14 +61,7 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	if err != nil {
 		return UpdateResult{}, err
 	}
-	plan, err := buildPurchaseItemUpdatePlan(ctx, tx, executor, command, state, deferAccountingSync)
-	if err != nil {
-		return UpdateResult{}, err
-	}
-	if accountingChanged != nil {
-		*accountingChanged = *accountingChanged || plan.itemChange.allocationsChanged
-	}
-	if err := applyPurchaseItemUpdatePlan(ctx, tx, executor, actorUUID, command, state, plan); err != nil {
+	if err := planAndApplyPurchaseItemUpdate(ctx, tx, executor, actorUUID, command, state, deferAccountingSync, accountingChanged); err != nil {
 		return UpdateResult{}, err
 	}
 	if ownsTransaction {
@@ -77,6 +70,17 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 		}
 	}
 	return UpdateResult{PurchaseID: state.purchase.ID.String()}, nil
+}
+
+func planAndApplyPurchaseItemUpdate(ctx context.Context, tx pgx.Tx, executor bob.Executor, actorID gofrsuuid.UUID, command UpdateItemCommand, state purchaseItemUpdateState, deferAccountingSync bool, accountingChanged *bool) error {
+	plan, err := buildPurchaseItemUpdatePlan(ctx, tx, executor, command, state, deferAccountingSync)
+	if err != nil {
+		return err
+	}
+	if accountingChanged != nil {
+		*accountingChanged = *accountingChanged || plan.itemChange.allocationsChanged
+	}
+	return applyPurchaseItemUpdatePlan(ctx, tx, executor, actorID, command, state, plan)
 }
 
 func applyPurchaseItemUpdatePlan(ctx context.Context, tx pgx.Tx, executor bob.Executor, actorID gofrsuuid.UUID, command UpdateItemCommand, state purchaseItemUpdateState, plan purchaseItemUpdatePlan) error {

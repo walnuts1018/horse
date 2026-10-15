@@ -131,21 +131,28 @@ func loadPurchaseItemUpdateState(ctx context.Context, executor bob.Executor, ite
 	if !purchase.OccurredAt.Equal(observedPurchase.OccurredAt) || purchase.HouseholdID != householdID {
 		return purchaseItemUpdateState{}, ErrConflict
 	}
-	status := purchase.Status
-	if status != draftStatus && status != postedStatus {
-		return purchaseItemUpdateState{}, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
-	}
-	if command.BaseRevision > item.Revision {
-		return purchaseItemUpdateState{}, ErrConflict
-	}
-	conflict, err := purchaseUpdateValuesConflict(item.FieldRevisions.Val, command.BaseRevision, command.ChangedFields)
-	if err != nil {
+	state := purchaseItemUpdateState{householdID: householdID, household: household, purchase: purchase, item: item, status: purchase.Status}
+	if err := validatePurchaseItemUpdateState(command, state); err != nil {
 		return purchaseItemUpdateState{}, err
 	}
-	if conflict {
-		return purchaseItemUpdateState{}, ErrConflict
+	return state, nil
+}
+
+func validatePurchaseItemUpdateState(command UpdateItemCommand, state purchaseItemUpdateState) error {
+	if state.status != draftStatus && state.status != postedStatus {
+		return fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
 	}
-	return purchaseItemUpdateState{householdID: householdID, household: household, purchase: purchase, item: item, status: status}, nil
+	if command.BaseRevision > state.item.Revision {
+		return ErrConflict
+	}
+	conflict, err := purchaseUpdateValuesConflict(state.item.FieldRevisions.Val, command.BaseRevision, command.ChangedFields)
+	if err != nil {
+		return err
+	}
+	if conflict {
+		return ErrConflict
+	}
+	return nil
 }
 
 func validatePurchaseItemUpdateVariant(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, command UpdateItemCommand, variantID *string) error {

@@ -38,6 +38,11 @@ type saveItemEditsPlan struct {
 	purchaseUpdate *UpdateCommand
 }
 
+type saveItemEditsTargets struct {
+	purchase *models.Purchase
+	items    map[gofrsuuid.UUID]purchaseItemUpdateState
+}
+
 func planSaveItemEdits(command SaveItemEditsCommand) (saveItemEditsPlan, error) {
 	if (len(command.Items) == 0 && command.PurchaseUpdate == nil) || len(command.Items) > 200 {
 		return saveItemEditsPlan{}, fmt.Errorf("%w: save requires a purchase patch or up to two hundred item patches", ErrBadInput)
@@ -98,7 +103,7 @@ func (s *Service) applySaveItemEdits(ctx context.Context, plan saveItemEditsPlan
 	}
 	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
-	purchase, err := lockSaveItemEditsTargets(ctx, executor, plan)
+	targets, err := lockSaveItemEditsTargets(ctx, executor, plan)
 	if err != nil {
 		return SaveItemEditsResult{}, err
 	}
@@ -106,11 +111,23 @@ func (s *Service) applySaveItemEdits(ctx context.Context, plan saveItemEditsPlan
 	result := SaveItemEditsResult{Items: make([]BulkUpdatedItem, 0, len(plan.items))}
 	accountingChanged := false
 	for index, item := range plan.items {
-		updated, err := s.updateItem(ctx, item, tx, true, &accountingChanged)
-		if err != nil {
+		if err := validateUpdateItemCommand(item); err != nil {
 			return SaveItemEditsResult{}, err
 		}
-		result.Items = append(result.Items, BulkUpdatedItem{ID: plan.itemIDs[index].String(), PurchaseID: updated.PurchaseID})
+		state, ok := targets.items[plan.itemIDs[index]]
+		if !ok {
+			return SaveItemEditsResult{}, ErrNotFound
+		}
+		if err := requirePurchaseMember(ctx, executor, state.householdID, plan.actorID); err != nil {
+			return SaveItemEditsResult{}, err
+		}
+		if err := validatePurchaseItemUpdateState(item, state); err != nil {
+			return SaveItemEditsResult{}, err
+		}
+		if err := planAndApplyPurchaseItemUpdate(ctx, tx, executor, plan.actorID, item, state, true, &accountingChanged); err != nil {
+			return SaveItemEditsResult{}, err
+		}
+		result.Items = append(result.Items, BulkUpdatedItem{ID: plan.itemIDs[index].String(), PurchaseID: state.purchase.ID.String()})
 	}
 	if plan.purchaseUpdate != nil {
 		if _, err := s.update(ctx, *plan.purchaseUpdate, tx, true, &accountingChanged); err != nil {
@@ -118,8 +135,8 @@ func (s *Service) applySaveItemEdits(ctx context.Context, plan saveItemEditsPlan
 		}
 	}
 	merchantChanged := plan.purchaseUpdate != nil && slices.Contains(plan.purchaseUpdate.ChangedFields, updateFieldMerchant)
-	if purchase.Status == postedStatus && (accountingChanged || merchantChanged) {
-		purchase, err = models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(plan.purchaseID)))).One(ctx, executor)
+	if targets.purchase.Status == postedStatus && (accountingChanged || merchantChanged) {
+		purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(plan.purchaseID)))).One(ctx, executor)
 		if err != nil {
 			return SaveItemEditsResult{}, err
 		}
@@ -143,20 +160,20 @@ func (s *Service) applySaveItemEdits(ctx context.Context, plan saveItemEditsPlan
 	return result, nil
 }
 
-func lockSaveItemEditsTargets(ctx context.Context, executor bob.Executor, plan saveItemEditsPlan) (*models.Purchase, error) {
+func lockSaveItemEditsTargets(ctx context.Context, executor bob.Executor, plan saveItemEditsPlan) (saveItemEditsTargets, error) {
 	observedPurchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(plan.purchaseID)))).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
+		return saveItemEditsTargets{}, ErrNotFound
 	}
 	if err != nil {
-		return nil, err
+		return saveItemEditsTargets{}, err
 	}
 	householdID := observedPurchase.HouseholdID
 	if err := requirePurchaseMember(ctx, executor, householdID, plan.actorID); err != nil {
-		return nil, err
+		return saveItemEditsTargets{}, err
 	}
 	if observedPurchase.Status != draftStatus && observedPurchase.Status != postedStatus {
-		return nil, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
+		return saveItemEditsTargets{}, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
 	}
 	targetOccurredAt := observedPurchase.OccurredAt
 	if plan.purchaseUpdate != nil && plan.purchaseUpdate.OccurredAt != nil {
@@ -164,38 +181,43 @@ func lockSaveItemEditsTargets(ctx context.Context, executor bob.Executor, plan s
 	}
 	if err := lockPurchaseAccountingPeriods(ctx, executor, householdID,
 		accounting.PeriodFor(observedPurchase.OccurredAt), accounting.PeriodFor(targetOccurredAt)); err != nil {
-		return nil, err
+		return saveItemEditsTargets{}, err
 	}
-	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForShare()).One(ctx, executor); err != nil {
-		return nil, err
+	household, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForShare()).One(ctx, executor)
+	if err != nil {
+		return saveItemEditsTargets{}, err
 	}
 	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(plan.purchaseID))), sm.ForUpdate()).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
+		return saveItemEditsTargets{}, ErrNotFound
 	}
 	if err != nil {
-		return nil, err
+		return saveItemEditsTargets{}, err
 	}
 	if !purchase.OccurredAt.Equal(observedPurchase.OccurredAt) || purchase.HouseholdID != householdID {
-		return nil, ErrConflict
+		return saveItemEditsTargets{}, ErrConflict
 	}
 	if purchase.Status != draftStatus && purchase.Status != postedStatus {
-		return nil, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
+		return saveItemEditsTargets{}, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
 	}
+	items := make(map[gofrsuuid.UUID]purchaseItemUpdateState, len(plan.itemIDs))
 	for _, itemID := range plan.itemLockOrder {
 		item, queryErr := models.PurchaseItems.Query(sm.Where(psql.And(
 			models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemID)),
 			models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(plan.purchaseID)),
 		)), sm.ForUpdate()).One(ctx, executor)
 		if errors.Is(queryErr, sql.ErrNoRows) {
-			return nil, ErrNotFound
+			return saveItemEditsTargets{}, ErrNotFound
 		}
 		if queryErr != nil {
-			return nil, queryErr
+			return saveItemEditsTargets{}, queryErr
 		}
 		if item.HouseholdID != householdID {
-			return nil, ErrNotFound
+			return saveItemEditsTargets{}, ErrNotFound
+		}
+		items[itemID] = purchaseItemUpdateState{
+			householdID: householdID, household: household, purchase: purchase, item: item, status: purchase.Status,
 		}
 	}
-	return purchase, nil
+	return saveItemEditsTargets{purchase: purchase, items: items}, nil
 }
