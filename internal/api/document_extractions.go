@@ -47,8 +47,7 @@ func (s *Server) documentExtractions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document extraction history lookup failed", "error", err)
-		http.Error(w, "document extraction history lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document extraction history lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	jobs, err := models.ExtractionJobs.Query(
@@ -60,8 +59,7 @@ func (s *Server) documentExtractions(w http.ResponseWriter, r *http.Request) {
 		sm.OrderBy(models.ExtractionJobs.Columns.Version).Desc(),
 	).All(r.Context(), executor)
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document extraction history query failed", "error", err)
-		http.Error(w, "document extraction history lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document extraction history query failed", http.StatusInternalServerError, err)
 		return
 	}
 	versions := make([]documentExtractionVersion, 0, len(jobs))
@@ -104,8 +102,7 @@ func (s *Server) documentExtraction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document extraction lookup failed", "error", err)
-		http.Error(w, "document extraction lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document extraction lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	jobID, err := uuid.FromString(r.PathValue("versionId"))
@@ -124,8 +121,7 @@ func (s *Server) documentExtraction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document extraction version lookup failed", "error", err)
-		http.Error(w, "document extraction lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document extraction version lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	if !job.Result.Valid {

@@ -285,7 +285,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming is unavailable", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "event stream response writer unavailable", http.StatusInternalServerError, errors.New("response writer does not support streaming"))
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -355,7 +355,7 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
-		http.Error(w, "OIDC is not configured", http.StatusServiceUnavailable)
+		s.writeOperationalError(w, r, "OIDC login unavailable", http.StatusServiceUnavailable, errors.New("OIDC is not configured"))
 		return
 	}
 	s.auth.Login(w, r)
@@ -363,7 +363,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
-		http.Error(w, "OIDC is not configured", http.StatusServiceUnavailable)
+		s.writeOperationalError(w, r, "OIDC callback unavailable", http.StatusServiceUnavailable, errors.New("OIDC is not configured"))
 		return
 	}
 	s.auth.Callback(w, r)
@@ -380,7 +380,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
-		http.Error(w, "OIDC is not configured", http.StatusServiceUnavailable)
+		s.writeOperationalError(w, r, "OIDC logout unavailable", http.StatusServiceUnavailable, errors.New("OIDC is not configured"))
 		return
 	}
 	s.auth.Logout(w, r)
@@ -420,15 +420,61 @@ func (s *Server) recover(next http.Handler) http.Handler {
 	})
 }
 
+func (s *Server) writeOperationalError(w http.ResponseWriter, r *http.Request, message string, status int, err error) {
+	s.logger.ErrorContext(r.Context(), message, "status", status, "error", err)
+	http.Error(w, http.StatusText(status), status)
+}
+
 func (s *Server) accessLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r)
-		if IsHealthProbe(r) {
+		statusWriter := &responseStatusWriter{ResponseWriter: w}
+		var responseWriter http.ResponseWriter = statusWriter
+		if flusher, ok := w.(http.Flusher); ok {
+			responseWriter = &flushingResponseWriter{responseStatusWriter: statusWriter, flusher: flusher}
+		}
+		next.ServeHTTP(responseWriter, r)
+		if IsHealthProbe(r) || statusWriter.status >= http.StatusBadRequest {
 			return
 		}
 		s.logger.InfoContext(r.Context(), "request completed", "method", r.Method, "path", r.URL.Path, "duration", time.Since(start).String())
 	})
+}
+
+type responseStatusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *responseStatusWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *responseStatusWriter) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+
+	return w.ResponseWriter.Write(body)
+}
+
+func (w *responseStatusWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+type flushingResponseWriter struct {
+	*responseStatusWriter
+	flusher http.Flusher
+}
+
+func (w *flushingResponseWriter) Flush() {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	w.flusher.Flush()
 }
 
 // IsHealthProbeはリクエストがAPIのヘルスプローブ宛てかを返す。
@@ -453,7 +499,7 @@ func (s *Server) writeAuthenticationFailure(w http.ResponseWriter, r *http.Reque
 
 func (s *Server) writeAuthenticationUnavailable(w http.ResponseWriter, r *http.Request, err error) {
 	cause := rootError(err)
-	attrs := []any{"error_type", fmt.Sprintf("%T", cause)}
+	attrs := []any{"error_type", fmt.Sprintf("%T", cause), "error", err}
 	databaseError, ok := errors.AsType[*pgconn.PgError](cause)
 	if ok {
 		attrs = append(attrs, "database_code", databaseError.Code)

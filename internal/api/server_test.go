@@ -91,21 +91,48 @@ func TestAuthenticationFailuresSeparateMissingSessionFromLookupFailure(t *testin
 	}
 }
 
-func TestAuthenticationFailureLogsRootCauseWithoutDatabaseMessage(t *testing.T) {
+func TestAuthenticationFailureLogsRootCauseAndKeepsResponseGeneric(t *testing.T) {
 	t.Parallel()
 	var output bytes.Buffer
 	server := New(nil, nil, slog.New(slog.NewTextHandler(&output, nil)), Config{})
 	request := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
-	server.writeAuthenticationUnavailable(httptest.NewRecorder(), request, fmt.Errorf("resolve OIDC session: %w", &pgconn.PgError{
+	response := httptest.NewRecorder()
+	privateDatabaseError := &pgconn.PgError{
 		Code:    "40001",
 		Message: "private database detail",
-	}))
+	}
+	err := fmt.Errorf("resolve OIDC session: %w", privateDatabaseError)
+	server.writeAuthenticationFailure(response, request, err)
 	log := output.String()
 	if !strings.Contains(log, "error_type=*pgconn.PgError") || !strings.Contains(log, "database_code=40001") {
 		t.Fatalf("authentication failure log is missing safe diagnostics: %s", log)
 	}
-	if strings.Contains(log, "private database detail") {
-		t.Fatalf("authentication failure log exposed the database error message: %s", log)
+	if !strings.Contains(log, "private database detail") {
+		t.Fatalf("authentication failure log is missing the original error: %s", log)
+	}
+	if strings.Contains(response.Body.String(), "private database detail") {
+		t.Fatalf("authentication response exposed the database error: %s", response.Body.String())
+	}
+}
+
+func TestWriteOperationalErrorLogsCauseAndReturnsGenericResponse(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	server := New(nil, nil, slog.New(slog.NewTextHandler(&output, nil)), Config{})
+	request := httptest.NewRequest(http.MethodGet, "/documents/example.test/content", nil)
+	response := httptest.NewRecorder()
+	privateCause := errors.New("private database detail")
+
+	server.writeOperationalError(response, request, "document content lookup failed", http.StatusInternalServerError, privateCause)
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+	}
+	if strings.Contains(response.Body.String(), privateCause.Error()) || strings.Contains(response.Body.String(), "document content lookup failed") {
+		t.Fatalf("response exposed operational details: %s", response.Body.String())
+	}
+	if !strings.Contains(output.String(), "document content lookup failed") || !strings.Contains(output.String(), privateCause.Error()) {
+		t.Fatalf("operational error log is missing its cause: %s", output.String())
 	}
 }
 
@@ -113,15 +140,28 @@ func TestAccessLogSkipsHealthProbes(t *testing.T) {
 	t.Parallel()
 	var output bytes.Buffer
 	server := New(nil, nil, slog.New(slog.NewTextHandler(&output, nil)), Config{})
-	handler := server.accessLog(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := server.accessLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/invalid" {
+			w.WriteHeader(http.StatusBadRequest)
+
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	for _, path := range []string{"/healthz", "/readyz", "/documents"} {
+	for _, test := range []struct {
+		path       string
+		wantStatus int
+	}{
+		{path: "/healthz", wantStatus: http.StatusOK},
+		{path: "/readyz", wantStatus: http.StatusOK},
+		{path: "/documents", wantStatus: http.StatusOK},
+		{path: "/invalid", wantStatus: http.StatusBadRequest},
+	} {
 		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
-		if response.Code != http.StatusOK {
-			t.Errorf("GET %s status = %d, want %d", path, response.Code, http.StatusOK)
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+		if response.Code != test.wantStatus {
+			t.Errorf("GET %s status = %d, want %d", test.path, response.Code, test.wantStatus)
 		}
 	}
 
@@ -131,6 +171,9 @@ func TestAccessLogSkipsHealthProbes(t *testing.T) {
 	}
 	if !strings.Contains(log, "path=/documents") {
 		t.Errorf("ordinary request was not logged: %s", log)
+	}
+	if strings.Contains(log, "/invalid") {
+		t.Errorf("expected client rejection was logged: %s", log)
 	}
 }
 

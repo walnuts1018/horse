@@ -44,7 +44,7 @@ func (s *Server) documentInteractionEvents(w http.ResponseWriter, r *http.Reques
 	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming is unavailable", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document interaction stream unavailable", http.StatusInternalServerError, errors.New("response writer does not support streaming"))
 		return
 	}
 	event, terminal, err := s.currentDocumentInteractionEvent(r, documentID, jobID, memberID)
@@ -53,8 +53,7 @@ func (s *Server) documentInteractionEvents(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction stream lookup failed", "error", err)
-		http.Error(w, "document interaction stream unavailable", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document interaction stream lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")

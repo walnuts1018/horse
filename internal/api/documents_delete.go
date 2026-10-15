@@ -38,7 +38,7 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	store, ok := s.cfg.Store.(documentDeleter)
 	if !ok {
-		http.Error(w, "document storage is unavailable", http.StatusServiceUnavailable)
+		s.writeOperationalError(w, r, "document deletion storage unavailable", http.StatusServiceUnavailable, errors.New("document store does not support deletion"))
 
 		return
 	}
@@ -56,7 +56,7 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
-		http.Error(w, "document deletion failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document deletion transaction failed", http.StatusInternalServerError, err)
 
 		return
 	}
@@ -69,7 +69,7 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document deletion lookup failed", http.StatusInternalServerError, err)
 
 		return
 	}
@@ -80,21 +80,21 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 
 			return
 		}
-		http.Error(w, "document deletion validation failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document deletion validation failed", http.StatusInternalServerError, err)
 
 		return
 	}
 	if !pendingDeletion {
 		metadata := make(map[string]any)
 		if err := stdjson.Unmarshal(document.Metadata.Val, &metadata); err != nil {
-			http.Error(w, "document metadata lookup failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "document deletion metadata decoding failed", http.StatusInternalServerError, err)
 
 			return
 		}
 		metadata[documentDeletionPendingKey] = true
 		metadataJSON, err := stdjson.Marshal(metadata)
 		if err != nil {
-			http.Error(w, "document metadata update failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "document deletion metadata encoding failed", http.StatusInternalServerError, err)
 
 			return
 		}
@@ -103,17 +103,17 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 			(models.SourceDocumentSetter{Metadata: &metadataValue}).UpdateMod(),
 			um.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(document.ID))),
 		).Exec(r.Context(), executor); err != nil {
-			http.Error(w, "document metadata update failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "document deletion metadata update failed", http.StatusInternalServerError, err)
 
 			return
 		}
 		if err := tx.Commit(r.Context()); err != nil {
-			http.Error(w, "document metadata update failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "document deletion transaction commit failed", http.StatusInternalServerError, err)
 
 			return
 		}
 	} else if err := tx.Commit(r.Context()); err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document deletion transaction commit failed", http.StatusInternalServerError, err)
 
 		return
 	}
@@ -127,15 +127,14 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 		}
 		deletedKeys[key] = struct{}{}
 		if err := s.deleteDocumentObjectIfUnreferenced(r.Context(), store, key, document.ID); err != nil {
-			s.logger.ErrorContext(r.Context(), "document object deletion failed", "error", err)
-			http.Error(w, "document deletion failed", http.StatusBadGateway)
+			s.writeOperationalError(w, r, "document object deletion failed", http.StatusBadGateway, err)
 
 			return
 		}
 	}
 	finalTx, err := s.db.Begin(r.Context())
 	if err != nil {
-		http.Error(w, "document registration deletion failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document registration deletion transaction failed", http.StatusInternalServerError, err)
 
 		return
 	}
@@ -151,7 +150,7 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document registration deletion lookup failed", http.StatusInternalServerError, err)
 
 		return
 	}
@@ -161,12 +160,12 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := models.SourceDocuments.Delete(dm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(document.ID)))).Exec(r.Context(), finalExecutor); err != nil {
-		http.Error(w, "document registration deletion failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document registration deletion failed", http.StatusInternalServerError, err)
 
 		return
 	}
 	if err := finalTx.Commit(r.Context()); err != nil {
-		http.Error(w, "document registration deletion failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document registration deletion commit failed", http.StatusInternalServerError, err)
 
 		return
 	}

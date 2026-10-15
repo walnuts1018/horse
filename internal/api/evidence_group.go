@@ -63,7 +63,7 @@ func (s *Server) confirmPurchaseEvidence(w http.ResponseWriter, r *http.Request)
 	}
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
-		http.Error(w, "evidence confirmation failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence confirmation transaction failed", http.StatusInternalServerError, err)
 		return
 	}
 	defer func(ctx context.Context) { _ = tx.Rollback(ctx) }(context.WithoutCancel(r.Context()))
@@ -74,11 +74,11 @@ func (s *Server) confirmPurchaseEvidence(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
-		http.Error(w, "purchase lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence confirmation purchase lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	if err := accounting.LockHouseholdEventCursor(r.Context(), executor, purchase.HouseholdID); err != nil {
-		http.Error(w, "purchase lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence confirmation event cursor lock failed", http.StatusInternalServerError, err)
 
 		return
 	}
@@ -87,7 +87,7 @@ func (s *Server) confirmPurchaseEvidence(w http.ResponseWriter, r *http.Request)
 		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
 	)), sm.ForUpdate()).One(r.Context(), executor)
 	if err != nil {
-		http.Error(w, "purchase lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence confirmation purchase lock failed", http.StatusInternalServerError, err)
 
 		return
 	}
@@ -95,7 +95,12 @@ func (s *Server) confirmPurchaseEvidence(w http.ResponseWriter, r *http.Request)
 		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(purchase.HouseholdID)),
 		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(memberID)),
 	))).Exists(r.Context(), executor)
-	if err != nil || !member {
+	if err != nil {
+		s.writeOperationalError(w, r, "evidence confirmation member lookup failed", http.StatusInternalServerError, err)
+
+		return
+	}
+	if !member {
 		http.NotFound(w, r)
 		return
 	}
@@ -109,14 +114,14 @@ func (s *Server) confirmPurchaseEvidence(w http.ResponseWriter, r *http.Request)
 			case errors.Is(err, errEvidenceInput):
 				http.Error(w, "invalid evidence source", http.StatusBadRequest)
 			default:
-				http.Error(w, "evidence confirmation failed", http.StatusInternalServerError)
+				s.writeOperationalError(w, r, "evidence confirmation failed", http.StatusInternalServerError, err)
 			}
 			return
 		}
 	}
 	eventType := "evidence.group_linked"
 	if err := accounting.LockHouseholdEventCursor(r.Context(), executor, purchase.HouseholdID); err != nil {
-		http.Error(w, "evidence event failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence event cursor lock failed", http.StatusInternalServerError, err)
 
 		return
 	}
@@ -126,11 +131,11 @@ func (s *Server) confirmPurchaseEvidence(w http.ResponseWriter, r *http.Request)
 		HouseholdID: &purchase.HouseholdID, Type: &eventType, EntityID: &purchase.ID,
 		Revision: &purchase.Revision, ChangedFields: &changedFields, ActorID: &actorID,
 	}).Exec(r.Context(), executor); err != nil {
-		http.Error(w, "evidence event failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence event insertion failed", http.StatusInternalServerError, err)
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
-		http.Error(w, "evidence confirmation failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence confirmation transaction commit failed", http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"linked": true, "sourceCount": len(input.Sources)})

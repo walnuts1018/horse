@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"net/http"
 	"time"
 
@@ -49,11 +50,11 @@ func (s *Server) purchaseEvidence(w http.ResponseWriter, r *http.Request) {
 		sm.OrderBy(models.EvidenceLinks.Columns.ItemID),
 	).All(r.Context(), bobpgx.NewPool(s.db))
 	if err != nil {
-		http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "purchase evidence lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	if err := evidenceLinks.LoadSourceDocument(r.Context(), bobpgx.NewPool(s.db)); err != nil {
-		http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "purchase evidence source lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	type evidence struct {
@@ -71,7 +72,7 @@ func (s *Server) purchaseEvidence(w http.ResponseWriter, r *http.Request) {
 	for _, link := range evidenceLinks {
 		document := link.R.SourceDocument
 		if document == nil {
-			http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "purchase evidence source missing", http.StatusInternalServerError, errors.New("evidence link has no source document"))
 			return
 		}
 		entry := evidence{

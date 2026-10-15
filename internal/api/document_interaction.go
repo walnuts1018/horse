@@ -32,7 +32,7 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Store == nil {
-		http.Error(w, "document processing is unavailable", http.StatusServiceUnavailable)
+		s.writeOperationalError(w, r, "document interaction storage unavailable", http.StatusServiceUnavailable, errors.New("document store is not configured"))
 		return
 	}
 	var input struct {
@@ -52,8 +52,7 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction transaction failed", "error", err)
-		http.Error(w, "document interaction failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document interaction transaction failed", http.StatusInternalServerError, err)
 		return
 	}
 	defer func(ctx context.Context) { _ = tx.Rollback(ctx) }(context.WithoutCancel(r.Context()))
@@ -74,8 +73,7 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction document lookup failed", "error", err)
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document interaction document lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	latestJob, err := models.ExtractionJobs.Query(
@@ -87,8 +85,7 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction extraction lookup failed", "error", err)
-		http.Error(w, "extraction lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document interaction extraction lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	if latestJob.Status == "running" || latestJob.Status == "queued" {
@@ -108,8 +105,7 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction latest extraction lookup failed", "error", err)
-		http.Error(w, "extraction lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document interaction latest extraction lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	var baseJob *models.ExtractionJob
@@ -129,14 +125,12 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction base extraction lookup failed", "error", err)
-		http.Error(w, "extraction lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document interaction base extraction lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	var previous ingestion.Verification
 	if err := stdjson.Unmarshal(baseJob.Result.V.Val, &previous); err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction result decoding failed", "error", err)
-		http.Error(w, "extraction result is unavailable", http.StatusConflict)
+		s.writeOperationalError(w, r, "document interaction result decoding failed", http.StatusInternalServerError, err)
 		return
 	}
 	if len(previous.Receipt.Items) == 0 && len(previous.Statements) == 0 {
@@ -148,15 +142,14 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := validateDocumentConversation(previous.Conversation); err != nil {
-		http.Error(w, "document conversation is unavailable", http.StatusConflict)
+		s.writeOperationalError(w, r, "document interaction conversation validation failed", http.StatusInternalServerError, err)
 		return
 	}
 	conversationID := previous.ConversationID
 	if baseJob.ID != latestSuccess.ID || conversationID == "" {
 		conversationIDValue, idErr := uuid.NewV7()
 		if idErr != nil {
-			s.logger.ErrorContext(r.Context(), "document interaction ID generation failed", "error", idErr)
-			http.Error(w, "document interaction failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "document interaction ID generation failed", http.StatusInternalServerError, idErr)
 			return
 		}
 		conversationID = conversationIDValue.String()
@@ -164,8 +157,14 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 	var previousRequest struct {
 		Model string `json:"model,omitempty"`
 	}
-	if err := stdjson.Unmarshal(baseJob.Request.Val, &previousRequest); err != nil || !validDocumentModelSelection(previousRequest.Model) {
-		http.Error(w, "extraction model is unavailable", http.StatusConflict)
+	if err := stdjson.Unmarshal(baseJob.Request.Val, &previousRequest); err != nil {
+		s.writeOperationalError(w, r, "document interaction model request decoding failed", http.StatusInternalServerError, err)
+
+		return
+	}
+	if !validDocumentModelSelection(previousRequest.Model) {
+		s.writeOperationalError(w, r, "document interaction model request invalid", http.StatusInternalServerError, errors.New("stored extraction model is invalid"))
+
 		return
 	}
 	model, _ := documentModelSelection(previousRequest.Model)
@@ -178,8 +177,7 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		Issues     []string                   `json:"issues,omitempty"`
 	}{Receipt: previous.Receipt, Statements: previous.Statements, Issues: previous.Issues})
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction extraction encoding failed", "error", err)
-		http.Error(w, "extraction result is unavailable", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document interaction extraction encoding failed", http.StatusInternalServerError, err)
 		return
 	}
 	request, err := stdjson.Marshal(struct {
@@ -195,14 +193,12 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		Conversation: previous.Conversation, CurrentExtraction: currentExtraction,
 	})
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction request encoding failed", "error", err)
-		http.Error(w, "document interaction failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document interaction request encoding failed", http.StatusInternalServerError, err)
 		return
 	}
 	jobID, err := uuid.NewV7()
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction job ID generation failed", "error", err)
-		http.Error(w, "document interaction failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document interaction job ID generation failed", http.StatusInternalServerError, err)
 		return
 	}
 	version := latestJob.Version + 1
@@ -212,13 +208,11 @@ func (s *Server) interactWithDocument(w http.ResponseWriter, r *http.Request) {
 		ID: &jobID, HouseholdID: &document.HouseholdID, SourceDocumentID: &document.ID, Version: &version,
 		Status: &status, Request: &requestJSON,
 	}).Exec(r.Context(), executor); err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction job insertion failed", "error", err)
-		http.Error(w, "document interaction failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document interaction job insertion failed", http.StatusInternalServerError, err)
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
-		s.logger.ErrorContext(r.Context(), "document interaction transaction commit failed", "error", err)
-		http.Error(w, "document interaction failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document interaction transaction commit failed", http.StatusInternalServerError, err)
 		return
 	}
 	if s.cfg.Queue != nil {

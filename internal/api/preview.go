@@ -24,11 +24,11 @@ func (s *Server) documentPreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Store == nil {
-		http.Error(w, "document storage is unavailable", http.StatusServiceUnavailable)
+		s.writeOperationalError(w, r, "document storage is unavailable", http.StatusServiceUnavailable, errors.New("document store is not configured"))
 		return
 	}
 	if s.cfg.OCR.Endpoint == "" {
-		http.Error(w, "document preview is unavailable", http.StatusServiceUnavailable)
+		s.writeOperationalError(w, r, "document preview is unavailable", http.StatusServiceUnavailable, errors.New("OCR endpoint is not configured"))
 		return
 	}
 	page := 0
@@ -59,7 +59,7 @@ func (s *Server) documentPreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document preview lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	if !supportedPreviewType(document.MimeType) || (document.MimeType != documentMIMEPDF && page != 0) {
@@ -68,11 +68,11 @@ func (s *Server) documentPreview(w http.ResponseWriter, r *http.Request) {
 	}
 	original, err := s.cfg.Store.Get(r.Context(), document.ObjectKey, document.MimeType)
 	if err != nil {
-		http.Error(w, "document unavailable", http.StatusBadGateway)
+		s.writeOperationalError(w, r, "document preview source unavailable", http.StatusBadGateway, err)
 		return
 	}
 	if len(original.Data) == 0 || len(original.Data) > ingestion.MaxDocumentBytes {
-		http.Error(w, "document unavailable", http.StatusBadGateway)
+		s.writeOperationalError(w, r, "document preview source invalid", http.StatusBadGateway, errors.New("stored document size is invalid"))
 		return
 	}
 	preview, transform, err := s.cfg.OCR.Crop(r.Context(), original, ingestion.Region{Page: page, Top: 0, Left: 0, Bottom: 1, Right: 1})
@@ -81,17 +81,20 @@ func (s *Server) documentPreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "document preview failed", http.StatusBadGateway)
+		s.writeOperationalError(w, r, "document preview generation failed", http.StatusBadGateway, err)
 		return
 	}
 	config, _, err := image.DecodeConfig(bytes.NewReader(preview.Data))
 	if err != nil || config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > maxPreviewPixels {
-		http.Error(w, "document preview failed", http.StatusBadGateway)
+		if err == nil {
+			err = errors.New("preview image dimensions are invalid")
+		}
+		s.writeOperationalError(w, r, "document preview image invalid", http.StatusBadGateway, err)
 		return
 	}
 	transformJSON, err := json.Marshal(transform)
 	if err != nil {
-		http.Error(w, "document preview failed", http.StatusBadGateway)
+		s.writeOperationalError(w, r, "document preview encoding failed", http.StatusBadGateway, err)
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")

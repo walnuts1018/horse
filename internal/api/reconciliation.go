@@ -41,7 +41,7 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "observation lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "reconciliation document lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	query := r.URL.Query()
@@ -53,7 +53,7 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 		limit:           reconciliationObservationLimit + 1,
 	})
 	if err != nil {
-		http.Error(w, "observation lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "reconciliation observations lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	if len(incoming) == 0 {
@@ -63,7 +63,7 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 			models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
 		))).Exists(r.Context(), executor)
 		if err != nil {
-			http.Error(w, "observation lookup failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "reconciliation extraction status lookup failed", http.StatusInternalServerError, err)
 			return
 		}
 		if !hasSuccessfulExtraction {
@@ -86,7 +86,7 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 		limit:      reconciliationCandidateLimit + 1,
 	})
 	if err != nil {
-		http.Error(w, "observation lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "reconciliation candidate lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	if len(existing) > reconciliationCandidateLimit {

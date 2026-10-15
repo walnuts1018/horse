@@ -109,7 +109,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Store == nil {
-		http.Error(w, "document storage is unavailable", http.StatusServiceUnavailable)
+		s.writeOperationalError(w, r, "document upload storage unavailable", http.StatusServiceUnavailable, errors.New("document store is not configured"))
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 2*ingestion.MaxDocumentBytes+(1<<20))
@@ -194,7 +194,7 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 	if len(analysisData) > 0 {
 		analysisTransformJSON, err = json.Marshal(analysisTransform)
 		if err != nil {
-			http.Error(w, "document registration failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "document analysis transform encoding failed", http.StatusInternalServerError, err)
 			return
 		}
 	}
@@ -204,18 +204,17 @@ func (s *Server) uploadDocument(w http.ResponseWriter, r *http.Request) {
 		AnalysisTransform: analysisTransformJSON,
 	})
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "document registration failed", "error", err)
-		http.Error(w, "document registration failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document registration failed", http.StatusInternalServerError, err)
 		return
 	}
 	s.publishDocumentJobs(r.Context(), registration.JobIDs)
 	result, err := s.documentResponse(r.Context(), bobpgx.NewPool(s.db), registration.Document)
 	if err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "registered document response failed", http.StatusInternalServerError, err)
 		return
 	}
 	if err := s.loadDocumentAttachments(r.Context(), bobpgx.NewPool(s.db), &result); err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "registered document attachments lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	result.Duplicate = registration.Duplicate
@@ -467,24 +466,24 @@ func (s *Server) document(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document detail lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	result, err := s.documentResponse(r.Context(), bobpgx.NewPool(s.db), storedDocument)
 	if err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document detail response failed", http.StatusInternalServerError, err)
 		return
 	}
 	if err := s.loadDocumentAttachments(r.Context(), bobpgx.NewPool(s.db), &result); err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document detail attachments lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	if err := s.loadDocumentConfirmations(r.Context(), &result); err != nil {
-		http.Error(w, "document confirmation lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document confirmations lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	if err := loadDocumentEvidence(r.Context(), bobpgx.NewPool(s.db), &result); err != nil {
-		http.Error(w, "document evidence lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document evidence lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -890,12 +889,12 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 	}
 	storedDocuments, err := models.SourceDocuments.Query(documentMods...).All(r.Context(), bobpgx.NewPool(s.db))
 	if err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document list query failed", http.StatusInternalServerError, err)
 		return
 	}
 	result, err := s.documentResponses(r.Context(), bobpgx.NewPool(s.db), storedDocuments)
 	if err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document list response failed", http.StatusInternalServerError, err)
 		return
 	}
 	documentResults := make([]*documentResponse, len(result))
@@ -903,7 +902,7 @@ func (s *Server) documents(w http.ResponseWriter, r *http.Request) {
 		documentResults[i] = &result[i]
 	}
 	if err := loadDocumentEvidence(r.Context(), bobpgx.NewPool(s.db), documentResults...); err != nil {
-		http.Error(w, "document evidence lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document list evidence lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	hasMore := len(result) > limit
@@ -1072,7 +1071,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Store == nil {
-		http.Error(w, "document processing is unavailable", http.StatusServiceUnavailable)
+		s.writeOperationalError(w, r, "document processing storage unavailable", http.StatusServiceUnavailable, errors.New("document store is not configured"))
 		return
 	}
 	var input struct {
@@ -1086,7 +1085,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
-		http.Error(w, "extraction retry failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "extraction retry transaction failed", http.StatusInternalServerError, err)
 		return
 	}
 	defer func(ctx context.Context) { _ = tx.Rollback(ctx) }(context.WithoutCancel(r.Context()))
@@ -1107,7 +1106,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "extraction retry document lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	if input.Crop != nil && document.MimeType != documentMIMEJPEG && document.MimeType != documentMIMEPNG && document.MimeType != documentMIMEWebP && document.MimeType != documentMIMEPDF {
@@ -1128,7 +1127,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 			models.SourceDocumentAttachments.Columns.ChildDocumentID.EQ(psql.Arg(document.ID)),
 		))).Exists(r.Context(), executor)
 		if err != nil {
-			http.Error(w, "document attachment lookup failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "document attachment lookup failed", http.StatusInternalServerError, err)
 			return
 		}
 		if !attachment {
@@ -1138,12 +1137,12 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		if *input.SourceKind != document.SourceKind {
 			confirmed, err := models.DocumentConfirmations.Query(sm.Where(models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)))).Exists(r.Context(), executor)
 			if err != nil {
-				http.Error(w, "document confirmation lookup failed", http.StatusInternalServerError)
+				s.writeOperationalError(w, r, "document confirmation lookup failed", http.StatusInternalServerError, err)
 				return
 			}
 			evidenced, err := models.EvidenceLinks.Query(sm.Where(models.EvidenceLinks.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)))).Exists(r.Context(), executor)
 			if err != nil {
-				http.Error(w, "document evidence lookup failed", http.StatusInternalServerError)
+				s.writeOperationalError(w, r, "document evidence lookup failed", http.StatusInternalServerError, err)
 				return
 			}
 			if confirmed || evidenced {
@@ -1158,7 +1157,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		sm.Limit(1), sm.ForUpdate(),
 	).One(r.Context(), executor)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		http.Error(w, "extraction status lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "extraction status lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	if latestJob != nil && latestJob.Status == "running" {
@@ -1172,7 +1171,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.SourceKind != nil && *input.SourceKind != document.SourceKind {
 		if err := document.Update(r.Context(), executor, &models.SourceDocumentSetter{SourceKind: input.SourceKind}); err != nil {
-			http.Error(w, "document update failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "document source update failed", http.StatusInternalServerError, err)
 			return
 		}
 		document.SourceKind = *input.SourceKind
@@ -1182,7 +1181,7 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 			model, _ := documentModelSelection(*input.Model)
 			updatedRequest, err := replaceExtractionJobModel(latestJob.Request.Val, model)
 			if err != nil {
-				http.Error(w, "extraction retry failed", http.StatusInternalServerError)
+				s.writeOperationalError(w, r, "extraction retry request update failed", http.StatusInternalServerError, err)
 
 				return
 			}
@@ -1194,13 +1193,13 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 			if err := latestJob.Update(r.Context(), executor, &models.ExtractionJobSetter{
 				Request: &requestJSON, ErrorCode: &noErrorCode, Attempt: &attempt, FailureCount: &failureCount, AvailableAt: &now, UpdatedAt: &now,
 			}); err != nil {
-				http.Error(w, "extraction retry failed", http.StatusInternalServerError)
+				s.writeOperationalError(w, r, "extraction retry job update failed", http.StatusInternalServerError, err)
 
 				return
 			}
 		}
 		if err := tx.Commit(r.Context()); err != nil {
-			http.Error(w, "extraction retry failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "extraction retry transaction commit failed", http.StatusInternalServerError, err)
 			return
 		}
 		if s.cfg.Queue != nil {
@@ -1228,12 +1227,12 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 		Model   string            `json:"model"`
 	}{Crop: input.Crop, Purpose: ingestion.JobPurposeInteractive, Model: model})
 	if err != nil {
-		http.Error(w, "extraction retry failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "extraction retry request encoding failed", http.StatusInternalServerError, err)
 		return
 	}
 	jobID, err := gofrsuuid.FromString(uuid.NewV7().String())
 	if err != nil {
-		http.Error(w, "extraction retry failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "extraction retry job ID generation failed", http.StatusInternalServerError, err)
 		return
 	}
 	version := int32(1)
@@ -1245,11 +1244,11 @@ func (s *Server) retryDocument(w http.ResponseWriter, r *http.Request) {
 	if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
 		ID: &jobID, HouseholdID: &document.HouseholdID, SourceDocumentID: &document.ID, Version: &version, Status: &status, Request: &requestJSON,
 	}).Exec(r.Context(), executor); err != nil {
-		http.Error(w, "extraction retry failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "extraction retry job insertion failed", http.StatusInternalServerError, err)
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
-		http.Error(w, "extraction retry failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "extraction retry transaction commit failed", http.StatusInternalServerError, err)
 		return
 	}
 	if s.cfg.Queue != nil {
@@ -1293,7 +1292,7 @@ func (s *Server) documentContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Store == nil {
-		http.Error(w, "document storage is unavailable", http.StatusServiceUnavailable)
+		s.writeOperationalError(w, r, "document content storage unavailable", http.StatusServiceUnavailable, errors.New("document store is not configured"))
 		return
 	}
 	documentID, err := gofrsuuid.FromString(r.PathValue("id"))
@@ -1312,12 +1311,12 @@ func (s *Server) documentContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "document lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "document content lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	doc, err := s.cfg.Store.Get(r.Context(), document.ObjectKey, document.MimeType)
 	if err != nil {
-		http.Error(w, "document unavailable", http.StatusBadGateway)
+		s.writeOperationalError(w, r, "document content unavailable", http.StatusBadGateway, err)
 		return
 	}
 	w.Header().Set("Content-Type", doc.MIMEType)
@@ -1348,7 +1347,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 	}
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
-		http.Error(w, "evidence confirmation failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence confirmation transaction failed", http.StatusInternalServerError, err)
 		return
 	}
 	defer func(ctx context.Context) { _ = tx.Rollback(ctx) }(context.WithoutCancel(r.Context()))
@@ -1369,7 +1368,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	purchaseID, err := parseNodeIDOrUUID(input.PurchaseID, "Purchase")
@@ -1385,7 +1384,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	} else if err != nil {
-		http.Error(w, "purchase lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "purchase lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	if input.ItemID != nil {
@@ -1399,7 +1398,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 			models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseID)),
 		))).Exists(r.Context(), executor)
 		if err != nil {
-			http.Error(w, "purchase item lookup failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "purchase item lookup failed", http.StatusInternalServerError, err)
 			return
 		}
 		if !exists {
@@ -1416,7 +1415,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		http.Error(w, "evidence lookup failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence lookup failed", http.StatusInternalServerError, err)
 		return
 	}
 	purchaseIDValue := sql.Null[gofrsuuid.UUID]{V: purchase.ID, Valid: true}
@@ -1454,13 +1453,13 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		transform := verified.Transform
 		observation, err = json.Marshal(map[string]any{jobIDJSONKey: *input.ObservationJobID, "itemIndex": *input.SourceItemIndex, "item": item, "transform": transform, "transformPage": verified.TransformPage})
 		if err != nil {
-			http.Error(w, "evidence encoding failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "evidence observation encoding failed", http.StatusInternalServerError, err)
 			return
 		}
 		if item.Region != nil {
 			encoded, err := json.Marshal(item.Region)
 			if err != nil {
-				http.Error(w, "evidence encoding failed", http.StatusInternalServerError)
+				s.writeOperationalError(w, r, "evidence region encoding failed", http.StatusInternalServerError, err)
 				return
 			}
 			region = string(encoded)
@@ -1479,7 +1478,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 	if region != nil {
 		encoded, ok := region.(string)
 		if !ok {
-			http.Error(w, "evidence encoding failed", http.StatusInternalServerError)
+			s.writeOperationalError(w, r, "evidence region decoding failed", http.StatusInternalServerError, errors.New("stored evidence region is not a string"))
 			return
 		}
 		evidenceRegion = sql.Null[types.JSON[stdjson.RawMessage]]{
@@ -1497,7 +1496,7 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 	}
 	eventType := "evidence.linked"
 	if err := accounting.LockHouseholdEventCursor(r.Context(), executor, document.HouseholdID); err != nil {
-		http.Error(w, "evidence event failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence event cursor lock failed", http.StatusInternalServerError, err)
 
 		return
 	}
@@ -1507,11 +1506,11 @@ func (s *Server) confirmEvidence(w http.ResponseWriter, r *http.Request) {
 		HouseholdID: &document.HouseholdID, Type: &eventType, EntityID: &document.ID,
 		Revision: &purchase.Revision, ChangedFields: &changedFields, ActorID: &actorID,
 	}).Exec(r.Context(), executor); err != nil {
-		http.Error(w, "evidence event failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence event insertion failed", http.StatusInternalServerError, err)
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
-		http.Error(w, "evidence link failed", http.StatusInternalServerError)
+		s.writeOperationalError(w, r, "evidence confirmation transaction commit failed", http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"linked": true})
