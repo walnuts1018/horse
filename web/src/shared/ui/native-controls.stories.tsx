@@ -27,6 +27,33 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+export const TextFields: Story = {
+  render: () => (
+    <div style={galleryStyle}>
+      <section style={exampleStyle}>
+        <strong>標準</strong>
+        <label>
+          店名
+          <input defaultValue="スーパーマーケット" />
+        </label>
+        <label>
+          内容
+          <textarea defaultValue="家計のメモ" rows={3} />
+        </label>
+      </section>
+      <section style={exampleStyle}>
+        <strong>無効・読み取り専用</strong>
+        <input aria-label="無効" disabled defaultValue="変更できません" />
+        <input aria-label="読み取り専用" readOnly value="コピーできます" />
+      </section>
+      <section style={exampleStyle}>
+        <strong>入力エラー</strong>
+        <input aria-invalid="true" aria-label="入力エラー" defaultValue="" />
+      </section>
+    </div>
+  ),
+};
+
 export const Checkboxes: Story = {
   render: () => (
     <div style={galleryStyle}>
