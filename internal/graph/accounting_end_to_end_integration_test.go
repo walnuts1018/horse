@@ -213,6 +213,115 @@ func assertHouseholdJournalsBalance(t *testing.T, ctx context.Context, db *pgxpo
 	}
 }
 
+func TestAccountOpeningBalancesCreateBalancedAssetAndLiabilityJournals(t *testing.T) {
+	t.Parallel()
+	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("HORSE_TEST_DATABASE_URL is not set")
+	}
+	ctx := t.Context()
+	db, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.Ping(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	memberID := uuid.NewV7().String()
+	memberUUID := generatedUUID(memberID)
+	subject, memberName := "account-opening-integration:"+memberID, "Account opening integration"
+	if _, err := models.Members.Insert(&models.MemberSetter{ID: &memberUUID, OidcSubject: &subject, DisplayName: &memberName}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = models.Members.Delete(dm.Where(models.Members.Columns.ID.EQ(psql.Arg(memberUUID)))).Exec(t.Context(), bobpgx.NewPool(db))
+	}()
+	ctx = auth.WithPrincipal(ctx, auth.Principal{MemberID: memberID, Subject: subject, DisplayName: memberName})
+	resolver := &mutationResolver{Resolver: (&Resolver{DB: db})}
+	household, err := resolver.createHousehold(ctx, model.CreateHouseholdInput{Name: "Account opening integration"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(generatedUUID(household.ID))))).Exec(t.Context(), bobpgx.NewPool(db))
+	}()
+
+	openingAt := model.DateTime("2026-07-15T12:00:00Z")
+	for _, expected := range []struct {
+		name          string
+		kind          model.AccountKind
+		amount        model.Long
+		accountDebit  bool
+		accountCredit bool
+	}{
+		{name: "Bank", kind: model.AccountKindBank, amount: 1200, accountDebit: true},
+		{name: "Card", kind: model.AccountKindCard, amount: 850, accountCredit: true},
+	} {
+		account, err := resolver.createAccount(ctx, model.CreateAccountInput{
+			HouseholdID: household.ID, Name: expected.name, Kind: expected.kind,
+			OpeningBalance: &model.AccountOpeningBalanceInput{AmountYen: expected.amount, At: openingAt},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		accountUUID := generatedUUID(account.ID)
+		journal, err := models.Journals.Query(sm.Where(psql.And(
+			models.Journals.Columns.HouseholdID.EQ(psql.Arg(generatedUUID(household.ID))),
+			models.Journals.Columns.SourceKind.EQ(psql.Arg(sourceKindAccountOpeningBalance)),
+			models.Journals.Columns.SourceID.EQ(psql.Arg(accountUUID)),
+		))).One(ctx, bobpgx.NewPool(db))
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries, err := models.JournalEntries.Query(
+			sm.Where(models.JournalEntries.Columns.JournalID.EQ(psql.Arg(journal.ID))),
+			sm.OrderBy(models.JournalEntries.Columns.LineNo),
+		).All(ctx, bobpgx.NewPool(db))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var debits, credits int64
+		accountLines := 0
+		for _, entry := range entries {
+			debits += entry.DebitYen
+			credits += entry.CreditYen
+			if entry.AccountID.Valid {
+				accountLines++
+				if entry.AccountID.V != accountUUID || entry.DebitYen != int64(expected.amount) && entry.CreditYen != int64(expected.amount) {
+					t.Fatalf("opening journal account line must match the account and opening amount: account=%#v entries=%#v", account, entries)
+				}
+				if expected.accountDebit && (entry.DebitYen != int64(expected.amount) || entry.CreditYen != 0) ||
+					expected.accountCredit && (entry.CreditYen != int64(expected.amount) || entry.DebitYen != 0) {
+					t.Fatalf("opening journal must post the account on its normal balance side: kind=%s entries=%#v", expected.kind, entries)
+				}
+			}
+		}
+		if len(entries) != 2 || accountLines != 1 || debits != int64(expected.amount) || credits != int64(expected.amount) {
+			t.Fatalf("opening journal must balance exactly at the opening amount: kind=%s entries=%#v debits=%d credits=%d", expected.kind, entries, debits, credits)
+		}
+
+		analysis, err := (&Resolver{DB: db}).Query().AccountBalanceAnalysis(ctx, household.ID, account.ID, "2026-07", "2026-07", nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if analysis.OpeningBalanceYen != 0 || analysis.ClosingBalanceYen != expected.amount || len(analysis.Changes.Edges) != 1 ||
+			analysis.Changes.Edges[0].Node.ChangeYen != expected.amount || accountBalanceSourceType(analysis.Changes.Edges[0].Node.Source) != "AccountOpeningBalance" {
+			t.Fatalf("account balance must reflect its opening journal once: kind=%s analysis=%#v", expected.kind, analysis)
+		}
+	}
+
+	assertHouseholdJournalsBalance(t, ctx, db, generatedUUID(household.ID))
+	balanceRows, err := accountBalances(ctx, db, generatedUUID(household.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(balanceRows) != 2 || balanceRows[0].BalanceYen != 1200 || balanceRows[1].BalanceYen != 850 {
+		t.Fatalf("account balances must preserve positive asset and liability magnitudes: %#v", balanceRows)
+	}
+}
+
 func TestPostedPurchaseCorrectionAffectsNextSettlementWithoutRewritingClosedPeriod(t *testing.T) {
 	t.Parallel()
 	databaseURL := os.Getenv("HORSE_TEST_DATABASE_URL")
