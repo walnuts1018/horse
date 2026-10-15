@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   claimPurchaseOutbox,
@@ -12,6 +12,7 @@ const {
   loadPurchaseDraft,
   markPurchaseOutboxFailed,
   retryPurchaseOutbox,
+  schedulePurchaseOutboxRetry,
   savePurchaseDraft,
   saveImportReceiptDraft,
 } = await import("./purchase-storage");
@@ -140,6 +141,48 @@ describe("purchase outbox storage", () => {
     expect(retryClaim).toMatchObject({ idempotencyKey, memberId });
     await completePurchaseOutbox(memberId, "household-1", idempotencyKey, "worker-3");
     expect(await listPurchaseOutbox(memberId)).toEqual([]);
+  });
+
+  it("一時的な失敗は再試行時刻まで送信待ちに保つ", async () => {
+    const memberId = "member-1";
+    const householdId = "household-1";
+    const idempotencyKey = "purchase-request-retry";
+    await enqueuePurchase(
+      {
+        idempotencyKey,
+        householdId,
+        occurredAt: "2026-10-14T00:00:00Z",
+        merchant: "テスト店舗",
+        items: [{ name: "テスト商品", amountYen: 100 }],
+      },
+      memberId,
+    );
+    const claim = await claimPurchaseOutbox(memberId, householdId, idempotencyKey, "worker-1");
+    if (!claim?.leaseOwner) throw new Error("claimしたownerが見つかりません");
+
+    const clock = vi.spyOn(Date, "now").mockReturnValue(100);
+    try {
+      await schedulePurchaseOutboxRetry(
+        memberId,
+        householdId,
+        idempotencyKey,
+        claim.leaseOwner,
+        200,
+      );
+      expect(await listPurchaseOutbox(memberId)).toMatchObject([
+        { idempotencyKey, status: "PENDING", retryCount: 1, nextRetryAt: 200 },
+      ]);
+      expect(
+        await claimPurchaseOutbox(memberId, householdId, idempotencyKey, "worker-2"),
+      ).toBeUndefined();
+
+      clock.mockReturnValue(200);
+      expect(
+        await claimPurchaseOutbox(memberId, householdId, idempotencyKey, "worker-2"),
+      ).toMatchObject({ idempotencyKey, status: "PENDING", nextRetryAt: undefined });
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("同じ家庭の下書きとOutboxをmemberIdで分離する", async () => {

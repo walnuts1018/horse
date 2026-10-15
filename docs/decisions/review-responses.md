@@ -4,6 +4,10 @@
 
 ## 2026年10月15日
 
+### 購入送信の一時障害
+
+ネットワーク例外、429、5xx、サーバー系GraphQLエラーでは購入送信を`PENDING`に保ち、次回再試行時刻と指数バックオフを保存します。IndexedDBのclaim時にも再試行時刻を検証し、冪等キーを維持したまま接続回復後に自動送信します。focused Vitest 2ファイル11件、`mise run web:check`、整形検査が成功したため、該当レビュー項目を削除しました。
+
 ### メール取り込みのバッチ容量
 
 設定時に`MaxBatchBytes`が`MaxMessageBytes`以上であることを検証し、受理できる最大サイズのメールが新しいバッチに収まるようにしました。`MaxBatchBytes`が小さい設定を拒否するテストと`go test ./internal/ingestion/mailbox -count=1`が成功したため、該当レビュー項目を削除しました。

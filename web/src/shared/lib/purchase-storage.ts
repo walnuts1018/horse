@@ -41,6 +41,8 @@ export type PurchaseOutboxEntry = {
   createdAt: number;
   updatedAt: number;
   lastError?: string;
+  retryCount?: number;
+  nextRetryAt?: number;
   leaseOwner?: string;
   leaseUntil?: number;
 };
@@ -516,6 +518,7 @@ export async function claimPurchaseOutbox(
       entry.memberId !== memberId ||
       entry.householdId !== householdId ||
       entry.status !== "PENDING" ||
+      (entry.nextRetryAt ?? 0) > Date.now() ||
       (entry.leaseUntil ?? 0) > Date.now()
     )
       return undefined;
@@ -524,6 +527,7 @@ export async function claimPurchaseOutbox(
       input: normalizePurchaseInput(entry.input),
       leaseOwner: owner,
       leaseUntil: Date.now() + leaseMilliseconds,
+      nextRetryAt: undefined,
       updatedAt: Date.now(),
     };
     await store.put(claimedEntry);
@@ -557,6 +561,40 @@ export async function markPurchaseOutboxFailed(
       ...entry,
       status: "FAILED",
       lastError: message,
+      leaseOwner: undefined,
+      leaseUntil: undefined,
+      updatedAt: Date.now(),
+    });
+  });
+  notifyOutboxChanged();
+}
+
+export async function schedulePurchaseOutboxRetry(
+  memberId: string,
+  householdId: string,
+  idempotencyKey: string,
+  owner: string,
+  nextRetryAt: number,
+) {
+  await withTransaction(outboxStore, "readwrite", async (transaction) => {
+    const store = transaction.objectStore(outboxStore);
+    const result: unknown = await store.get(
+      outboxStorageKey(memberId, householdId, idempotencyKey),
+    );
+    const entry = isPurchaseOutboxEntry(result) ? result : undefined;
+    if (
+      !entry ||
+      entry.memberId !== memberId ||
+      entry.householdId !== householdId ||
+      entry.leaseOwner !== owner
+    )
+      return;
+    await store.put({
+      ...entry,
+      status: "PENDING",
+      lastError: undefined,
+      retryCount: (entry.retryCount ?? 0) + 1,
+      nextRetryAt,
       leaseOwner: undefined,
       leaseUntil: undefined,
       updatedAt: Date.now(),
@@ -632,6 +670,8 @@ export async function retryPurchaseOutbox(
       ...entry,
       status: "PENDING",
       lastError: undefined,
+      retryCount: 0,
+      nextRetryAt: undefined,
       leaseOwner: undefined,
       leaseUntil: undefined,
       updatedAt: Date.now(),

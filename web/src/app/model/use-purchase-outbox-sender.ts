@@ -8,8 +8,34 @@ import {
   completePurchaseOutbox,
   markPurchaseOutboxFailed,
   renewPurchaseOutboxLease,
+  schedulePurchaseOutboxRetry,
   usePurchaseOutbox,
 } from "../../shared/lib";
+
+const maximumPurchaseOutboxRetryDelay = 5 * 60 * 1000;
+
+export function isRetryablePurchaseSendError(reason: unknown) {
+  if (reason instanceof TypeError) return true;
+  if (reason instanceof DOMException && ["AbortError", "NetworkError"].includes(reason.name))
+    return true;
+  if (!(reason instanceof ApiError)) return false;
+  return (
+    reason.status === 429 ||
+    (reason.status !== undefined && reason.status >= 500) ||
+    [
+      "SERVER_ERROR",
+      "INTERNAL",
+      "INTERNAL_SERVER_ERROR",
+      "SERVICE_UNAVAILABLE",
+      "BAD_GATEWAY",
+      "GATEWAY_TIMEOUT",
+    ].includes(reason.code ?? "")
+  );
+}
+
+export function purchaseOutboxRetryDelay(retryCount: number) {
+  return Math.min(1000 * 2 ** Math.max(0, retryCount), maximumPurchaseOutboxRetryDelay);
+}
 
 export function shouldAutoNavigateAfterPurchase(input: {
   queuedKey: string | null;
@@ -127,14 +153,20 @@ export function usePurchaseOutboxSender({
           }
         } catch (reason) {
           if (claimed) {
+            if (isRetryablePurchaseSendError(reason)) {
+              await schedulePurchaseOutboxRetry(
+                viewerId,
+                entry.input.householdId,
+                key,
+                owner,
+                Date.now() + purchaseOutboxRetryDelay(entry.retryCount ?? 0),
+              ).catch(() => {});
+              return;
+            }
             const message =
               reason instanceof ApiError
                 ? reason.message
-                : reason instanceof TypeError ||
-                    (reason instanceof DOMException &&
-                      ["AbortError", "NetworkError"].includes(reason.name))
-                  ? "接続を確認してから再送してください"
-                  : "買い物を送信できませんでした。再送または破棄してください";
+                : "買い物を送信できませんでした。再送または破棄してください";
             await markPurchaseOutboxFailed(
               viewerId,
               entry.input.householdId,
