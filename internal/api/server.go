@@ -93,6 +93,7 @@ func (s *Server) Handler() http.Handler {
 	add(http.MethodGet, "/documents/:id/matches", s.documentMatches)
 	add(http.MethodDelete, "/documents/:id", s.deleteDocument)
 	add(http.MethodPost, "/documents/:id/retry", s.retryDocument)
+	add(http.MethodPost, "/documents/:id/interaction", s.interactWithDocument)
 	add(http.MethodPost, "/documents/:id/confirm", s.confirmEvidence)
 	add(http.MethodPost, "/purchases/:id/evidence", s.confirmPurchaseEvidence)
 	add(http.MethodGet, "/purchases/:id/evidence", s.purchaseEvidence)
@@ -122,7 +123,7 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) newGraphQLHandler() *handler.Server {
 	resolver := &graph.Resolver{
-		DB: s.db, Auth: s.auth,
+		DB: s.db, Auth: s.auth, Logger: s.logger,
 		MailForwarding:        mailforwarding.NewService(s.db, s.cfg.MailForwarding),
 		MailForwardingEnabled: s.cfg.MailForwarding.MailboxDomain != "" && s.cfg.MailForwarding.AddressLocalPartPrefix != "",
 	}

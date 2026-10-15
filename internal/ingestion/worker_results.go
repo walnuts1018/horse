@@ -158,8 +158,10 @@ func (w *Worker) recordExtractionSuccess(finishCtx context.Context, j job, resul
 	if err != nil {
 		return false, fmt.Errorf("record extraction event: %w", err)
 	}
-	if err := persistSourceObservations(finishCtx, bobpgx.NewTx(finishTx, nil), householdUUID, sourceUUID, j.SourceHash, j.SourceKind, result); err != nil {
-		return false, fmt.Errorf("record source observations: %w", err)
+	if len(result.Conversation) == 0 {
+		if err := persistSourceObservations(finishCtx, bobpgx.NewTx(finishTx, nil), householdUUID, sourceUUID, j.SourceHash, j.SourceKind, result); err != nil {
+			return false, fmt.Errorf("record source observations: %w", err)
+		}
 	}
 	if _, err := models.Households.Query(
 		sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))),

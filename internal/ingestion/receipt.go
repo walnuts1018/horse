@@ -80,16 +80,23 @@ type Receipt struct {
 }
 
 type Verification struct {
-	Receipt       Receipt                `json:"receipt"`
-	Transform     [9]float64             `json:"transform"`
-	TransformPage int                    `json:"transformPage"`
-	Issues        []string               `json:"issues"`
-	ComputedTotal int64                  `json:"computedTotal"`
-	Balanced      bool                   `json:"balanced"`
-	OCRLines      []OCRLine              `json:"ocrLines"`
-	Statements    []StatementEntry       `json:"statements"`
-	Runs          []ExtractionRun        `json:"runs"`
-	Candidates    []InterpretationResult `json:"candidates"`
+	ConversationID string                 `json:"conversationId,omitempty"`
+	Receipt        Receipt                `json:"receipt"`
+	Transform      [9]float64             `json:"transform"`
+	TransformPage  int                    `json:"transformPage"`
+	Issues         []string               `json:"issues"`
+	ComputedTotal  int64                  `json:"computedTotal"`
+	Balanced       bool                   `json:"balanced"`
+	OCRLines       []OCRLine              `json:"ocrLines"`
+	Statements     []StatementEntry       `json:"statements"`
+	Runs           []ExtractionRun        `json:"runs"`
+	Candidates     []InterpretationResult `json:"candidates"`
+	Conversation   []ConversationMessage  `json:"conversation,omitempty"`
+}
+
+type ConversationMessage struct {
+	Role string `json:"role"`
+	Text string `json:"text"`
 }
 
 type ExtractionRun struct {

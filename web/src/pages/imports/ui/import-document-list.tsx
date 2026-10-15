@@ -303,7 +303,7 @@ export function ImportDocumentList({
                 disabled={pending}
                 onClick={() => onRetryDocument(document)}
               >
-                {isQuotaLimitedExtraction(document) ? "Proで再抽出" : "再抽出"}
+                {isQuotaLimitedExtraction(document) ? "Pro Previewで再抽出・有料" : "再抽出"}
               </button>
             )}
             {canDeleteDocument(document) && (

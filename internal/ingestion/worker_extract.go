@@ -2,27 +2,35 @@ package ingestion
 
 import (
 	"context"
+	stdjson "encoding/json"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
+
+type extractionRequest struct {
+	Crop              *Region               `json:"crop,omitempty"`
+	Purpose           string                `json:"purpose,omitempty"`
+	Model             string                `json:"model,omitempty"`
+	Clarification     string                `json:"clarification,omitempty"`
+	ConversationID    string                `json:"conversationId,omitempty"`
+	Conversation      []ConversationMessage `json:"conversation,omitempty"`
+	CurrentExtraction stdjson.RawMessage    `json:"currentExtraction,omitempty"`
+}
 
 func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	router := w.Router
 	if w.DB != nil && router.RateControl == nil {
 		router.RateControl = postgresGeminiRateControl{db: w.DB}
 	}
-	var request struct {
-		Crop    *Region `json:"crop,omitempty"`
-		Purpose string  `json:"purpose,omitempty"`
-		Model   string  `json:"model,omitempty"`
-	}
+	var request extractionRequest
 	if err := json.Unmarshal(j.Request, &request); err != nil {
 		return Verification{}, fmt.Errorf("decode extraction request: %w", err)
 	}
 	objectKey, mimeType := j.ObjectKey, j.MIMEType
-	if request.Crop == nil && j.AnalysisObjectKey != "" && j.AnalysisMIMEType != "" {
+	if request.Clarification == "" && request.Crop == nil && j.AnalysisObjectKey != "" && j.AnalysisMIMEType != "" {
 		objectKey, mimeType = j.AnalysisObjectKey, j.AnalysisMIMEType
 	}
 	document, err := w.Store.Get(ctx, objectKey, mimeType)
@@ -35,6 +43,15 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			issue := "メール本文が空のため、添付ファイルを個別に確認してください。"
 			return Verification{Receipt: Receipt{Warnings: []string{issue}}, Issues: []string{issue}, Balanced: false}, nil
 		}
+		if parseErr != nil && request.Clarification != "" {
+			return Verification{}, fmt.Errorf("parse email for clarification: %w", parseErr)
+		}
+		if request.Clarification != "" {
+			document = Document{MIMEType: mimeTypePlainText, Data: []byte(email.text())}
+		}
+	}
+	if request.Clarification != "" {
+		return w.clarify(ctx, router, j, document, request)
 	}
 	if document.MIMEType == mimeTypeCSV && (j.SourceKind == statementSourceCard || j.SourceKind == statementSourceBank) {
 		entries, err := ParseStatementCSV(document.Data, j.SourceKind)
@@ -110,6 +127,30 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 			verified = selectVerificationCandidate(verified, proVerification)
 		}
 	}
+	return verified, nil
+}
+
+func (w *Worker) clarify(ctx context.Context, router GeminiRouter, j job, document Document, request extractionRequest) (Verification, error) {
+	if request.ConversationID == "" || request.Model == "" || len(request.CurrentExtraction) == 0 || request.Clarification == "" {
+		return Verification{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "invalid_interaction_input"}
+	}
+	receipt, reply, run, err := router.Interact(ctx, request.Model, j.SourceKind, document, request.CurrentExtraction, request.Conversation, request.Clarification, j.Attempt)
+	if err != nil {
+		return Verification{Runs: []ExtractionRun{run}}, err
+	}
+	verified, err := verifyExtraction(j.SourceKind, receipt)
+	if err != nil {
+		return Verification{Receipt: receipt, Runs: []ExtractionRun{run}}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "interaction_validation_failed"}
+	}
+	if strings.TrimSpace(reply) == "" {
+		return Verification{Receipt: receipt, Runs: []ExtractionRun{run}}, &GeminiAPIError{Kind: GeminiFailureBadResponse, Code: "empty_interaction_reply"}
+	}
+	verified.ConversationID = request.ConversationID
+	verified.Conversation = append(slices.Clone(request.Conversation),
+		ConversationMessage{Role: "user", Text: request.Clarification},
+		ConversationMessage{Role: "assistant", Text: reply},
+	)
+	verified.Runs = []ExtractionRun{run}
 	return verified, nil
 }
 

@@ -268,6 +268,8 @@ export type DocumentReview = {
     transferId?: string;
   }>;
   result?: {
+    conversationId?: string;
+    conversation?: Array<{ role: "user" | "assistant"; text: string }>;
     receipt?: {
       merchant?: string;
       purchasedAt?: string;

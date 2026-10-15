@@ -234,6 +234,123 @@ func (r GeminiRouter) Generate(ctx context.Context, sourceKind string, document 
 	return Receipt{}, runs, errors.New("Gemini API key is not configured")
 }
 
+func (r GeminiRouter) Interact(ctx context.Context, selection, sourceKind string, document Document, currentExtraction []byte, history []ConversationMessage, clarification string, attempt int) (Receipt, string, ExtractionRun, error) {
+	options, err := r.selectedOptions(selection, sourceKind, document.MIMEType, JobPurposeInteractive, attempt)
+	if err != nil {
+		return Receipt{}, "", ExtractionRun{}, err
+	}
+	model := options.Model
+	if model == "" {
+		return Receipt{}, "", ExtractionRun{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "invalid_model_selection"}
+	}
+	client := r.Free
+	client.ProjectRoute = ProjectFree
+	route := ProjectFree
+	if options.PaidOnly {
+		client = r.Paid
+		client.ProjectRoute = ProjectPaid
+		route = ProjectPaid
+	}
+	if client.APIKey == "" {
+		return Receipt{}, "", ExtractionRun{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "not_configured"}
+	}
+	if route == ProjectPaid {
+		inputPrice, outputPrice := modelPrices(model, 0, time.Now())
+		if inputPrice == 0 && outputPrice == 0 {
+			return Receipt{}, "", ExtractionRun{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: geminiFailureUnknownModelPrice}
+		}
+	}
+	client.Model = model
+	client.USDJPYRate = r.USDJPYRate
+	client.USDJPYRateSource = r.USDJPYRateSource
+	client.USDJPYRateAsOf = r.USDJPYRateAsOf
+	thinking := geminiThinkingLevelLow
+	if options.PaidOnly {
+		thinking = "high"
+	}
+	tier := geminiServiceTierStandard
+	if r.RateControl != nil {
+		if err := r.RateControl.Wait(ctx, route, model); err != nil {
+			return Receipt{}, "", ExtractionRun{}, fmt.Errorf("wait for shared Gemini cooldown: %w", err)
+		}
+	}
+	requestOptions := GeminiRequestOptions{
+		ThinkingLevel: thinking, ServiceTier: tier, Reason: "user_clarification", SourceKind: sourceKind,
+	}
+	if r.RateControl != nil {
+		if limits, ok := r.QuotaLimits[GeminiQuotaKey{ProjectRoute: route, Model: model}]; ok {
+			requestOptions.ReserveInputTokens = func(ctx context.Context, inputTokens int64) (func(context.Context, int64) error, error) {
+				reservationID, retryAfter, reserveErr := r.RateControl.Reserve(ctx, route, model, inputTokens, limits)
+				if reserveErr != nil {
+					if errors.Is(reserveErr, errGeminiQuotaRequestTooLarge) {
+						return nil, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "input_exceeds_quota"}
+					}
+					return nil, reserveErr
+				}
+				if reservationID == "" {
+					return nil, &GeminiAPIError{Kind: GeminiFailureQuota, Code: "quota_reservation_deferred", RetryAfter: retryAfter}
+				}
+				return func(ctx context.Context, actualInputTokens int64) error {
+					return r.RateControl.Settle(ctx, reservationID, actualInputTokens)
+				}, nil
+			}
+		}
+	}
+	started := time.Now()
+	receipt, reply, usage, err := client.Interact(ctx, document, sourceKind, currentExtraction, history, clarification, requestOptions)
+	run := ExtractionRun{
+		Route: route, Project: client.Project, Model: model, PromptVersion: PromptVersion, ThinkingLevel: thinking,
+		ServiceTier: tier, InputTokens: usage.inputTokens, OutputTokens: usage.outputTokens, LatencyMillis: time.Since(started).Milliseconds(),
+		Reason: "user_clarification", PriceTableVersion: GeminiPriceTableVersion, USDJPYRate: r.USDJPYRate,
+		USDJPYRateSource: r.USDJPYRateSource, USDJPYRateAsOf: r.USDJPYRateAsOf, PricingCurrency: "USD", PricedAt: time.Now().UTC(),
+	}
+	if run.USDJPYRateSource == "" {
+		run.USDJPYRateSource = "unspecified"
+	}
+	if run.USDJPYRateAsOf == "" {
+		run.USDJPYRateAsOf = "unspecified"
+	}
+	if err != nil {
+		run.Status = extractionStatusFailed
+		run.PriceEstimateStatus = "unavailable_failed_run"
+		if usage.available {
+			run.PriceEstimateStatus = "estimated_paid"
+			run.EstimatedJPY = estimateCostJPY(route, model, tier, run.InputTokens, run.OutputTokens, r.USDJPYRate, run.PricedAt)
+		}
+		if apiErr, ok := errors.AsType[*GeminiAPIError](err); ok {
+			run.ErrorCode = apiErr.Code
+			if apiErr.Kind == GeminiFailureQuota && r.RateControl != nil {
+				delay := apiErr.RetryAfter
+				if delay <= 0 {
+					delay = retryDelay(apiErr, attempt)
+				}
+				if cooldownErr := r.RateControl.RecordCooldown(ctx, route, model, delay); cooldownErr != nil {
+					return Receipt{}, "", run, errors.Join(err, cooldownErr)
+				}
+			}
+		}
+		return Receipt{}, "", run, err
+	}
+	run.Status = extractionStatusSucceeded
+	inputPrice, outputPrice := modelPrices(model, run.InputTokens, run.PricedAt)
+	if route == ProjectFree {
+		run.PriceEstimateStatus = "free_tier"
+	} else if inputPrice == 0 && outputPrice == 0 {
+		run.PriceEstimateStatus = "unknown_model_price"
+	} else {
+		run.InputUSDPerMillion = inputPrice
+		run.OutputUSDPerMillion = outputPrice
+		if r.USDJPYRate <= 0 {
+			run.PriceEstimateStatus = "missing_exchange_rate"
+		} else {
+			run.PriceEstimateStatus = "estimated_paid"
+			run.EstimatedJPY = estimateCostJPY(route, model, tier, run.InputTokens, run.OutputTokens, r.USDJPYRate, run.PricedAt)
+		}
+	}
+	run.Receipt = &receipt
+	return receipt, reply, run, nil
+}
+
 type geminiRouteState struct {
 	initialErr            error
 	previousErr           error

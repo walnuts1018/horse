@@ -11,6 +11,7 @@ import {
   type DocumentReview,
   type StatementEntry,
 } from "../model/imports";
+import { DocumentConversation } from "./document-conversation";
 import { EvidenceMatching } from "./evidence-matching";
 import { EvidenceSourcePreview } from "./evidence-source-preview";
 import { ReceiptReview } from "./receipt-review";
@@ -42,6 +43,7 @@ export function ImportDocumentReview({
   onLinkExistingIncome,
   onError,
   onLinked,
+  onInteractionQueued,
   onSelectDocument,
 }: {
   document: DocumentReview;
@@ -77,6 +79,7 @@ export function ImportDocumentReview({
   onLinkExistingIncome: (entry: StatementEntry, accountId: string, incomeId: string) => void;
   onError: (message: string) => void;
   onLinked: () => Promise<void> | void;
+  onInteractionQueued: () => Promise<void> | void;
   onSelectDocument: (id: string) => void;
 }) {
   const [selectedStatementRegion, setSelectedStatementRegion] = useState<{
@@ -200,6 +203,7 @@ export function ImportDocumentReview({
             selectStatementRegion(statementSourceReference(entry), entry.region.page);
         }}
       />
+      <DocumentConversation document={document} onError={onError} onUpdated={onInteractionQueued} />
       {document.result && (
         <EvidenceMatching
           document={document}

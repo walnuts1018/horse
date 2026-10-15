@@ -36,7 +36,7 @@
   margin: -6px 16px 16px;
   padding: 10px 12px;
   border-radius: 8px;
-  background: rgb(164 60 50 / 8%);
+  background: rgb(164 60 50 / 0.08);
   color: var(--danger);
   font-size: 13px;
   line-height: 1.5;

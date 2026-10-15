@@ -125,7 +125,8 @@ export function ImportsPage({
   } = useImportDocuments(household.id, documentFilters, setMessage);
   const [pending, setPending] = useState(false);
   const quotaLimitedDocuments = documents.filter(isQuotaLimitedExtraction);
-  const importModelForUpload = quotaLimitedDocuments.length > 0 ? proImportModel : importModel;
+  const importModelForUpload = importModel;
+  const selectedImportModel = importModels.find((model) => model.value === importModelForUpload);
   const selectedDocumentID = useRef(selected);
   useEffect(() => {
     selectedDocumentID.current = selected;
@@ -290,10 +291,6 @@ export function ImportsPage({
     }
   };
   const retryDocument = async (document: DocumentReview) => {
-    const quotaLimited = isQuotaLimitedExtraction(document);
-    if (quotaLimited) {
-      setImportModel(proImportModel);
-    }
     setPending(true);
     setMessage("");
     try {
@@ -521,7 +518,6 @@ export function ImportsPage({
             <select
               id="import-model"
               value={importModelForUpload}
-              disabled={quotaLimitedDocuments.length > 0}
               onChange={(event) => {
                 if (isImportModel(event.target.value)) setImportModel(event.target.value);
               }}
@@ -545,6 +541,11 @@ export function ImportsPage({
                   ))}
               </optgroup>
             </select>
+            <small aria-live="polite">
+              {selectedImportModel?.tier === "paid"
+                ? "有料枠では入力は製品改善に使われません。利用ごとに料金が発生します。"
+                : "無料枠では入力がGoogleの製品改善に使われる場合があります。"}
+            </small>
             {files.length > 0 && (
               <small aria-live="polite">
                 追加済み:{" "}
@@ -562,9 +563,8 @@ export function ImportsPage({
             <output className="import-quota-notice">
               <AlertCircle size={16} aria-hidden="true" />
               <span>
-                {importModelForUpload === proImportModel
-                  ? "モデルの利用上限に達しました。Gemini 3.1 Pro Previewへ切り替えました。Proで再抽出すると料金が発生します。"
-                  : "モデルの利用上限に達しました。Gemini 3.1 Pro Previewで再抽出できます。料金が発生します。"}
+                モデルの利用上限に達した書類はGemini 3.1 Pro
+                Previewで再抽出できます。料金が発生します。
               </span>
             </output>
           )}
@@ -705,6 +705,7 @@ export function ImportsPage({
                 await refreshDocuments(true);
                 onAdded(true);
               }}
+              onInteractionQueued={() => refreshDocuments(true)}
               onSelectDocument={handleSelectDocument}
             />
           )}
