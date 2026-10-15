@@ -2219,6 +2219,7 @@ dependencies = [
  "async-graphql",
  "async-graphql-axum",
  "axum",
+ "base64 0.23.1",
  "chrono",
  "diesel",
  "diesel-async",

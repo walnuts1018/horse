@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 axum = { version = "0.8.9", features = ["multipart"] }
+base64 = { workspace = true }
 async-graphql = { version = "7", features = ["chrono"] }
 async-graphql-axum = "7"
 chrono = { workspace = true }

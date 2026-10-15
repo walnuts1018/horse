@@ -47,9 +47,16 @@ pub fn router(pool: PgPool, config: Config, graphql_schema: GraphqlSchema) -> Ro
         .route("/auth/logout", axum::routing::post(logout))
         .route(
             "/documents",
-            post(upload_document).layer(axum::extract::DefaultBodyLimit::max(22 << 20)),
+            get(list_documents).post(upload_document).layer(
+                axum::extract::DefaultBodyLimit::max(22 << 20),
+            ),
         )
         .route("/documents/{id}/content", get(document_content))
+        .route("/documents/{id}/extractions", get(document_extractions))
+        .route(
+            "/documents/{id}/extractions/{version_id}",
+            get(document_extraction),
+        )
         .route("/documents/{id}/retry", post(retry_document))
         .route("/events", get(events))
         .with_state(ApiState {
@@ -435,6 +442,167 @@ async fn upload_document(
     }
 }
 
+async fn list_documents(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Response {
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let household_id = match query
+        .get("householdId")
+        .and_then(|value| decode_household_id(value))
+    {
+        Some(id) => id,
+        None => return (StatusCode::NOT_FOUND, "household not found").into_response(),
+    };
+    let first = query
+        .get("first")
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(50)
+        .clamp(1, 50);
+    use horse_postgres_common::schema::public::{
+        evidence_links, extraction_jobs, household_members, source_documents,
+    };
+    let mut pooled = match state.pool.get().await {
+        Ok(pooled) => pooled,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let member = household_members::table
+        .filter(household_members::household_id.eq(household_id))
+        .filter(household_members::member_id.eq(principal.member_id))
+        .select(household_members::member_id)
+        .first::<uuid::Uuid>(&mut *pooled)
+        .await;
+    match member {
+        Ok(_) => {}
+        Err(diesel::result::Error::NotFound) => {
+            return (StatusCode::NOT_FOUND, "household not found").into_response();
+        }
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    }
+    let mut documents_query = source_documents::table
+        .filter(source_documents::household_id.eq(household_id))
+        .into_boxed();
+    if let Some(source_kind) = query.get("sourceKind") {
+        documents_query = documents_query.filter(source_documents::source_kind.eq(source_kind));
+    }
+    let documents = documents_query
+        .order_by(source_documents::created_at.desc())
+        .then_order_by(source_documents::id.desc())
+        .limit(first + 1)
+        .select((
+            source_documents::id,
+            source_documents::sha256,
+            source_documents::mime_type,
+            source_documents::source_kind,
+            source_documents::original_filename,
+            source_documents::created_at,
+        ))
+        .load::<(
+            uuid::Uuid,
+            String,
+            String,
+            String,
+            String,
+            chrono::DateTime<chrono::Utc>,
+        )>(&mut *pooled)
+        .await;
+    let documents = match documents {
+        Ok(documents) => documents,
+        Err(error) => {
+            tracing::error!(error = ?error, "Document list lookup failed");
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+    };
+    let truncated = documents.len() as i64 > first;
+    let mut results = Vec::new();
+    for (id, sha256, mime_type, source_kind, name, created_at) in
+        documents.into_iter().take(first as usize)
+    {
+        let latest = extraction_jobs::table
+            .filter(extraction_jobs::household_id.eq(household_id))
+            .filter(extraction_jobs::source_document_id.eq(id))
+            .order_by(extraction_jobs::version.desc())
+            .select((
+                extraction_jobs::id,
+                extraction_jobs::status,
+                extraction_jobs::model,
+                extraction_jobs::error_code,
+                extraction_jobs::result,
+                extraction_jobs::request,
+            ))
+            .first::<(
+                uuid::Uuid,
+                String,
+                String,
+                Option<String>,
+                Option<Value>,
+                Value,
+            )>(&mut *pooled)
+            .await
+            .optional();
+        let (job_id, status, model, error_code, result, request) = match latest {
+            Ok(Some(job)) => job,
+            Ok(None) => (uuid::Uuid::nil(), "queued".to_owned(), String::new(), None, None, Value::Null),
+            Err(error) => {
+                tracing::error!(error = ?error, "Document extraction status lookup failed");
+                return StatusCode::SERVICE_UNAVAILABLE.into_response();
+            }
+        };
+        let has_evidence = diesel::select(diesel::dsl::exists(
+            evidence_links::table
+                .filter(evidence_links::household_id.eq(household_id))
+                .filter(evidence_links::source_document_id.eq(id)),
+        ))
+        .get_result::<bool>(&mut *pooled)
+        .await
+        .unwrap_or(false);
+        let model = request
+            .get("model")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(&model);
+        results.push(json!({
+            "id": id,
+            "householdId": household_id,
+            "name": name,
+            "sha256": sha256,
+            "mimeType": mime_type,
+            "sourceKind": source_kind,
+            "status": status,
+            "model": model,
+            "errorCode": error_code,
+            "jobId": if job_id.is_nil() { None } else { Some(job_id) },
+            "result": result,
+            "createdAt": created_at,
+            "confirmations": [],
+            "hasEvidence": has_evidence
+        }));
+    }
+    Json(json!({"documents": results, "nextCursor": if truncated { Some("" ) } else { None }})).into_response()
+}
+
+fn decode_household_id(value: &str) -> Option<uuid::Uuid> {
+    if let Ok(id) = uuid::Uuid::parse_str(value) {
+        return Some(id);
+    }
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    let decoded = URL_SAFE_NO_PAD.decode(value).ok()?;
+    let (type_name, payload) = decoded.split_once(|byte| *byte == b':')?;
+    if type_name != b"Household" || payload.len() != 16 {
+        return None;
+    }
+    uuid::Uuid::from_slice(payload).ok()
+}
+
 fn document_mime(filename: &str, declared: &str, data: &[u8]) -> Option<&'static str> {
     let lower = filename.to_ascii_lowercase();
     if declared == "message/rfc822" && (lower.ends_with(".eml") || lower.ends_with(".rfc822")) {
@@ -649,6 +817,193 @@ async fn retry_document(
         Err(error) => {
             tracing::error!(error = ?error, "Document retry registration failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+async fn document_extractions(
+    State(state): State<ApiState>,
+    Path(raw_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let Ok(document_id) = uuid::Uuid::parse_str(&raw_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    use horse_postgres_common::schema::public::{
+        extraction_jobs, household_members, source_documents,
+    };
+    let mut pooled = match state.pool.get().await {
+        Ok(pooled) => pooled,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let household_id = source_documents::table
+        .inner_join(
+            household_members::table
+                .on(household_members::household_id.eq(source_documents::household_id)),
+        )
+        .filter(source_documents::id.eq(document_id))
+        .filter(household_members::member_id.eq(principal.member_id))
+        .select(source_documents::household_id)
+        .first::<uuid::Uuid>(&mut *pooled)
+        .await;
+    let household_id = match household_id {
+        Ok(id) => id,
+        Err(diesel::result::Error::NotFound) => return StatusCode::NOT_FOUND.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let jobs = extraction_jobs::table
+        .filter(extraction_jobs::household_id.eq(household_id))
+        .filter(extraction_jobs::source_document_id.eq(document_id))
+        .filter(extraction_jobs::status.eq("succeeded"))
+        .order_by(extraction_jobs::version.desc())
+        .select((
+            extraction_jobs::id,
+            extraction_jobs::version,
+            extraction_jobs::model,
+            extraction_jobs::request,
+            extraction_jobs::result,
+            extraction_jobs::created_at,
+        ))
+        .load::<(
+            uuid::Uuid,
+            i32,
+            String,
+            Value,
+            Option<Value>,
+            chrono::DateTime<chrono::Utc>,
+        )>(&mut *pooled)
+        .await;
+    match jobs {
+        Ok(jobs) => {
+            let versions = jobs
+                .into_iter()
+                .filter_map(|(id, version, model, request, result, created_at)| {
+                    let result = result?;
+                    let conversation_turns = result
+                        .get("conversation")
+                        .and_then(Value::as_array)
+                        .map(|conversation| conversation.len() / 2)
+                        .unwrap_or_default();
+                    let model = request
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .filter(|model| !model.is_empty())
+                        .unwrap_or(&model);
+                    Some(json!({
+                        "id": id,
+                        "version": version,
+                        "model": model,
+                        "createdAt": created_at,
+                        "conversationTurns": conversation_turns
+                    }))
+                })
+                .collect::<Vec<_>>();
+            Json(json!({"versions": versions})).into_response()
+        }
+        Err(error) => {
+            tracing::error!(error = ?error, "Document extraction history lookup failed");
+            StatusCode::SERVICE_UNAVAILABLE.into_response()
+        }
+    }
+}
+
+async fn document_extraction(
+    State(state): State<ApiState>,
+    Path((raw_id, raw_version_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Response {
+    let (Ok(document_id), Ok(version_id)) = (
+        uuid::Uuid::parse_str(&raw_id),
+        uuid::Uuid::parse_str(&raw_version_id),
+    ) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    use horse_postgres_common::schema::public::{
+        extraction_jobs, household_members, source_documents,
+    };
+    let mut pooled = match state.pool.get().await {
+        Ok(pooled) => pooled,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
+    let household_id = source_documents::table
+        .inner_join(
+            household_members::table
+                .on(household_members::household_id.eq(source_documents::household_id)),
+        )
+        .filter(source_documents::id.eq(document_id))
+        .filter(household_members::member_id.eq(principal.member_id))
+        .select(source_documents::household_id)
+        .first::<uuid::Uuid>(&mut *pooled)
+        .await;
+    let Ok(household_id) = household_id else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let job = extraction_jobs::table
+        .filter(extraction_jobs::household_id.eq(household_id))
+        .filter(extraction_jobs::source_document_id.eq(document_id))
+        .filter(extraction_jobs::id.eq(version_id))
+        .filter(extraction_jobs::status.eq("succeeded"))
+        .select((
+            extraction_jobs::id,
+            extraction_jobs::version,
+            extraction_jobs::model,
+            extraction_jobs::request,
+            extraction_jobs::result,
+            extraction_jobs::created_at,
+        ))
+        .first::<(
+            uuid::Uuid,
+            i32,
+            String,
+            Value,
+            Option<Value>,
+            chrono::DateTime<chrono::Utc>,
+        )>(&mut *pooled)
+        .await;
+    match job {
+        Ok((id, version, model, request, Some(result), created_at)) => {
+            let conversation_turns = result
+                .get("conversation")
+                .and_then(Value::as_array)
+                .map(|conversation| conversation.len() / 2)
+                .unwrap_or_default();
+            let model = request
+                .get("model")
+                .and_then(Value::as_str)
+                .filter(|model| !model.is_empty())
+                .unwrap_or(&model);
+            Json(json!({
+                "id": id,
+                "version": version,
+                "model": model,
+                "createdAt": created_at,
+                "conversationTurns": conversation_turns,
+                "result": result
+            }))
+            .into_response()
+        }
+        Ok(_) | Err(diesel::result::Error::NotFound) => StatusCode::NOT_FOUND.into_response(),
+        Err(error) => {
+            tracing::error!(error = ?error, "Document extraction lookup failed");
+            StatusCode::SERVICE_UNAVAILABLE.into_response()
         }
     }
 }

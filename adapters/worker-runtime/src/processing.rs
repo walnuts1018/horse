@@ -2,8 +2,8 @@ use std::{collections::HashMap, env, time::Instant};
 
 use chrono::{DateTime, Datelike, Duration as ChronoDuration, NaiveDate, Utc};
 use evidence_application::ingestion_job::ExtractionFailureKind;
-use evidence_postgres::ingestion_job::{ClaimedExtractionJob, save_interaction_reply_preview};
 use evidence_postgres::gemini_quota::{self, QuotaLimit};
+use evidence_postgres::ingestion_job::{ClaimedExtractionJob, save_interaction_reply_preview};
 use futures_util::StreamExt;
 use horse_gemini_developer_api::{
     Error as GeminiError, GeminiDeveloperApi, InputContent, InteractionsInput,
@@ -367,9 +367,15 @@ pub async fn process(
     for (candidate_model, candidate_route, candidate_reason, condition) in candidates {
         let should_run = match condition {
             "always" => true,
-            "after_temporary" => previous_kind == ProcessErrorKind::Retryable && previous_code != "rate_limited",
+            "after_temporary" => {
+                previous_kind == ProcessErrorKind::Retryable && previous_code != "rate_limited"
+            }
             "after_quota" => previous_model == config.lite_model && previous_code == "rate_limited",
-            "after_flash_temporary" => previous_model == config.flash_model && previous_kind == ProcessErrorKind::Retryable && previous_code != "rate_limited",
+            "after_flash_temporary" => {
+                previous_model == config.flash_model
+                    && previous_kind == ProcessErrorKind::Retryable
+                    && previous_code != "rate_limited"
+            }
             _ => false,
         };
         if !should_run {
@@ -401,7 +407,15 @@ pub async fn process(
                         ProcessErrorKind::Retryable,
                         "quota_reservation_deferred",
                         "Gemini Developer API quota is temporarily unavailable",
-                        partial_result(&lines, &issues, Value::Null, "rate_limited", &candidate_model, candidate_route, candidate_project),
+                        partial_result(
+                            &lines,
+                            &issues,
+                            Value::Null,
+                            "rate_limited",
+                            &candidate_model,
+                            candidate_route,
+                            candidate_project,
+                        ),
                     );
                     failure.retry_after = delay.to_std().ok();
                     last_error = Some(failure);
@@ -412,7 +426,15 @@ pub async fn process(
                         ProcessErrorKind::Permanent,
                         "input_exceeds_quota",
                         "Extraction input exceeds the configured token quota",
-                        partial_result(&lines, &issues, Value::Null, "input_exceeds_quota", &candidate_model, candidate_route, candidate_project),
+                        partial_result(
+                            &lines,
+                            &issues,
+                            Value::Null,
+                            "input_exceeds_quota",
+                            &candidate_model,
+                            candidate_route,
+                            candidate_project,
+                        ),
                     ));
                     break;
                 }
@@ -449,29 +471,55 @@ pub async fn process(
             .await
         {
             Ok(stream) => {
-                selected = Some((stream, candidate_model, candidate_route, candidate_project, candidate_reason, reservation_id));
+                selected = Some((
+                    stream,
+                    candidate_model,
+                    candidate_route,
+                    candidate_project,
+                    candidate_reason,
+                    reservation_id,
+                ));
                 break;
             }
             Err(error) => {
-                let failure = map_gemini_error(error, &lines, &issues, &candidate_model, candidate_route, candidate_project);
+                let failure = map_gemini_error(
+                    error,
+                    &lines,
+                    &issues,
+                    &candidate_model,
+                    candidate_route,
+                    candidate_project,
+                );
                 previous_code = failure.code.clone();
                 previous_model = candidate_model;
                 previous_kind = failure.kind;
                 last_error = Some(failure);
-                if previous_kind != ProcessErrorKind::Retryable && previous_kind != ProcessErrorKind::SpendCap {
+                if previous_kind != ProcessErrorKind::Retryable
+                    && previous_kind != ProcessErrorKind::SpendCap
+                {
                     break;
                 }
             }
         }
     }
-    let Some((mut stream, selected_model, selected_route, selected_project, route_reason, reservation_id)) = selected else {
+    let Some((
+        mut stream,
+        selected_model,
+        selected_route,
+        selected_project,
+        route_reason,
+        reservation_id,
+    )) = selected
+    else {
         return Err(failure_with_transform(
-            last_error.unwrap_or_else(|| Failure::new(
-                ProcessErrorKind::Permanent,
-                "not_configured",
-                "Gemini Developer API is not configured",
-                empty_partial(),
-            )),
+            last_error.unwrap_or_else(|| {
+                Failure::new(
+                    ProcessErrorKind::Permanent,
+                    "not_configured",
+                    "Gemini Developer API is not configured",
+                    empty_partial(),
+                )
+            }),
             transform,
             transform_page,
         ));
@@ -611,12 +659,14 @@ pub async fn process(
     if let Some(reservation_id) = reservation_id {
         gemini_quota::settle(pool, reservation_id, input_tokens, Utc::now())
             .await
-            .map_err(|_| Failure::new(
-                ProcessErrorKind::Retryable,
-                "quota_settlement_failed",
-                "Gemini Developer API usage could not be recorded",
-                empty_partial(),
-            ))?;
+            .map_err(|_| {
+                Failure::new(
+                    ProcessErrorKind::Retryable,
+                    "quota_settlement_failed",
+                    "Gemini Developer API usage could not be recorded",
+                    empty_partial(),
+                )
+            })?;
     }
     let parsed = parse_json_output(&output).ok_or_else(|| {
         Failure::new(
@@ -769,7 +819,15 @@ pub async fn process(
     );
     if let Some(object) = run.as_object_mut() {
         object.insert("reason".to_owned(), json!(route_reason));
-        apply_cost_snapshot(object, config, model, route, input_tokens, output_tokens, Utc::now());
+        apply_cost_snapshot(
+            object,
+            config,
+            model,
+            route,
+            input_tokens,
+            output_tokens,
+            Utc::now(),
+        );
     }
     if is_statement {
         let warnings = receipt
@@ -1131,11 +1189,31 @@ fn model_candidates(
         return candidates;
     }
     if is_email_lite {
-        candidates.push((model.to_owned(), "paid", "free_temporary_fallback", "after_temporary"));
-        candidates.push((config.flash_model.clone(), "free", "free_quota_model_fallback", "after_quota"));
-        candidates.push((config.flash_model.clone(), "paid", "free_temporary_fallback", "after_flash_temporary"));
+        candidates.push((
+            model.to_owned(),
+            "paid",
+            "free_temporary_fallback",
+            "after_temporary",
+        ));
+        candidates.push((
+            config.flash_model.clone(),
+            "free",
+            "free_quota_model_fallback",
+            "after_quota",
+        ));
+        candidates.push((
+            config.flash_model.clone(),
+            "paid",
+            "free_temporary_fallback",
+            "after_flash_temporary",
+        ));
     } else {
-        candidates.push((model.to_owned(), "paid", "free_temporary_fallback", "after_temporary"));
+        candidates.push((
+            model.to_owned(),
+            "paid",
+            "free_temporary_fallback",
+            "after_temporary",
+        ));
     }
     candidates
 }
@@ -1143,17 +1221,29 @@ fn model_candidates(
 fn parse_quota_limits(raw: &str) -> HashMap<(String, String), QuotaLimit> {
     let mut limits = HashMap::new();
     for entry in raw.split(';').filter(|entry| !entry.trim().is_empty()) {
-        let Some((selector, values)) = entry.trim().split_once('=') else { continue };
-        let Some((route, model)) = selector.split_once('/') else { continue };
-        if !matches!(route, "free" | "paid") || model.is_empty() { continue; }
-        let parsed = values.split('/').map(str::parse::<i64>).collect::<Result<Vec<_>, _>>();
+        let Some((selector, values)) = entry.trim().split_once('=') else {
+            continue;
+        };
+        let Some((route, model)) = selector.split_once('/') else {
+            continue;
+        };
+        if !matches!(route, "free" | "paid") || model.is_empty() {
+            continue;
+        }
+        let parsed = values
+            .split('/')
+            .map(str::parse::<i64>)
+            .collect::<Result<Vec<_>, _>>();
         let Ok(parsed) = parsed else { continue };
         if parsed.len() == 3 && parsed.iter().all(|value| *value > 0) {
-            limits.insert((route.to_owned(), model.to_owned()), QuotaLimit {
-                requests_per_minute: parsed[0],
-                input_tokens_minute: parsed[1],
-                requests_per_day: parsed[2],
-            });
+            limits.insert(
+                (route.to_owned(), model.to_owned()),
+                QuotaLimit {
+                    requests_per_minute: parsed[0],
+                    input_tokens_minute: parsed[1],
+                    requests_per_day: parsed[2],
+                },
+            );
         }
     }
     limits
@@ -1180,26 +1270,53 @@ fn apply_cost_snapshot(
         (input_price, output_price) = (4.0, 18.0);
     }
     let cost = if route == "paid" && input_price > 0.0 && config.usd_jpy_rate > 0.0 {
-        (input_tokens as f64 * input_price + output_tokens as f64 * output_price) * config.usd_jpy_rate / 1_000_000.0
-    } else { 0.0 };
-    let status = if route == "paid" && price_status == "estimated_paid" && config.usd_jpy_rate <= 0.0 {
-        "missing_exchange_rate"
-    } else { price_status };
+        (input_tokens as f64 * input_price + output_tokens as f64 * output_price)
+            * config.usd_jpy_rate
+            / 1_000_000.0
+    } else {
+        0.0
+    };
+    let status =
+        if route == "paid" && price_status == "estimated_paid" && config.usd_jpy_rate <= 0.0 {
+            "missing_exchange_rate"
+        } else {
+            price_status
+        };
     run.insert("estimatedCostJPY".to_owned(), json!(cost));
     run.insert("priceEstimateStatus".to_owned(), json!(status));
     run.insert("inputUsdPerMillionTokens".to_owned(), json!(input_price));
     run.insert("outputUsdPerMillionTokens".to_owned(), json!(output_price));
     run.insert("usdJpyRate".to_owned(), json!(config.usd_jpy_rate));
-    run.insert("usdJpyRateSource".to_owned(), json!(config.usd_jpy_rate_source));
-    run.insert("usdJpyRateAsOf".to_owned(), json!(config.usd_jpy_rate_as_of));
+    run.insert(
+        "usdJpyRateSource".to_owned(),
+        json!(config.usd_jpy_rate_source),
+    );
+    run.insert(
+        "usdJpyRateAsOf".to_owned(),
+        json!(config.usd_jpy_rate_as_of),
+    );
     run.insert("pricedAt".to_owned(), json!(priced_at));
 }
 
 fn model_prices(model: &str, input_tokens: i64, at: DateTime<Utc>) -> (f64, f64) {
     match model {
-        "gemini-4-argon" if at < DateTime::parse_from_rfc3339("2026-12-01T00:00:00Z").unwrap().to_utc() => (2.0, 10.0),
+        "gemini-4-argon"
+            if at
+                < DateTime::parse_from_rfc3339("2026-12-01T00:00:00Z")
+                    .unwrap()
+                    .to_utc() =>
+        {
+            (2.0, 10.0)
+        }
         "gemini-4-argon" => (4.0, 20.0),
-        "gemini-3.8-flash" | "gemini-3.6-flash" if at < DateTime::parse_from_rfc3339("2027-01-01T00:00:00Z").unwrap().to_utc() => (0.75, 3.75),
+        "gemini-3.8-flash" | "gemini-3.6-flash"
+            if at
+                < DateTime::parse_from_rfc3339("2027-01-01T00:00:00Z")
+                    .unwrap()
+                    .to_utc() =>
+        {
+            (0.75, 3.75)
+        }
         "gemini-3.8-flash" | "gemini-3.6-flash" => (1.5, 7.5),
         "gemini-3.5-flash-lite" => (0.3, 2.5),
         "gemini-3.1-flash-lite" => (0.25, 1.5),

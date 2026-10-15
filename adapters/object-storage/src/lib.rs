@@ -1,6 +1,9 @@
 use std::{collections::HashMap, env, error::Error, fmt};
 
-use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::{Aead, AeadCore, OsRng}};
+use aes_gcm::{
+    Aes256Gcm, KeyInit, Nonce,
+    aead::{Aead, AeadCore, OsRng},
+};
 use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
 use aws_credential_types::Credentials;
 use aws_sdk_s3::Client;
@@ -108,7 +111,8 @@ impl ObjectStore {
                 .get(key_id)
                 .ok_or(StoreError("email encryption key is unavailable"))?;
             let fingerprint = email_fingerprint(key, data)?;
-            object_key = format!("{household_id}/originals/{EMAIL_V2_PREFIX}{key_id}/{fingerprint}");
+            object_key =
+                format!("{household_id}/originals/{EMAIL_V2_PREFIX}{key_id}/{fingerprint}");
             stored_data = encrypt_email_body(key, &object_key, data)?;
             [("hmac-sha256", fingerprint)]
         } else {

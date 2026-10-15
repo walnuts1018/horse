@@ -20,8 +20,8 @@ use evidence_postgres::ingestion_job::{
     record_extraction_success, recover_expired_extraction_jobs,
 };
 use horse_postgres_common::connect;
-use object_store::ObjectStore;
 use mailbox::MailboxConfig;
+use object_store::ObjectStore;
 use processing::{ProcessConfig, process};
 use serde_json::Value;
 

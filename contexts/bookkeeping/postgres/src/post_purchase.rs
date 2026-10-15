@@ -370,20 +370,20 @@ pub async fn persist_post_purchase_in_transaction(
         .await?;
 
     for event in decision.events() {
-        let event_revision = i64::try_from(event.revision)
+        let event_revision = i64::try_from(event.revision())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("event revision"))?;
         let changed_fields = event
-            .changed_fields
+            .changed_fields()
             .iter()
             .map(|field| Some((*field).to_owned()))
             .collect::<Vec<_>>();
         diesel::insert_into(public::household_events::table)
             .values((
                 public::household_events::household_id.eq(household_id),
-                public::household_events::event_type.eq(event.event_type),
+                public::household_events::event_type.eq(event.event_type()),
                 public::household_events::entity_kind.eq("purchase"),
                 public::household_events::entity_id
-                    .eq(parse_uuid(event.entity_id.as_str(), "event entity_id")?),
+                    .eq(parse_uuid(event.purchase_id().as_str(), "event entity_id")?),
                 public::household_events::revision.eq(event_revision),
                 public::household_events::changed_fields.eq(changed_fields),
                 public::household_events::actor_id.eq(actor_id),
@@ -408,14 +408,15 @@ fn validate_decision(
     decision: &PostPurchaseDecision,
     expected_revision: i64,
 ) -> Result<(), PostPurchasePersistenceError> {
-    if decision.new_status() != bookkeeping_application::PurchaseStatus::Posted
-        || decision.events().is_empty()
+    if decision.events().is_empty()
         || expected_revision.checked_add(1) != i64::try_from(decision.new_revision()).ok()
     {
         return Err(PostPurchasePersistenceError::InvalidDecision);
     }
     for event in decision.events() {
-        if &event.entity_id != decision.purchase_id() || event.revision != decision.new_revision() {
+        if event.purchase_id() != decision.purchase_id()
+            || event.revision() != decision.new_revision()
+        {
             return Err(PostPurchasePersistenceError::InvalidDecision);
         }
     }

@@ -7,7 +7,10 @@ use futures_util::TryStreamExt;
 use mail_parser::{HeaderName, HeaderValue, MessageParser};
 use sha2::{Digest, Sha256};
 use tokio::{net::TcpStream, time::timeout};
-use tokio_rustls::{TlsConnector, rustls::{ClientConfig, RootCertStore, pki_types::ServerName}};
+use tokio_rustls::{
+    TlsConnector,
+    rustls::{ClientConfig, RootCertStore, pki_types::ServerName},
+};
 use uuid::Uuid;
 use webpki_roots::TLS_SERVER_ROOTS;
 
@@ -71,15 +74,17 @@ pub async fn poll_database(
             let cursor = MailboxCursor {
                 uid_validity: u32::try_from(uid_validity)
                     .map_err(|_| MailboxError("mailbox cursor is invalid"))?,
-                uid: u32::try_from(uid)
-                    .map_err(|_| MailboxError("mailbox cursor is invalid"))?,
+                uid: u32::try_from(uid).map_err(|_| MailboxError("mailbox cursor is invalid"))?,
             };
             let batch = poll(config, cursor).await?;
             for message in &batch.messages {
-                let Some(token_hash) = forwarding_token_hash(&message.delivered_to, &config.recipient_base) else {
+                let Some(token_hash) =
+                    forwarding_token_hash(&message.delivered_to, &config.recipient_base)
+                else {
                     continue;
                 };
-                let Some((household_id, created_by)) = active_forwarding(conn, &token_hash).await? else {
+                let Some((household_id, created_by)) = active_forwarding(conn, &token_hash).await?
+                else {
                     continue;
                 };
                 let Ok(parsed_email) = crate::email::parse_email(&message.rfc822) else {
@@ -106,7 +111,10 @@ pub async fn poll_database(
                         provider: "gemini_developer_api".to_owned(),
                         model: "free".to_owned(),
                         purpose: "interactive".to_owned(),
-                        idempotency_key: format!("mailbox:{}:{}:attachment:{index}", batch.next.uid_validity, message.uid),
+                        idempotency_key: format!(
+                            "mailbox:{}:{}:attachment:{index}",
+                            batch.next.uid_validity, message.uid
+                        ),
                         request: json!({"purpose": "interactive", "model": "free"}),
                     });
                 }
@@ -124,7 +132,10 @@ pub async fn poll_database(
                         provider: "gemini_developer_api".to_owned(),
                         model: "free".to_owned(),
                         purpose: "interactive".to_owned(),
-                        idempotency_key: format!("mailbox:{}:{}", batch.next.uid_validity, message.uid),
+                        idempotency_key: format!(
+                            "mailbox:{}:{}",
+                            batch.next.uid_validity, message.uid
+                        ),
                         request: json!({"purpose": "interactive", "model": "free"}),
                         attachments: attachment_commands,
                     },
@@ -132,17 +143,16 @@ pub async fn poll_database(
                 .await
                 .map_err(|_| MailboxError("mailbox document registration failed"))?;
             }
-            let updated = diesel::update(
-                cursors::mailbox_cursors.filter(cursors::mailbox.eq("forwarding")),
-            )
-            .set((
-                cursors::uid_validity.eq(i64::from(batch.next.uid_validity)),
-                cursors::uid.eq(i64::from(batch.next.uid)),
-                cursors::updated_at.eq(now),
-            ))
-            .execute(conn)
-            .await
-            .map_err(|_| MailboxError("mailbox cursor update failed"))?;
+            let updated =
+                diesel::update(cursors::mailbox_cursors.filter(cursors::mailbox.eq("forwarding")))
+                    .set((
+                        cursors::uid_validity.eq(i64::from(batch.next.uid_validity)),
+                        cursors::uid.eq(i64::from(batch.next.uid)),
+                        cursors::updated_at.eq(now),
+                    ))
+                    .execute(conn)
+                    .await
+                    .map_err(|_| MailboxError("mailbox cursor update failed"))?;
             if updated != 1 {
                 return Err(MailboxError("mailbox cursor update failed"));
             }
@@ -164,7 +174,10 @@ pub async fn run(
         match poll_database(pool, store, config).await {
             Ok(batch) => {
                 if !batch.rejected_uids.is_empty() {
-                    tracing::warn!(count = batch.rejected_uids.len(), "mailbox messages were rejected");
+                    tracing::warn!(
+                        count = batch.rejected_uids.len(),
+                        "mailbox messages were rejected"
+                    );
                 }
             }
             Err(error) => tracing::warn!(error = %error, "mailbox poll failed"),
@@ -242,10 +255,10 @@ impl MailboxConfig {
         {
             return Err(MailboxError("mailbox configuration is invalid"));
         }
-        let max_message_bytes = parse_positive_limit("MAILBOX_MAX_MESSAGE_BYTES")
-            .unwrap_or(DEFAULT_MAX_MESSAGE_BYTES);
-        let max_messages = parse_positive_limit("MAILBOX_MAX_MESSAGES_PER_POLL")
-            .unwrap_or(DEFAULT_MAX_MESSAGES);
+        let max_message_bytes =
+            parse_positive_limit("MAILBOX_MAX_MESSAGE_BYTES").unwrap_or(DEFAULT_MAX_MESSAGE_BYTES);
+        let max_messages =
+            parse_positive_limit("MAILBOX_MAX_MESSAGES_PER_POLL").unwrap_or(DEFAULT_MAX_MESSAGES);
         if max_message_bytes > MAX_MESSAGE_BYTES || max_messages > MAX_MESSAGES {
             return Err(MailboxError("mailbox poll limit is invalid"));
         }
@@ -271,7 +284,10 @@ impl MailboxConfig {
     }
 }
 
-pub async fn poll(config: &MailboxConfig, cursor: MailboxCursor) -> Result<MailboxBatch, MailboxError> {
+pub async fn poll(
+    config: &MailboxConfig,
+    cursor: MailboxCursor,
+) -> Result<MailboxBatch, MailboxError> {
     if cursor.uid_validity == 0 && cursor.uid != 0 {
         return Err(MailboxError("mailbox cursor has no UIDVALIDITY"));
     }
@@ -318,32 +334,56 @@ async fn poll_with_timeout(
     let mut next = if uid_validity == cursor.uid_validity {
         cursor
     } else {
-        MailboxCursor { uid_validity, uid: 0 }
+        MailboxCursor {
+            uid_validity,
+            uid: 0,
+        }
     };
     if next.uid == u32::MAX {
-        return Ok(MailboxBatch { messages: Vec::new(), rejected_uids: Vec::new(), next });
+        return Ok(MailboxBatch {
+            messages: Vec::new(),
+            rejected_uids: Vec::new(),
+            next,
+        });
     }
     let first_uid = next.uid + 1;
     let last_uid = uid_next - 1;
     if first_uid > last_uid {
-        return Ok(MailboxBatch { messages: Vec::new(), rejected_uids: Vec::new(), next });
+        return Ok(MailboxBatch {
+            messages: Vec::new(),
+            rejected_uids: Vec::new(),
+            next,
+        });
     }
-    let search_last_uid = first_uid.saturating_add(config.max_messages as u32 - 1).min(last_uid);
+    let search_last_uid = first_uid
+        .saturating_add(config.max_messages as u32 - 1)
+        .min(last_uid);
     let uids = session
         .uid_search(format!("UID {first_uid}:{search_last_uid}"))
         .await
         .map_err(|_| MailboxError("mailbox UID search failed"))?;
-    if uids.iter().any(|uid| *uid < first_uid || *uid > search_last_uid) {
+    if uids
+        .iter()
+        .any(|uid| *uid < first_uid || *uid > search_last_uid)
+    {
         return Err(MailboxError("mailbox UID search returned an invalid UID"));
     }
     if uids.is_empty() {
         next.uid = search_last_uid;
-        return Ok(MailboxBatch { messages: Vec::new(), rejected_uids: Vec::new(), next });
+        return Ok(MailboxBatch {
+            messages: Vec::new(),
+            rejected_uids: Vec::new(),
+            next,
+        });
     }
 
     let mut sorted_uids = uids.into_iter().collect::<Vec<_>>();
     sorted_uids.sort_unstable();
-    let mut batch = MailboxBatch { messages: Vec::new(), rejected_uids: Vec::new(), next };
+    let mut batch = MailboxBatch {
+        messages: Vec::new(),
+        rejected_uids: Vec::new(),
+        next,
+    };
     let mut batch_bytes = 0usize;
     for uid in sorted_uids {
         let size = fetch_size(&mut session, uid).await?;
@@ -388,13 +428,20 @@ async fn poll_with_timeout(
         };
         batch_bytes += raw.len();
         batch.next.uid = uid;
-        batch.messages.push(MailboxMessage { uid, delivered_to, rfc822: raw });
+        batch.messages.push(MailboxMessage {
+            uid,
+            delivered_to,
+            rfc822: raw,
+        });
     }
     let _ = session.logout().await;
     Ok(batch)
 }
 
-async fn fetch_size<T>(session: &mut async_imap::Session<T>, uid: u32) -> Result<usize, MailboxError>
+async fn fetch_size<T>(
+    session: &mut async_imap::Session<T>,
+    uid: u32,
+) -> Result<usize, MailboxError>
 where
     T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + fmt::Debug,
 {
@@ -443,27 +490,41 @@ fn trusted_delivered_to(raw: &[u8], recipient_base: &str) -> Option<String> {
         _ => None,
     });
     let address = values.next()?;
-    if values.next().is_some() || !valid_plain_address(address) || !has_plus_recipient(address, recipient_base) {
+    if values.next().is_some()
+        || !valid_plain_address(address)
+        || !has_plus_recipient(address, recipient_base)
+    {
         return None;
     }
     Some(address.to_owned())
 }
 
 fn valid_plain_address(value: &str) -> bool {
-    let Some((local, domain)) = value.split_once('@') else { return false };
+    let Some((local, domain)) = value.split_once('@') else {
+        return false;
+    };
     value.matches('@').count() == 1
         && !local.is_empty()
         && !domain.is_empty()
-        && !value
-            .chars()
-            .any(|character| matches!(character, ' ' | '\t' | '<' | '>' | ',' | ';' | '"' | '\r' | '\n'))
+        && !value.chars().any(|character| {
+            matches!(
+                character,
+                ' ' | '\t' | '<' | '>' | ',' | ';' | '"' | '\r' | '\n'
+            )
+        })
         && !local.contains('+')
 }
 
 fn has_plus_recipient(address: &str, base: &str) -> bool {
-    let Some((local, domain)) = address.split_once('@') else { return false };
-    let Some((base_local, base_domain)) = base.split_once('@') else { return false };
-    let Some(tag) = local.strip_prefix(&format!("{base_local}+")) else { return false };
+    let Some((local, domain)) = address.split_once('@') else {
+        return false;
+    };
+    let Some((base_local, base_domain)) = base.split_once('@') else {
+        return false;
+    };
+    let Some(tag) = local.strip_prefix(&format!("{base_local}+")) else {
+        return false;
+    };
     !tag.is_empty() && domain.eq_ignore_ascii_case(base_domain)
 }
 
@@ -497,6 +558,9 @@ fn forwarding_token_hash(address: &str, base: &str) -> Option<[u8; 32]> {
 }
 
 fn parse_positive_limit(name: &str) -> Option<usize> {
-    env::var(name).ok()?.parse::<usize>().ok().filter(|value| *value > 0)
+    env::var(name)
+        .ok()?
+        .parse::<usize>()
+        .ok()
+        .filter(|value| *value > 0)
 }
-
