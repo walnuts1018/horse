@@ -30,8 +30,9 @@ var (
 )
 
 const (
-	loanKind      = "LOAN"
-	repaymentKind = "REPAYMENT"
+	loanKind        = "LOAN"
+	repaymentKind   = "REPAYMENT"
+	recordOperation = "recordTransfer"
 )
 
 const maxMoney int64 = 1_000_000_000_000
@@ -102,31 +103,16 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		}
 	}
 
-	operation := "recordTransfer"
-	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
-		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(command.IdempotencyKey)),
-		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
-	))).One(ctx, executor)
-	if err == nil {
-		if !existing.RequestFingerprint.Valid || !slices.Equal(existing.RequestFingerprint.V, command.RequestFingerprint[:]) {
-			return Result{}, fmt.Errorf("%w: idempotency key was used with a different request", ErrConflict)
-		}
-		if !existing.ResourceID.Valid {
-			return Result{}, fmt.Errorf("%w: idempotency record has no resource", ErrConflict)
-		}
-		if statementProvided {
-			if err := requireStatementTransferConfirmation(ctx, executor, householdID, existing.ResourceID.V, command.SourceDocumentID, command.SourceReference); err != nil {
-				return Result{}, err
-			}
-		}
+	operation := recordOperation
+	result, found, err := replayTransfer(ctx, executor, householdID, command, statementProvided)
+	if err != nil {
+		return Result{}, err
+	}
+	if found {
 		if err := tx.Rollback(ctx); err != nil {
 			return Result{}, err
 		}
-		return Result{LedgerEntryID: existing.ResourceID.V.String()}, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return Result{}, err
+		return result, nil
 	}
 	if _, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -134,30 +120,15 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		}
 		return Result{}, err
 	}
-	existing, err = models.IdempotencyKeys.Query(sm.Where(psql.And(
-		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdID)),
-		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(command.IdempotencyKey)),
-		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
-	))).One(ctx, executor)
-	if err == nil {
-		if !existing.RequestFingerprint.Valid || !slices.Equal(existing.RequestFingerprint.V, command.RequestFingerprint[:]) {
-			return Result{}, fmt.Errorf("%w: idempotency key was used with a different request", ErrConflict)
-		}
-		if !existing.ResourceID.Valid {
-			return Result{}, fmt.Errorf("%w: idempotency record has no resource", ErrConflict)
-		}
-		if statementProvided {
-			if err := requireStatementTransferConfirmation(ctx, executor, householdID, existing.ResourceID.V, command.SourceDocumentID, command.SourceReference); err != nil {
-				return Result{}, err
-			}
-		}
+	result, found, err = replayTransfer(ctx, executor, householdID, command, statementProvided)
+	if err != nil {
+		return Result{}, err
+	}
+	if found {
 		if err := tx.Rollback(ctx); err != nil {
 			return Result{}, err
 		}
-		return Result{LedgerEntryID: existing.ResourceID.V.String()}, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return Result{}, err
+		return result, nil
 	}
 
 	period := accounting.PeriodFor(command.OccurredAt)
@@ -400,6 +371,32 @@ func (w *Workflow) Do(ctx context.Context, command Command) (Result, error) {
 		return Result{}, err
 	}
 	return Result{LedgerEntryID: ledgerID.String()}, nil
+}
+
+func replayTransfer(ctx context.Context, executor bob.Executor, householdID gofrsuuid.UUID, command Command, statementProvided bool) (Result, bool, error) {
+	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
+		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(command.IdempotencyKey)),
+		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(recordOperation)),
+	))).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Result{}, false, nil
+	}
+	if err != nil {
+		return Result{}, false, err
+	}
+	if !existing.RequestFingerprint.Valid || !slices.Equal(existing.RequestFingerprint.V, command.RequestFingerprint[:]) {
+		return Result{}, false, fmt.Errorf("%w: idempotency key was used with a different request", ErrConflict)
+	}
+	if !existing.ResourceID.Valid {
+		return Result{}, false, fmt.Errorf("%w: idempotency record has no resource", ErrConflict)
+	}
+	if statementProvided {
+		if err := requireStatementTransferConfirmation(ctx, executor, householdID, existing.ResourceID.V, command.SourceDocumentID, command.SourceReference); err != nil {
+			return Result{}, false, err
+		}
+	}
+	return Result{LedgerEntryID: existing.ResourceID.V.String()}, true, nil
 }
 
 func validKind(kind string) bool {
