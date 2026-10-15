@@ -150,6 +150,22 @@ pub mod public {
     }
 
     diesel::table! {
+        budgets (id) {
+            id -> Uuid,
+            household_id -> Uuid,
+            category_id -> Nullable<Uuid>,
+            name -> Text,
+            amount_yen -> Int8,
+            starts_on -> Date,
+            ends_on -> Nullable<Date>,
+            archived -> Bool,
+            revision -> Int8,
+            created_at -> Timestamptz,
+            updated_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
         categories (id) {
             id -> Uuid,
             household_id -> Uuid,
@@ -616,6 +632,27 @@ pub mod public {
     }
 
     diesel::table! {
+        recurring_expenses (id) {
+            id -> Uuid,
+            household_id -> Uuid,
+            name -> Text,
+            merchant -> Text,
+            amount_yen -> Int8,
+            currency -> Text,
+            category_id -> Nullable<Uuid>,
+            payment_account_id -> Nullable<Uuid>,
+            cadence -> Text,
+            starts_on -> Date,
+            next_due_on -> Date,
+            ends_on -> Nullable<Date>,
+            archived -> Bool,
+            revision -> Int8,
+            created_at -> Timestamptz,
+            updated_at -> Timestamptz,
+        }
+    }
+
+    diesel::table! {
         settlement_adjustments (id) {
             id -> Uuid,
             household_id -> Uuid,
@@ -786,6 +823,8 @@ pub mod public {
     diesel::joinable!(allocation_defaults -> households (household_id));
     diesel::joinable!(allocation_rules -> households (household_id));
     diesel::joinable!(categories -> households (household_id));
+    diesel::joinable!(budgets -> households (household_id));
+    diesel::joinable!(recurring_expenses -> households (household_id));
     diesel::joinable!(evidence_links -> households (household_id));
     diesel::joinable!(household_events -> households (household_id));
     diesel::joinable!(household_members -> households (household_id));
@@ -810,6 +849,7 @@ pub mod public {
         bank_statement_import_attempts,
         bank_statement_imports,
         bank_statement_rows,
+        budgets,
         categories,
         correction_member_burdens,
         evidence_links,
@@ -844,6 +884,7 @@ pub mod public {
         purchase_payment_funding_snapshots,
         purchase_payments,
         purchases,
+        recurring_expenses,
         settlement_adjustments,
         settlement_run_adjustments,
         settlement_run_lines,
