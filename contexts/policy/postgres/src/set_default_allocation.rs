@@ -4,18 +4,15 @@ use diesel::{
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use policy_application::set_default_allocation::{
     DefaultAllocationState, SetDefaultAllocationCommand, SetDefaultAllocationDecision,
-    SetDefaultAllocationError, decide_set_default_allocation, validate_default_allocation,
+    SetDefaultAllocationError, SetDefaultAllocationOperations, SetDefaultAllocationResult,
+    ValidatedDefaultAllocation, decide_set_default_allocation, set_default_allocation,
 };
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PersistedDefaultAllocation {
-    pub revision: u64,
-    pub version: u64,
-}
+pub type PersistedDefaultAllocation = SetDefaultAllocationResult;
 
 #[derive(Debug)]
 pub enum SetDefaultAllocationPersistenceError {
@@ -40,8 +37,35 @@ pub async fn persist_set_default_allocation(
     pool: &PgPool,
     command: SetDefaultAllocationCommand,
 ) -> Result<PersistedDefaultAllocation, SetDefaultAllocationPersistenceError> {
-    let validated = validate_default_allocation(command)
-        .map_err(SetDefaultAllocationPersistenceError::InvalidWorkflow)?;
+    let mut operations = DefaultAllocationOperations { pool };
+    set_default_allocation(&mut operations, command).await
+}
+
+struct DefaultAllocationOperations<'a> {
+    pool: &'a PgPool,
+}
+
+impl SetDefaultAllocationOperations for DefaultAllocationOperations<'_> {
+    type Error = SetDefaultAllocationPersistenceError;
+
+    async fn persist(
+        &mut self,
+        command: ValidatedDefaultAllocation,
+    ) -> Result<SetDefaultAllocationResult, Self::Error> {
+        persist_validated(self.pool, command).await
+    }
+}
+
+impl From<SetDefaultAllocationError> for SetDefaultAllocationPersistenceError {
+    fn from(error: SetDefaultAllocationError) -> Self {
+        Self::InvalidWorkflow(error)
+    }
+}
+
+async fn persist_validated(
+    pool: &PgPool,
+    validated: ValidatedDefaultAllocation,
+) -> Result<PersistedDefaultAllocation, SetDefaultAllocationPersistenceError> {
     let household_id = parse_uuid(&validated.household_id, "household_id")?;
     let actor_id = parse_uuid(&validated.actor_id, "actor_id")?;
     let pool_ids = validated

@@ -37,7 +37,7 @@
 | DB Transaction 内でのイベント保存 | 業務更新とイベント記録を原子的に扱おうとしている |
 | GraphQL の `Success` / `UserError` union | 予期される失敗を明示的に扱っている |
 
-特に[ money.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/money.rs)、[allocation.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/allocation.rs)、[journal.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/journal.rs)は、今後のドメイン型実装の基本として活かせます。
+特に[money.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/money.rs)、[allocation.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/allocation.rs)、[journal.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/journal.rs)は、今後のドメイン型実装の基本として活かせます。
 
 また、[post_purchase_loader.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/postgres/src/post_purchase_loader.rs)では購入と会計期間のロック取得があり、[post_purchase.rs](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/postgres/src/post_purchase.rs)では永続化時の再チェックが実装されています。
 
@@ -148,7 +148,7 @@ DMMF\_%E6%9B%B8%E7%B1%8D%E5%85%A8%E7%AB%A0%E5%88%86%E6%9E%90\_%E8%A8%AD%E8%A8%88
 
 ## 4. BC-first Workspaceの再編
 
-Rust Workspaceを技術別の大きなcrateからBounded Contextごとのcrateへ再編しました。`bookkeeping-domain`と`bookkeeping-workflows`は`contexts/bookkeeping/domain`と`contexts/bookkeeping/application`へ移動し、Applicationの正本を`bookkeeping-application`に統一しました。Catalog、Household、Policy、EvidenceのApplicationとPostgreSQL Adapterも、それぞれのContextの下に配置しました。
+Rust Workspaceを技術別の大きなcrateからBounded Contextごとのcrateへ再編しました。`bookkeeping-domain`と`bookkeeping-application`は`contexts/bookkeeping/domain`と`contexts/bookkeeping/application`へ移動しました。Catalog、Household、Policy、EvidenceのApplicationとPostgreSQL Adapterも、それぞれのContextの下に配置しました。
 
 ```text
 apps/
@@ -175,9 +175,9 @@ platform/
 
 複数のContextのデータを組み合わせるread modelと操作は`contexts/cross-context/postgres`に配置しました。該当する処理は、Home Summary、月次支出、Ledger、Node query、Pool mutation、購入訂正に紐づく証拠照会、未照合Observation照会です。購入AnalyticsはBookkeeping単独のqueryとして`contexts/bookkeeping/postgres`に置きました。Evidenceの抽出Job型とWorkflowは`contexts/evidence/application`へ移し、PostgreSQL実装は同じContextのAdapterに置きました。
 
-この再編で、技術別の`crates/postgres`と複数Contextを含むGraphQL crateのような旧配置は解消しました。各PostgreSQL crateはPlatformの共通SchemaとPoolを利用し、Context間のqueryは専用のcross-context adapterに集約しています。
+この再編で、技術別のPostgreSQL crateと複数Contextを含むGraphQL crateのような旧配置は解消しました。各PostgreSQL AdapterはPlatformの共通SchemaとPoolを利用し、Context間のqueryは専用の`contexts/cross-context/postgres`に集約しています。
 
-未解決の点として、購入作成・記帳、購入訂正、月次締め、資金設定などのApplication Workflowは、まだ一部がPostgreSQL Adapterの内部に置かれています。カテゴリ作成だけがApplication Workflowから操作契約を通じてLoad・Decision・Persistを順序付ける形へ移行済みです。次に、トランザクション境界とロックを保ちながら、残りの業務操作を同じ責務分離へ移す必要があります。cross-context queryも、Context固有の認可・読取モデルの責務を整理し、専用Adapterに残す範囲を確定する必要があります。
+購入作成・即時計上とカテゴリ作成は、Application Workflowが操作契約を通じてLoad・Decision・Persistを順序付ける形へ移行済みです。単独購入作成、単独投稿、購入訂正、カテゴリ更新・アーカイブ、月次締め、資金設定には、ResolverまたはPostgreSQL Adapterに処理順序や意思決定が残っています。次に、トランザクション境界とロックを保ちながら、残りの業務操作を同じ責務分離へ移す必要があります。cross-context queryも、Context固有の認可・読取モデルの責務を整理し、専用Adapterに残す範囲を確定する必要があります。
 
 ## 5. 理想的な Workflow の組み立て方
 
@@ -207,27 +207,35 @@ Result DTO / Event Delivery
 
 Commit 後にレスポンス・非同期配送
 
-このような構造が望ましいと考えます。
+購入作成・即時計上はこの構造へ移行しました。GraphQL Resolverは入力DTOをデコードして`CreateAndPostPurchaseCommand`を組み立て、Applicationの`create_and_post_purchase`をPostgres Adapter経由で呼び出します。
 
-Application Workflow はビジネス的な処理順序を明示し、純粋な Domain Decision は DB を認識しません。
+Application Workflowは、同じトランザクションに結び付いた操作契約を使い、次の順序を定義します。
 
-カテゴリ作成でこの構造を実装しました。`catalog_workflows::category::create_category`がCommandをDecisionへ変換し、`CreateCategoryOperations`の小さな操作契約を通じて世帯、メンバー、親カテゴリを読み込んだ後、保存を指示します。Postgres AdapterはDieselトランザクションを開始し、トランザクション内のI/O操作とカテゴリ・イベントの原子的な保存を担当します。認可・親カテゴリ検証・処理順序はアプリケーションWorkflowに置いています。
+1. 世帯メンバーを確認します。
+2. 商品・カテゴリ・販売者から配賦ルールを読み込み、購入Commandへ適用します。
+3. `decide_create_purchase`で作成内容を検証します。
+4. 購入と作成冪等性レコードを保存します。
+5. 作成された購入の状態を読み、既にDraftでなければ既存結果を返します。
+6. Draftの場合は購入・会計期間・配賦・支払・資金負担をロック付きで読み込みます。
+7. `decide_post_purchase`で記帳内容を決め、投稿冪等性レコード・仕訳・台帳・イベントを保存します。
 
-この実装はカテゴリ作成の例であり、同じ分離を購入作成・記帳Workflowへ広げる作業は未完了です。購入処理では同一トランザクション内のロックとOutbox保存を維持しながら、広いRepositoryを作らずにWorkflowが処理順序を所有する形へ移行してください。
+Postgres Adapterはプール接続上で一つのDieselトランザクションを開始し、すべての操作へ同じ`AsyncPgConnection`を渡します。購入作成、即時記帳、二つの冪等性レコード、`household_events`は同一トランザクションで確定します。Applicationの操作契約はこのWorkflowだけに必要な読込・保存能力に限定し、広いRepository traitは追加していません。
 
-Rust では、Dependency Injection を必ずしも大きな trait で実装する必要はありません。ローカルな能力を関数やクロージャで渡す設計を優先し、トランザクション境界や非同期ライフタイムの表現が必要な部分に限って小さな trait を利用するとよいです。
+GraphQLはトランザクション完了後に購入Projectionを読み込み、レスポンスを作ります。非メンバーと世帯・購入の不在は既存どおりNotFoundへ写像し、作成・投稿の冪等性競合、会計期間ロック、購入revision検査も維持します。`source_document_id`から`PurchaseOrigin`を推定しません。
 
-また、DB に依存する複数の処理を一つのトランザクションで行う必要があるため、Load → Decide → Persist の同じトランザクション内での実行を可能にする抽象化は必須です。
+カテゴリ作成では`catalog_application::category::create_category`が同様にCommand、Load、Decision、Persistの順序を所有しています。単独購入作成、単独投稿、購入訂正、カテゴリ更新・アーカイブ、月次締め、資金設定には、ResolverまたはPostgres Adapterがまだ処理順序を持つ経路が残っています。次の移行では各経路に固有の小さな操作契約を定義し、必要なロックと業務失敗を保ってApplicationへ手順を移してください。
 
-この抽象化を技術的な `UnitOfWork` として置くか、Workflow ごとの Transaction Runner として実装するかは Rust 側の選択ですが、DMMF の原則は I/O とドメイン判断の責任分離です。
+現在の`household_events`はGraphQL変更通知の保存に使われています。BC間の公開イベントを確実に配送するTransactional Outboxは別の未解決設計事項であり、今回の購入移行では追加していません。
+
+RustではDependency Injectionを大きなtraitで実装する必要はありません。ローカルな能力を関数やクロージャで渡す設計を優先し、トランザクション境界や非同期ライフタイムの表現が必要な部分に限ってWorkflow固有の小さなtraitを使います。
 
 ### エラー型も Workflow ごとに設計する
 
-現状の `InvalidDecision` は、アダプター内の異常をまとめる用途として多く登場します。
+現状の`InvalidDecision`は、アダプター内の異常をまとめる用途として多く登場します。購入作成・即時計上ではApplicationが`CreatePurchaseError`と`PostPurchaseError`を区別しますが、GraphQLは両方を`BAD_INPUT`へ写像しています。
 
 しかし、これが GraphQL に返す業務エラーへそのまま伝播すると、何が起きたのか分かりません。
 
-例えば PostPurchase であれば、`PurchaseNotDraft`、`AccountingPeriodClosed`、`RevisionConflict`、`InvalidAllocation`、`PaymentMismatch` などを Workflow の公開エラーとして区別し、DB 接続障害やデータ破損とは別の階層に置きたいです。
+例えばPostPurchaseであれば、`PurchaseNotDraft`、`AccountingPeriodClosed`、`RevisionMismatch`、`InvalidAllocation`、`PaymentTotalMismatch`などをWorkflowの公開エラーとして保持し、GraphQLでも適切なUserErrorへ写像する必要があります。DB接続障害や保存済みデータの破損とは別の階層に置きたいです。
 
 DMMF 第10章が重視するのは、すべてのエラーを一つの `Result` 型へまとめることではなく、失敗の意味を保ったまま合成することです。
 
@@ -237,7 +245,7 @@ DMMF 第10章が重視するのは、すべてのエラーを一つの `Result` 
 
 現在の実装を見ると、この分割はまだ十分にコード上の境界になっていません。
 
-例えば `bookkeeping-workflows` の内部に `ingestion_job.rs` があり、`policy-workflows` には Budget、RecurringExpense、AllocationRule が混在しています。
+EvidenceのJob Workflowは`contexts/evidence/application/src/ingestion_job.rs`へ移動しました。`contexts/policy/application`にはBudget、RecurringExpense、AllocationRuleの各Workflowが残っており、これらの概念を同じBounded Contextが所有する根拠はまだ確定していません。
 
 ここは、単純に機能名を移動するのではなく、誰がその概念のルールを所有するのかを改めて決めたいです。
 
@@ -255,7 +263,7 @@ DB にイベント行を書き込むことと、下流へ確実に配送した�
 
 GraphQL については、現在の `Success | UserError` union を維持して構いません。Domain Model と GraphQL Schema を分けている点は良いです。
 
-一方、[graphql-api/src/category.rs](https://github.com/walnuts1018/horse/blob/a3603e2/crates/graphql-api/src/category.rs) では Resolver が `horse_postgres` を直接呼び出し、PostgreSQL 側の結果を GraphQL オブジェクトへ変換しています。
+一方、[category.rs](https://github.com/walnuts1018/horse/blob/main/adapters/graphql/src/category.rs)ではResolverが`catalog_postgres`を呼び出し、PostgreSQL側の結果をGraphQLオブジェクトへ変換しています。カテゴリ作成はApplication Workflowを経由しますが、カテゴリ更新・アーカイブはPostgres Adapter側に処理順序が残っています。
 
 これは Query では必ずしも問題ではありません。DMMF 第12章の CQS/CQRS では、読み取りモデルをドメイン集約と同じ構造にする必要はないからです。
 
@@ -273,7 +281,7 @@ GraphQL については、現在の `Success | UserError` union を維持して�
 
 | 対象 | 改善 |
 | ---------------------------------- | ---------------------------------- |
-| `bookkeeping-workflows/src/lib.rs` | 794行の共通ファイルを役割別 module へ分解 |
+| `contexts/bookkeeping/application/src/lib.rs` | 876行の共通ファイルを役割別moduleへ分解 |
 | `PurchaseId` など | BC 内で正規の定義を一つに統一 |
 | `PurchaseStatus::Other` | 実際の業務状態を明示する enum へ |
 | `AccountingPeriod` | `"YYYY-MM"` 文字列ではなく `YearMonth` 型へ |

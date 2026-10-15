@@ -6,17 +6,14 @@ use diesel::{
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use policy_application::set_allocation_rule::{
     AllocationRuleTarget, SetAllocationRuleCommand, SetAllocationRuleDecision,
-    SetAllocationRuleError, decide_set_allocation_rule, validate_set_allocation_rule,
+    SetAllocationRuleError, SetAllocationRuleOperations, SetAllocationRuleResult,
+    ValidatedSetAllocationRuleCommand, decide_set_allocation_rule, set_allocation_rule,
 };
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PersistedAllocationRule {
-    pub id: String,
-    pub revision: u64,
-}
+pub type PersistedAllocationRule = SetAllocationRuleResult;
 
 #[derive(Debug)]
 pub enum SetAllocationRulePersistenceError {
@@ -42,8 +39,35 @@ pub async fn persist_set_allocation_rule(
     pool: &PgPool,
     command: SetAllocationRuleCommand,
 ) -> Result<PersistedAllocationRule, SetAllocationRulePersistenceError> {
-    let validated = validate_set_allocation_rule(command)
-        .map_err(SetAllocationRulePersistenceError::InvalidWorkflow)?;
+    let mut operations = AllocationRuleOperations { pool };
+    set_allocation_rule(&mut operations, command).await
+}
+
+struct AllocationRuleOperations<'a> {
+    pool: &'a PgPool,
+}
+
+impl SetAllocationRuleOperations for AllocationRuleOperations<'_> {
+    type Error = SetAllocationRulePersistenceError;
+
+    async fn persist(
+        &mut self,
+        command: ValidatedSetAllocationRuleCommand,
+    ) -> Result<SetAllocationRuleResult, Self::Error> {
+        persist_validated(self.pool, command).await
+    }
+}
+
+impl From<SetAllocationRuleError> for SetAllocationRulePersistenceError {
+    fn from(error: SetAllocationRuleError) -> Self {
+        Self::InvalidWorkflow(error)
+    }
+}
+
+async fn persist_validated(
+    pool: &PgPool,
+    validated: ValidatedSetAllocationRuleCommand,
+) -> Result<PersistedAllocationRule, SetAllocationRulePersistenceError> {
     let household_id = parse_uuid(&validated.household_id, "household_id")?;
     let actor_id = parse_uuid(&validated.actor_id, "actor_id")?;
     let category_id = parse_optional_uuid(validated.target.category_id.as_deref(), "category_id")?;

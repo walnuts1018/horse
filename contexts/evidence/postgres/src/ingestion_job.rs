@@ -7,8 +7,9 @@ use uuid::Uuid;
 use evidence_application::ingestion_job::{
     ClaimExtractionJob, ClaimExtractionJobOperations, ClaimExtractionJobWorkflowError,
     ExtractionFailureKind, ExtractionJob, ExtractionJobStatus, FinishExtractionJobError,
-    FinishedJob, QueuedJob, RunningJob, ValidLease, claim_next_extraction_job,
-    finish_extraction_failure, finish_extraction_success, recover_expired_extraction_job,
+    FinishedJob, QueuedJob, RunningJob, ValidLease,
+    claim_next_extraction_job as claim_next_extraction_job_workflow, finish_extraction_failure,
+    finish_extraction_success, recover_expired_extraction_job,
 };
 
 use crate::{PgPool, schema::public};
@@ -68,7 +69,7 @@ pub async fn claim_next_extraction_job(
     (&mut *pooled)
         .transaction::<Option<ClaimedExtractionJob>, IngestionJobError, _>(async move |conn| {
             let mut operations = PostgresClaimExtractionJobOperations { conn };
-            claim_next_extraction_job(
+            claim_next_extraction_job_workflow(
                 &mut operations,
                 now_ms,
                 lease_token,
