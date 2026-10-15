@@ -247,161 +247,201 @@ func refundablePurchaseAmounts(ctx context.Context, executor bob.Executor, purch
 	return total, byItem, nil
 }
 
-func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerprint [sha256.Size]byte) (CorrectionResult, error) {
-	purchaseID, itemID, delta := input.PurchaseID, input.ItemID, input.AmountDeltaYen
+type correctionRequest struct {
+	input         CorrectionCommand
+	householdID   gofrsuuid.UUID
+	purchaseID    gofrsuuid.UUID
+	actorID       gofrsuuid.UUID
+	delta         int64
+	fromStatement bool
+	operation     string
+}
+
+func validateCorrectionRequest(input CorrectionCommand) (correctionRequest, error) {
+	purchaseID, delta := input.PurchaseID, input.AmountDeltaYen
 	fromStatement := input.SourceDocumentID != "" || input.SourceReference != ""
 	if delta == 0 && !fromStatement || delta > correctionMaxMoney || delta < -correctionMaxMoney || strings.TrimSpace(input.Reason) == "" || input.IdempotencyKey == "" || fromStatement && (input.SourceDocumentID == "" || input.SourceReference == "" || len(input.SourceReference) > 256) {
-		return CorrectionResult{}, fmt.Errorf("%w: invalid correction", ErrBadInput)
+		return correctionRequest{}, fmt.Errorf("%w: invalid correction", ErrBadInput)
 	}
 	householdUUID, err := parseUUID(input.HouseholdID, "household")
 	if err != nil {
-		return CorrectionResult{}, err
+		return correctionRequest{}, err
 	}
 	purchaseUUID, err := parseUUID(purchaseID, "purchase")
 	if err != nil {
-		return CorrectionResult{}, err
+		return correctionRequest{}, err
 	}
 	actorUUID, err := parseUUID(input.ActorID, "actor")
 	if err != nil {
-		return CorrectionResult{}, err
-	}
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return CorrectionResult{}, err
-	}
-	defer txcleanup.Rollback(ctx, tx)
-	executor := bobpgx.NewTx(tx, nil)
-	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
-		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorUUID)),
-		models.HouseholdMembers.Columns.LeftAt.IsNull(),
-	))).Exists(ctx, executor)
-	if err != nil {
-		return CorrectionResult{}, err
-	}
-	if !member {
-		return CorrectionResult{}, ErrNotFound
-	}
-	purchaseRow, err := models.Purchases.Query(sm.Where(psql.And(
-		models.Purchases.Columns.ID.EQ(psql.Arg(purchaseUUID)),
-		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-	)), sm.ForUpdate()).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) {
-		return CorrectionResult{}, ErrNotFound
-	}
-	if err != nil {
-		return CorrectionResult{}, err
+		return correctionRequest{}, err
 	}
 	operation := "correctPurchase"
 	if fromStatement {
 		operation = "correctPurchaseFromStatement"
 	}
+	return correctionRequest{
+		input: input, householdID: householdUUID, purchaseID: purchaseUUID, actorID: actorUUID,
+		delta: delta, fromStatement: fromStatement, operation: operation,
+	}, nil
+}
+
+func lockCorrectionPurchase(ctx context.Context, executor bob.Executor, request correctionRequest) (*models.Purchase, error) {
+	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
+		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(request.householdID)),
+		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(request.actorID)),
+		models.HouseholdMembers.Columns.LeftAt.IsNull(),
+	))).Exists(ctx, executor)
+	if err != nil {
+		return nil, err
+	}
+	if !member {
+		return nil, ErrNotFound
+	}
+	purchase, err := models.Purchases.Query(sm.Where(psql.And(
+		models.Purchases.Columns.ID.EQ(psql.Arg(request.purchaseID)),
+		models.Purchases.Columns.HouseholdID.EQ(psql.Arg(request.householdID)),
+	)), sm.ForUpdate()).One(ctx, executor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return purchase, nil
+}
+
+func correctionIdempotencyReplay(ctx context.Context, tx pgx.Tx, executor bob.Executor, request correctionRequest, fingerprint [sha256.Size]byte) (bool, error) {
 	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
-		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(input.IdempotencyKey)),
-		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
+		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(request.householdID)),
+		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(request.input.IdempotencyKey)),
+		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(request.operation)),
 	))).One(ctx, executor)
-	if err == nil && existing.ResourceID.Valid {
-		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
-			return CorrectionResult{}, err
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
 		}
-		if err := tx.Rollback(ctx); err != nil {
-			return CorrectionResult{}, err
-		}
-		return CorrectionResult{PurchaseID: purchaseID}, nil
+		return false, err
 	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return CorrectionResult{}, err
+	if !existing.ResourceID.Valid {
+		return false, nil
 	}
-	var statementEvidence *statementRefundEvidence
-	if fromStatement {
-		statementEvidence, err = loadStatementRefundEvidence(ctx, executor, householdUUID, input.SourceDocumentID, input.SourceReference)
+	if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
+		return false, err
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+type correctionPlan struct {
+	delta             int64
+	statementEvidence *statementRefundEvidence
+	effectivePeriod   string
+	occurredAt        time.Time
+	itemID            sql.Null[gofrsuuid.UUID]
+	shares            []domain.AllocationAmount
+}
+
+func prepareCorrectionPlan(ctx context.Context, tx pgx.Tx, executor bob.Executor, request correctionRequest, purchase *models.Purchase) (correctionPlan, error) {
+	plan := correctionPlan{delta: request.delta}
+	if request.fromStatement {
+		evidence, err := loadStatementRefundEvidence(ctx, executor, request.householdID, request.input.SourceDocumentID, request.input.SourceReference)
 		if err != nil {
-			return CorrectionResult{}, err
+			return correctionPlan{}, err
 		}
-		delta = statementEvidence.AmountDeltaYen
-		if delta == 0 || delta > 0 || delta < -correctionMaxMoney {
-			return CorrectionResult{}, fmt.Errorf("%w: statement row is not a refundable negative amount", ErrBadInput)
+		plan.statementEvidence = evidence
+		plan.delta = evidence.AmountDeltaYen
+		if plan.delta == 0 || plan.delta > 0 || plan.delta < -correctionMaxMoney {
+			return correctionPlan{}, fmt.Errorf("%w: statement row is not a refundable negative amount", ErrBadInput)
 		}
 	}
-	if purchaseRow.Status == draftStatus {
-		return CorrectionResult{}, fmt.Errorf("%w: corrections require a posted purchase", ErrBadInput)
+	if purchase.Status == draftStatus {
+		return correctionPlan{}, fmt.Errorf("%w: corrections require a posted purchase", ErrBadInput)
 	}
-	originalPeriod := accounting.PeriodFor(purchaseRow.OccurredAt)
-	if err := ensureAccountingPeriod(ctx, executor, householdUUID, originalPeriod); err != nil {
-		return CorrectionResult{}, err
+	originalPeriod := accounting.PeriodFor(purchase.OccurredAt)
+	if err := ensureAccountingPeriod(ctx, executor, request.householdID, originalPeriod); err != nil {
+		return correctionPlan{}, err
 	}
 	originalPeriodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
-		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(request.householdID)),
 		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(originalPeriod)),
 	)), sm.ForUpdate()).One(ctx, executor)
 	if err != nil {
-		return CorrectionResult{}, err
+		return correctionPlan{}, err
 	}
-	effectivePeriod := originalPeriod
-	correctionAt := time.Now()
+	plan.effectivePeriod = originalPeriod
+	plan.occurredAt = time.Now()
 	if originalPeriodRow.Status == correctionStatusClosed {
-		effectivePeriod = accounting.PeriodFor(correctionAt)
-		if err := lockCorrectionAccountingPeriods(ctx, executor, householdUUID, effectivePeriod); err != nil {
-			return CorrectionResult{}, err
+		plan.effectivePeriod = accounting.PeriodFor(plan.occurredAt)
+		if err := lockCorrectionAccountingPeriods(ctx, executor, request.householdID, plan.effectivePeriod); err != nil {
+			return correctionPlan{}, err
 		}
 	}
 	if originalPeriodRow.Status != "OPEN" && originalPeriodRow.Status != correctionStatusClosed {
-		return CorrectionResult{}, fmt.Errorf("%w: invalid accounting period state", ErrConflict)
+		return correctionPlan{}, fmt.Errorf("%w: invalid accounting period state", ErrConflict)
 	}
 	effectivePeriodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
-		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(effectivePeriod)),
+		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(request.householdID)),
+		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(plan.effectivePeriod)),
 	)), sm.ForUpdate()).One(ctx, executor)
 	if err != nil {
-		return CorrectionResult{}, err
+		return correctionPlan{}, err
 	}
 	if effectivePeriodRow.Status == correctionStatusClosed {
-		return CorrectionResult{}, fmt.Errorf("%w: correction period is closed", ErrConflict)
+		return correctionPlan{}, fmt.Errorf("%w: correction period is closed", ErrConflict)
 	}
-	var itemUUIDValue sql.Null[gofrsuuid.UUID]
-	if itemID != nil {
-		itemUUID, err := parseUUID(*itemID, "purchase item")
+	if request.input.ItemID != nil {
+		itemUUID, err := parseUUID(*request.input.ItemID, "purchase item")
 		if err != nil {
-			return CorrectionResult{}, err
+			return correctionPlan{}, err
 		}
 		if _, err := models.PurchaseItems.Query(sm.Where(psql.And(
 			models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID)),
-			models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)),
+			models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(request.purchaseID)),
 		))).One(ctx, executor); errors.Is(err, sql.ErrNoRows) {
-			return CorrectionResult{}, ErrNotFound
+			return correctionPlan{}, ErrNotFound
 		} else if err != nil {
-			return CorrectionResult{}, err
+			return correctionPlan{}, err
 		}
-		itemUUIDValue = sql.Null[gofrsuuid.UUID]{V: itemUUID, Valid: true}
+		plan.itemID = sql.Null[gofrsuuid.UUID]{V: itemUUID, Valid: true}
 	}
-	weights, err := correctionAllocationWeights(ctx, tx, purchaseID, itemID)
+	weights, err := correctionAllocationWeights(ctx, tx, request.input.PurchaseID, request.input.ItemID)
 	if err != nil {
-		return CorrectionResult{}, err
+		return correctionPlan{}, err
 	}
-	if len(input.Allocations) > 0 && !sameAllocationWeights(input.Allocations, weights) {
-		return CorrectionResult{}, fmt.Errorf("%w: corrections must use the saved purchase allocation", ErrBadInput)
+	if len(request.input.Allocations) > 0 && !sameAllocationWeights(request.input.Allocations, weights) {
+		return correctionPlan{}, fmt.Errorf("%w: corrections must use the saved purchase allocation", ErrBadInput)
 	}
-	if delta < 0 {
-		refundablePurchaseTotal, refundableByItem, err := refundablePurchaseAmounts(ctx, executor, purchaseUUID)
+	if plan.delta < 0 {
+		refundablePurchaseTotal, refundableByItem, err := refundablePurchaseAmounts(ctx, executor, request.purchaseID)
 		if err != nil {
-			return CorrectionResult{}, err
+			return correctionPlan{}, err
 		}
-		if refundablePurchaseTotal < 0 || -delta > refundablePurchaseTotal {
-			return CorrectionResult{}, fmt.Errorf("%w: refund exceeds the remaining purchase amount", ErrBadInput)
+		if refundablePurchaseTotal < 0 || -plan.delta > refundablePurchaseTotal {
+			return correctionPlan{}, fmt.Errorf("%w: refund exceeds the remaining purchase amount", ErrBadInput)
 		}
-		if itemID != nil {
-			itemUUID := mustCorrectionUUID(*itemID)
-			refundableItemTotal := refundableByItem[itemUUID]
-			if refundableItemTotal < 0 || -delta > refundableItemTotal {
-				return CorrectionResult{}, fmt.Errorf("%w: refund exceeds the remaining item amount", ErrBadInput)
+		if request.input.ItemID != nil {
+			refundableItemTotal := refundableByItem[mustCorrectionUUID(*request.input.ItemID)]
+			if refundableItemTotal < 0 || -plan.delta > refundableItemTotal {
+				return correctionPlan{}, fmt.Errorf("%w: refund exceeds the remaining item amount", ErrBadInput)
 			}
 		}
 	}
-	shares, err := domain.Allocate(abs(delta), weights)
+	plan.shares, err = domain.Allocate(abs(plan.delta), weights)
 	if err != nil {
-		return CorrectionResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
+		return correctionPlan{}, fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
+	return plan, nil
+}
+
+func persistCorrection(ctx context.Context, executor bob.Executor, request correctionRequest, purchase *models.Purchase, plan correctionPlan, fingerprint [sha256.Size]byte) error {
+	input := request.input
+	householdUUID, purchaseUUID, actorUUID := request.householdID, request.purchaseID, request.actorID
+	delta, statementEvidence := plan.delta, plan.statementEvidence
+	effectivePeriod, correctionAt := plan.effectivePeriod, plan.occurredAt
+	itemUUIDValue, shares := plan.itemID, plan.shares
+	var err error
 	correctionUUID, journalUUID, ledgerUUID := newUUID(), newUUID(), newUUID()
 	userUUID := actorUUID
 	sourceKind := correctionSourceKind
@@ -409,42 +449,42 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 		ID: &journalUUID, HouseholdID: &householdUUID, SourceKind: &sourceKind, SourceID: &correctionUUID,
 		IdempotencyKey: &input.IdempotencyKey, OccurredAt: &correctionAt, CreatedBy: &userUUID,
 	}).Exec(ctx, executor); err != nil {
-		return CorrectionResult{}, err
+		return err
 	}
 	var payments []Payment
 	if len(input.PaymentAllocations) > 0 {
 		payments, err = validateCorrectionPayments(ctx, executor, householdUUID, input.PaymentAllocations)
 		if err != nil {
-			return CorrectionResult{}, err
+			return err
 		}
 		var paid int64
 		for _, payment := range payments {
 			var ok bool
 			paid, ok = checkedAdd(paid, payment.AmountYen)
 			if !ok {
-				return CorrectionResult{}, fmt.Errorf("%w: payment total is too large", ErrBadInput)
+				return fmt.Errorf("%w: payment total is too large", ErrBadInput)
 			}
 		}
 		if paid != abs(delta) {
-			return CorrectionResult{}, fmt.Errorf("%w: correction payments must equal the correction amount", ErrBadInput)
+			return fmt.Errorf("%w: correction payments must equal the correction amount", ErrBadInput)
 		}
 	} else {
 		items, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.PurchaseID.EQ(psql.Arg(purchaseUUID)))).All(ctx, executor)
 		if err != nil {
-			return CorrectionResult{}, err
+			return err
 		}
 		var originalTotal int64
 		for _, item := range items {
 			originalTotal += item.AmountYen
 		}
 		var originalAccountID *string
-		if purchaseRow.PaymentAccountID.Valid {
-			accountID := purchaseRow.PaymentAccountID.V.String()
+		if purchase.PaymentAccountID.Valid {
+			accountID := purchase.PaymentAccountID.V.String()
 			originalAccountID = &accountID
 		}
 		payments, err = correctionPurchasePayments(ctx, executor, householdUUID, purchaseUUID, originalAccountID, originalTotal)
 		if err != nil {
-			return CorrectionResult{}, err
+			return err
 		}
 		if len(payments) > 0 {
 			weights := make([]domain.Weight, 0, len(payments))
@@ -453,7 +493,7 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 			}
 			allocatedPayments, err := domain.Allocate(abs(delta), weights)
 			if err != nil {
-				return CorrectionResult{}, err
+				return err
 			}
 			payments = payments[:0]
 			for _, payment := range allocatedPayments {
@@ -466,10 +506,10 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 	postings := buildCorrectionPostings(shares, delta, input.Reason, payments)
 	entries, err := accounting.BuildEntries(postings)
 	if err != nil {
-		return CorrectionResult{}, fmt.Errorf("%w: %w", ErrBadInput, err)
+		return fmt.Errorf("%w: %w", ErrBadInput, err)
 	}
 	if err := accounting.InsertEntries(ctx, executor, journalUUID, entries); err != nil {
-		return CorrectionResult{}, err
+		return err
 	}
 	correctionLedgerKind := correctionSourceKind
 	noMemberValue := sql.Null[gofrsuuid.UUID]{}
@@ -480,14 +520,14 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 		OccurredAt: &correctionAt, Description: &input.Reason, AmountYen: &amount,
 		FromMemberID: &noMemberValue, ToMemberID: &noMemberValue, PoolID: &noMemberValue, SourcePurchaseID: &purchaseValue,
 	}).Exec(ctx, executor); err != nil {
-		return CorrectionResult{}, err
+		return err
 	}
 	if _, err := models.Corrections.Insert(&models.CorrectionSetter{
 		ID: &correctionUUID, HouseholdID: &householdUUID, PurchaseID: &purchaseUUID, ItemID: &itemUUIDValue,
 		AmountDeltaYen: &delta, Reason: &input.Reason, JournalID: &journalUUID, CreatedBy: &userUUID,
 		EffectivePeriod: new(sql.Null[string]{V: effectivePeriod, Valid: true}),
 	}).Exec(ctx, executor); err != nil {
-		return CorrectionResult{}, err
+		return err
 	}
 	if statementEvidence != nil {
 		correctionIDValue := sql.Null[gofrsuuid.UUID]{V: correctionUUID, Valid: true}
@@ -496,15 +536,15 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 			HouseholdID: &householdUUID, CorrectionID: &correctionIDValue, CreatedBy: &actorUUID,
 		}).Exec(ctx, executor); err != nil {
 			if isUniqueViolation(err) {
-				return CorrectionResult{}, ErrConflict
+				return ErrConflict
 			}
-			return CorrectionResult{}, err
+			return err
 		}
 		var region sql.Null[types.JSON[stdjson.RawMessage]]
 		if statementEvidence.Region != nil {
 			encoded, err := json.Marshal(statementEvidence.Region)
 			if err != nil {
-				return CorrectionResult{}, err
+				return err
 			}
 			region = sql.Null[types.JSON[stdjson.RawMessage]]{V: types.JSON[stdjson.RawMessage]{Val: encoded}, Valid: true}
 		}
@@ -514,13 +554,13 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 			CorrectionID: &correctionUUID, EvidenceRegion: &region, Observation: &observationJSON,
 		}).Exec(ctx, executor); err != nil {
 			if isUniqueViolation(err) {
-				return CorrectionResult{}, ErrConflict
+				return ErrConflict
 			}
-			return CorrectionResult{}, err
+			return err
 		}
 	}
 	if err := snapshotCorrectionMemberBurden(ctx, executor, input.HouseholdID, correctionUUID, purchaseUUID, itemUUIDValue, shares, delta); err != nil {
-		return CorrectionResult{}, err
+		return err
 	}
 	for index, payment := range payments {
 		accountUUID := mustCorrectionUUID(payment.AccountID)
@@ -529,16 +569,16 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 		if _, err := models.CorrectionPayments.Insert(&models.CorrectionPaymentSetter{
 			CorrectionID: &correctionUUID, LineNo: &line, AccountID: &accountUUID, AmountYen: &paymentAmount,
 		}).Exec(ctx, executor); err != nil {
-			return CorrectionResult{}, err
+			return err
 		}
 	}
 	fundingExpenses, rules, err := correctionFundingExpense(ctx, executor, householdUUID, purchaseUUID, itemUUIDValue, shares)
 	if err != nil {
-		return CorrectionResult{}, err
+		return err
 	}
 	changes, err := domain.CalculateExpenseAdjustments(fundingExpenses, rules)
 	if err != nil {
-		return CorrectionResult{}, err
+		return err
 	}
 	for _, change := range changes {
 		amount := change.MonthlyAdjustmentYen - change.AdvanceCreditYen
@@ -553,17 +593,50 @@ func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerpr
 			ID: &adjustmentID, HouseholdID: &householdUUID, Period: &effectivePeriod, MemberID: &memberUUID,
 			SourceKind: &sourceKind, SourceID: &correctionUUID, AmountYen: &amount,
 		}).Exec(ctx, executor); err != nil {
-			return CorrectionResult{}, err
+			return err
 		}
 	}
 	ledgerResource := sql.Null[gofrsuuid.UUID]{V: ledgerUUID, Valid: true}
 	requestFingerprint := sql.Null[[]byte]{V: fingerprint[:], Valid: true}
 	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
-		HouseholdID: &householdUUID, Key: &input.IdempotencyKey, Operation: &operation, ResourceID: &ledgerResource, RequestFingerprint: &requestFingerprint,
+		HouseholdID: &householdUUID, Key: &input.IdempotencyKey, Operation: &request.operation, ResourceID: &ledgerResource, RequestFingerprint: &requestFingerprint,
 	}).Exec(ctx, executor); err != nil {
-		return CorrectionResult{}, err
+		return err
 	}
 	if err := accounting.RecordEvent(ctx, executor, householdUUID, purchaseUUID, "purchase.corrected", 1, []string{"correction"}, actorUUID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) Correct(ctx context.Context, input CorrectionCommand, fingerprint [sha256.Size]byte) (CorrectionResult, error) {
+	request, err := validateCorrectionRequest(input)
+	if err != nil {
+		return CorrectionResult{}, err
+	}
+	purchaseID := request.input.PurchaseID
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return CorrectionResult{}, err
+	}
+	defer txcleanup.Rollback(ctx, tx)
+	executor := bobpgx.NewTx(tx, nil)
+	purchaseRow, err := lockCorrectionPurchase(ctx, executor, request)
+	if err != nil {
+		return CorrectionResult{}, err
+	}
+	replayed, err := correctionIdempotencyReplay(ctx, tx, executor, request, fingerprint)
+	if err != nil {
+		return CorrectionResult{}, err
+	}
+	if replayed {
+		return CorrectionResult{PurchaseID: purchaseID}, nil
+	}
+	plan, err := prepareCorrectionPlan(ctx, tx, executor, request, purchaseRow)
+	if err != nil {
+		return CorrectionResult{}, err
+	}
+	if err := persistCorrection(ctx, executor, request, purchaseRow, plan, fingerprint); err != nil {
 		return CorrectionResult{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
