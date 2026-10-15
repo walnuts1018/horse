@@ -182,23 +182,29 @@ func settlementEvidenceMany(ctx context.Context, db bob.Executor, requests []Get
 	if err != nil {
 		return nil, err
 	}
-	purchaseIDs := make([]bob.Expression, 0, len(purchases))
+	purchaseIDs := make([]gofrsuuid.UUID, 0, len(purchases))
 	purchaseByID := make(map[gofrsuuid.UUID]*models.Purchase, len(purchases))
 	for _, purchase := range purchases {
-		purchaseIDs = append(purchaseIDs, psql.Arg(purchase.ID))
+		purchaseIDs = append(purchaseIDs, purchase.ID)
 		purchaseByID[purchase.ID] = purchase
 	}
-	if len(purchaseIDs) > 0 {
+	const purchaseQueryBatchSize = 500
+	for start := 0; start < len(purchaseIDs); start += purchaseQueryBatchSize {
+		end := min(start+purchaseQueryBatchSize, len(purchaseIDs))
+		purchaseArgs := make([]bob.Expression, 0, end-start)
+		for _, purchaseID := range purchaseIDs[start:end] {
+			purchaseArgs = append(purchaseArgs, psql.Arg(purchaseID))
+		}
 		burdens, err := models.PurchaseMemberBurdens.Query(sm.Where(psql.And(
 			models.PurchaseMemberBurdens.Columns.HouseholdID.In(householdArgs...),
-			models.PurchaseMemberBurdens.Columns.PurchaseID.In(purchaseIDs...),
+			models.PurchaseMemberBurdens.Columns.PurchaseID.In(purchaseArgs...),
 		))).All(ctx, db)
 		if err != nil {
 			return nil, err
 		}
 		items, err := models.PurchaseItems.Query(sm.Where(psql.And(
 			models.PurchaseItems.Columns.HouseholdID.In(householdArgs...),
-			models.PurchaseItems.Columns.PurchaseID.In(purchaseIDs...),
+			models.PurchaseItems.Columns.PurchaseID.In(purchaseArgs...),
 		))).All(ctx, db)
 		if err != nil {
 			return nil, err
