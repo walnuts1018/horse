@@ -4,6 +4,7 @@ use std::{
     time::Duration,
 };
 
+use crate::{Actor, DateTime, actor, decode_household_id, purchase_mutations};
 use async_graphql::{Context, Enum, Error, ID, Result, SimpleObject, Subscription};
 use chrono::{DateTime as ChronoDateTime, Utc};
 use diesel::{BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl};
@@ -12,7 +13,8 @@ use futures_util::Stream;
 use horse_postgres_common::PgPool;
 use uuid::Uuid;
 
-use crate::{Actor, DateTime, actor, decode_household_id, purchase_mutations};
+#[derive(Clone, Copy, Debug)]
+pub struct SessionTokenHash(pub [u8; 32]);
 
 #[derive(Clone, Copy, Debug, Enum, Eq, PartialEq)]
 pub enum PurchaseChangeKind {
@@ -387,7 +389,9 @@ impl SubscriptionRoot {
     ) -> Result<impl Stream<Item = PurchaseChange>> {
         let pool = ctx.data::<PgPool>()?.clone();
         let actor = actor(ctx)?;
+        let session_token_hash = ctx.data::<SessionTokenHash>()?.0;
         let household = decode_household_id(&household_id)?;
+        authorize_session(&pool, actor, session_token_hash).await?;
         authorize_household(&pool, actor, household).await?;
         let cursor = match after {
             Some(value) if !value.is_empty() => parse_cursor(&value)?,
@@ -397,13 +401,46 @@ impl SubscriptionRoot {
         let hub = ctx.data::<Arc<SubscriptionHub>>()?;
         let id = hub.register_purchase(household, cursor, tx);
         hub.start(pool.clone());
+        let mut authorization_interval = tokio::time::interval(Duration::from_secs(30));
+        authorization_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        authorization_interval.tick().await;
         Ok(futures_util::stream::unfold(
-            (rx, pool, actor, household, id, hub.clone()),
-            |(mut rx, pool, actor, household, id, hub)| async move {
+            (
+                rx,
+                pool,
+                actor,
+                household,
+                id,
+                hub.clone(),
+                session_token_hash,
+                authorization_interval,
+            ),
+            |(
+                mut rx,
+                pool,
+                actor,
+                household,
+                id,
+                hub,
+                session_token_hash,
+                mut authorization_interval,
+            )| async move {
                 loop {
                     tokio::select! {
-                        value = futures_util::StreamExt::next(&mut rx) => return value.map(|value| (value, (rx, pool, actor, household, id, hub))),
-                        _ = tokio::time::sleep(Duration::from_secs(30)) => if authorize_household(&pool, actor, household).await.is_err() { hub.remove_purchase(id); return None; },
+                        value = futures_util::StreamExt::next(&mut rx) => match value {
+                            Some(value) => {
+                                if authorize_subscription(&pool, actor, session_token_hash, household).await.is_err() {
+                                    hub.remove_purchase(id);
+                                    return None;
+                                }
+                                return Some((value, (rx, pool, actor, household, id, hub, session_token_hash, authorization_interval)));
+                            }
+                            None => {
+                                hub.remove_purchase(id);
+                                return None;
+                            }
+                        },
+                        _ = authorization_interval.tick() => if authorize_subscription(&pool, actor, session_token_hash, household).await.is_err() { hub.remove_purchase(id); return None; },
                     }
                 }
             },
@@ -418,7 +455,9 @@ impl SubscriptionRoot {
     ) -> Result<impl Stream<Item = SharedPurchaseDraftChange>> {
         let pool = ctx.data::<PgPool>()?.clone();
         let actor = actor(ctx)?;
+        let session_token_hash = ctx.data::<SessionTokenHash>()?.0;
         let draft_id = Uuid::parse_str(id.as_str()).map_err(crate::internal_error)?;
+        authorize_session(&pool, actor, session_token_hash).await?;
         let draft = crate::shared_purchase_draft::shared_purchase_draft(ctx, id.clone())
             .await?
             .ok_or_else(|| Error::new("shared purchase draft not found"))?;
@@ -430,18 +469,82 @@ impl SubscriptionRoot {
         let hub = ctx.data::<Arc<SubscriptionHub>>()?;
         let watch_id = hub.register_draft(draft_id, cursor, tx);
         hub.start(pool.clone());
+        let mut authorization_interval = tokio::time::interval(Duration::from_secs(30));
+        authorization_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        authorization_interval.tick().await;
         Ok(futures_util::stream::unfold(
-            (rx, pool, actor, draft_id, watch_id, hub.clone()),
-            |(mut rx, pool, actor, draft_id, watch_id, hub)| async move {
+            (
+                rx,
+                pool,
+                actor,
+                draft_id,
+                watch_id,
+                hub.clone(),
+                session_token_hash,
+                authorization_interval,
+            ),
+            |(
+                mut rx,
+                pool,
+                actor,
+                draft_id,
+                watch_id,
+                hub,
+                session_token_hash,
+                mut authorization_interval,
+            )| async move {
                 loop {
                     tokio::select! {
-                        value = futures_util::StreamExt::next(&mut rx) => return value.map(|value| (value, (rx, pool, actor, draft_id, watch_id, hub))),
-                        _ = tokio::time::sleep(Duration::from_secs(30)) => if authorize_draft(&pool, actor, draft_id).await.is_err() { hub.remove_draft(watch_id); return None; },
+                        value = futures_util::StreamExt::next(&mut rx) => match value {
+                            Some(value) => {
+                                if authorize_session(&pool, actor, session_token_hash).await.is_err()
+                                    || authorize_draft(&pool, actor, draft_id).await.is_err()
+                                {
+                                    hub.remove_draft(watch_id);
+                                    return None;
+                                }
+                                return Some((value, (rx, pool, actor, draft_id, watch_id, hub, session_token_hash, authorization_interval)));
+                            }
+                            None => {
+                                hub.remove_draft(watch_id);
+                                return None;
+                            }
+                        },
+                        _ = authorization_interval.tick() => if authorize_session(&pool, actor, session_token_hash).await.is_err() || authorize_draft(&pool, actor, draft_id).await.is_err() { hub.remove_draft(watch_id); return None; },
                     }
                 }
             },
         ))
     }
+}
+
+async fn authorize_session(pool: &PgPool, actor: Actor, token_hash: [u8; 32]) -> Result<()> {
+    use diesel_async::RunQueryDsl;
+    use horse_postgres_common::schema::public::oidc_sessions::dsl as sessions;
+    let mut conn = pool.get().await.map_err(crate::internal_error)?;
+    let member_id = sessions::oidc_sessions
+        .filter(sessions::token_hash.eq(token_hash.to_vec()))
+        .filter(sessions::expiry.gt(chrono::Utc::now()))
+        .select(sessions::member_id)
+        .first::<Uuid>(&mut conn)
+        .await
+        .optional()
+        .map_err(crate::internal_error)?;
+    if member_id == Some(actor.0) {
+        Ok(())
+    } else {
+        Err(Error::new("authentication required"))
+    }
+}
+
+async fn authorize_subscription(
+    pool: &PgPool,
+    actor: Actor,
+    token_hash: [u8; 32],
+    household: Uuid,
+) -> Result<()> {
+    authorize_session(pool, actor, token_hash).await?;
+    authorize_household(pool, actor, household).await
 }
 
 async fn authorize_household(pool: &PgPool, actor: Actor, household: Uuid) -> Result<()> {

@@ -12,12 +12,17 @@ use axum::{
 use diesel::{BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::{Stream, StreamExt, stream};
-use horse_auth::{AuthService, Cookie, OidcError, resolve_cookie, revoke_cookie};
+use horse_auth::{
+    AuthService, Cookie, OidcError, SESSION_COOKIE_NAME, resolve_cookie, revoke_cookie,
+};
 use horse_extraction_queue::ExtractionQueue;
-use horse_graphql_api::{Actor, Schema as GraphqlSchema, viewer_query::ViewerIdentity};
+use horse_graphql_api::{
+    Actor, Schema as GraphqlSchema, subscriptions::SessionTokenHash, viewer_query::ViewerIdentity,
+};
 use horse_object_storage::ObjectStore;
 use horse_postgres_common::{PgPool, schema::public::households};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::convert::Infallible;
 use std::sync::Arc;
 use url::Url;
@@ -114,9 +119,14 @@ async fn graphql_ws(
                 .into_response();
         }
     };
+    let Some(session_token) = cookie_value(cookie, SESSION_COOKIE_NAME) else {
+        return unauthenticated_graphql();
+    };
+    let session_token_hash = SessionTokenHash(Sha256::digest(session_token.as_bytes()).into());
 
     let mut data = Data::default();
     data.insert(Actor(principal.member_id));
+    data.insert(session_token_hash);
     data.insert(ViewerIdentity {
         member_id: principal.member_id,
         subject: principal.subject,
@@ -162,6 +172,10 @@ async fn graphql(State(state): State<ApiState>, request: Request<Body>) -> Respo
                 .into_response();
         }
     };
+    let Some(session_token) = cookie_value(cookie, SESSION_COOKIE_NAME) else {
+        return unauthenticated_graphql();
+    };
+    let session_token_hash = SessionTokenHash(Sha256::digest(session_token.as_bytes()).into());
 
     let accepts_event_stream = request
         .headers()
@@ -197,6 +211,7 @@ async fn graphql(State(state): State<ApiState>, request: Request<Body>) -> Respo
     };
     let request = request
         .data(Actor(principal.member_id))
+        .data(session_token_hash)
         .data(ViewerIdentity {
             member_id: principal.member_id,
             subject: principal.subject,
