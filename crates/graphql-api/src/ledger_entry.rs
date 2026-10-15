@@ -234,11 +234,11 @@ impl TryFrom<TransferLedgerEntryResult> for LedgerEntry {
 
     fn try_from(value: TransferLedgerEntryResult) -> Result<Self, Self::Error> {
         let id = encode_node_id("LedgerEntry", value.id);
-        let occurred_at = value.occurred_at.into();
+        let occurred_at: crate::DateTime = value.occurred_at.into();
         let description = value.description;
         let amount_yen = crate::Long(value.amount_yen);
         let currency = value.currency;
-        let created_at = value.created_at.into();
+        let created_at: crate::DateTime = value.created_at.into();
         let from_member = member_projection(value.from_member)?;
         let to_member = member_projection(value.to_member)?;
         let common = || {

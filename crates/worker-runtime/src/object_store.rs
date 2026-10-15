@@ -191,9 +191,11 @@ fn decrypt_email_body(
     }
     let cipher = Aes256Gcm::new_from_slice(key)
         .map_err(|_| StoreError("decrypt original document failed"))?;
+    let nonce = Nonce::try_from(&ciphertext[..12])
+        .map_err(|_| StoreError("decrypt original document failed"))?;
     cipher
         .decrypt(
-            Nonce::from_slice(&ciphertext[..12]),
+            &nonce,
             aes_gcm::aead::Payload {
                 msg: &ciphertext[12..],
                 aad: object_key.as_bytes(),

@@ -186,10 +186,14 @@ pub(crate) async fn resolve_unmatched_observation(
     {
         return Ok(None);
     }
-    let Some(row) =
-        postgres_query::load_observation_node(pool, household_id, document_id, source_reference)
-            .await
-            .map_err(crate::internal_error)?
+    let Some(row) = horse_postgres::node_query::load_observation_node(
+        pool,
+        household_id,
+        document_id,
+        source_reference,
+    )
+    .await
+    .map_err(crate::internal_error)?
     else {
         return Ok(None);
     };

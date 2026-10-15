@@ -476,35 +476,3 @@ pub(crate) fn encode_global_node_id(type_name: &str, id: Uuid) -> ID {
     payload.extend_from_slice(id.as_bytes());
     ID(URL_SAFE_NO_PAD.encode(payload))
 }
-
-pub(crate) fn encode_ledger_entry_id(id: Uuid) -> ID {
-    encode_global_node_id("LedgerEntry", id)
-}
-
-pub(crate) fn transfer_node_from_result(
-    value: financial_command_result::TransferLedgerEntryResult,
-) -> Result<ledger_entry::Node> {
-    LedgerEntry::try_from(value)
-        .map(ledger_entry::Node::LedgerEntry)
-        .map_err(crate::internal_error)
-}
-
-pub(crate) fn ledger_node_type(entry: &LedgerEntry) -> &'static str {
-    match entry {
-        LedgerEntry::FundingLedgerEntry(_) => "FundingLedgerEntry",
-        LedgerEntry::PurchaseLedgerEntry(_) => "PurchaseLedgerEntry",
-        LedgerEntry::CorrectionLedgerEntry(_) => "CorrectionLedgerEntry",
-        LedgerEntry::TransferLedgerEntry(
-            ledger_entry::TransferLedgerEntry::AdvanceTransferLedgerEntry(_),
-        ) => "AdvanceTransferLedgerEntry",
-        LedgerEntry::TransferLedgerEntry(
-            ledger_entry::TransferLedgerEntry::LoanTransferLedgerEntry(_),
-        ) => "LoanTransferLedgerEntry",
-        LedgerEntry::TransferLedgerEntry(
-            ledger_entry::TransferLedgerEntry::RepaymentTransferLedgerEntry(_),
-        ) => "RepaymentTransferLedgerEntry",
-        LedgerEntry::TransferLedgerEntry(
-            ledger_entry::TransferLedgerEntry::GiftTransferLedgerEntry(_),
-        ) => "GiftTransferLedgerEntry",
-    }
-}

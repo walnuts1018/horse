@@ -7,9 +7,7 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use household_workflows::create_household::{
     CreateHouseholdCommand, CreateHouseholdError, decide_create_household,
 };
-use household_workflows::ports::{
-    CreateHouseholdPortError, CreatedHousehold, HouseholdStore,
-};
+use household_workflows::ports::{CreateHouseholdPortError, CreatedHousehold, HouseholdStore};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -318,7 +316,8 @@ pub async fn load_household(
 pub async fn persist_create_household(
     pool: &PgPool,
     command: CreateHouseholdCommand,
-) -> Result<PersistedHousehold, CreateHouseholdPersistenceError> {    let decision = decide_create_household(command)
+) -> Result<PersistedHousehold, CreateHouseholdPersistenceError> {
+    let decision = decide_create_household(command)
         .map_err(CreateHouseholdPersistenceError::InvalidWorkflow)?;
     let actor_id = Uuid::parse_str(&decision.actor_id)
         .map_err(|_| CreateHouseholdPersistenceError::InvalidUuid)?;

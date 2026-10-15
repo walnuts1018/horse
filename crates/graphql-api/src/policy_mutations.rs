@@ -481,7 +481,9 @@ pub async fn create_recurring_expense(
         amount_yen: input.amount_yen.0,
         category_id: category_id.map(|id| id.to_string()),
         payment_account_id: payment_account_id.map(|id| id.to_string()),
-        cadence: input.cadence.into().as_str().to_owned(),
+        cadence: recurring_expense::Cadence::from(input.cadence)
+            .as_str()
+            .to_owned(),
         starts_on: input.starts_on.0,
         next_due_on: input.next_due_on.0,
         ends_on: input.ends_on.map(|value| value.0),
@@ -526,7 +528,9 @@ pub async fn update_recurring_expense(
         amount_yen: input.amount_yen.0,
         category_id: category_id.map(|id| id.to_string()),
         payment_account_id: payment_account_id.map(|id| id.to_string()),
-        cadence: input.cadence.into().as_str().to_owned(),
+        cadence: recurring_expense::Cadence::from(input.cadence)
+            .as_str()
+            .to_owned(),
         starts_on: input.starts_on.0,
         next_due_on: input.next_due_on.0,
         ends_on: input.ends_on.map(|value| value.0),

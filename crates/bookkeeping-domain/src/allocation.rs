@@ -210,7 +210,7 @@ mod tests {
     #[test]
     fn allocation_rejects_invalid_share_sets() {
         assert_eq!(
-            AllocationShares::new(vec![]),
+            AllocationShares::<PoolId>::new(vec![]),
             Err(AllocationError::EmptyShares)
         );
         assert_eq!(

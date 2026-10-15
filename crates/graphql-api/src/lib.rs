@@ -1,6 +1,6 @@
 use async_graphql::{
-    Context, EmptySubscription, Enum, Error, ID, Interface, Object, Result,
-    Schema as GraphqlSchema, SimpleObject, Union,
+    Context, Enum, Error, ID, Interface, Object, Result, Schema as GraphqlSchema, SimpleObject,
+    Union,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use horse_postgres::{PgPool, mail_forwarding as postgres_mail_forwarding};
@@ -45,11 +45,12 @@ pub mod settlement_mutations;
 pub mod shared_purchase_draft;
 pub mod statement_link_mutations;
 pub mod statement_refund_correction_query;
+pub mod subscriptions;
 pub mod unmatched_observations_query;
 pub mod viewer_query;
 pub use scalars::{DateTime, Long};
 
-pub type Schema = GraphqlSchema<QueryRoot, MutationRoot, EmptySubscription>;
+pub type Schema = GraphqlSchema<QueryRoot, MutationRoot, subscriptions::SubscriptionRoot>;
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -62,9 +63,10 @@ pub struct Config {
 pub struct Actor(pub Uuid);
 
 pub fn schema(pool: PgPool, config: Config) -> Schema {
-    GraphqlSchema::build(QueryRoot, MutationRoot, EmptySubscription)
+    GraphqlSchema::build(QueryRoot, MutationRoot, subscriptions::SubscriptionRoot)
         .data(pool)
         .data(config)
+        .data(subscriptions::SubscriptionHub::new())
         .register_output_type::<MutationError>()
         .finish()
 }

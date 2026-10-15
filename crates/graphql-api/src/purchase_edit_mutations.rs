@@ -238,7 +238,7 @@ pub async fn update_purchase(
     )
     .await;
     match persisted {
-        Ok(value) => Ok(UpdatePurchaseSuccess {
+        Ok(_) => Ok(UpdatePurchaseSuccess {
             result: load_purchase(pool, household_id, purchase_id).await?,
         }
         .into()),

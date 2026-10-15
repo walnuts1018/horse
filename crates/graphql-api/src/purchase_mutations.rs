@@ -358,16 +358,16 @@ pub(crate) async fn resolve_purchase_correction_node(
     let payments = value
         .correction
         .payment_allocations
-        .into_iter()
+        .iter()
         .map(|payment| {
             let kind = account_kind(&payment.account_kind)?;
             Ok(PurchasePayment {
                 payment_account_id: encode_node_id("Account", payment.account_id),
                 account: AccountObject {
                     id: encode_node_id("Account", payment.account_id),
-                    name: payment.account_name,
+                    name: payment.account_name.clone(),
                     kind,
-                    card_last4: payment.account_card_last4,
+                    card_last4: payment.account_card_last4.clone(),
                     pool_id: payment.account_pool_id.map(|id| encode_node_id("Pool", id)),
                 },
                 amount_yen: Long(payment.amount_yen),

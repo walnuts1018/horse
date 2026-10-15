@@ -13,6 +13,7 @@ catalog-workflows = { path = "../catalog-workflows" }
 diesel = { workspace = true }
 diesel-async = { workspace = true }
 futures-util = { workspace = true }
+futures-channel = "0.3"
 horse-postgres = { path = "../postgres" }
 household-workflows = { path = "../household-workflows" }
 policy-workflows = { path = "../policy-workflows" }

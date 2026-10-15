@@ -39,7 +39,7 @@ pub struct RevokeHouseholdInvitationInput {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct Household {
-    id: ID,
+    pub(crate) id: ID,
     name: String,
     revision: i32,
     members: Vec<crate::member_pool::Member>,

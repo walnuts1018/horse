@@ -249,7 +249,7 @@ async fn execute(
     let household_id = Uuid::parse_str(&request.household_id).map_err(crate::internal_error)?;
     let purchase_id = request.purchase_id.clone();
     match postgres_correct_purchase::correct_purchase(ctx.data::<PgPool>()?, request).await {
-        Ok(value) => Ok(CorrectPurchaseSuccess {
+        Ok(_) => Ok(CorrectPurchaseSuccess {
             result: crate::purchase_mutations::purchase_result(
                 ctx.data::<PgPool>()?,
                 household_id,
