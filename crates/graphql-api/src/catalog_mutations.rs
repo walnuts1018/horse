@@ -441,7 +441,7 @@ pub async fn set_product_alias(
     }
 }
 
-fn map_tag(value: DomainTag) -> Result<Tag> {
+pub(crate) fn map_tag(value: DomainTag) -> Result<Tag> {
     let revision = i32::try_from(value.revision)
         .map_err(|_| crate::internal_error("Tag revision exceeds GraphQL Int"))?;
     Ok(Tag {

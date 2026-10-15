@@ -1,4 +1,4 @@
-use async_graphql::{Context, Enum, ID, InputObject, Result, SimpleObject, Union};
+use async_graphql::{ComplexObject, Context, Enum, ID, InputObject, Interface, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use diesel_async::AsyncConnection;
 use bookkeeping_workflows::{
@@ -105,7 +105,7 @@ pub struct PurchaseMutationUserError {
 }
 
 #[derive(Clone, Debug, SimpleObject)]
-#[graphql(name = "Purchase")]
+#[graphql(name = "Purchase", complex)]
 pub struct PurchaseObject {
     pub id: ID,
     pub household_id: ID,
@@ -120,13 +120,16 @@ pub struct PurchaseObject {
     pub correction_amount_yen: Long,
     pub correction_count: i32,
     pub remaining_refundable_amount_yen: Long,
-    pub corrections: PurchaseCorrectionConnection,
     pub total_yen: Long,
     pub currency: String,
     pub revision: i32,
     pub status: PurchaseStatus,
     pub created_at: DateTime,
     pub updated_at: DateTime,
+    #[graphql(skip)]
+    pub household_uuid: Uuid,
+    #[graphql(skip)]
+    pub purchase_uuid: Uuid,
 }
 
 #[derive(Clone, Copy, Debug, Enum, Eq, PartialEq)]
@@ -149,7 +152,7 @@ pub struct PurchaseItem {
     pub category_id: Option<ID>,
     pub product_variant_id: Option<ID>,
     pub allocations: Vec<PurchaseItemAllocation>,
-    pub tags: Vec<PurchaseTag>,
+    pub tags: Vec<crate::catalog_mutations::Tag>,
     pub revision: i32,
 }
 #[derive(Clone, Debug, SimpleObject)]
@@ -161,15 +164,74 @@ pub struct EffectiveUnitPrice { pub numerator_yen: String, pub denominator_yen: 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct PurchaseItemAllocation { pub pool_id: ID, pub pool_name: String, pub weight: Long, pub amount_yen: Long }
 #[derive(Clone, Debug, SimpleObject)]
-pub struct PurchaseTag { pub id: ID, pub household_id: ID, pub name: String, pub archived: bool, pub revision: i32 }
-#[derive(Clone, Debug, SimpleObject)]
 pub struct PurchaseCorrectionConnection { pub edges: Vec<PurchaseCorrectionEdge>, pub page_info: PurchasePageInfo, pub total_count: i32 }
 #[derive(Clone, Debug, SimpleObject)]
 pub struct PurchaseCorrectionEdge { pub cursor: String, pub node: PurchaseCorrection }
+#[derive(Clone, Debug, Interface)]
+#[graphql(field(name = "id", ty = "&ID"), field(name = "amount_delta_yen", ty = "&Long"), field(name = "reason", ty = "&String"), field(name = "occurred_at", ty = "&DateTime"), field(name = "settlement_month", ty = "&crate::policy_mutations::YearMonth"), field(name = "payment_allocations", ty = "&Vec<PurchasePayment>"))]
+pub enum PurchaseCorrection { Wide(PurchaseWideCorrection), Item(PurchaseItemCorrection) }
 #[derive(Clone, Debug, SimpleObject)]
-pub struct PurchaseCorrection { pub id: ID, pub amount_delta_yen: Long, pub reason: String, pub occurred_at: DateTime, pub settlement_month: String, pub payment_allocations: Vec<PurchasePayment> }
+#[graphql(name = "PurchaseWideCorrection")]
+pub struct PurchaseWideCorrection { pub id: ID, pub amount_delta_yen: Long, pub reason: String, pub occurred_at: DateTime, pub settlement_month: crate::policy_mutations::YearMonth, pub payment_allocations: Vec<PurchasePayment> }
 #[derive(Clone, Debug, SimpleObject)]
+#[graphql(name = "PurchaseItemCorrection")]
+pub struct PurchaseItemCorrection { pub id: ID, pub item_id: ID, pub amount_delta_yen: Long, pub reason: String, pub occurred_at: DateTime, pub settlement_month: crate::policy_mutations::YearMonth, pub payment_allocations: Vec<PurchasePayment> }
+#[derive(Clone, Debug, SimpleObject)]
+#[graphql(name = "PageInfo")]
 pub struct PurchasePageInfo { pub has_next_page: bool, pub has_previous_page: bool, pub start_cursor: Option<String>, pub end_cursor: Option<String> }
+
+#[ComplexObject]
+impl PurchaseObject {
+    async fn corrections(&self, ctx: &Context<'_>, first: Option<i32>, after: Option<String>) -> Result<PurchaseCorrectionConnection> {
+        let pool = ctx.data::<PgPool>()?;
+        let projection = horse_postgres::purchase_corrections::load_purchase_corrections(
+            pool, self.household_uuid, self.purchase_uuid, first, after.as_deref(),
+        ).await.map_err(correction_error)?;
+        let mut edges = Vec::with_capacity(projection.edges.len());
+        for correction in projection.edges {
+            let payments = correction.payment_allocations.into_iter().map(|payment| {
+                let kind = account_kind(&payment.account_kind)?;
+                Ok(PurchasePayment {
+                    payment_account_id: encode_node_id("Account", payment.account_id),
+                    account: AccountObject {
+                        id: encode_node_id("Account", payment.account_id), name: payment.account_name,
+                        kind, card_last4: payment.account_card_last4,
+                        pool_id: payment.account_pool_id.map(|id| encode_node_id("Pool", id)),
+                    },
+                    amount_yen: Long(payment.amount_yen),
+                })
+            }).collect::<Result<Vec<_>>>()?;
+            let id = encode_node_id("PurchaseCorrection", correction.id);
+            let settlement_month = crate::policy_mutations::YearMonth::from_naive_date(correction.settlement_month);
+            let occurred_at: DateTime = correction.occurred_at.into();
+            let node = match correction.item_id {
+                Some(item_id) => PurchaseCorrection::Item(PurchaseItemCorrection {
+                    id, item_id: encode_node_id("PurchaseItem", item_id), amount_delta_yen: Long(correction.amount_delta_yen),
+                    reason: correction.reason, occurred_at, settlement_month, payment_allocations: payments,
+                }),
+                None => PurchaseCorrection::Wide(PurchaseWideCorrection {
+                    id, amount_delta_yen: Long(correction.amount_delta_yen), reason: correction.reason,
+                    occurred_at, settlement_month, payment_allocations: payments,
+                }),
+            };
+            let cursor = horse_postgres::purchase_corrections::encode_cursor(&correction);
+            edges.push(PurchaseCorrectionEdge { cursor, node });
+        }
+        let total_count = i32::try_from(projection.total_count).map_err(crate::internal_error)?;
+        let start_cursor = edges.first().map(|edge| edge.cursor.clone());
+        let end_cursor = edges.last().map(|edge| edge.cursor.clone());
+        Ok(PurchaseCorrectionConnection {
+            edges,
+            page_info: PurchasePageInfo {
+                has_next_page: projection.has_next_page,
+                has_previous_page: projection.has_previous_page,
+                start_cursor,
+                end_cursor,
+            },
+            total_count,
+        })
+    }
+}
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct CreatePurchaseSuccess { pub result: PurchaseObject }
@@ -461,7 +523,7 @@ impl TryFrom<purchase_command_result::PurchaseCommandResult> for PurchaseObject 
                 id: encode_node_id("PurchaseItem", item.id), name: item.name.clone(), amount_yen: Long(item.amount_yen), remaining_refundable_amount_yen: Long(item.remaining_refundable_amount_yen), currency: "JPY".to_owned(), quantity, printed_unit_price, effective_unit_price,
                 category_id: item.category_id.map(|id| encode_node_id("Category", id)), product_variant_id: item.product_variant_id.map(|id| encode_node_id("ProductVariant", id)),
                 allocations: item.allocations.iter().map(|allocation| PurchaseItemAllocation { pool_id: encode_node_id("Pool", allocation.pool_id), pool_name: allocation.pool_name.clone(), weight: Long(allocation.weight), amount_yen: Long(allocation.amount_yen) }).collect(),
-                tags: item.tags.iter().map(|(id, name, archived, revision)| Ok(PurchaseTag { id: encode_node_id("Tag", *id), household_id: encode_node_id("Household", value.household_id), name: name.clone(), archived: *archived, revision: i32::try_from(*revision).map_err(|_| "tag revision out of range")? })).collect::<std::result::Result<Vec<_>, &'static str>>()?,
+                tags: item.tags.iter().map(|(id, name, archived, revision)| crate::catalog_mutations::map_tag(catalog_workflows::tag::Tag { id: id.to_string(), household_id: value.household_id.to_string(), name: name.clone(), archived: *archived, revision: *revision }).map_err(|_| "invalid tag projection")).collect::<std::result::Result<Vec<_>, &'static str>>()?,
                 revision: i32::try_from(item.revision).map_err(|_| "purchase item revision out of range")?,
             })
         }).collect::<std::result::Result<Vec<_>, &'static str>>()?;
@@ -473,8 +535,8 @@ impl TryFrom<purchase_command_result::PurchaseCommandResult> for PurchaseObject 
             id: encode_node_id("Purchase", value.id), household_id: encode_node_id("Household", value.household_id), occurred_at: value.occurred_at.into(), date_precision, merchant: value.merchant,
             origin, has_evidence: value.has_evidence, source_kinds, payment_allocations, items, correction_amount_yen: Long(value.correction_amount_yen),
             correction_count: i32::try_from(value.correction_count).map_err(|_| "purchase correction count out of range")?, remaining_refundable_amount_yen: Long(value.remaining_refundable_amount_yen),
-            corrections: PurchaseCorrectionConnection { edges: Vec::new(), page_info: PurchasePageInfo { has_next_page: false, has_previous_page: false, start_cursor: None, end_cursor: None }, total_count: i32::try_from(value.correction_count).map_err(|_| "purchase correction count out of range")? },
             total_yen: Long(value.total_yen), currency: "JPY".to_owned(), revision: i32::try_from(value.revision).map_err(|_| "purchase revision out of range")?, status, created_at: value.created_at.into(), updated_at: value.updated_at.into(),
+            household_uuid: value.household_id, purchase_uuid: value.id,
         })
     }
 }

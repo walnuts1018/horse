@@ -34,6 +34,7 @@ pub mod post_purchase_loader;
 pub mod product_alias;
 pub mod purchase_command_context;
 pub mod purchase_command_result;
+pub mod purchase_corrections;
 pub mod purchase_create_and_post;
 pub mod record_repayment;
 pub mod record_transfer;

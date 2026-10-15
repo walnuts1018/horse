@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError};
+use diesel::{
+    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
+};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use household_workflows::create_household::{
     CreateHouseholdCommand, CreateHouseholdError, decide_create_household,
@@ -138,11 +140,7 @@ pub async fn load_household(
         .filter(household_members::household_id.eq(household_id))
         .filter(household_members::left_at.is_null())
         .order_by(household_members::joined_at.asc())
-        .select((
-            members::id,
-            members::display_name,
-            household_members::role,
-        ))
+        .select((members::id, members::display_name, household_members::role))
         .load::<(Uuid, String, String)>(&mut *conn)
         .await?
         .into_iter()
@@ -166,13 +164,15 @@ pub async fn load_household(
         .load::<(Uuid, String, String, Option<String>, Option<Uuid>)>(&mut *conn)
         .await?
         .into_iter()
-        .map(|(id, name, kind, card_last4, pool_id)| HouseholdAccountReadModel {
-            id,
-            name,
-            kind,
-            card_last4,
-            pool_id,
-        })
+        .map(
+            |(id, name, kind, card_last4, pool_id)| HouseholdAccountReadModel {
+                id,
+                name,
+                kind,
+                card_last4,
+                pool_id,
+            },
+        )
         .collect();
 
     let category_rows = categories::table
@@ -188,18 +188,25 @@ pub async fn load_household(
         .load::<(Uuid, Option<Uuid>, String, bool)>(&mut *conn)
         .await?
         .into_iter()
-        .map(|(id, parent_id, name, archived)| HouseholdCategoryReadModel {
-            id,
-            parent_id,
-            name,
-            archived,
-        })
+        .map(
+            |(id, parent_id, name, archived)| HouseholdCategoryReadModel {
+                id,
+                parent_id,
+                name,
+                archived,
+            },
+        )
         .collect();
 
     let pool_rows = pools::table
         .filter(pools::household_id.eq(household_id))
         .order_by(pools::created_at.asc())
-        .select((pools::id, pools::name, pools::kind, pools::current_funding_version))
+        .select((
+            pools::id,
+            pools::name,
+            pools::kind,
+            pools::current_funding_version,
+        ))
         .load::<(Uuid, String, String, Option<i32>)>(&mut *conn)
         .await?;
     let defaults = allocation_defaults::table
@@ -261,18 +268,20 @@ pub async fn load_household(
                     .load::<(Uuid, String, i64)>(&mut *conn)
                     .await?
                     .into_iter()
-                    .map(|(member_id, member_name, weight)| HouseholdFundingShareReadModel {
-                        member_id,
-                        member_name,
-                        weight,
-                    })
+                    .map(
+                        |(member_id, member_name, weight)| HouseholdFundingShareReadModel {
+                            member_id,
+                            member_name,
+                            weight,
+                        },
+                    )
                     .collect();
             }
         }
         if !matches!(kind.as_str(), "PERSONAL" | "SHARED")
-            || settlement_policy.as_deref().is_some_and(|value| {
-                !matches!(value, "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL")
-            })
+            || settlement_policy
+                .as_deref()
+                .is_some_and(|value| !matches!(value, "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL"))
         {
             return Err(CreateHouseholdPersistenceError::InvalidPersistedData);
         }

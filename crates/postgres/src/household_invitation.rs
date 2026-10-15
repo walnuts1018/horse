@@ -128,14 +128,18 @@ pub async fn list_invitations(
             query = query.filter(
                 invitations::created_at
                     .lt(created_at)
-                    .or(invitations::created_at.eq(created_at).and(invitations::id.gt(id))),
+                    .or(invitations::created_at
+                        .eq(created_at)
+                        .and(invitations::id.gt(id))),
             );
         }
         if let Some((created_at, id)) = before {
             query = query.filter(
                 invitations::created_at
                     .gt(created_at)
-                    .or(invitations::created_at.eq(created_at).and(invitations::id.lt(id))),
+                    .or(invitations::created_at
+                        .eq(created_at)
+                        .and(invitations::id.lt(id))),
             );
         }
         let mut rows = query
@@ -168,14 +172,18 @@ pub async fn list_invitations(
             query = query.filter(
                 invitations::created_at
                     .lt(created_at)
-                    .or(invitations::created_at.eq(created_at).and(invitations::id.gt(id))),
+                    .or(invitations::created_at
+                        .eq(created_at)
+                        .and(invitations::id.gt(id))),
             );
         }
         if let Some((created_at, id)) = before {
             query = query.filter(
                 invitations::created_at
                     .gt(created_at)
-                    .or(invitations::created_at.eq(created_at).and(invitations::id.lt(id))),
+                    .or(invitations::created_at
+                        .eq(created_at)
+                        .and(invitations::id.lt(id))),
             );
         }
         query
@@ -200,14 +208,18 @@ pub async fn list_invitations(
             .await?
     };
     let has_extra = rows.len() > page_size;
-    let rows = rows.into_iter().take(page_size).map(|row| InvitationStateDto {
-        id: row.0.to_string(),
-        household_id: row.1.to_string(),
-        created_at: row.2,
-        expires_at: row.3,
-        accepted_at: row.4,
-        revoked_at: row.5,
-    }).collect();
+    let rows = rows
+        .into_iter()
+        .take(page_size)
+        .map(|row| InvitationStateDto {
+            id: row.0.to_string(),
+            household_id: row.1.to_string(),
+            created_at: row.2,
+            expires_at: row.3,
+            accepted_at: row.4,
+            revoked_at: row.5,
+        })
+        .collect();
     Ok(HouseholdInvitationPageDto {
         rows,
         total_count,

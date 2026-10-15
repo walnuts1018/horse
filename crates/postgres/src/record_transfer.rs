@@ -185,13 +185,8 @@ pub async fn persist_record_transfer(
                     .select(ledger::source_id)
                     .first::<Uuid>(&mut *conn)
                     .await?;
-                validate_statement_replay(
-                    &mut *conn,
-                    household_id,
-                    existing_transfer_id,
-                    &input,
-                )
-                .await?;
+                validate_statement_replay(&mut *conn, household_id, existing_transfer_id, &input)
+                    .await?;
                 let (saved_journal_id, saved_transfer_id) = ledger::ledger_entries
                     .filter(ledger::household_id.eq(household_id))
                     .filter(ledger::id.eq(resource_id))
@@ -417,9 +412,15 @@ fn validate_statement_input(
     if !provided {
         return Ok(());
     }
-    if input.source_document_id.as_deref().is_none_or(str::is_empty)
+    if input
+        .source_document_id
+        .as_deref()
+        .is_none_or(str::is_empty)
         || input.source_reference.as_deref().is_none_or(str::is_empty)
-        || input.source_reference.as_ref().is_some_and(|value| value.len() > 256)
+        || input
+            .source_reference
+            .as_ref()
+            .is_some_and(|value| value.len() > 256)
         || input.source_account_id.as_deref().is_none_or(str::is_empty)
         || !matches!(kind, TransferKind::Loan | TransferKind::Repayment)
     {
