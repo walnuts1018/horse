@@ -128,16 +128,16 @@ pub struct AllocationRuleObject {
 #[derive(Clone, Debug, SimpleObject)]
 #[graphql(name = "FundingSchedule")]
 pub struct FundingScheduleObject {
-    id: ID,
-    household_id: ID,
-    member_id: ID,
-    pool_id: ID,
-    amount_yen: Long,
-    cadence: FundingScheduleCadence,
-    starts_on: crate::policy_mutations::Date,
-    ends_on: Option<crate::policy_mutations::Date>,
-    active: bool,
-    created_at: crate::DateTime,
+    pub(crate) id: ID,
+    pub(crate) household_id: ID,
+    pub(crate) member_id: ID,
+    pub(crate) pool_id: ID,
+    pub(crate) amount_yen: Long,
+    pub(crate) cadence: FundingScheduleCadence,
+    pub(crate) starts_on: crate::policy_mutations::Date,
+    pub(crate) ends_on: Option<crate::policy_mutations::Date>,
+    pub(crate) active: bool,
+    pub(crate) created_at: crate::DateTime,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -520,27 +520,7 @@ pub async fn set_funding_schedule(
         .await
     {
         Ok(value) => Ok(SetFundingScheduleSuccess {
-            result: FundingScheduleObject {
-                id: encode_node_id("FundingSchedule", &value.id)?.into(),
-                household_id: encode_node_id("Household", &value.household_id)?.into(),
-                member_id: encode_node_id("Member", &value.member_id)?.into(),
-                pool_id: encode_node_id("Pool", &value.pool_id)?.into(),
-                amount_yen: Long(value.amount_yen),
-                cadence: FundingScheduleCadence::Monthly,
-                starts_on: crate::policy_mutations::Date(
-                    chrono::NaiveDate::parse_from_str(&value.starts_on, "%Y-%m-%d")
-                        .map_err(crate::internal_error)?,
-                ),
-                ends_on: value
-                    .ends_on
-                    .as_deref()
-                    .map(|date| chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d"))
-                    .transpose()
-                    .map_err(crate::internal_error)?
-                    .map(crate::policy_mutations::Date),
-                active: value.active,
-                created_at: value.created_at.into(),
-            },
+            result: map_funding_schedule_projection(value)?,
         }
         .into()),
         Err(error) => set_funding_schedule_persistence_error(error),
@@ -606,6 +586,32 @@ pub(crate) fn map_allocation_rule_projection(
                 })
             })
             .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub(crate) fn map_funding_schedule_projection(
+    value: postgres_funding_schedule::PersistedFundingSchedule,
+) -> Result<FundingScheduleObject> {
+    Ok(FundingScheduleObject {
+        id: encode_node_id("FundingSchedule", &value.id)?.into(),
+        household_id: encode_node_id("Household", &value.household_id)?.into(),
+        member_id: encode_node_id("Member", &value.member_id)?.into(),
+        pool_id: encode_node_id("Pool", &value.pool_id)?.into(),
+        amount_yen: Long(value.amount_yen),
+        cadence: FundingScheduleCadence::Monthly,
+        starts_on: crate::policy_mutations::Date(
+            chrono::NaiveDate::parse_from_str(&value.starts_on, "%Y-%m-%d")
+                .map_err(crate::internal_error)?,
+        ),
+        ends_on: value
+            .ends_on
+            .as_deref()
+            .map(|date| chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d"))
+            .transpose()
+            .map_err(crate::internal_error)?
+            .map(crate::policy_mutations::Date),
+        active: value.active,
+        created_at: value.created_at.into(),
     })
 }
 

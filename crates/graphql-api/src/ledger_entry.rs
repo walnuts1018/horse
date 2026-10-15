@@ -70,13 +70,13 @@ pub struct GiftTransferLedgerEntry {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct LoanBalance {
-    id: ID,
-    lender_member_id: ID,
-    borrower_member_id: ID,
-    principal_yen: crate::Long,
-    repaid_yen: crate::Long,
-    balance_yen: crate::Long,
-    created_at: crate::DateTime,
+    pub(crate) id: ID,
+    pub(crate) lender_member_id: ID,
+    pub(crate) borrower_member_id: ID,
+    pub(crate) principal_yen: crate::Long,
+    pub(crate) repaid_yen: crate::Long,
+    pub(crate) balance_yen: crate::Long,
+    pub(crate) created_at: crate::DateTime,
 }
 
 #[derive(Clone, Debug, Interface)]

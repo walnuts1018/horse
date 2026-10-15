@@ -8,7 +8,7 @@ use horse_postgres::{
 };
 use uuid::Uuid;
 
-use crate::{DateTime, Long, MutationErrorCode, pagination::PageInfo};
+use crate::{DateTime, Long, MutationErrorCode, ledger_entry::LoanBalance, pagination::PageInfo};
 
 #[derive(Clone, Debug, InputObject)]
 pub struct ClosePeriodInput {
@@ -88,17 +88,6 @@ pub struct SettlementEvidence {
     source_id: ID,
     purchase_id: Option<ID>,
     occurred_at: Option<DateTime>,
-}
-
-#[derive(Clone, Debug, SimpleObject)]
-pub struct LoanBalance {
-    id: ID,
-    lender_member_id: ID,
-    borrower_member_id: ID,
-    principal_yen: Long,
-    repaid_yen: Long,
-    balance_yen: Long,
-    created_at: DateTime,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
