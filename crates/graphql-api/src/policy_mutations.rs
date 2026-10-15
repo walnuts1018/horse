@@ -16,6 +16,12 @@ pub struct Date(pub NaiveDate);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct YearMonth(String);
 
+impl YearMonth {
+    pub fn from_naive_date(value: NaiveDate) -> Self {
+        Self(value.format("%Y-%m").to_string())
+    }
+}
+
 #[Scalar(name = "YearMonth")]
 impl ScalarType for YearMonth {
     fn parse(value: Value) -> InputValueResult<Self> {

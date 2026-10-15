@@ -560,6 +560,33 @@ impl From<PurchaseMutationUserError> for CreatePurchaseResult { fn from(value: P
 impl From<PurchaseMutationUserError> for CreateAndPostPurchaseResult { fn from(value: PurchaseMutationUserError) -> Self { Self::UserError(CreateAndPostPurchaseUserError { code: value.code, message: value.message }) } }
 impl From<PurchaseMutationUserError> for PostPurchaseResult { fn from(value: PurchaseMutationUserError) -> Self { Self::UserError(PostPurchaseUserError { code: value.code, message: value.message }) } }
 
+enum PostMutationError {
+    Database(diesel::result::Error),
+    Load(PostPurchaseLoadError),
+    Workflow,
+    Persistence(postgres_post::PostPurchasePersistenceError),
+}
+impl From<diesel::result::Error> for PostMutationError { fn from(error: diesel::result::Error) -> Self { Self::Database(error) } }
+
+fn account_kind(value: &str) -> std::result::Result<crate::account_mutations::AccountKind, async_graphql::Error> {
+    match value {
+        "BANK" => Ok(crate::account_mutations::AccountKind::Bank),
+        "CASH" => Ok(crate::account_mutations::AccountKind::Cash),
+        "CARD" => Ok(crate::account_mutations::AccountKind::Card),
+        "OTHER" => Ok(crate::account_mutations::AccountKind::Other),
+        _ => Err(crate::internal_error("invalid account kind")),
+    }
+}
+
+fn correction_error(error: horse_postgres::purchase_corrections::PurchaseCorrectionError) -> async_graphql::Error {
+    use horse_postgres::purchase_corrections::PurchaseCorrectionError as E;
+    match error {
+        E::PurchaseNotFound | E::CursorNotFound => async_graphql::Error::new("対象が見つかりません。"),
+        E::InvalidPageSize | E::InvalidCursor => async_graphql::Error::new("入力を確認してください。"),
+        E::Pool(_) | E::Database(_) | E::NumericOutOfRange => crate::internal_error(error),
+    }
+}
+
 fn context_user_error(error: &purchase_command_context::PurchaseCommandContextError) -> Option<PurchaseMutationUserError> {
     use purchase_command_context::PurchaseCommandContextError as E;
     match error { E::HouseholdNotFound => Some(not_found()), E::MissingDefaultAllocation | E::MissingProductVariant | E::MissingAllocationRule => Some(bad_input()), E::Pool(_) | E::Database(_) | E::InvalidVersion => None }
