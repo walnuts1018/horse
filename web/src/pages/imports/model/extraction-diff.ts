@@ -62,6 +62,7 @@ function matchRows<T extends Record<string, unknown>>(
   identities: (entry: T) => string[],
   label: (entry: T, index: number) => string,
   definitions: Array<{ key: keyof T; label: string; format?: (value: unknown) => string }>,
+  fallbackScore?: (before: T, after: T) => number,
 ): ExtractionRowChange[] {
   const previous = before ?? [];
   const current = after ?? [];
@@ -77,8 +78,7 @@ function matchRows<T extends Record<string, unknown>>(
       );
     }),
   );
-  const matchedPrevious = new Set<number>();
-  const rows: ExtractionRowChange[] = [];
+  const strongMatches = new Map<number, number>();
   current.forEach((entry, index) => {
     const matchingIndices = new Set(
       identities(entry)
@@ -86,7 +86,15 @@ function matchRows<T extends Record<string, unknown>>(
         .map((key) => previousIndices.get(key))
         .filter((previousIndex): previousIndex is number => previousIndex !== undefined),
     );
-    const previousIndex = matchingIndices.size === 1 ? [...matchingIndices][0] : undefined;
+    if (matchingIndices.size === 1) strongMatches.set(index, [...matchingIndices][0]);
+  });
+  const fallbackMatches = fallbackScore
+    ? findFallbackMatches(previous, current, strongMatches, fallbackScore)
+    : new Map<number, number>();
+  const matchedPrevious = new Set<number>();
+  const rows: ExtractionRowChange[] = [];
+  current.forEach((entry, index) => {
+    const previousIndex = strongMatches.get(index) ?? fallbackMatches.get(index);
     if (previousIndex === undefined || matchedPrevious.has(previousIndex)) {
       const key = identities(entry).join("|") || "unmatched";
       const status = canConfirmAdditionsAndRemovals ? "added" : "unmatched-current";
@@ -122,6 +130,43 @@ function matchRows<T extends Record<string, unknown>>(
   return rows;
 }
 
+function findFallbackMatches<T>(
+  previous: T[],
+  current: T[],
+  strongMatches: Map<number, number>,
+  score: (before: T, after: T) => number,
+): Map<number, number> {
+  const stronglyMatchedPrevious = new Set(strongMatches.values());
+  const candidates = current.map((entry, currentIndex) => {
+    if (strongMatches.has(currentIndex)) return [];
+    return previous.flatMap((prior, previousIndex) => {
+      if (stronglyMatchedPrevious.has(previousIndex)) return [];
+      const matchScore = score(prior, entry);
+      return matchScore > 0 ? [{ previousIndex, score: matchScore }] : [];
+    });
+  });
+  const bestByCurrent = candidates.map((matches) => uniqueBestMatch(matches));
+  const bestByPrevious = previous.map((_, previousIndex) => {
+    const matches = bestByCurrent.flatMap((best, currentIndex) =>
+      best?.previousIndex === previousIndex ? [{ currentIndex, score: best.score }] : [],
+    );
+    return uniqueBestMatch(matches);
+  });
+  return new Map(
+    bestByCurrent.flatMap((best, currentIndex) =>
+      best && bestByPrevious[best.previousIndex]?.currentIndex === currentIndex
+        ? [[currentIndex, best.previousIndex] as const]
+        : [],
+    ),
+  );
+}
+
+function uniqueBestMatch<T extends { score: number }>(matches: T[]): T | undefined {
+  const highestScore = Math.max(0, ...matches.map(({ score }) => score));
+  const best = matches.filter(({ score }) => score === highestScore);
+  return highestScore > 0 && best.length === 1 ? best[0] : undefined;
+}
+
 function countIdentities<T>(entries: T[], identities: (entry: T) => string[]) {
   const counts = new Map<string, number>();
   entries.forEach((entry) => {
@@ -136,6 +181,26 @@ function itemIdentities(item: ExtractionItem): string[] {
   const { page, top, left, bottom, right } = item.region;
   identities.push(`region:${page}:${top}:${left}:${bottom}:${right}`);
   return identities;
+}
+
+function itemFallbackScore(before: ExtractionItem, after: ExtractionItem): number {
+  const beforeName = before.name || before.printedName;
+  const afterName = after.name || after.printedName;
+  const comparable: Array<{
+    before: string | number | undefined;
+    after: string | number | undefined;
+    primary: boolean;
+  }> = [
+    { before: beforeName, after: afterName, primary: true },
+    { before: before.grossAmount, after: after.grossAmount, primary: true },
+    { before: before.categoryHint, after: after.categoryHint, primary: false },
+    { before: before.taxGroup, after: after.taxGroup, primary: false },
+  ];
+  const matches = comparable.filter(
+    ({ before: left, after: right }) =>
+      left !== undefined && right !== undefined && left !== "" && left === right,
+  );
+  return matches.length >= 2 && matches.some(({ primary }) => primary) ? matches.length : 0;
 }
 
 function statementIdentities(entry: StatementEntry): string[] {
@@ -254,6 +319,7 @@ export function compareExtractions(
       itemIdentities,
       (item, index) => `明細${index + 1}・${item.name || item.printedName || "品目"}`,
       itemDefinitions,
+      itemFallbackScore,
     ),
     taxChanges: matchRows(
       previousReceipt?.taxGroups,

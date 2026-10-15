@@ -74,7 +74,7 @@ describe("compareExtractions", () => {
     ]);
   });
 
-  it("does not turn an unidentifiable reorder into item edits", () => {
+  it("ignores a reorder when item names and amounts uniquely match", () => {
     const diff = compareExtractions(
       {
         receipt: {
@@ -118,17 +118,77 @@ describe("compareExtractions", () => {
       },
     );
 
+    expect(diff.itemChanges).toEqual([]);
+  });
+
+  it("matches an unkeyed item when its name and amount uniquely identify it", () => {
+    const diff = compareExtractions(
+      {
+        receipt: {
+          items: [
+            {
+              name: "お茶",
+              printedAmount: 110,
+              grossAmount: 110,
+              categoryHint: "飲料",
+              taxGroup: "8%",
+              confidence: 1,
+              verification: "verified",
+            },
+          ],
+        },
+      },
+      {
+        receipt: {
+          items: [
+            {
+              name: "お茶",
+              printedAmount: 110,
+              grossAmount: 110,
+              categoryHint: "食品",
+              taxGroup: "10%",
+              confidence: 1,
+              verification: "verified",
+            },
+          ],
+        },
+      },
+    );
+
+    expect(diff.itemChanges).toEqual([
+      {
+        id: "changed-0",
+        status: "changed",
+        label: "明細1・お茶",
+        changes: [
+          { label: "カテゴリ", before: "飲料", after: "食品" },
+          { label: "税区分", before: "8%", after: "10%" },
+        ],
+      },
+    ]);
+  });
+
+  it("leaves indistinguishable duplicate items unmatched", () => {
+    const item = {
+      name: "パン",
+      printedAmount: 100,
+      grossAmount: 100,
+      categoryHint: "食品",
+      taxGroup: "8%",
+      confidence: 1,
+      verification: "verified",
+    };
+    const diff = compareExtractions(
+      { receipt: { items: [item, item] } },
+      { receipt: { items: [item, item] } },
+    );
+
     expect(diff.itemChanges.map(({ status }) => status)).toEqual([
       "unmatched-current",
       "unmatched-current",
       "unmatched-previous",
       "unmatched-previous",
     ]);
-    expect(
-      diff.itemChanges.every(({ changes }) =>
-        changes.every((change) => change.before === "未設定" || change.after === "未設定"),
-      ),
-    ).toBe(true);
   });
 
   it("ignores reordering when item keys are stable", () => {
