@@ -9,6 +9,27 @@ pub struct Category {
     pub archived: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadedCategory {
+    pub id: CategoryId,
+    pub household_id: HouseholdId,
+    pub parent_id: Option<CategoryId>,
+    pub name: CategoryName,
+    pub archived: bool,
+}
+
+impl LoadedCategory {
+    fn into_category(self) -> Category {
+        Category {
+            id: self.id.as_str().to_owned(),
+            household_id: self.household_id.as_str().to_owned(),
+            parent_id: self.parent_id.map(|id| id.as_str().to_owned()),
+            name: self.name.as_str().to_owned(),
+            archived: self.archived,
+        }
+    }
+}
+
 macro_rules! identifier {
     ($type_name:ident, $error_name:ident) => {
         #[derive(Debug, Clone, PartialEq, Eq)]
@@ -252,4 +273,66 @@ pub async fn create_category<O: CreateCategoryOperations>(
             .await?;
     }
     operations.persist(decision).await
+}
+
+pub trait UpdateCategoryNameOperations {
+    type Error: From<CategoryError>;
+
+    async fn load_category(&mut self, category_id: &CategoryId) -> Result<LoadedCategory, Self::Error>;
+    async fn require_member(
+        &mut self,
+        household_id: &HouseholdId,
+        actor_id: &ActorId,
+    ) -> Result<(), Self::Error>;
+    async fn persist(
+        &mut self,
+        category: LoadedCategory,
+        decision: UpdateCategoryNameDecision,
+    ) -> Result<Category, Self::Error>;
+}
+
+pub async fn update_category_name<O: UpdateCategoryNameOperations>(
+    operations: &mut O,
+    command: UpdateCategoryNameCommand,
+) -> Result<Category, O::Error> {
+    let decision = decide_update_category_name(command)?;
+    let category = operations.load_category(&decision.category_id).await?;
+    operations
+        .require_member(&category.household_id, &decision.actor_id)
+        .await?;
+    if category.name == decision.name {
+        return Ok(category.into_category());
+    }
+    operations.persist(category, decision).await
+}
+
+pub trait SetCategoryArchivedOperations {
+    type Error: From<CategoryError>;
+
+    async fn load_category(&mut self, category_id: &CategoryId) -> Result<LoadedCategory, Self::Error>;
+    async fn require_member(
+        &mut self,
+        household_id: &HouseholdId,
+        actor_id: &ActorId,
+    ) -> Result<(), Self::Error>;
+    async fn persist(
+        &mut self,
+        category: LoadedCategory,
+        decision: SetCategoryArchivedDecision,
+    ) -> Result<Category, Self::Error>;
+}
+
+pub async fn set_category_archived<O: SetCategoryArchivedOperations>(
+    operations: &mut O,
+    command: SetCategoryArchivedCommand,
+) -> Result<Category, O::Error> {
+    let decision = decide_set_category_archived(command)?;
+    let category = operations.load_category(&decision.category_id).await?;
+    operations
+        .require_member(&category.household_id, &decision.actor_id)
+        .await?;
+    if category.archived == decision.archived {
+        return Ok(category.into_category());
+    }
+    operations.persist(category, decision).await
 }

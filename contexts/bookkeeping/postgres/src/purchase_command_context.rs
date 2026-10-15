@@ -58,16 +58,31 @@ pub async fn load_purchase_command_context(
     merchant_key: &str,
     item_inputs: &[PurchaseItemAllocationInput],
 ) -> Result<PurchaseCommandContext, PurchaseCommandContextError> {
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| PurchaseCommandContextError::Pool(error.to_string()))?;
+    load_purchase_command_context_in_transaction(
+        &mut conn,
+        household_id,
+        merchant_key,
+        item_inputs,
+    )
+    .await
+}
+
+pub async fn load_purchase_command_context_in_transaction(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    merchant_key: &str,
+    item_inputs: &[PurchaseItemAllocationInput],
+) -> Result<PurchaseCommandContext, PurchaseCommandContextError> {
     use public::{
         allocation_defaults::dsl as defaults, allocation_rule_weights::dsl as weights,
         allocation_rules::dsl as rules, households::dsl as households,
         product_concepts::dsl as concepts, product_variants::dsl as variants,
     };
 
-    let mut conn = pool
-        .get()
-        .await
-        .map_err(|error| PurchaseCommandContextError::Pool(error.to_string()))?;
     let version = households::households
         .filter(households::id.eq(household_id))
         .select(households::default_allocation_version)
