@@ -1062,10 +1062,11 @@ a {
 .item-measure-details summary,
 .receipt-measure-details summary {
   display: flex;
-  min-height: 40px;
+  min-height: 44px;
   align-items: center;
   width: fit-content;
   padding: 6px 0;
+  font-size: 13px;
   cursor: pointer;
 }
 
