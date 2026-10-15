@@ -31,7 +31,24 @@ const (
 )
 
 func (s *Service) Update(ctx context.Context, command UpdateCommand) (UpdateResult, error) {
-	return s.update(ctx, command, nil, false, nil)
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return UpdateResult{}, err
+	}
+	defer txcleanup.Rollback(ctx, tx)
+	result, err := s.updateInTransaction(ctx, tx, command, purchaseUpdateOptions{})
+	if err != nil {
+		return UpdateResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return UpdateResult{}, err
+	}
+	return result, nil
+}
+
+type purchaseUpdateOptions struct {
+	deferAccountingSync bool
+	accountingChanged   *bool
 }
 
 type purchaseUpdateValidationInput struct {
@@ -79,7 +96,7 @@ func validatePurchaseUpdateFields(input purchaseUpdateValidationInput) error {
 	return nil
 }
 
-func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pgx.Tx, deferAccountingSync bool, accountingChanged *bool) (UpdateResult, error) {
+func (s *Service) updateInTransaction(ctx context.Context, tx pgx.Tx, command UpdateCommand, options purchaseUpdateOptions) (UpdateResult, error) {
 	if err := inputvalidation.Check(command); err != nil {
 		return UpdateResult{}, err
 	}
@@ -97,15 +114,6 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 	actorUUID, err := parseUUID(command.ActorID, "actor")
 	if err != nil {
 		return UpdateResult{}, err
-	}
-	tx := sharedTx
-	ownsTransaction := tx == nil
-	if ownsTransaction {
-		tx, err = s.db.Begin(ctx)
-		if err != nil {
-			return UpdateResult{}, err
-		}
-		defer txcleanup.Rollback(ctx, tx)
 	}
 	executor := bobpgx.NewTx(tx, nil)
 
@@ -154,8 +162,8 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 	if err != nil {
 		return UpdateResult{}, err
 	}
-	if accountingChanged != nil {
-		*accountingChanged = *accountingChanged || plan.accountingChanged
+	if options.accountingChanged != nil {
+		*options.accountingChanged = *options.accountingChanged || plan.accountingChanged
 	}
 	purchaseAccountingChanged := plan.accountingChanged
 	var payments []Payment
@@ -172,7 +180,7 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 	if err := applyPurchaseUpdatePlan(ctx, executor, purchase, plan, payments); err != nil {
 		return UpdateResult{}, err
 	}
-	if status == postedStatus && !deferAccountingSync {
+	if status == postedStatus && !options.deferAccountingSync {
 		if purchaseAccountingChanged {
 			if err := syncPostedPurchaseAccounting(ctx, executor, purchase); err != nil {
 				return UpdateResult{}, err
@@ -189,11 +197,6 @@ func (s *Service) update(ctx context.Context, command UpdateCommand, sharedTx pg
 	}
 	if err := insertPurchaseUpdateEvent(ctx, executor, purchase.HouseholdID, actorUUID, purchaseUUID, plan.revision, command.ChangedFields); err != nil {
 		return UpdateResult{}, err
-	}
-	if ownsTransaction {
-		if err := tx.Commit(ctx); err != nil {
-			return UpdateResult{}, err
-		}
 	}
 	return UpdateResult{PurchaseID: command.PurchaseID}, nil
 }

@@ -130,7 +130,10 @@ func (s *Service) applySaveItemEdits(ctx context.Context, plan saveItemEditsPlan
 		result.Items = append(result.Items, BulkUpdatedItem{ID: plan.itemIDs[index].String(), PurchaseID: state.purchase.ID.String()})
 	}
 	if plan.purchaseUpdate != nil {
-		if _, err := s.update(ctx, *plan.purchaseUpdate, tx, true, &accountingChanged); err != nil {
+		if _, err := s.updateInTransaction(ctx, tx, *plan.purchaseUpdate, purchaseUpdateOptions{
+			deferAccountingSync: true,
+			accountingChanged:   &accountingChanged,
+		}); err != nil {
 			return SaveItemEditsResult{}, err
 		}
 	}

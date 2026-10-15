@@ -67,9 +67,9 @@ Member、Account、Category、Household、Pool Nodeの複数ID解決では、所
 
 明細更新では`updateItem()`と`updateBulkItem()`が`itemChangePlan`を共有し、リビジョンと配賦計算の一部を共通化しました。購入全体の通常更新と一括更新も`purchaseUpdatePlan`と`applyPurchaseUpdatePlan()`を共有し、フィールドリビジョンの競合判定と購入行・支払行の更新を共通化しました。購入更新後の台帳行同期も`updatePostedPurchaseLedgerEntries()`へ分離しました。入力フィールドと支払額の検証には共通ヘルパーを使いますが、対象の読み込み、ロック、一括更新の事前検証と適用順、仕訳同期、監査イベント記録は各ユースケースが調整します。
 
-`SaveItemEdits()`は購入と明細を一度取得し、ID順にロックした明細状態を各更新へ渡します。明細ごとの再取得と再ロックはなく、`planAndApplyPurchaseItemUpdate()`で計画構築と適用を共有します。購入全体のpatchは同じtransaction内で`update()`を呼び、必要な台帳同期をまとめて行います。複数明細と購入更新を組み合わせるfocused integration testも追加されています。
+`SaveItemEdits()`は購入と明細を一度取得し、ID順にロックした明細状態を各更新へ渡します。明細ごとの再取得と再ロックはなく、`planAndApplyPurchaseItemUpdate()`で計画構築と適用を共有します。購入全体の通常更新は`Update()`がtransactionを開始・commitし、transaction内の適用処理は`updateInTransaction()`が担います。`SaveItemEdits()`は自身のtransactionを所有し、明示した`purchaseUpdateOptions`で購入更新後の台帳同期を保留して明細更新と合わせて実行します。複数明細と購入更新を組み合わせるfocused integration testも追加されています。
 
-残る設計課題は、Create、Update、BulkUpdate、BulkUpdateItems、SaveItemEditsのtransaction境界と適用順です。SaveItemEditsは明細の状態を共有しますが、購入patchは`update()`を通り、他の更新経路にも固有の事前検証、対象読み込み、仕訳同期、イベント記録が残ります。共通化する業務ルールとユースケース固有の調整を明確にし、競合判定、ロック順序、transactionのcommit単位を確認する必要があります。単一更新と一括更新の流れは、例えば次の構造で整理できます。
+残る設計課題は、Create、Update、BulkUpdate、BulkUpdateItems、SaveItemEditsのtransaction境界と適用順の横断的な整理です。通常のUpdateとSaveItemEditsではtransaction所有者とtransaction内の購入適用処理が分かれました。CreateとCreateAndPostは作成処理を共有し、BulkUpdateは全対象を一つのtransactionで更新しますが、BulkUpdateItemsは対象取得・ロックと検証を各対象について交互に行います。ユースケース固有の事前検証、ロック順序、仕訳同期、イベント記録が残るため、複数購入・複数明細の一括操作で一貫したロック順序とcommit単位を保てるかを引き続き整理する必要があります。単一更新と一括更新の流れは、例えば次の構造で整理できます。
 
 Create / Update / BulkUpdate / SaveItemEdits
 
