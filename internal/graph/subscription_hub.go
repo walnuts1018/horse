@@ -1,9 +1,11 @@
 package graph
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -23,6 +25,7 @@ const (
 	subscriptionHubMaxRetryInterval        = 30 * time.Second
 	subscriptionAuthorizationCheckInterval = 30 * time.Second
 	subscriptionHubPurchaseEventBatchSize  = 100
+	subscriptionHubCursorBatchSize         = 16000
 )
 
 type subscriptionHub struct {
@@ -229,23 +232,32 @@ func (h *subscriptionHub) subscriptionCursors() ([]purchaseSubscriptionCursor, [
 }
 
 func (h *subscriptionHub) pollPurchases(ctx context.Context, cursors []purchaseSubscriptionCursor) (bool, error) {
-	conditions := make([]bob.Expression, 0, len(cursors))
-	for _, cursor := range cursors {
-		conditions = append(conditions, psql.And(
-			models.HouseholdEvents.Columns.HouseholdID.EQ(psql.Arg(cursor.householdID)),
-			models.HouseholdEvents.Columns.Cursor.GT(psql.Arg(cursor.cursor)),
-		))
+	var events models.HouseholdEventSlice
+	for _, cursorBatch := range chunkSubscriptionCursors(cursors, subscriptionHubCursorBatchSize) {
+		conditions := make([]bob.Expression, 0, len(cursorBatch))
+		for _, cursor := range cursorBatch {
+			conditions = append(conditions, psql.And(
+				models.HouseholdEvents.Columns.HouseholdID.EQ(psql.Arg(cursor.householdID)),
+				models.HouseholdEvents.Columns.Cursor.GT(psql.Arg(cursor.cursor)),
+			))
+		}
+		batchEvents, err := models.HouseholdEvents.Query(
+			sm.Where(psql.Or(conditions...)),
+			sm.OrderBy(models.HouseholdEvents.Columns.Cursor),
+			sm.Limit(subscriptionHubPurchaseEventBatchSize),
+		).All(ctx, bobpgx.NewPool(h.db))
+		if err != nil {
+			return false, err
+		}
+		events = append(events, batchEvents...)
 	}
-	events, err := models.HouseholdEvents.Query(
-		sm.Where(psql.Or(conditions...)),
-		sm.OrderBy(models.HouseholdEvents.Columns.Cursor),
-		sm.Limit(subscriptionHubPurchaseEventBatchSize),
-	).All(ctx, bobpgx.NewPool(h.db))
-	if err != nil {
-		return false, err
-	}
+	slices.SortFunc(events, func(a, b *models.HouseholdEvent) int {
+		return cmp.Compare(a.Cursor, b.Cursor)
+	})
+	events = events[:min(len(events), subscriptionHubPurchaseEventBatchSize)]
 	blocked := make(map[uint64]bool)
 	delivered := false
+	var err error
 	for _, event := range events {
 		change, ok := purchaseChange(event)
 		if !ok {
@@ -325,18 +337,22 @@ func (h *subscriptionHub) advancePurchaseCursors(householdID uuid.UUID, cursor i
 }
 
 func (h *subscriptionHub) pollDrafts(ctx context.Context, cursors []sharedDraftSubscriptionCursor) (bool, error) {
-	conditions := make([]bob.Expression, 0, len(cursors))
-	for _, cursor := range cursors {
-		conditions = append(conditions, psql.And(
-			models.SharedPurchaseDrafts.Columns.ID.EQ(psql.Arg(cursor.draftID)),
-			models.SharedPurchaseDrafts.Columns.Revision.GT(psql.Arg(cursor.cursor)),
-		))
-	}
-	drafts, err := models.SharedPurchaseDrafts.Query(
-		sm.Where(psql.Or(conditions...)),
-	).All(ctx, bobpgx.NewPool(h.db))
-	if err != nil {
-		return false, err
+	var drafts models.SharedPurchaseDraftSlice
+	for _, cursorBatch := range chunkSubscriptionCursors(cursors, subscriptionHubCursorBatchSize) {
+		conditions := make([]bob.Expression, 0, len(cursorBatch))
+		for _, cursor := range cursorBatch {
+			conditions = append(conditions, psql.And(
+				models.SharedPurchaseDrafts.Columns.ID.EQ(psql.Arg(cursor.draftID)),
+				models.SharedPurchaseDrafts.Columns.Revision.GT(psql.Arg(cursor.cursor)),
+			))
+		}
+		batchDrafts, err := models.SharedPurchaseDrafts.Query(
+			sm.Where(psql.Or(conditions...)),
+		).All(ctx, bobpgx.NewPool(h.db))
+		if err != nil {
+			return false, err
+		}
+		drafts = append(drafts, batchDrafts...)
 	}
 	blocked := make(map[uint64]bool)
 	delivered := false
@@ -345,6 +361,18 @@ func (h *subscriptionHub) pollDrafts(ctx context.Context, cursors []sharedDraftS
 	}
 
 	return delivered, nil
+}
+
+func chunkSubscriptionCursors[T any](cursors []T, size int) [][]T {
+	if size <= 0 || len(cursors) == 0 {
+		return nil
+	}
+	chunks := make([][]T, 0, (len(cursors)+size-1)/size)
+	for start := 0; start < len(cursors); start += size {
+		end := min(start+size, len(cursors))
+		chunks = append(chunks, cursors[start:end])
+	}
+	return chunks
 }
 
 func (h *subscriptionHub) publishDraftChange(draftID uuid.UUID, revision int64, blocked map[uint64]bool) bool {
