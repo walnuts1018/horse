@@ -68,8 +68,21 @@ type claims struct {
 }
 
 func New(ctx context.Context, db *pgxpool.Pool, cfg Config) (*Service, error) {
-	if cfg.IssuerURL == "" || cfg.ClientID == "" || cfg.RedirectURL == "" {
+	missing := make([]string, 0, 3)
+	if cfg.IssuerURL == "" {
+		missing = append(missing, "issuer URL")
+	}
+	if cfg.ClientID == "" {
+		missing = append(missing, "client ID")
+	}
+	if cfg.RedirectURL == "" {
+		missing = append(missing, "redirect URL")
+	}
+	if len(missing) == 3 {
 		return nil, nil
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("incomplete OIDC configuration: missing %s", strings.Join(missing, ", "))
 	}
 	provider, err := oidc.NewProvider(ctx, cfg.IssuerURL)
 	if err != nil {

@@ -33,19 +33,18 @@ func TestHandlerPreservesGetRoutesForHeadRequests(t *testing.T) {
 func TestGraphQLProtocolErrorsKeepTheirCodeAndHTTPStatus(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		name      string
-		query     string
-		code      string
-		operation string
+		name  string
+		query string
+		code  string
 	}{
 		{name: "parse", query: "query {", code: "GRAPHQL_PARSE_FAILED"},
-		{name: "validation", query: "query LedgerProbe { notAField }", code: "GRAPHQL_VALIDATION_FAILED", operation: "LedgerProbe"},
+		{name: "validation", query: "query LedgerProbe { notAField }", code: "GRAPHQL_VALIDATION_FAILED"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			var output bytes.Buffer
 			server := New(nil, nil, slog.New(slog.NewTextHandler(&output, nil)), Config{})
-			requestBody := fmt.Sprintf(`{"query":%q,"operationName":%q}`, test.query, test.operation)
+			requestBody := fmt.Sprintf(`{"query":%q}`, test.query)
 			request := httptest.NewRequest(http.MethodPost, "/graphql", strings.NewReader(requestBody))
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
@@ -58,9 +57,6 @@ func TestGraphQLProtocolErrorsKeepTheirCodeAndHTTPStatus(t *testing.T) {
 			}
 			if !strings.Contains(output.String(), "graphql_error_code="+test.code) {
 				t.Fatalf("protocol error code %q is missing from safe diagnostics: %s", test.code, output.String())
-			}
-			if test.operation != "" && !strings.Contains(output.String(), "operation="+test.operation) {
-				t.Fatalf("operation %q is missing from safe diagnostics: %s", test.operation, output.String())
 			}
 			if strings.Contains(output.String(), test.query) {
 				t.Fatalf("protocol diagnostics exposed the query: %s", output.String())

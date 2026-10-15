@@ -328,6 +328,7 @@ func TestHouseholdMemberOffboarding(t *testing.T) {
 	for _, edge := range legacyLedger.Edges {
 		if entry, ok := edge.Node.(*model.FundingLedgerEntry); ok && entry.ID == legacyFunding.ID {
 			legacyEntry = entry
+
 			break
 		}
 	}
