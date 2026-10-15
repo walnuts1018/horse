@@ -176,7 +176,14 @@
   width: 6px;
   height: 6px;
   box-shadow: none;
+}
+
+.home-page .settle-line .status-dot--closed {
   background: var(--green);
+}
+
+.home-page .settle-line .status-dot--open {
+  background: var(--amber);
 }
 
 .home-page .settle-card .button {

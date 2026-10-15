@@ -183,7 +183,10 @@ export function HomePage({
             ))}
           </ul>
           <div className="settle-line">
-            <span className="status-dot" />
+            <span
+              aria-hidden="true"
+              className={`status-dot ${settlement.__typename === "ClosedSettlement" ? "status-dot--closed" : "status-dot--open"}`}
+            />
             {settlement.__typename === "ClosedSettlement" ? "締め済み" : "今月分の精算"}
           </div>
           <Link
