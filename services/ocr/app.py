@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI):
         use_doc_unwarping=False,
         use_textline_orientation=True,
         device="cpu",
+        enable_mkldnn=False,
         cpu_threads=int(os.getenv("OCR_CPU_THREADS", "2")),
     )
     yield

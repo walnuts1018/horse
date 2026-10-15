@@ -9,7 +9,21 @@ import numpy as np
 from fastapi import HTTPException
 from PIL import Image
 
-from app import MAX_PDF_PAGES, crop_document, extract_lines
+from app import MAX_PDF_PAGES, app, crop_document, extract_lines, lifespan
+
+
+class OCRConfigurationTest(unittest.IsolatedAsyncioTestCase):
+    async def test_cpu_pipeline_disables_mkldnn(self):
+        class PaddleOCR:
+            kwargs = None
+
+            def __init__(self, **kwargs):
+                type(self).kwargs = kwargs
+
+        with patch.dict(sys.modules, {"paddleocr": SimpleNamespace(PaddleOCR=PaddleOCR)}):
+            async with lifespan(app):
+                self.assertFalse(PaddleOCR.kwargs["enable_mkldnn"])
+                self.assertEqual(PaddleOCR.kwargs["device"], "cpu")
 
 
 class CropDocumentTest(unittest.TestCase):
