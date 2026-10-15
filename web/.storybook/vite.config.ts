@@ -1,6 +1,10 @@
 import react from "@vitejs/plugin-react";
+import babel from "@rolldown/plugin-babel";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [react({ babel: { plugins: ["relay"] } })],
+  plugins: [
+    babel({ include: /\.[jt]sx?$/, plugins: ["relay"] }),
+    react(),
+  ],
 });

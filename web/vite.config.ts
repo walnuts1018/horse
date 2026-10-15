@@ -1,5 +1,6 @@
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
+import babel from "@rolldown/plugin-babel";
 import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
 
@@ -9,6 +10,7 @@ const apiOrigin =
 
 export default defineConfig({
   plugins: [
+    babel({ include: /\.[jt]sx?$/, plugins: ["relay"] }),
     tanstackStart({ router: { routesDirectory: "app/routes" } }),
     nitro(
       apiOrigin
@@ -25,7 +27,7 @@ export default defineConfig({
           }
         : {},
     ),
-    react({ babel: { plugins: ["relay"] } }),
+    react(),
   ],
   server: { port: 3000 },
 });
