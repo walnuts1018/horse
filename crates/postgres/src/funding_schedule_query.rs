@@ -3,7 +3,7 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as Di
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-use crate::{PgPool, set_funding_schedule::PersistedFundingSchedule, schema::public};
+use crate::{PgPool, schema::public, set_funding_schedule::PersistedFundingSchedule};
 
 #[derive(Debug)]
 pub enum FundingSchedulesQueryError {
@@ -86,7 +86,18 @@ pub async fn funding_schedules(
             schedules::active,
             schedules::created_at,
         ))
-        .load::<(Uuid, Uuid, Uuid, Uuid, i64, String, NaiveDate, Option<NaiveDate>, bool, DateTime<Utc>)>(&mut *conn)
+        .load::<(
+            Uuid,
+            Uuid,
+            Uuid,
+            Uuid,
+            i64,
+            String,
+            NaiveDate,
+            Option<NaiveDate>,
+            bool,
+            DateTime<Utc>,
+        )>(&mut *conn)
         .await?;
     let total_count = i64::try_from(ordered_rows.len()).unwrap_or(i64::MAX);
     let after_index = find_cursor_index(&ordered_rows, after_id)?;
@@ -123,13 +134,32 @@ pub async fn funding_schedules(
     Ok(FundingSchedulesPage {
         rows,
         total_count,
-        has_next_page: if backward { before_id.is_some() } else { has_more },
-        has_previous_page: if backward { has_more } else { after_id.is_some() },
+        has_next_page: if backward {
+            before_id.is_some()
+        } else {
+            has_more
+        },
+        has_previous_page: if backward {
+            has_more
+        } else {
+            after_id.is_some()
+        },
     })
 }
 
 fn find_cursor_index(
-    rows: &[(Uuid, Uuid, Uuid, Uuid, i64, String, NaiveDate, Option<NaiveDate>, bool, DateTime<Utc>)],
+    rows: &[(
+        Uuid,
+        Uuid,
+        Uuid,
+        Uuid,
+        i64,
+        String,
+        NaiveDate,
+        Option<NaiveDate>,
+        bool,
+        DateTime<Utc>,
+    )],
     cursor_id: Option<Uuid>,
 ) -> Result<Option<usize>, FundingSchedulesQueryError> {
     cursor_id

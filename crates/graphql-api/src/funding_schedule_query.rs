@@ -99,6 +99,6 @@ fn map_query_error(error: postgres_query::FundingSchedulesQueryError) -> Error {
     match error {
         E::HouseholdNotFound | E::CursorNotFound => Error::new("not found"),
         E::MemberNotFound => Error::new("household access denied"),
-        E::Pool(_) | E::Database(_) => crate::internal_error(error),
+        error @ (E::Pool(_) | E::Database(_)) => crate::internal_error(error),
     }
 }
