@@ -47,7 +47,11 @@ export function SettingsPage({
 }) {
   const navigation = useSettingsNavigation(activeTab, onSelectTab);
   const changes = useSettingsChangeTracking();
-  const balances = useSettingsAccountBalances({ household, onNotice });
+  const balances = useSettingsAccountBalances({
+    household,
+    onNotice,
+    enabled: activeTab === "accounts",
+  });
   const accountSettings = useAccountSettings({
     household,
     onRefresh,
@@ -59,6 +63,7 @@ export function SettingsPage({
     household,
     onNotice,
     onFormClean: changes.markFormClean,
+    enabled: activeTab === "allocation" || activeTab === "catalog",
   });
   const mutations = useSettingsMutations({
     household,
@@ -127,9 +132,7 @@ export function SettingsPage({
           household={household}
           allocationHidden={activeTab !== "allocation"}
           catalogHidden={activeTab !== "catalog"}
-          onNotice={onNotice}
-          onFormClean={changes.markFormClean}
-          pending={allocationCatalog.pending}
+          model={allocationCatalog}
         />
         {isOwner && (
           <ManageHouseholdInvitations

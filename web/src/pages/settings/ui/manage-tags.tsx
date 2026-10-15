@@ -53,10 +53,11 @@ export function ManageTags({
   );
 
   useEffect(() => {
+    if (hidden) return;
     queueMicrotask(() => {
       void refresh(undefined, true).catch(() => undefined);
     });
-  }, [refresh]);
+  }, [hidden, refresh]);
 
   const saveTag = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();

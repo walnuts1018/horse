@@ -33,6 +33,7 @@ export function ManageAccountActivity({
   const activity = useAccountActivity({
     householdId: household.id,
     accounts: household.accounts,
+    enabled: !hidden,
     onNotice,
     onFormClean,
     onPendingChange,

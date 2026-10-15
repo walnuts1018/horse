@@ -54,10 +54,12 @@ export function useAllocationCatalog({
   household,
   onNotice,
   onFormClean,
+  enabled = true,
 }: {
   household: Household;
   onNotice: (message: string, kind?: "success" | "error" | "warning" | "info") => void;
   onFormClean: (formID: string) => void;
+  enabled?: boolean;
 }) {
   const onNoticeRef = useRef(onNotice);
   const onFormCleanRef = useRef(onFormClean);
@@ -119,13 +121,14 @@ export function useAllocationCatalog({
   }, [household.id]);
 
   useEffect(() => {
+    if (!enabled) return;
     // 初回マウント時の取得をマイクロタスクで遅延し、同期setStateを排除
     queueMicrotask(() => {
       void Promise.all([refreshRules(), refreshCatalog()]).catch((reason) =>
         onNoticeRef.current(errorMessage(reason), "error"),
       );
     });
-  }, [refreshRules, refreshCatalog]);
+  }, [enabled, refreshRules, refreshCatalog]);
 
   const loadMoreRules = async () => {
     if (!allocationRulesCursor || allocationRulesPageLoading) return;

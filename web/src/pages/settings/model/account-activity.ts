@@ -35,6 +35,7 @@ const localDateTimeFromIso = (value: string) => {
 export function useAccountActivity({
   householdId,
   accounts,
+  enabled = true,
   onNotice,
   onFormClean,
   onPendingChange,
@@ -42,6 +43,7 @@ export function useAccountActivity({
 }: {
   householdId: string;
   accounts: { id: string; kind: string }[];
+  enabled?: boolean;
   onNotice: (message: string, kind?: "success" | "error" | "warning" | "info") => void;
   onFormClean: (formID: string) => void;
   onPendingChange: (pending: boolean) => void;
@@ -90,6 +92,7 @@ export function useAccountActivity({
 
   //世帯ごとの入出金意図(intent)を読み込んでフォームを復元し、履歴を再取得する。awaitで非同期化してeffectの同期実行中のsetStateを避ける
   useEffect(() => {
+    if (!enabled) return;
     void (async () => {
       const incomeIntent = await Promise.resolve(getAccountIncomeIntent(householdId));
       if (incomeIntent) {
@@ -115,7 +118,7 @@ export function useAccountActivity({
       }
       await refresh();
     })().catch((reason) => onNoticeRef.current(errorMessage(reason), "error"));
-  }, [householdId, refresh]);
+  }, [enabled, householdId, refresh]);
 
   //移動元と移動先は選択値を候補口座と突合してレンダー中に導出する。候補にない場合は先頭の口座を使う
   const sourceAccounts = accounts.filter((account) =>

@@ -65,6 +65,7 @@ export function ManageHouseholdInvitations({
   };
 
   useEffect(() => {
+    if (hidden) return;
     queueMicrotask(() => {
       setInvitationLink("");
       setIssuedInvitationId("");
@@ -72,7 +73,7 @@ export function ManageHouseholdInvitations({
         onNoticeRef.current(errorMessage(reason), "error"),
       );
     });
-  }, [refreshInvitations]);
+  }, [hidden, refreshInvitations]);
 
   const issueInvitation = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();

@@ -138,6 +138,7 @@ export function ViewAccountBalanceHistory({
   const { history: balanceHistory, error, loading, loadingMore, moreError } = view;
 
   useEffect(() => {
+    if (hidden) return;
     const key = buildRequestKey({ householdId, accountId, from, to, refreshRevision });
     activeRequestKey.current = key;
     request.current = false;
@@ -179,7 +180,7 @@ export function ViewAccountBalanceHistory({
             );
         });
     });
-  }, [householdId, accountId, from, to, refreshRevision]);
+  }, [hidden, householdId, accountId, from, to, refreshRevision]);
   const loadMoreBalanceChanges = async () => {
     const after = balanceHistory?.changes.pageInfo.endCursor;
     if (

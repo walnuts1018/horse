@@ -1,9 +1,9 @@
 import { Check, Pencil, Plus } from "lucide-react";
 
 import type { Household } from "../../../shared/api";
+import type { useAllocationCatalog } from "../model/allocation-catalog";
 
 import { isOneOf } from "../../../shared/lib/guard";
-import { useAllocationCatalog } from "../model/allocation-catalog";
 
 import styles from "./settings-page.module.css";
 
@@ -11,18 +11,13 @@ export function ManageAllocationCatalog({
   household,
   allocationHidden,
   catalogHidden,
-  onNotice,
-  onFormClean,
-  pending: _pending,
+  model,
 }: {
   household: Household;
   allocationHidden: boolean;
   catalogHidden: boolean;
-  onNotice: (message: string, kind?: "success" | "error" | "warning" | "info") => void;
-  onFormClean: (formID: string) => void;
-  pending: boolean;
+  model: ReturnType<typeof useAllocationCatalog>;
 }) {
-  const model = useAllocationCatalog({ household, onNotice, onFormClean });
   const editingRule = model.allocationRules.find((rule) => rule.id === model.editingRuleId);
 
   return (

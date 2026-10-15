@@ -56,11 +56,12 @@ export function MailForwardingAddress({
   }, [householdId]);
 
   useEffect(() => {
+    if (hidden) return;
     loadStatus();
     return () => {
       statusRequestId.current += 1;
     };
-  }, [loadStatus]);
+  }, [hidden, loadStatus]);
 
   const activeStatus = statusHouseholdId === householdId ? status : null;
   const statusLoaded = statusHouseholdId === householdId;
