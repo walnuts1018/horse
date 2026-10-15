@@ -1,5 +1,6 @@
 use async_graphql::{Context, Enum, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use diesel_async::AsyncConnection;
 use bookkeeping_workflows::{
     create_purchase::{
         CreatePurchaseAllocation, CreatePurchaseCommand, CreatePurchaseItem,
@@ -11,6 +12,7 @@ use chrono::Utc;
 use horse_postgres::{
     PgPool, create_purchase as postgres_create,
     post_purchase as postgres_post,
+    household_access as postgres_household_access,
     post_purchase_loader::{self, PostPurchaseLoadError},
     purchase_command_context::{self, PurchaseItemAllocationInput},
     purchase_command_result,
@@ -193,6 +195,9 @@ pub async fn create_purchase(ctx: &Context<'_>, input: CreatePurchaseInput) -> R
     let actor = crate::actor(ctx)?;
     let parsed = match parse_create_input(actor.0, input) { Ok(value) => value, Err(error) => return Ok(error.into()) };
     let pool = ctx.data::<PgPool>()?;
+    match postgres_household_access::is_active_member(pool, parsed.household_id, actor.0).await {
+        Ok(true) => {}, Ok(false) => return Ok(not_found().into()), Err(error) => return Err(crate::internal_error(error)),
+    }
     let allocation_inputs = parsed.command.items.iter().map(|item| PurchaseItemAllocationInput {
         category_id: item.category_id.as_deref().and_then(|id| Uuid::parse_str(id).ok()),
         product_variant_id: item.product_variant_id.as_deref().and_then(|id| Uuid::parse_str(id).ok()),
@@ -216,6 +221,9 @@ pub async fn create_and_post_purchase(ctx: &Context<'_>, input: CreatePurchaseIn
     let actor = crate::actor(ctx)?;
     let parsed = match parse_create_input(actor.0, input) { Ok(value) => value, Err(error) => return Ok(error.into()) };
     let pool = ctx.data::<PgPool>()?;
+    match postgres_household_access::is_active_member(pool, parsed.household_id, actor.0).await {
+        Ok(true) => {}, Ok(false) => return Ok(not_found().into()), Err(error) => return Err(crate::internal_error(error)),
+    }
     let allocation_inputs = parsed.command.items.iter().map(|item| PurchaseItemAllocationInput {
         category_id: item.category_id.as_deref().and_then(|id| Uuid::parse_str(id).ok()),
         product_variant_id: item.product_variant_id.as_deref().and_then(|id| Uuid::parse_str(id).ok()),
@@ -238,21 +246,30 @@ pub async fn create_and_post_purchase(ctx: &Context<'_>, input: CreatePurchaseIn
 pub async fn post_purchase(ctx: &Context<'_>, input: PostPurchaseInput) -> Result<PostPurchaseResult> {
     let actor = crate::actor(ctx)?;
     let purchase_id = match decode_node_id(&input.purchase_id, "Purchase") { Ok(id) => id, Err(()) => return Ok(bad_input().into()) };
+    if input.expected_revision < 0 || input.idempotency_key.is_empty() { return Ok(bad_input().into()); }
     let household_id = match purchase_command_result::load_purchase_household_id(ctx.data::<PgPool>()?, purchase_id).await { Ok(Some(id)) => id, Ok(None) => return Ok(not_found().into()), Err(error) => return Err(crate::internal_error(error)) };
+    match postgres_household_access::is_active_member(ctx.data::<PgPool>()?, household_id, actor.0).await {
+        Ok(true) => {}, Ok(false) => return Ok(not_found().into()), Err(error) => return Err(crate::internal_error(error)),
+    }
     let fingerprint = post_fingerprint(&purchase_id.to_string(), input.expected_revision)?;
     let mut conn = ctx.data::<PgPool>()?.get().await.map_err(crate::internal_error)?;
-    let loaded = match post_purchase_loader::load_post_purchase_command(&mut conn, &household_id.to_string(), &purchase_id.to_string(), input.expected_revision as u64).await {
-        Ok(value) => value,
-        Err(error) => match post_load_user_error(&error) { Some(error) => return Ok(error.into()), None => return Err(crate::internal_error(error)) },
-    };
-    let decision = match decide_post_purchase(loaded.command) { Ok(value) => value, Err(_) => return Ok(conflict().into()) };
-    match postgres_post::persist_post_purchase(ctx.data::<PgPool>()?, postgres_post::PersistPostPurchase {
-        household_id: household_id.to_string(), actor_id: actor.0.to_string(), expected_revision: input.expected_revision as u64,
-        ledger_description: "".to_owned(), idempotency_key: input.idempotency_key,
-        request_fingerprint: fingerprint, resolved_payments: loaded.resolved_payments,
-    }, decision).await {
+    let projection = purchase_command_result::load_purchase_command_result(ctx.data::<PgPool>()?, household_id, purchase_id).await.map_err(crate::internal_error)?;
+    let result = (&mut *conn).transaction::<postgres_post::PersistedPostPurchase, PostMutationError, _>(async |conn| {
+        let loaded = post_purchase_loader::load_post_purchase_command(conn, &household_id.to_string(), &purchase_id.to_string(), input.expected_revision as u64)
+            .await.map_err(PostMutationError::Load)?;
+        let decision = decide_post_purchase(loaded.command).map_err(|_| PostMutationError::Workflow)?;
+        postgres_post::persist_post_purchase_in_transaction(conn, postgres_post::PersistPostPurchase {
+            household_id: household_id.to_string(), actor_id: actor.0.to_string(), expected_revision: input.expected_revision as u64,
+            ledger_description: projection.merchant.clone(), idempotency_key: input.idempotency_key.clone(),
+            request_fingerprint: fingerprint, resolved_payments: loaded.resolved_payments,
+        }, decision).await.map_err(PostMutationError::Persistence)
+    }).await;
+    match result {
         Ok(value) => Ok(PostPurchaseSuccess { result: purchase_result(ctx.data::<PgPool>()?, household_id, &value.purchase_id).await? }.into()),
-        Err(error) => match post_user_error(&error) { Some(error) => Ok(error.into()), None => Err(crate::internal_error(error)) },
+        Err(PostMutationError::Load(error)) => match post_load_user_error(&error) { Some(error) => Ok(error.into()), None => Err(crate::internal_error(error)) },
+        Err(PostMutationError::Workflow) => Ok(conflict().into()),
+        Err(PostMutationError::Persistence(error)) => match post_user_error(&error) { Some(error) => Ok(error.into()), None => Err(crate::internal_error(error)) },
+        Err(PostMutationError::Database(error)) => Err(crate::internal_error(error)),
     }
 }
 
@@ -302,8 +319,8 @@ struct CanonicalItem {
     category_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     product_variant_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    allocations: Option<Vec<CanonicalAllocation>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    allocations: Vec<CanonicalAllocation>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -325,11 +342,11 @@ fn parse_create_input(actor_id: Uuid, input: CreatePurchaseInput) -> std::result
     for item in &input.items {
         let category_id = item.category_id.as_ref().map(|id| decode_node_id(id, "Category").map(|id| id.to_string())).transpose()?;
         let product_variant_id = item.product_variant_id.as_ref().map(|id| decode_node_id(id, "ProductVariant").map(|id| id.to_string())).transpose()?;
-        let quantity = item.quantity.as_ref().map(|value| Measure { numerator: value.numerator.parse().unwrap_or_default(), denominator: value.denominator.parse().unwrap_or_default(), unit: value.unit.clone() });
-        let printed_unit_price = item.printed_unit_price.as_ref().map(|value| PrintedUnitPrice {
+        let quantity = item.quantity.as_ref().map(|value| Ok(Measure { numerator: value.numerator.parse().map_err(|_| bad_input())?, denominator: value.denominator.parse().map_err(|_| bad_input())?, unit: value.unit.clone() })).transpose()?;
+        let printed_unit_price = item.printed_unit_price.as_ref().map(|value| Ok(PrintedUnitPrice {
             amount_yen: value.amount_yen.0,
-            basis: Measure { numerator: value.basis.numerator.parse().unwrap_or_default(), denominator: value.basis.denominator.parse().unwrap_or_default(), unit: value.basis.unit.clone() },
-        });
+            basis: Measure { numerator: value.basis.numerator.parse().map_err(|_| bad_input())?, denominator: value.basis.denominator.parse().map_err(|_| bad_input())?, unit: value.basis.unit.clone() },
+        })).transpose()?;
         let allocations = item.allocations.as_deref().unwrap_or_default().iter().map(|value| {
             decode_node_id(&value.pool_id, "Pool").map(|id| CreatePurchaseAllocation { pool_id: id.to_string(), weight: value.weight.0, rule_version: 1, rule_id: None })
         }).collect::<std::result::Result<Vec<_>, _>>()?;
@@ -380,7 +397,7 @@ fn canonical_input(input: &CreatePurchaseInput) -> CanonicalCreatePurchase {
             quantity: value.quantity.as_ref().map(|item| CanonicalQuantity { numerator: item.numerator.clone(), denominator: item.denominator.clone(), unit: item.unit.clone() }),
             printed_unit_price: value.printed_unit_price.as_ref().map(|item| CanonicalPrintedPrice { amount_yen: item.amount_yen.0, basis: CanonicalQuantity { numerator: item.basis.numerator.clone(), denominator: item.basis.denominator.clone(), unit: item.basis.unit.clone() } }),
             category_id: value.category_id.as_ref().map(ToString::to_string), product_variant_id: value.product_variant_id.as_ref().map(ToString::to_string),
-            allocations: value.allocations.as_ref().map(|allocations| allocations.iter().map(|allocation| CanonicalAllocation { pool_id: allocation.pool_id.to_string(), weight: allocation.weight.0 }).collect()),
+            allocations: value.allocations.as_deref().unwrap_or_default().iter().map(|allocation| CanonicalAllocation { pool_id: allocation.pool_id.to_string(), weight: allocation.weight.0 }).collect(),
         }).collect(),
     }
 }
@@ -441,10 +458,10 @@ impl TryFrom<purchase_command_result::PurchaseCommandResult> for PurchaseObject 
             let printed_unit_price = item.printed_unit_price_yen.zip(item.printed_unit_price_quantity_numerator).zip(item.printed_unit_price_quantity_denominator).zip(item.printed_unit_price_unit.clone()).map(|(((amount_yen, numerator), denominator), unit)| PrintedUnitPriceObject { amount_yen: Long(amount_yen), basis: PurchaseQuantity { numerator: numerator.to_string(), denominator: denominator.to_string(), unit } });
             let effective_unit_price = item.quantity_numerator.zip(item.quantity_denominator).and_then(|(numerator, denominator)| effective_unit_price(item.amount_yen, numerator, denominator));
             Ok(PurchaseItem {
-                id: encode_node_id("PurchaseItem", item.id), name: item.name.clone(), amount_yen: Long(item.amount_yen), remaining_refundable_amount_yen: Long(item.amount_yen), currency: "JPY".to_owned(), quantity, printed_unit_price, effective_unit_price,
+                id: encode_node_id("PurchaseItem", item.id), name: item.name.clone(), amount_yen: Long(item.amount_yen), remaining_refundable_amount_yen: Long(item.remaining_refundable_amount_yen), currency: "JPY".to_owned(), quantity, printed_unit_price, effective_unit_price,
                 category_id: item.category_id.map(|id| encode_node_id("Category", id)), product_variant_id: item.product_variant_id.map(|id| encode_node_id("ProductVariant", id)),
                 allocations: item.allocations.iter().map(|allocation| PurchaseItemAllocation { pool_id: encode_node_id("Pool", allocation.pool_id), pool_name: allocation.pool_name.clone(), weight: Long(allocation.weight), amount_yen: Long(allocation.amount_yen) }).collect(),
-                tags: item.tags.iter().map(|(id, name)| PurchaseTag { id: encode_node_id("Tag", *id), household_id: encode_node_id("Household", value.household_id), name: name.clone(), archived: false, revision: 1 }).collect(),
+                tags: item.tags.iter().map(|(id, name, archived, revision)| Ok(PurchaseTag { id: encode_node_id("Tag", *id), household_id: encode_node_id("Household", value.household_id), name: name.clone(), archived: *archived, revision: i32::try_from(*revision).map_err(|_| "tag revision out of range")? })).collect::<std::result::Result<Vec<_>, &'static str>>()?,
                 revision: i32::try_from(item.revision).map_err(|_| "purchase item revision out of range")?,
             })
         }).collect::<std::result::Result<Vec<_>, &'static str>>()?;

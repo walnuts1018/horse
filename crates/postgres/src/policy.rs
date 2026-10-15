@@ -155,9 +155,7 @@ pub async fn persist_update_budget(
         .map_err(|error| PolicyPersistenceError::Pool(error.to_string()))?;
     (&mut *pooled)
         .transaction::<budget::Budget, PolicyPersistenceError, _>(async |conn| {
-            use public::{
-                budgets::dsl as budgets, categories::dsl as categories,
-            };
+            use public::{budgets::dsl as budgets, categories::dsl as categories};
             let row = budgets::budgets
                 .filter(budgets::id.eq(id))
                 .filter(budgets::household_id.eq(household))
@@ -285,9 +283,7 @@ pub async fn persist_archive_budget(
         .map_err(|error| PolicyPersistenceError::Pool(error.to_string()))?;
     (&mut *pooled)
         .transaction::<budget::Budget, PolicyPersistenceError, _>(async |conn| {
-            use public::{
-                budgets::dsl as budgets,
-            };
+            use public::budgets::dsl as budgets;
             let row = budgets::budgets
                 .filter(budgets::id.eq(id))
                 .filter(budgets::household_id.eq(household))

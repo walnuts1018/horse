@@ -171,8 +171,8 @@ pub async fn link_statement_refund_correction(
                 return Err(CorrectPurchasePersistenceError::RefundDoesNotMatchCorrection);
             }
             let linked_statement = parse_linked_refund_observation(&linked.2, &linked.1)?;
-            let decision = decide_link_statement_refund_correction(
-                LinkStatementRefundCorrectionCommand {
+            let decision =
+                decide_link_statement_refund_correction(LinkStatementRefundCorrectionCommand {
                     source_document_id: source_document_id.to_string(),
                     source_reference: input.source_reference.clone(),
                     current_statement,
@@ -181,9 +181,8 @@ pub async fn link_statement_refund_correction(
                     linked_source_document_id: linked.0.to_string(),
                     linked_source_reference: linked.1,
                     linked_statement,
-                },
-            )
-            .map_err(map_link_refund_error)?;
+                })
+                .map_err(map_link_refund_error)?;
 
             let already_confirmed = confirmations::source_confirmations
                 .filter(confirmations::household_id.eq(household_id))
@@ -208,8 +207,10 @@ pub async fn link_statement_refund_correction(
                     public::source_confirmations::entity_kind.eq("purchase_correction"),
                     public::source_confirmations::entity_id.eq(correction_id),
                     public::source_confirmations::status.eq("confirmed"),
-                    public::source_confirmations::idempotency_key
-                        .eq(format!("purchase-correction-confirmation:{}", Uuid::now_v7())),
+                    public::source_confirmations::idempotency_key.eq(format!(
+                        "purchase-correction-confirmation:{}",
+                        Uuid::now_v7()
+                    )),
                     public::source_confirmations::changed_by.eq(actor_id),
                     public::source_confirmations::changed_at.eq(now),
                 ))
@@ -1004,7 +1005,16 @@ async fn load_correction_funding_effects(
     let payment_snapshots = snapshot_rows
         .into_iter()
         .map(
-            |(line_no, account_id, pool_id, member_id, version, weight, policy, snapshot_source)| {
+            |(
+                line_no,
+                account_id,
+                pool_id,
+                member_id,
+                version,
+                weight,
+                policy,
+                snapshot_source,
+            )| {
                 Ok(CorrectionPaymentFundingSnapshot {
                     line_no: u32::try_from(line_no)
                         .map_err(|_| CorrectPurchasePersistenceError::InvalidFundingSnapshot)?,

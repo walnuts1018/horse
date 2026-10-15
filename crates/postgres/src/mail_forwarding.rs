@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError};
+use diesel::{
+    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
+};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use household_workflows::mail_forwarding::{
     self, Command, ForwardingAddress, IssueCommand, Status,

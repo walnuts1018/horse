@@ -127,10 +127,7 @@ pub async fn persist_close_period(
 
         let schedules = public::funding_schedules::table
             .filter(public::funding_schedules::household_id.eq(household_id))
-            .filter(
-                public::funding_schedules::starts_on
-                    .lt(period_end),
-            )
+            .filter(public::funding_schedules::starts_on.lt(period_end))
             .filter(
                 public::funding_schedules::ends_on
                     .is_null()
@@ -167,7 +164,17 @@ pub async fn persist_close_period(
         let schedule_inputs = schedules
             .into_iter()
             .map(
-                |(id, member_id, pool_id, amount_yen, cadence, starts_on, ends_on, active, created_at)| {
+                |(
+                    id,
+                    member_id,
+                    pool_id,
+                    amount_yen,
+                    cadence,
+                    starts_on,
+                    ends_on,
+                    active,
+                    created_at,
+                )| {
                     let cadence = match cadence.as_str() {
                         "MONTHLY" => FundingCadence::Monthly,
                         "WEEKLY" => FundingCadence::Weekly,
@@ -243,8 +250,7 @@ pub async fn persist_close_period(
                 ))
                 .do_update()
                 .set((
-                    public::funding_obligations::schedule_id
-                        .eq(Some(schedule_id)),
+                    public::funding_obligations::schedule_id.eq(Some(schedule_id)),
                     public::funding_obligations::amount_yen.eq(amount_yen),
                 ))
                 .execute(&mut *conn)
@@ -286,18 +292,14 @@ pub async fn persist_close_period(
 
         let active_members = public::household_members::table
             .inner_join(
-                public::members::table.on(
-                    public::members::id.eq(public::household_members::member_id),
-                ),
+                public::members::table
+                    .on(public::members::id.eq(public::household_members::member_id)),
             )
             .filter(public::household_members::household_id.eq(household_id))
             .filter(
                 public::household_members::left_at
                     .is_null()
-                    .or(
-                        public::household_members::left_at
-                            .gt(period_start_utc(period_start)?),
-                    ),
+                    .or(public::household_members::left_at.gt(period_start_utc(period_start)?)),
             )
             .select((
                 public::household_members::member_id,
@@ -389,10 +391,8 @@ pub async fn persist_close_period(
         let mut funding_rules = BTreeMap::<String, serde_json::Value>::new();
         for (pool_id, kind, current_version) in pools {
             let version = current_version.unwrap_or_default();
-            let (owner_member_id, settlement_policy) = rules
-                .get(&(pool_id, version))
-                .cloned()
-                .unwrap_or_default();
+            let (owner_member_id, settlement_policy) =
+                rules.get(&(pool_id, version)).cloned().unwrap_or_default();
             let funding_shares = shares_by_pool.remove(&(pool_id, version));
             funding_rules.insert(
                 pool_id.to_string(),
@@ -595,8 +595,7 @@ fn settlement_line_is_valid(line: &bookkeeping_workflows::close_period::Settleme
         || !(0..=1_000_000_000_000).contains(&line.scheduled_yen)
         || !(0..=1_000_000_000_000).contains(&line.paid_yen)
         || !(-1_000_000_000_000..=1_000_000_000_000).contains(&line.carry_yen)
-        || !(-1_000_000_000_000..=1_000_000_000_000)
-            .contains(&line.monthly_adjustment_yen)
+        || !(-1_000_000_000_000..=1_000_000_000_000).contains(&line.monthly_adjustment_yen)
         || !(0..=1_000_000_000_000).contains(&line.advance_credit_yen)
     {
         return false;

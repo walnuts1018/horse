@@ -1,4 +1,6 @@
-use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, result::Error as DieselError};
+use diesel::{
+    ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, result::Error as DieselError,
+};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
@@ -73,13 +75,17 @@ pub async fn load_purchase_command_context(
         .await
         .optional()?
         .ok_or(PurchaseCommandContextError::HouseholdNotFound)?;
-    let version = u64::try_from(version).map_err(|_| PurchaseCommandContextError::InvalidVersion)?;
-    let default_weights = defaults::allocation_defaults
-        .filter(defaults::household_id.eq(household_id))
-        .filter(defaults::version.eq(i64::try_from(version).map_err(|_| PurchaseCommandContextError::InvalidVersion)?))
-        .select((defaults::pool_id, defaults::weight))
-        .load::<(Uuid, i64)>(&mut *conn)
-        .await?;
+    let version =
+        u64::try_from(version).map_err(|_| PurchaseCommandContextError::InvalidVersion)?;
+    let default_weights =
+        defaults::allocation_defaults
+            .filter(defaults::household_id.eq(household_id))
+            .filter(defaults::version.eq(
+                i64::try_from(version).map_err(|_| PurchaseCommandContextError::InvalidVersion)?,
+            ))
+            .select((defaults::pool_id, defaults::weight))
+            .load::<(Uuid, i64)>(&mut *conn)
+            .await?;
     if default_weights.is_empty() {
         return Err(PurchaseCommandContextError::MissingDefaultAllocation);
     }
@@ -125,24 +131,42 @@ pub async fn load_purchase_command_context(
             continue;
         }
 
-        let candidates = [
-            item.product_variant_id.map(|id| rules::product_variant_id.eq(Some(id))),
-            concept_id.map(|id| rules::product_concept_id.eq(Some(id))),
-            category_id.map(|id| rules::category_id.eq(Some(id))),
-            (!merchant_key.is_empty()).then(|| rules::merchant_key.eq(Some(merchant_key.to_owned()))),
-        ];
         let mut selected = None;
-        for predicate in candidates.into_iter().flatten() {
+        if let Some(variant_id) = item.product_variant_id {
             selected = rules::allocation_rules
                 .filter(rules::household_id.eq(household_id))
-                .filter(predicate)
+                .filter(rules::product_variant_id.eq(Some(variant_id)))
                 .select((rules::id, rules::revision))
                 .first::<(Uuid, i64)>(&mut *conn)
                 .await
                 .optional()?;
-            if selected.is_some() {
-                break;
-            }
+        }
+        if selected.is_none() && let Some(concept_id) = concept_id {
+            selected = rules::allocation_rules
+                .filter(rules::household_id.eq(household_id))
+                .filter(rules::product_concept_id.eq(Some(concept_id)))
+                .select((rules::id, rules::revision))
+                .first::<(Uuid, i64)>(&mut *conn)
+                .await
+                .optional()?;
+        }
+        if selected.is_none() && let Some(category_id) = category_id {
+            selected = rules::allocation_rules
+                .filter(rules::household_id.eq(household_id))
+                .filter(rules::category_id.eq(Some(category_id)))
+                .select((rules::id, rules::revision))
+                .first::<(Uuid, i64)>(&mut *conn)
+                .await
+                .optional()?;
+        }
+        if selected.is_none() && !merchant_key.is_empty() {
+            selected = rules::allocation_rules
+                .filter(rules::household_id.eq(household_id))
+                .filter(rules::merchant_key.eq(Some(merchant_key.to_owned())))
+                .select((rules::id, rules::revision))
+                .first::<(Uuid, i64)>(&mut *conn)
+                .await
+                .optional()?;
         }
         let (rule_id, rule_version, resolved_weights) = match selected {
             Some((rule_id, rule_revision)) => {

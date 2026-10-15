@@ -1,20 +1,20 @@
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM node:24.21.0-slim AS web-deps
+FROM --platform=$BUILDPLATFORM node:24.22.0-slim AS web-deps
 
 WORKDIR /src/web
 
-RUN corepack enable && corepack prepare pnpm@11.28.2 --activate
+RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
 
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=horse-pnpm,target=/pnpm/store,sharing=locked \
     pnpm install --frozen-lockfile --store-dir=/pnpm/store
 
-FROM --platform=$BUILDPLATFORM node:24.21.0-slim AS web-build
+FROM --platform=$BUILDPLATFORM node:24.22.0-slim AS web-build
 
 WORKDIR /src/web
 
-RUN corepack enable && corepack prepare pnpm@11.28.2 --activate
+RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
 
 COPY --from=web-deps /src/web/node_modules ./node_modules
 COPY web/ ./
@@ -40,7 +40,7 @@ RUN --mount=type=bind,source=.,target=/src,ro \
     && GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags='-s -w' -o /out/api ./cmd/api \
     && GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags='-s -w' -o /out/worker ./cmd/worker
 
-FROM rust:1.98.1-bookworm AS rust-build
+FROM rust:1.99.0-bookworm AS rust-build
 
 WORKDIR /src
 
@@ -63,7 +63,7 @@ RUN --mount=type=cache,id=horse-cargo-registry,target=/usr/local/cargo/registry,
     && cp "${CARGO_TARGET_DIR}/release/horse-api" /out/api \
     && cp "${CARGO_TARGET_DIR}/release/horse-worker" /out/worker
 
-FROM docker.io/arigaio/atlas:1.3.0-distroless AS atlas
+FROM docker.io/arigaio/atlas:1.3.4-distroless AS atlas
 
 FROM gcr.io/distroless/base-debian12:nonroot AS go-runtime
 

@@ -338,9 +338,12 @@ pub async fn persist_link_statement_income(
     let income_id = parse_uuid(&input.account_income_id, "account_income_id")?;
     let statement_account_id = parse_uuid(&input.statement_account_id, "statement_account_id")?;
     let document_id = parse_uuid(&decision.source_document_id, "source_document_id")?;
-    let decision_income_account_id = parse_uuid(decision.income_account_id.as_str(), "income_account_id")?;
-    let decision_statement_account_id =
-        parse_uuid(decision.statement_account_id.as_str(), "statement_account_id")?;
+    let decision_income_account_id =
+        parse_uuid(decision.income_account_id.as_str(), "income_account_id")?;
+    let decision_statement_account_id = parse_uuid(
+        decision.statement_account_id.as_str(),
+        "statement_account_id",
+    )?;
     if statement_account_id != decision_statement_account_id
         || decision_income_account_id != statement_account_id
         || decision.source_reference.is_empty()
@@ -466,13 +469,8 @@ async fn validate_statement_income_source(
     occurred_at: DateTime<Utc>,
 ) -> Result<Uuid, AccountIncomePersistenceError> {
     let document_id = parse_uuid(source_document_id, "source_document_id")?;
-    let entry = load_statement_income_entry(
-        conn,
-        household_id,
-        document_id,
-        source_reference,
-    )
-    .await?;
+    let entry =
+        load_statement_income_entry(conn, household_id, document_id, source_reference).await?;
     let statement_occurred_at = DateTime::parse_from_rfc3339(&entry.occurred_at)
         .map_err(|_| AccountIncomePersistenceError::StatementIncomeMismatch)?
         .with_timezone(&Utc);
@@ -489,8 +487,7 @@ async fn validate_statement_income_source(
         income_amount,
         statement_amount: entry.amount,
         income_occurred_at: occurred_at.to_rfc3339_opts(SecondsFormat::AutoSi, true),
-        statement_occurred_at: statement_occurred_at
-            .to_rfc3339_opts(SecondsFormat::AutoSi, true),
+        statement_occurred_at: statement_occurred_at.to_rfc3339_opts(SecondsFormat::AutoSi, true),
         statement_kind: entry.kind,
         bank_statement: true,
         statement_has_region: entry.has_region,
@@ -540,7 +537,11 @@ async fn load_statement_income_entry(
         .filter(confirmations::source_document_id.eq(document_id))
         .filter(confirmations::source_reference.eq(source_reference))
         .order_by(confirmations::changed_at.desc())
-        .select((confirmations::entity_kind, confirmations::entity_id, confirmations::status))
+        .select((
+            confirmations::entity_kind,
+            confirmations::entity_id,
+            confirmations::status,
+        ))
         .first::<(String, Uuid, String)>(conn)
         .await
         .optional()?;
@@ -612,7 +613,11 @@ async fn require_statement_income_confirmation(
         .filter(confirmations::source_document_id.eq(document_id))
         .filter(confirmations::source_reference.eq(&source.source_reference))
         .order_by(confirmations::changed_at.desc())
-        .select((confirmations::entity_kind, confirmations::entity_id, confirmations::status))
+        .select((
+            confirmations::entity_kind,
+            confirmations::entity_id,
+            confirmations::status,
+        ))
         .first::<(String, Uuid, String)>(conn)
         .await
         .optional()?;
@@ -653,9 +658,7 @@ async fn insert_statement_income_confirmation(
     Ok(())
 }
 
-fn map_link_workflow_error(
-    error: AccountIncomeError,
-) -> AccountIncomePersistenceError {
+fn map_link_workflow_error(error: AccountIncomeError) -> AccountIncomePersistenceError {
     match error {
         AccountIncomeError::StatementIncomeMismatch
         | AccountIncomeError::StatementIsNotExternalIncome => {

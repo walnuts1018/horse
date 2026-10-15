@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
 use bookkeeping_workflows::update_purchase_item::{
-    AllocationBasis, ItemAllocationWeight, ProductLearning, PurchaseItemState, UpdatePurchaseItemCommand,
-    UpdatePurchaseItemDecision, UpdatePurchaseItemError, decide_update_purchase_item,
+    AllocationBasis, ItemAllocationWeight, ProductLearning, PurchaseItemState,
+    UpdatePurchaseItemCommand, UpdatePurchaseItemDecision, UpdatePurchaseItemError,
+    decide_update_purchase_item,
 };
 use bookkeeping_workflows::{
     MemberFundingBasis, MemberId, MemberWeight, PurchaseStatus, SettlementPolicy,

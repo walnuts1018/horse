@@ -6,11 +6,17 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
-use bookkeeping_workflows::{Side, record_repayment::RecordRepaymentDecision};
+use bookkeeping_workflows::{
+    Side,
+    record_repayment::RecordRepaymentDecision,
+    statement_transfer::{
+        LinkStatementTransferCommand, StatementTransferObservation, decide_link_statement_transfer,
+    },
+};
 
 use crate::{PgPool, schema::public};
 
-const OPERATION: &str = "record_repayment";
+const OPERATION: &str = "recordTransfer";
 
 #[derive(Debug, Clone)]
 pub struct PersistRecordRepayment {
@@ -19,6 +25,9 @@ pub struct PersistRecordRepayment {
     pub occurred_at: DateTime<Utc>,
     pub idempotency_key: String,
     pub request_fingerprint: [u8; 32],
+    pub source_document_id: Option<String>,
+    pub source_reference: Option<String>,
+    pub source_account_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +50,13 @@ pub enum RecordRepaymentPersistenceError {
     LoanNotFound,
     LoanDirectionMismatch,
     RepaymentExceedsOutstanding,
+    InvalidAccountKind,
+    SourceDocumentNotFound,
+    SourceIsNotBankStatement,
+    StatementExtractionUnavailable,
+    StatementReferenceNotFound,
+    StatementAlreadyConfirmed,
+    StatementDoesNotMatchTransfer,
     InvalidDecision,
 }
 
@@ -79,6 +95,7 @@ pub async fn persist_record_repayment(
         return Err(RecordRepaymentPersistenceError::InvalidDecision);
     }
     validate_decision(&decision)?;
+    validate_statement_input(&input)?;
     let transfer_id = Uuid::new_v4();
     let journal_id = Uuid::new_v4();
     let ledger_entry_id = Uuid::new_v4();
@@ -94,14 +111,22 @@ pub async fn persist_record_repayment(
             use public::journals::dsl as journals;
             use public::ledger_entries::dsl as ledger;
 
+            public::households::table
+                .filter(public::households::id.eq(household_id))
+                .for_update()
+                .select(public::households::id)
+                .first::<Uuid>(&mut *conn)
+                .await
+                .optional()?
+                .ok_or(RecordRepaymentPersistenceError::LoanNotFound)?;
             let inserted = diesel::insert_into(idem::idempotency_records)
                 .values((
                     idem::household_id.eq(household_id),
                     idem::operation.eq(OPERATION),
                     idem::key.eq(&input.idempotency_key),
                     idem::request_fingerprint.eq(input.request_fingerprint.to_vec()),
-                    idem::resource_kind.eq("transfer"),
-                    idem::resource_id.eq(transfer_id),
+                    idem::resource_kind.eq("ledger_entry"),
+                    idem::resource_id.eq(ledger_entry_id),
                 ))
                 .on_conflict((idem::household_id, idem::operation, idem::key))
                 .do_nothing()
@@ -110,33 +135,39 @@ pub async fn persist_record_repayment(
                 .await
                 .optional()?;
             if inserted.is_none() {
-                let (fingerprint, resource_id) = idem::idempotency_records
+                let (fingerprint, resource_kind, resource_id) = idem::idempotency_records
                     .filter(idem::household_id.eq(household_id))
                     .filter(idem::operation.eq(OPERATION))
                     .filter(idem::key.eq(&input.idempotency_key))
-                    .select((idem::request_fingerprint, idem::resource_id))
-                    .first::<(Vec<u8>, Uuid)>(&mut *conn)
+                    .select((idem::request_fingerprint, idem::resource_kind, idem::resource_id))
+                    .first::<(Vec<u8>, String, Uuid)>(&mut *conn)
                     .await?;
-                if fingerprint.as_slice() != input.request_fingerprint {
+                if fingerprint.as_slice() != input.request_fingerprint || resource_kind != "ledger_entry" {
                     return Err(RecordRepaymentPersistenceError::IdempotencyConflict);
                 }
-                let saved_journal_id = journals::journals
-                    .filter(journals::household_id.eq(household_id))
-                    .filter(journals::source_kind.eq("transfer"))
-                    .filter(journals::source_id.eq(resource_id))
-                    .select(journals::id)
-                    .first::<Uuid>(&mut *conn)
-                    .await?;
-                let saved_ledger_entry_id = ledger::ledger_entries
+                let (saved_journal_id, saved_transfer_id) = ledger::ledger_entries
                     .filter(ledger::household_id.eq(household_id))
-                    .filter(ledger::journal_id.eq(saved_journal_id))
-                    .select(ledger::id)
+                    .filter(ledger::id.eq(resource_id))
+                    .select((ledger::journal_id, ledger::source_id))
+                    .first::<(Uuid, Uuid)>(&mut *conn)
+                    .await?;
+                validate_statement_replay(
+                    &mut *conn,
+                    household_id,
+                    saved_transfer_id,
+                    &input,
+                )
+                .await?;
+                let saved_transfer_id = public::transfers::table
+                    .filter(public::transfers::household_id.eq(household_id))
+                    .filter(public::transfers::id.eq(saved_transfer_id))
+                    .select(public::transfers::id)
                     .first::<Uuid>(&mut *conn)
                     .await?;
                 return Ok(PersistedRepayment {
-                    transfer_id: resource_id.to_string(),
+                    transfer_id: saved_transfer_id.to_string(),
                     journal_id: saved_journal_id.to_string(),
-                    ledger_entry_id: saved_ledger_entry_id.to_string(),
+                    ledger_entry_id: resource_id.to_string(),
                 });
             }
 

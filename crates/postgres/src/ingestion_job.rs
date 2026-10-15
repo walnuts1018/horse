@@ -295,13 +295,13 @@ async fn finish_job<F>(
 ) -> Result<bool, IngestionJobError>
 where
     F: FnOnce(
-        &ExtractionJobState,
-        &str,
-        i64,
-    ) -> Result<
-        bookkeeping_workflows::ingestion_job::FinishExtractionJob,
-        FinishExtractionJobError,
-    > + Send,
+            &ExtractionJobState,
+            &str,
+            i64,
+        ) -> Result<
+            bookkeeping_workflows::ingestion_job::FinishExtractionJob,
+            FinishExtractionJobError,
+        > + Send,
 {
     let job_id = parse_uuid(job_id, "job_id")?;
     let lease_token = parse_uuid(lease_token, "lease_token")?;

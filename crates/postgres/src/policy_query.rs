@@ -235,7 +235,10 @@ pub async fn budget_for_current_period(
     actor_id: Uuid,
     budget_id: Uuid,
 ) -> Result<BudgetReadModel, PolicyQueryError> {
-    let period = Utc::now().with_timezone(&tokyo()).format("%Y-%m").to_string();
+    let period = Utc::now()
+        .with_timezone(&tokyo())
+        .format("%Y-%m")
+        .to_string();
     budget(pool, actor_id, budget_id, &period).await
 }
 
@@ -496,7 +499,8 @@ async fn budget_projections(
     let period_end = end.with_timezone(&tokyo()).date_naive();
     rows.into_iter()
         .map(|row| {
-            let applies_to_period = row.5 < period_end && row.6.is_none_or(|date| date >= period_start);
+            let applies_to_period =
+                row.5 < period_end && row.6.is_none_or(|date| date >= period_start);
             let actual_yen = if applies_to_period {
                 *actuals.get(&(row.1, row.2)).unwrap_or(&0)
             } else {

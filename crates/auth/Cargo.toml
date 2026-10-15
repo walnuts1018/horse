@@ -9,7 +9,7 @@ diesel = { workspace = true }
 diesel-async = { workspace = true }
 horse-postgres = { path = "../postgres" }
 openidconnect = "4.0.1"
-sha2 = "0.10"
+sha2 = "0.11"
 subtle = "2"
 url = "2"
 uuid = { workspace = true }

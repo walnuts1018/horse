@@ -113,14 +113,19 @@ struct TransferFingerprint<'a> {
     from_member_id: &'a str,
     to_member_id: &'a str,
     kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
     payment_account_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     destination_account_id: Option<&'a str>,
     amount_yen: i64,
     occurred_at: &'a str,
     description: &'a str,
     idempotency_key: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
     source_document_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     source_reference: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     source_account_id: Option<&'a str>,
 }
 
@@ -131,14 +136,19 @@ struct RepaymentFingerprint<'a> {
     from_member_id: &'a str,
     to_member_id: &'a str,
     loan_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
     payment_account_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     destination_account_id: Option<&'a str>,
     amount_yen: i64,
     occurred_at: &'a str,
     description: &'a str,
     idempotency_key: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
     source_document_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     source_reference: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     source_account_id: Option<&'a str>,
 }
 
@@ -147,17 +157,10 @@ pub async fn record_transfer(
     input: RecordTransferInput,
 ) -> Result<RecordTransferResult> {
     let actor = crate::actor(ctx)?;
-    let parsed = match parse_transfer_input(actor, input) {
+    let parsed = match parse_transfer_input(input) {
         Ok(value) => value,
         Err(error) => return Ok(error.into()),
     };
-    if has_statement_source(
-        parsed.source_document_id.as_ref(),
-        parsed.source_reference.as_deref(),
-        parsed.source_account_id.as_ref(),
-    ) {
-        return Ok(bad_transfer_error().into());
-    }
     for member_id in [actor.0, parsed.from_member_id, parsed.to_member_id] {
         match postgres_access(ctx.data::<PgPool>()?, parsed.household_id, member_id).await {
             Ok(true) => {}
@@ -177,7 +180,7 @@ pub async fn record_transfer(
     .await
     {
         Ok(value) => value,
-        Err(error) => return context_error(error),
+        Err(error) => return transfer_context_error(error),
     };
     let amount = match PositiveYen::new(parsed.amount_yen) {
         Ok(value) => value,
@@ -207,6 +210,9 @@ pub async fn record_transfer(
             occurred_at: parsed.occurred_at,
             idempotency_key: parsed.idempotency_key,
             request_fingerprint: parsed.fingerprint,
+            source_document_id: parsed.source_document_id.map(|id| id.to_string()),
+            source_reference: parsed.source_reference,
+            source_account_id: parsed.source_account_id.map(|id| id.to_string()),
         },
         decision,
     )
@@ -233,13 +239,6 @@ pub async fn record_repayment(
         Ok(value) => value,
         Err(error) => return Ok(error.into()),
     };
-    if has_statement_source(
-        parsed.source_document_id.as_ref(),
-        parsed.source_reference.as_deref(),
-        parsed.source_account_id.as_ref(),
-    ) {
-        return Ok(bad_repayment_error().into());
-    }
     for member_id in [actor.0, parsed.from_member_id, parsed.to_member_id] {
         match postgres_access(ctx.data::<PgPool>()?, parsed.household_id, member_id).await {
             Ok(true) => {}
@@ -289,6 +288,9 @@ pub async fn record_repayment(
             occurred_at: parsed.occurred_at,
             idempotency_key: parsed.idempotency_key,
             request_fingerprint: parsed.fingerprint,
+            source_document_id: parsed.source_document_id.map(|id| id.to_string()),
+            source_reference: parsed.source_reference,
+            source_account_id: parsed.source_account_id.map(|id| id.to_string()),
         },
         decision,
     )
@@ -341,7 +343,6 @@ struct ParsedRepaymentInput {
 }
 
 fn parse_transfer_input(
-    actor: Actor,
     input: RecordTransferInput,
 ) -> std::result::Result<ParsedTransferInput, RecordTransferUserError> {
     let household_id =
@@ -351,8 +352,8 @@ fn parse_transfer_input(
     let payment_account_id = decode_optional_node_id(input.payment_account_id.as_ref(), "Account")?;
     let destination_account_id =
         decode_optional_node_id(input.destination_account_id.as_ref(), "Account")?;
-    let source_document_id =
-        decode_optional_node_id(input.source_document_id.as_ref(), "SourceDocument")?;
+    let source_document_id = decode_optional_uuid(input.source_document_id.as_ref())
+        .map_err(|_| bad_transfer_error())?;
     let source_account_id = decode_optional_node_id(input.source_account_id.as_ref(), "Account")?;
     let occurred_at = input
         .occurred_at
@@ -394,7 +395,6 @@ fn parse_transfer_input(
         source_account_id: input.source_account_id.as_ref().map(ID::as_str),
     };
     let fingerprint = fingerprint(&fingerprint_data)?;
-    let _ = actor;
     Ok(ParsedTransferInput {
         household_id,
         from_member_id,
@@ -425,8 +425,8 @@ fn parse_repayment_input(
     let payment_account_id = decode_optional_node_id(input.payment_account_id.as_ref(), "Account")?;
     let destination_account_id =
         decode_optional_node_id(input.destination_account_id.as_ref(), "Account")?;
-    let source_document_id =
-        decode_optional_node_id(input.source_document_id.as_ref(), "SourceDocument")?;
+    let source_document_id = decode_optional_uuid(input.source_document_id.as_ref())
+        .map_err(|_| bad_repayment_error())?;
     let source_account_id = decode_optional_node_id(input.source_account_id.as_ref(), "Account")?;
     let occurred_at = input
         .occurred_at
@@ -501,20 +501,18 @@ fn validate_statement_fields(
     Ok(())
 }
 
-fn has_statement_source(
-    source_document_id: Option<&Uuid>,
-    source_reference: Option<&str>,
-    source_account_id: Option<&Uuid>,
-) -> bool {
-    source_document_id.is_some() || source_reference.is_some() || source_account_id.is_some()
-}
-
 fn decode_optional_node_id(
     value: Option<&ID>,
     expected_kind: &str,
 ) -> std::result::Result<Option<Uuid>, RecordTransferUserError> {
     value
         .map(|value| decode_node_id(value, expected_kind))
+        .transpose()
+}
+
+fn decode_optional_uuid(value: Option<&ID>) -> std::result::Result<Option<Uuid>, ()> {
+    value
+        .map(|value| Uuid::parse_str(value.as_str()).map_err(|_| ()))
         .transpose()
 }
 
@@ -585,24 +583,18 @@ fn repayment_workflow_error(error: RepaymentError) -> RecordRepaymentUserError {
     }
 }
 
-fn context_error<T>(error: postgres_context::FinancialCommandContextError) -> Result<T> {
+fn transfer_context_error(
+    error: postgres_context::FinancialCommandContextError,
+) -> Result<RecordTransferResult> {
     use postgres_context::FinancialCommandContextError as E;
     match error {
         E::HouseholdNotFound | E::AccountNotFound | E::LoanNotFound => {
-            Ok(RecordTransferUserError {
-                code: MutationErrorCode::NotFound,
-                message: "対象が見つかりません。".to_owned(),
-            }
-            .into())
+            Ok(not_found_transfer_error().into())
         }
         E::InvalidAccountKind(_)
         | E::InvalidPoolKind(_)
         | E::InvalidAccountingPeriod(_)
-        | E::InvalidLoan => Ok(RecordTransferUserError {
-            code: MutationErrorCode::BadInput,
-            message: "入力を確認してください。".to_owned(),
-        }
-        .into()),
+        | E::InvalidLoan => Ok(bad_transfer_error().into()),
         E::InvalidTokyoOffset => Err(internal_error("invalid Tokyo offset")),
         E::Pool(_) | E::Database(_) => Err(internal_error(error)),
     }

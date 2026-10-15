@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 
-FROM ghcr.io/astral-sh/uv:0.12.20 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.1 AS uv
 
-FROM python:3.12-slim AS runtime-base
+FROM python:3.15-slim AS runtime-base
 
 RUN rm -f /etc/apt/apt.conf.d/docker-clean \
     && printf '%s\n' 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache

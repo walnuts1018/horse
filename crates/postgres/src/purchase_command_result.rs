@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
-use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, result::Error as DieselError};
+use diesel::{
+    ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, result::Error as DieselError,
+};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
@@ -43,7 +45,8 @@ pub struct PurchaseItemCommandResult {
     pub printed_unit_price_quantity_denominator: Option<i64>,
     pub printed_unit_price_unit: Option<String>,
     pub allocations: Vec<PurchaseItemAllocationCommandResult>,
-    pub tags: Vec<(Uuid, String)>,
+    pub tags: Vec<(Uuid, String, bool, i64)>,
+    pub remaining_refundable_amount_yen: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -84,11 +87,12 @@ pub async fn load_purchase_command_result(
     purchase_id: Uuid,
 ) -> Result<PurchaseCommandResult, PurchaseCommandResultError> {
     use public::{
-        accounts::dsl as accounts, evidence_links::dsl as evidence,
+        accounts::dsl as accounts, evidence_links::dsl as evidence, pools::dsl as pools,
         purchase_allocations::dsl as allocations, purchase_corrections::dsl as corrections,
         purchase_item_tags::dsl as item_tags, purchase_items::dsl as items,
         purchase_payments::dsl as payments, purchases::dsl as purchases,
-        pools::dsl as pools, source_documents::dsl as documents, tags::dsl as tags,
+        source_confirmations::dsl as confirmations,
+        source_documents::dsl as documents, tags::dsl as tags,
     };
 
     let mut conn = pool
@@ -107,8 +111,19 @@ pub async fn load_purchase_command_result(
             purchases::revision,
             purchases::created_at,
             purchases::updated_at,
+            purchases::payment_account_id,
         ))
-        .first::<(DateTime<Utc>, String, String, String, String, i64, DateTime<Utc>, DateTime<Utc>)>(&mut *conn)
+        .first::<(
+            DateTime<Utc>,
+            String,
+            String,
+            String,
+            String,
+            i64,
+            DateTime<Utc>,
+            DateTime<Utc>,
+            Option<Uuid>,
+        )>(&mut *conn)
         .await
         .optional()?
         .ok_or(PurchaseCommandResultError::PurchaseNotFound)?;
@@ -132,18 +147,39 @@ pub async fn load_purchase_command_result(
             items::printed_unit_price_quantity_denominator,
             items::printed_unit_price_unit,
         ))
-        .load::<(Uuid, String, i64, Option<Uuid>, Option<Uuid>, i64, Option<i64>, Option<i64>, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>)>(&mut *conn)
+        .load::<(
+            Uuid,
+            String,
+            i64,
+            Option<Uuid>,
+            Option<Uuid>,
+            i64,
+            Option<i64>,
+            Option<i64>,
+            Option<String>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<String>,
+        )>(&mut *conn)
         .await?;
     let mut item_results = Vec::with_capacity(item_rows.len());
     let mut total_yen = 0_i64;
     for row in item_rows {
-        total_yen = total_yen.checked_add(row.2).ok_or(PurchaseCommandResultError::NumericOutOfRange)?;
+        total_yen = total_yen
+            .checked_add(row.2)
+            .ok_or(PurchaseCommandResultError::NumericOutOfRange)?;
         let allocation_rows = allocations::purchase_allocations
             .inner_join(pools::pools.on(pools::id.eq(allocations::pool_id)))
             .filter(allocations::household_id.eq(household_id))
             .filter(allocations::purchase_id.eq(purchase_id))
             .filter(allocations::item_id.eq(row.0))
-            .select((allocations::pool_id, pools::name, allocations::weight, allocations::amount_yen))
+            .select((
+                allocations::pool_id,
+                pools::name,
+                allocations::weight,
+                allocations::amount_yen,
+            ))
             .order_by(allocations::pool_id)
             .load::<(Uuid, String, i64, i64)>(&mut *conn)
             .await?;
@@ -152,10 +188,20 @@ pub async fn load_purchase_command_result(
             .filter(item_tags::household_id.eq(household_id))
             .filter(item_tags::purchase_id.eq(purchase_id))
             .filter(item_tags::item_id.eq(row.0))
-            .select((tags::id, tags::name))
+            .select((tags::id, tags::name, tags::archived, tags::revision))
             .order_by(tags::id)
-            .load::<(Uuid, String)>(&mut *conn)
+            .load::<(Uuid, String, bool, i64)>(&mut *conn)
             .await?;
+        let item_correction_amount = corrections::purchase_corrections
+            .filter(corrections::household_id.eq(household_id))
+            .filter(corrections::purchase_id.eq(purchase_id))
+            .filter(corrections::item_id.eq(Some(row.0)))
+            .select(diesel::dsl::sum(corrections::amount_delta_yen))
+            .first::<Option<i64>>(&mut *conn)
+            .await?
+            .unwrap_or_default();
+        let remaining_refundable_amount_yen = row.2.checked_add(item_correction_amount)
+            .ok_or(PurchaseCommandResultError::NumericOutOfRange)?;
         item_results.push(PurchaseItemCommandResult {
             id: row.0,
             name: row.1,
@@ -170,32 +216,58 @@ pub async fn load_purchase_command_result(
             printed_unit_price_quantity_numerator: row.10,
             printed_unit_price_quantity_denominator: row.11,
             printed_unit_price_unit: row.12,
-            allocations: allocation_rows.into_iter().map(|allocation| PurchaseItemAllocationCommandResult {
-                pool_id: allocation.0,
-                pool_name: allocation.1,
-                weight: allocation.2,
-                amount_yen: allocation.3,
-            }).collect(),
+            allocations: allocation_rows
+                .into_iter()
+                .map(|allocation| PurchaseItemAllocationCommandResult {
+                    pool_id: allocation.0,
+                    pool_name: allocation.1,
+                    weight: allocation.2,
+                    amount_yen: allocation.3,
+                })
+                .collect(),
             tags: tag_rows,
+            remaining_refundable_amount_yen,
         });
     }
 
-    let payment_rows = payments::purchase_payments
+    let mut payment_rows = payments::purchase_payments
         .inner_join(accounts::accounts.on(accounts::id.eq(payments::account_id)))
         .filter(payments::household_id.eq(household_id))
         .filter(payments::purchase_id.eq(purchase_id))
         .order_by(payments::line_no)
-        .select((accounts::id, accounts::name, accounts::kind, accounts::card_last4, accounts::pool_id, payments::amount_yen))
+        .select((
+            accounts::id,
+            accounts::name,
+            accounts::kind,
+            accounts::card_last4,
+            accounts::pool_id,
+            payments::amount_yen,
+        ))
         .load::<(Uuid, String, String, Option<String>, Option<Uuid>, i64)>(&mut *conn)
         .await?;
-    let payment_results = payment_rows.into_iter().map(|payment| PurchasePaymentCommandResult {
-        account_id: payment.0,
-        account_name: payment.1,
-        account_kind: payment.2,
-        account_card_last4: payment.3,
-        account_pool_id: payment.4,
-        amount_yen: payment.5,
-    }).collect();
+    if payment_rows.is_empty() && let Some(account_id) = base.8 {
+        if let Some(account) = accounts::accounts
+            .filter(accounts::household_id.eq(household_id))
+            .filter(accounts::id.eq(account_id))
+            .select((accounts::id, accounts::name, accounts::kind, accounts::card_last4, accounts::pool_id))
+            .first::<(Uuid, String, String, Option<String>, Option<Uuid>)>(&mut *conn)
+            .await
+            .optional()?
+        {
+            payment_rows.push((account.0, account.1, account.2, account.3, account.4, total_yen));
+        }
+    }
+    let payment_results = payment_rows
+        .into_iter()
+        .map(|payment| PurchasePaymentCommandResult {
+            account_id: payment.0,
+            account_name: payment.1,
+            account_kind: payment.2,
+            account_card_last4: payment.3,
+            account_pool_id: payment.4,
+            amount_yen: payment.5,
+        })
+        .collect();
 
     let evidence_rows = evidence::evidence_links
         .inner_join(documents::source_documents.on(documents::id.eq(evidence::source_document_id)))
@@ -205,6 +277,18 @@ pub async fn load_purchase_command_result(
         .distinct()
         .load::<String>(&mut *conn)
         .await?;
+    let confirmed_source_kinds = confirmations::source_confirmations
+        .inner_join(documents::source_documents.on(documents::id.eq(confirmations::source_document_id)))
+        .filter(confirmations::household_id.eq(household_id))
+        .filter(confirmations::purchase_id.eq(Some(purchase_id)))
+        .select(documents::source_kind)
+        .distinct()
+        .load::<String>(&mut *conn)
+        .await?;
+    let mut source_kinds = evidence_rows;
+    source_kinds.extend(confirmed_source_kinds);
+    source_kinds.sort();
+    source_kinds.dedup();
     let has_evidence = evidence::evidence_links
         .filter(evidence::household_id.eq(household_id))
         .filter(evidence::purchase_id.eq(Some(purchase_id)))
@@ -212,7 +296,15 @@ pub async fn load_purchase_command_result(
         .first::<Uuid>(&mut *conn)
         .await
         .optional()?
-        .is_some();
+        .is_some()
+        || confirmations::source_confirmations
+            .filter(confirmations::household_id.eq(household_id))
+            .filter(confirmations::purchase_id.eq(Some(purchase_id)))
+            .select(confirmations::id)
+            .first::<Uuid>(&mut *conn)
+            .await?
+            .optional()?
+            .is_some();
     let correction_rows = corrections::purchase_corrections
         .filter(corrections::household_id.eq(household_id))
         .filter(corrections::purchase_id.eq(purchase_id))
@@ -220,9 +312,11 @@ pub async fn load_purchase_command_result(
         .load::<i64>(&mut *conn)
         .await?;
     let correction_amount_yen = correction_rows.iter().try_fold(0_i64, |sum, amount| {
-        sum.checked_add(*amount).ok_or(PurchaseCommandResultError::NumericOutOfRange)
+        sum.checked_add(*amount)
+            .ok_or(PurchaseCommandResultError::NumericOutOfRange)
     })?;
-    let remaining_refundable_amount_yen = total_yen.saturating_sub(correction_amount_yen.max(0));
+    let remaining_refundable_amount_yen = total_yen.checked_add(correction_amount_yen)
+        .ok_or(PurchaseCommandResultError::NumericOutOfRange)?;
 
     Ok(PurchaseCommandResult {
         id: purchase_id,
@@ -239,7 +333,8 @@ pub async fn load_purchase_command_result(
         source_kinds: evidence_rows,
         total_yen,
         correction_amount_yen,
-        correction_count: i64::try_from(correction_rows.len()).map_err(|_| PurchaseCommandResultError::NumericOutOfRange)?,
+        correction_count: i64::try_from(correction_rows.len())
+            .map_err(|_| PurchaseCommandResultError::NumericOutOfRange)?,
         remaining_refundable_amount_yen,
         items: item_results,
         payments: payment_results,

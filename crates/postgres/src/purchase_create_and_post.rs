@@ -26,16 +26,26 @@ pub enum CreateAndPostPurchaseError {
     Post(PostPurchasePersistenceError),
 }
 
+impl From<diesel::result::Error> for CreateAndPostPurchaseError {
+    fn from(error: diesel::result::Error) -> Self {
+        Self::Database(error)
+    }
+}
+
 pub async fn persist_create_and_post_purchase(
     pool: &PgPool,
     create: PersistCreatePurchase,
     decision: bookkeeping_workflows::create_purchase::CreatePurchaseDecision,
     post_fingerprint: [u8; 32],
 ) -> Result<PersistedCreatePurchase, CreateAndPostPurchaseError> {
-    let household_id = Uuid::parse_str(&create.household_id)
-        .map_err(|_| CreateAndPostPurchaseError::Create(CreatePurchasePersistenceError::InvalidUuid("household_id")))?;
-    let actor_id = Uuid::parse_str(&create.actor_id)
-        .map_err(|_| CreateAndPostPurchaseError::Create(CreatePurchasePersistenceError::InvalidUuid("actor_id")))?;
+    let household_id = Uuid::parse_str(&create.household_id).map_err(|_| {
+        CreateAndPostPurchaseError::Create(CreatePurchasePersistenceError::InvalidUuid(
+            "household_id",
+        ))
+    })?;
+    let actor_id = Uuid::parse_str(&create.actor_id).map_err(|_| {
+        CreateAndPostPurchaseError::Create(CreatePurchasePersistenceError::InvalidUuid("actor_id"))
+    })?;
     let mut conn = pool
         .get()
         .await
@@ -47,8 +57,11 @@ pub async fn persist_create_and_post_purchase(
             let created = persist_create_purchase_in_transaction(conn, create.clone(), decision)
                 .await
                 .map_err(CreateAndPostPurchaseError::Create)?;
-            let purchase_id = Uuid::parse_str(&created.purchase_id)
-                .map_err(|_| CreateAndPostPurchaseError::Create(CreatePurchasePersistenceError::InvalidUuid("purchase_id")))?;
+            let purchase_id = Uuid::parse_str(&created.purchase_id).map_err(|_| {
+                CreateAndPostPurchaseError::Create(CreatePurchasePersistenceError::InvalidUuid(
+                    "purchase_id",
+                ))
+            })?;
             let purchase = purchases::purchases
                 .filter(purchases::household_id.eq(household_id))
                 .filter(purchases::id.eq(purchase_id))
@@ -57,12 +70,17 @@ pub async fn persist_create_and_post_purchase(
                 .await
                 .optional()
                 .map_err(CreateAndPostPurchaseError::Database)?
-                .ok_or(CreateAndPostPurchaseError::Create(CreatePurchasePersistenceError::HouseholdNotFound))?;
+                .ok_or(CreateAndPostPurchaseError::Create(
+                    CreatePurchasePersistenceError::HouseholdNotFound,
+                ))?;
             if purchase.1 != "DRAFT" {
                 return Ok(created);
             }
-            let expected_revision = u64::try_from(purchase.0)
-                .map_err(|_| CreateAndPostPurchaseError::Create(CreatePurchasePersistenceError::NumericOutOfRange("purchase.revision")))?;
+            let expected_revision = u64::try_from(purchase.0).map_err(|_| {
+                CreateAndPostPurchaseError::Create(
+                    CreatePurchasePersistenceError::NumericOutOfRange("purchase.revision"),
+                )
+            })?;
             let loaded = load_post_purchase_command(
                 conn,
                 &household_id.to_string(),
@@ -71,8 +89,9 @@ pub async fn persist_create_and_post_purchase(
             )
             .await
             .map_err(CreateAndPostPurchaseError::Load)?;
-            let post_decision = decide_post_purchase(loaded.command)
-                .map_err(|_| CreateAndPostPurchaseError::Post(PostPurchasePersistenceError::InvalidDecision))?;
+            let post_decision = decide_post_purchase(loaded.command).map_err(|_| {
+                CreateAndPostPurchaseError::Post(PostPurchasePersistenceError::InvalidDecision)
+            })?;
             persist_post_purchase_in_transaction(
                 conn,
                 PersistPostPurchase {

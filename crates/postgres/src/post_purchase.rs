@@ -85,282 +85,272 @@ pub async fn persist_post_purchase_in_transaction(
     let ledger_entry_id = Uuid::new_v4();
     validate_decision(&decision, expected_revision)?;
 
-        use public::idempotency_records::dsl as idem;
-        use public::journals::dsl as journals;
-        use public::ledger_entries::dsl as ledger;
-        use public::purchases::dsl as purchases;
-        use public::household_members::dsl as members;
+    use public::household_members::dsl as members;
+    use public::idempotency_records::dsl as idem;
+    use public::journals::dsl as journals;
+    use public::ledger_entries::dsl as ledger;
+    use public::purchases::dsl as purchases;
 
-        let actor_is_member = members::household_members
-            .filter(members::household_id.eq(household_id))
-            .filter(members::member_id.eq(actor_id))
-            .filter(members::left_at.is_null())
-            .select(members::member_id)
+    let actor_is_member = members::household_members
+        .filter(members::household_id.eq(household_id))
+        .filter(members::member_id.eq(actor_id))
+        .filter(members::left_at.is_null())
+        .select(members::member_id)
+        .first::<Uuid>(&mut *conn)
+        .await
+        .optional()?
+        .is_some();
+    if !actor_is_member {
+        return Err(PostPurchasePersistenceError::HouseholdMismatch);
+    }
+
+    let inserted = diesel::insert_into(idem::idempotency_records)
+        .values((
+            idem::household_id.eq(household_id),
+            idem::operation.eq(OPERATION),
+            idem::key.eq(&input.idempotency_key),
+            idem::request_fingerprint.eq(input.request_fingerprint.to_vec()),
+            idem::resource_kind.eq("purchase"),
+            idem::resource_id.eq(purchase_id),
+        ))
+        .on_conflict((idem::household_id, idem::operation, idem::key))
+        .do_nothing()
+        .returning(idem::resource_id)
+        .get_result::<Uuid>(&mut *conn)
+        .await
+        .optional()?;
+
+    if inserted.is_none() {
+        let (fingerprint, resource_kind, resource_id) = idem::idempotency_records
+            .filter(idem::household_id.eq(household_id))
+            .filter(idem::operation.eq(OPERATION))
+            .filter(idem::key.eq(&input.idempotency_key))
+            .select((
+                idem::request_fingerprint,
+                idem::resource_kind,
+                idem::resource_id,
+            ))
+            .first::<(Vec<u8>, String, Uuid)>(&mut *conn)
+            .await?;
+        if fingerprint.as_slice() != input.request_fingerprint
+            || resource_kind != "purchase"
+            || resource_id != purchase_id
+        {
+            return Err(PostPurchasePersistenceError::IdempotencyConflict);
+        }
+        let saved_journal_id = journals::journals
+            .filter(journals::household_id.eq(household_id))
+            .filter(journals::source_kind.eq("purchase"))
+            .filter(journals::source_id.eq(resource_id))
+            .select(journals::id)
             .first::<Uuid>(&mut *conn)
-            .await
-            .optional()?
-            .is_some();
-        if !actor_is_member {
-            return Err(PostPurchasePersistenceError::HouseholdMismatch);
-        }
-
-        let inserted = diesel::insert_into(idem::idempotency_records)
-            .values((
-                idem::household_id.eq(household_id),
-                idem::operation.eq(OPERATION),
-                idem::key.eq(&input.idempotency_key),
-                idem::request_fingerprint.eq(input.request_fingerprint.to_vec()),
-                idem::resource_kind.eq("purchase"),
-                idem::resource_id.eq(purchase_id),
-            ))
-            .on_conflict((idem::household_id, idem::operation, idem::key))
-            .do_nothing()
-            .returning(idem::resource_id)
-            .get_result::<Uuid>(&mut *conn)
-            .await
-            .optional()?;
-
-        if inserted.is_none() {
-            let (fingerprint, resource_kind, resource_id) = idem::idempotency_records
-                .filter(idem::household_id.eq(household_id))
-                .filter(idem::operation.eq(OPERATION))
-                .filter(idem::key.eq(&input.idempotency_key))
-                .select((
-                    idem::request_fingerprint,
-                    idem::resource_kind,
-                    idem::resource_id,
-                ))
-                .first::<(Vec<u8>, String, Uuid)>(&mut *conn)
-                .await?;
-            if fingerprint.as_slice() != input.request_fingerprint
-                || resource_kind != "purchase"
-                || resource_id != purchase_id
-            {
-                return Err(PostPurchasePersistenceError::IdempotencyConflict);
-            }
-            let saved_journal_id = journals::journals
-                .filter(journals::household_id.eq(household_id))
-                .filter(journals::source_kind.eq("purchase"))
-                .filter(journals::source_id.eq(resource_id))
-                .select(journals::id)
-                .first::<Uuid>(&mut *conn)
-                .await?;
-            let saved_ledger_entry_id = ledger::ledger_entries
-                .filter(ledger::household_id.eq(household_id))
-                .filter(ledger::journal_id.eq(saved_journal_id))
-                .select(ledger::id)
-                .first::<Uuid>(&mut *conn)
-                .await?;
-            return Ok(PersistedPostPurchase {
-                purchase_id: resource_id.to_string(),
-                journal_id: saved_journal_id.to_string(),
-                ledger_entry_id: saved_ledger_entry_id.to_string(),
-            });
-        }
-
-        validate_household_references(&mut *conn, household_id, actor_id, purchase_id, &decision)
             .await?;
-        materialize_fallback_payments(
-            &mut *conn,
-            household_id,
-            purchase_id,
-            &input.resolved_payments,
-        )
-        .await?;
-        validate_payment_rows(
-            &mut *conn,
-            household_id,
-            purchase_id,
-            &input.resolved_payments,
-            &decision,
-        )
-        .await?;
-        validate_member_burden_snapshots(
-            &mut *conn,
-            household_id,
-            purchase_id,
-            &decision,
-        )
-        .await?;
-        let occurred_at = purchases::purchases
-            .filter(purchases::household_id.eq(household_id))
-            .filter(purchases::id.eq(purchase_id))
-            .select(purchases::occurred_at)
-            .first::<DateTime<Utc>>(&mut *conn)
+        let saved_ledger_entry_id = ledger::ledger_entries
+            .filter(ledger::household_id.eq(household_id))
+            .filter(ledger::journal_id.eq(saved_journal_id))
+            .select(ledger::id)
+            .first::<Uuid>(&mut *conn)
             .await?;
-        let tokyo = FixedOffset::east_opt(9 * 60 * 60)
-            .ok_or(PostPurchasePersistenceError::InvalidDecision)?;
-        let period_start = occurred_at
-            .with_timezone(&tokyo)
-            .date_naive()
-            .with_day(1)
-            .ok_or(PostPurchasePersistenceError::InvalidDecision)?;
-        ensure_period_open(&mut *conn, household_id, period_start).await?;
-        update_purchase(
-            &mut *conn,
-            household_id,
-            purchase_id,
-            expected_revision,
-            new_revision,
-            occurred_at,
-        )
+        return Ok(PersistedPostPurchase {
+            purchase_id: resource_id.to_string(),
+            journal_id: saved_journal_id.to_string(),
+            ledger_entry_id: saved_ledger_entry_id.to_string(),
+        });
+    }
+
+    validate_household_references(&mut *conn, household_id, actor_id, purchase_id, &decision)
+        .await?;
+    materialize_fallback_payments(
+        &mut *conn,
+        household_id,
+        purchase_id,
+        &input.resolved_payments,
+    )
+    .await?;
+    validate_payment_rows(
+        &mut *conn,
+        household_id,
+        purchase_id,
+        &input.resolved_payments,
+        &decision,
+    )
+    .await?;
+    validate_member_burden_snapshots(&mut *conn, household_id, purchase_id, &decision).await?;
+    let occurred_at = purchases::purchases
+        .filter(purchases::household_id.eq(household_id))
+        .filter(purchases::id.eq(purchase_id))
+        .select(purchases::occurred_at)
+        .first::<DateTime<Utc>>(&mut *conn)
+        .await?;
+    let tokyo =
+        FixedOffset::east_opt(9 * 60 * 60).ok_or(PostPurchasePersistenceError::InvalidDecision)?;
+    let period_start = occurred_at
+        .with_timezone(&tokyo)
+        .date_naive()
+        .with_day(1)
+        .ok_or(PostPurchasePersistenceError::InvalidDecision)?;
+    ensure_period_open(&mut *conn, household_id, period_start).await?;
+    update_purchase(
+        &mut *conn,
+        household_id,
+        purchase_id,
+        expected_revision,
+        new_revision,
+        occurred_at,
+    )
+    .await?;
+
+    diesel::insert_into(journals::journals)
+        .values((
+            journals::id.eq(journal_id),
+            journals::household_id.eq(household_id),
+            journals::source_kind.eq("purchase"),
+            journals::source_id.eq(purchase_id),
+            journals::occurred_at.eq(occurred_at),
+            journals::created_by.eq(actor_id),
+            journals::created_at.eq(now),
+        ))
+        .execute(&mut *conn)
         .await?;
 
-        diesel::insert_into(journals::journals)
+    for line in &decision.journal_lines {
+        let line_no = i32::try_from(line.line_no)
+            .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal line_no"))?;
+        let amount = i64::try_from(line.amount.value())
+            .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal amount"))?;
+        diesel::insert_into(public::journal_entries::table)
             .values((
-                journals::id.eq(journal_id),
-                journals::household_id.eq(household_id),
-                journals::source_kind.eq("purchase"),
-                journals::source_id.eq(purchase_id),
-                journals::occurred_at.eq(occurred_at),
-                journals::created_by.eq(actor_id),
-                journals::created_at.eq(now),
+                public::journal_entries::household_id.eq(household_id),
+                public::journal_entries::journal_id.eq(journal_id),
+                public::journal_entries::line_no.eq(line_no),
+                public::journal_entries::account_id.eq(line
+                    .account_id
+                    .as_ref()
+                    .map(|id| parse_uuid(id.as_str(), "account_id"))
+                    .transpose()?),
+                public::journal_entries::pool_id.eq(line
+                    .pool_id
+                    .as_ref()
+                    .map(|id| parse_uuid(id.as_str(), "pool_id"))
+                    .transpose()?),
+                public::journal_entries::member_id.eq::<Option<Uuid>>(None),
+                public::journal_entries::debit_yen.eq(if line.side == Side::Debit {
+                    amount
+                } else {
+                    0
+                }),
+                public::journal_entries::credit_yen.eq(if line.side == Side::Credit {
+                    amount
+                } else {
+                    0
+                }),
+                public::journal_entries::memo.eq(line.memo),
             ))
             .execute(&mut *conn)
             .await?;
+    }
 
-        for line in &decision.journal_lines {
-            let line_no = i32::try_from(line.line_no)
-                .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal line_no"))?;
-            let amount = i64::try_from(line.amount.value())
-                .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("journal amount"))?;
-            diesel::insert_into(public::journal_entries::table)
-                .values((
-                    public::journal_entries::household_id.eq(household_id),
-                    public::journal_entries::journal_id.eq(journal_id),
-                    public::journal_entries::line_no.eq(line_no),
-                    public::journal_entries::account_id.eq(line
-                        .account_id
-                        .as_ref()
-                        .map(|id| parse_uuid(id.as_str(), "account_id"))
-                        .transpose()?),
-                    public::journal_entries::pool_id.eq(line
-                        .pool_id
-                        .as_ref()
-                        .map(|id| parse_uuid(id.as_str(), "pool_id"))
-                        .transpose()?),
-                    public::journal_entries::member_id.eq::<Option<Uuid>>(None),
-                    public::journal_entries::debit_yen.eq(if line.side == Side::Debit {
-                        amount
-                    } else {
-                        0
-                    }),
-                    public::journal_entries::credit_yen.eq(if line.side == Side::Credit {
-                        amount
-                    } else {
-                        0
-                    }),
-                    public::journal_entries::memo.eq(line.memo),
-                ))
-                .execute(&mut *conn)
-                .await?;
-        }
-
-        for snapshot in &decision.member_burden_snapshots {
-            let amount = snapshot.amount.value();
-            let rule_version = i32::try_from(snapshot.funding_rule_version).map_err(|_| {
-                PostPurchasePersistenceError::NumericOutOfRange("funding_rule_version")
-            })?;
-            let weight = i64::try_from(snapshot.funding_weight)
-                .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("funding_weight"))?;
-            diesel::insert_into(public::purchase_member_burdens::table)
-                .values((
-                    public::purchase_member_burdens::household_id.eq(household_id),
-                    public::purchase_member_burdens::purchase_id.eq(purchase_id),
-                    public::purchase_member_burdens::item_id
-                        .eq(parse_uuid(snapshot.item_id.as_str(), "item_id")?),
-                    public::purchase_member_burdens::pool_id
-                        .eq(parse_uuid(snapshot.pool_id.as_str(), "pool_id")?),
-                    public::purchase_member_burdens::member_id
-                        .eq(parse_uuid(snapshot.member_id.as_str(), "member_id")?),
-                    public::purchase_member_burdens::amount_yen.eq(amount),
-                    public::purchase_member_burdens::funding_rule_version.eq(rule_version),
-                    public::purchase_member_burdens::funding_weight.eq(weight),
-                    public::purchase_member_burdens::settlement_policy
-                        .eq(snapshot.settlement_policy.as_deref()),
-                    public::purchase_member_burdens::snapshot_source.eq("POSTED"),
-                ))
-                .execute(&mut *conn)
-                .await?;
-        }
-
-        for snapshot in &decision.payment_funding_snapshots {
-            let line_no = i32::try_from(snapshot.line_no)
-                .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("payment line_no"))?;
-            let rule_version = i32::try_from(snapshot.funding_rule_version).map_err(|_| {
-                PostPurchasePersistenceError::NumericOutOfRange("funding_rule_version")
-            })?;
-            let weight = i64::try_from(snapshot.funding_weight)
-                .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("funding_weight"))?;
-            diesel::insert_into(public::purchase_payment_funding_snapshots::table)
-                .values((
-                    public::purchase_payment_funding_snapshots::household_id.eq(household_id),
-                    public::purchase_payment_funding_snapshots::purchase_id.eq(purchase_id),
-                    public::purchase_payment_funding_snapshots::payment_line_no.eq(line_no),
-                    public::purchase_payment_funding_snapshots::account_id
-                        .eq(parse_uuid(snapshot.account_id.as_str(), "account_id")?),
-                    public::purchase_payment_funding_snapshots::pool_id
-                        .eq(parse_uuid(snapshot.pool_id.as_str(), "pool_id")?),
-                    public::purchase_payment_funding_snapshots::member_id
-                        .eq(parse_uuid(snapshot.member_id.as_str(), "member_id")?),
-                    public::purchase_payment_funding_snapshots::funding_rule_version
-                        .eq(rule_version),
-                    public::purchase_payment_funding_snapshots::funding_weight.eq(weight),
-                    public::purchase_payment_funding_snapshots::settlement_policy
-                        .eq(snapshot.settlement_policy.as_deref()),
-                    public::purchase_payment_funding_snapshots::snapshot_source.eq("POSTED"),
-                ))
-                .execute(&mut *conn)
-                .await?;
-        }
-
-        let amount_yen = ledger_amount(&decision)?;
-        diesel::insert_into(ledger::ledger_entries)
+    for snapshot in &decision.member_burden_snapshots {
+        let amount = snapshot.amount.value();
+        let rule_version = i32::try_from(snapshot.funding_rule_version)
+            .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("funding_rule_version"))?;
+        let weight = i64::try_from(snapshot.funding_weight)
+            .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("funding_weight"))?;
+        diesel::insert_into(public::purchase_member_burdens::table)
             .values((
-                ledger::id.eq(ledger_entry_id),
-                ledger::household_id.eq(household_id),
-                ledger::journal_id.eq(journal_id),
-                ledger::source_kind.eq("purchase"),
-                ledger::source_id.eq(purchase_id),
-                ledger::occurred_at.eq(occurred_at),
-                ledger::description.eq(&input.ledger_description),
-                ledger::amount_yen.eq(amount_yen),
-                ledger::created_at.eq(now),
+                public::purchase_member_burdens::household_id.eq(household_id),
+                public::purchase_member_burdens::purchase_id.eq(purchase_id),
+                public::purchase_member_burdens::item_id
+                    .eq(parse_uuid(snapshot.item_id.as_str(), "item_id")?),
+                public::purchase_member_burdens::pool_id
+                    .eq(parse_uuid(snapshot.pool_id.as_str(), "pool_id")?),
+                public::purchase_member_burdens::member_id
+                    .eq(parse_uuid(snapshot.member_id.as_str(), "member_id")?),
+                public::purchase_member_burdens::amount_yen.eq(amount),
+                public::purchase_member_burdens::funding_rule_version.eq(rule_version),
+                public::purchase_member_burdens::funding_weight.eq(weight),
+                public::purchase_member_burdens::settlement_policy
+                    .eq(snapshot.settlement_policy.as_deref()),
+                public::purchase_member_burdens::snapshot_source.eq("POSTED"),
             ))
             .execute(&mut *conn)
             .await?;
+    }
 
-        for event in &decision.events {
-            let event_revision = i64::try_from(event.revision)
-                .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("event revision"))?;
-            let changed_fields = event
-                .changed_fields
-                .iter()
-                .map(|field| Some((*field).to_owned()))
-                .collect::<Vec<_>>();
-            diesel::insert_into(public::household_events::table)
-                .values((
-                    public::household_events::household_id.eq(household_id),
-                    public::household_events::event_type.eq(event.event_type),
-                    public::household_events::entity_kind.eq("purchase"),
-                    public::household_events::entity_id
-                        .eq(parse_uuid(event.entity_id.as_str(), "event entity_id")?),
-                    public::household_events::revision.eq(event_revision),
-                    public::household_events::changed_fields.eq(changed_fields),
-                    public::household_events::actor_id.eq(actor_id),
-                    public::household_events::created_at.eq(now),
-                ))
-                .execute(&mut *conn)
-                .await?;
-        }
+    for snapshot in &decision.payment_funding_snapshots {
+        let line_no = i32::try_from(snapshot.line_no)
+            .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("payment line_no"))?;
+        let rule_version = i32::try_from(snapshot.funding_rule_version)
+            .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("funding_rule_version"))?;
+        let weight = i64::try_from(snapshot.funding_weight)
+            .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("funding_weight"))?;
+        diesel::insert_into(public::purchase_payment_funding_snapshots::table)
+            .values((
+                public::purchase_payment_funding_snapshots::household_id.eq(household_id),
+                public::purchase_payment_funding_snapshots::purchase_id.eq(purchase_id),
+                public::purchase_payment_funding_snapshots::payment_line_no.eq(line_no),
+                public::purchase_payment_funding_snapshots::account_id
+                    .eq(parse_uuid(snapshot.account_id.as_str(), "account_id")?),
+                public::purchase_payment_funding_snapshots::pool_id
+                    .eq(parse_uuid(snapshot.pool_id.as_str(), "pool_id")?),
+                public::purchase_payment_funding_snapshots::member_id
+                    .eq(parse_uuid(snapshot.member_id.as_str(), "member_id")?),
+                public::purchase_payment_funding_snapshots::funding_rule_version.eq(rule_version),
+                public::purchase_payment_funding_snapshots::funding_weight.eq(weight),
+                public::purchase_payment_funding_snapshots::settlement_policy
+                    .eq(snapshot.settlement_policy.as_deref()),
+                public::purchase_payment_funding_snapshots::snapshot_source.eq("POSTED"),
+            ))
+            .execute(&mut *conn)
+            .await?;
+    }
 
-        Ok(PersistedPostPurchase {
-            purchase_id: purchase_id.to_string(),
-            journal_id: journal_id.to_string(),
-            ledger_entry_id: ledger_entry_id.to_string(),
-        })
+    let amount_yen = ledger_amount(&decision)?;
+    diesel::insert_into(ledger::ledger_entries)
+        .values((
+            ledger::id.eq(ledger_entry_id),
+            ledger::household_id.eq(household_id),
+            ledger::journal_id.eq(journal_id),
+            ledger::source_kind.eq("purchase"),
+            ledger::source_id.eq(purchase_id),
+            ledger::occurred_at.eq(occurred_at),
+            ledger::description.eq(&input.ledger_description),
+            ledger::amount_yen.eq(amount_yen),
+            ledger::created_at.eq(now),
+        ))
+        .execute(&mut *conn)
+        .await?;
+
+    for event in &decision.events {
+        let event_revision = i64::try_from(event.revision)
+            .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("event revision"))?;
+        let changed_fields = event
+            .changed_fields
+            .iter()
+            .map(|field| Some((*field).to_owned()))
+            .collect::<Vec<_>>();
+        diesel::insert_into(public::household_events::table)
+            .values((
+                public::household_events::household_id.eq(household_id),
+                public::household_events::event_type.eq(event.event_type),
+                public::household_events::entity_kind.eq("purchase"),
+                public::household_events::entity_id
+                    .eq(parse_uuid(event.entity_id.as_str(), "event entity_id")?),
+                public::household_events::revision.eq(event_revision),
+                public::household_events::changed_fields.eq(changed_fields),
+                public::household_events::actor_id.eq(actor_id),
+                public::household_events::created_at.eq(now),
+            ))
+            .execute(&mut *conn)
+            .await?;
+    }
+
+    Ok(PersistedPostPurchase {
+        purchase_id: purchase_id.to_string(),
+        journal_id: journal_id.to_string(),
+        ledger_entry_id: ledger_entry_id.to_string(),
+    })
 }
-
 
 fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, PostPurchasePersistenceError> {
     Uuid::parse_str(value).map_err(|_| PostPurchasePersistenceError::InvalidUuid(field))
@@ -698,14 +688,16 @@ async fn validate_payment_rows(
         if !members.insert(member_id) {
             return Err(PostPurchasePersistenceError::InvalidDecision);
         }
-        *total_weight = total_weight
-            .checked_add(weight)
-            .ok_or(PostPurchasePersistenceError::NumericOutOfRange(
-                "payment funding weight",
-            ))?;
+        *total_weight = total_weight.checked_add(weight).ok_or(
+            PostPurchasePersistenceError::NumericOutOfRange("payment funding weight"),
+        )?;
     }
     if snapshots_by_payment.len() != expected_identity.len()
-        || snapshots_by_payment.keys().copied().collect::<BTreeSet<_>>() != expected_identity
+        || snapshots_by_payment
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            != expected_identity
     {
         return Err(PostPurchasePersistenceError::InvalidDecision);
     }
@@ -754,11 +746,12 @@ async fn validate_member_burden_snapshots(
             return Err(PostPurchasePersistenceError::InvalidDecision);
         }
         let total = allocated_by_item.entry(*item_id).or_insert(0);
-        *total = total
-            .checked_add(*amount)
-            .ok_or(PostPurchasePersistenceError::NumericOutOfRange(
-                "item allocation total",
-            ))?;
+        *total =
+            total
+                .checked_add(*amount)
+                .ok_or(PostPurchasePersistenceError::NumericOutOfRange(
+                    "item allocation total",
+                ))?;
     }
     if allocated_by_item != item_amounts {
         return Err(PostPurchasePersistenceError::InvalidDecision);
@@ -781,11 +774,9 @@ async fn validate_member_burden_snapshots(
             return Err(PostPurchasePersistenceError::InvalidDecision);
         }
         let total = snapshots.entry((item_id, pool_id)).or_insert(0);
-        *total = total
-            .checked_add(snapshot.amount.value())
-            .ok_or(PostPurchasePersistenceError::NumericOutOfRange(
-                "member burden snapshot total",
-            ))?;
+        *total = total.checked_add(snapshot.amount.value()).ok_or(
+            PostPurchasePersistenceError::NumericOutOfRange("member burden snapshot total"),
+        )?;
     }
     if snapshots != persisted {
         return Err(PostPurchasePersistenceError::InvalidDecision);
@@ -801,11 +792,12 @@ fn validate_journal_rows(
     let mut expected_credits = BTreeMap::<Uuid, i64>::new();
     for (_, account_id, amount) in persisted_payments {
         let total = expected_credits.entry(*account_id).or_insert(0);
-        *total = total
-            .checked_add(*amount)
-            .ok_or(PostPurchasePersistenceError::NumericOutOfRange(
-                "payment total",
-            ))?;
+        *total =
+            total
+                .checked_add(*amount)
+                .ok_or(PostPurchasePersistenceError::NumericOutOfRange(
+                    "payment total",
+                ))?;
     }
     let mut actual_credits = BTreeMap::<Uuid, i64>::new();
     for line in &decision.journal_lines {
@@ -814,16 +806,20 @@ fn validate_journal_rows(
         let id = match line.side {
             Side::Debit => continue,
             Side::Credit => parse_uuid(
-                line.account_id.as_ref().ok_or(PostPurchasePersistenceError::InvalidDecision)?.as_str(),
+                line.account_id
+                    .as_ref()
+                    .ok_or(PostPurchasePersistenceError::InvalidDecision)?
+                    .as_str(),
                 "account_id",
             )?,
         };
         let total = actual_credits.entry(id).or_insert(0);
-        *total = total
-            .checked_add(amount)
-            .ok_or(PostPurchasePersistenceError::NumericOutOfRange(
-                "journal line total",
-            ))?;
+        *total =
+            total
+                .checked_add(amount)
+                .ok_or(PostPurchasePersistenceError::NumericOutOfRange(
+                    "journal line total",
+                ))?;
     }
 
     if actual_credits != expected_credits {
@@ -842,11 +838,12 @@ fn validate_journal_debits(
             continue;
         }
         let total = expected.entry(*pool_id).or_insert(0);
-        *total = total
-            .checked_add(*amount)
-            .ok_or(PostPurchasePersistenceError::NumericOutOfRange(
-                "allocation total",
-            ))?;
+        *total =
+            total
+                .checked_add(*amount)
+                .ok_or(PostPurchasePersistenceError::NumericOutOfRange(
+                    "allocation total",
+                ))?;
     }
     let mut actual = BTreeMap::<Uuid, i64>::new();
     for line in decision
@@ -862,11 +859,9 @@ fn validate_journal_debits(
             "pool_id",
         )?;
         let total = actual.entry(pool_id).or_insert(0);
-        *total = total
-            .checked_add(line.amount.value())
-            .ok_or(PostPurchasePersistenceError::NumericOutOfRange(
-                "journal debit total",
-            ))?;
+        *total = total.checked_add(line.amount.value()).ok_or(
+            PostPurchasePersistenceError::NumericOutOfRange("journal debit total"),
+        )?;
     }
     if actual != expected {
         return Err(PostPurchasePersistenceError::InvalidDecision);

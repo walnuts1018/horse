@@ -6,7 +6,12 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
-use bookkeeping_workflows::record_transfer::{PostingSide, RecordTransferDecision, TransferKind};
+use bookkeeping_workflows::{
+    record_transfer::{PostingSide, RecordTransferDecision, TransferKind},
+    statement_transfer::{
+        LinkStatementTransferCommand, StatementTransferObservation, decide_link_statement_transfer,
+    },
+};
 
 use crate::{PgPool, schema::public};
 
@@ -20,6 +25,9 @@ pub struct PersistRecordTransfer {
     pub occurred_at: DateTime<Utc>,
     pub idempotency_key: String,
     pub request_fingerprint: [u8; 32],
+    pub source_document_id: Option<String>,
+    pub source_reference: Option<String>,
+    pub source_account_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +56,12 @@ pub enum RecordTransferPersistenceError {
     InvalidAccountKind,
     AccountWithoutPool,
     AccountOwnershipMismatch,
+    SourceDocumentNotFound,
+    SourceIsNotBankStatement,
+    StatementExtractionUnavailable,
+    StatementReferenceNotFound,
+    StatementAlreadyConfirmed,
+    StatementDoesNotMatchTransfer,
     InvalidDecision,
 }
 
@@ -100,6 +114,7 @@ pub async fn persist_record_transfer(
         return Err(RecordTransferPersistenceError::InvalidDecision);
     }
     validate_decision(&decision)?;
+    validate_statement_input(&input, decision.kind)?;
 
     let transfer_id = Uuid::new_v4();
     let journal_id = Uuid::new_v4();
@@ -111,8 +126,8 @@ pub async fn persist_record_transfer(
         .map_err(|error| RecordTransferPersistenceError::Pool(error.to_string()))?;
     (&mut *pooled)
         .transaction::<PersistedTransfer, RecordTransferPersistenceError, _>(async |conn| {
-            use public::idempotency_records::dsl as idem;
             use public::households::dsl as households;
+            use public::idempotency_records::dsl as idem;
             use public::journals::dsl as journals;
             use public::ledger_entries::dsl as ledger;
 
@@ -124,8 +139,14 @@ pub async fn persist_record_transfer(
                 .await
                 .optional()?
                 .ok_or(RecordTransferPersistenceError::HouseholdNotFound)?;
-            validate_active_members(&mut *conn, household_id, actor_id, from_member_id, to_member_id)
-                .await?;
+            validate_active_members(
+                &mut *conn,
+                household_id,
+                actor_id,
+                from_member_id,
+                to_member_id,
+            )
+            .await?;
             let inserted = diesel::insert_into(idem::idempotency_records)
                 .values((
                     idem::household_id.eq(household_id),
@@ -158,6 +179,19 @@ pub async fn persist_record_transfer(
                 {
                     return Err(RecordTransferPersistenceError::IdempotencyConflict);
                 }
+                let existing_transfer_id = ledger::ledger_entries
+                    .filter(ledger::household_id.eq(household_id))
+                    .filter(ledger::id.eq(resource_id))
+                    .select(ledger::source_id)
+                    .first::<Uuid>(&mut *conn)
+                    .await?;
+                validate_statement_replay(
+                    &mut *conn,
+                    household_id,
+                    existing_transfer_id,
+                    &input,
+                )
+                .await?;
                 let (saved_journal_id, saved_transfer_id) = ledger::ledger_entries
                     .filter(ledger::household_id.eq(household_id))
                     .filter(ledger::id.eq(resource_id))
@@ -213,6 +247,17 @@ pub async fn persist_record_transfer(
                 )
                 .await?;
             }
+            let statement_decision = prepare_statement_transfer(
+                &mut *conn,
+                household_id,
+                actor_id,
+                ledger_entry_id,
+                input.occurred_at,
+                amount,
+                &decision,
+                &input,
+            )
+            .await?;
 
             diesel::insert_into(journals::journals)
                 .values((
@@ -317,6 +362,16 @@ pub async fn persist_record_transfer(
                 ))
                 .execute(&mut *conn)
                 .await?;
+            if let Some(statement) = statement_decision {
+                insert_statement_confirmation(
+                    &mut *conn,
+                    household_id,
+                    actor_id,
+                    transfer_id,
+                    statement,
+                )
+                .await?;
+            }
             diesel::insert_into(public::household_events::table)
                 .values((
                     public::household_events::household_id.eq(household_id),
@@ -345,6 +400,218 @@ pub async fn persist_record_transfer(
             })
         })
         .await
+}
+
+struct StatementConfirmation {
+    source_document_id: Uuid,
+    source_reference: String,
+}
+
+fn validate_statement_input(
+    input: &PersistRecordTransfer,
+    kind: TransferKind,
+) -> Result<(), RecordTransferPersistenceError> {
+    let provided = input.source_document_id.is_some()
+        || input.source_reference.is_some()
+        || input.source_account_id.is_some();
+    if !provided {
+        return Ok(());
+    }
+    if input.source_document_id.as_deref().is_none_or(str::is_empty)
+        || input.source_reference.as_deref().is_none_or(str::is_empty)
+        || input.source_reference.as_ref().is_some_and(|value| value.len() > 256)
+        || input.source_account_id.as_deref().is_none_or(str::is_empty)
+        || !matches!(kind, TransferKind::Loan | TransferKind::Repayment)
+    {
+        return Err(RecordTransferPersistenceError::InvalidDecision);
+    }
+    Ok(())
+}
+
+async fn prepare_statement_transfer(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    actor_id: Uuid,
+    ledger_entry_id: Uuid,
+    occurred_at: DateTime<Utc>,
+    amount: i64,
+    decision: &RecordTransferDecision,
+    input: &PersistRecordTransfer,
+) -> Result<Option<StatementConfirmation>, RecordTransferPersistenceError> {
+    let (Some(document_id), Some(reference), Some(source_account_id)) = (
+        input.source_document_id.as_deref(),
+        input.source_reference.as_deref(),
+        input.source_account_id.as_deref(),
+    ) else {
+        return Ok(None);
+    };
+    let document_id = parse_uuid(document_id, "source_document_id")?;
+    let source_account_id = parse_uuid(source_account_id, "source_account_id")?;
+    let source_kind = public::source_documents::table
+        .filter(public::source_documents::household_id.eq(household_id))
+        .filter(public::source_documents::id.eq(document_id))
+        .for_update()
+        .select(public::source_documents::source_kind)
+        .first::<String>(conn)
+        .await
+        .optional()?
+        .ok_or(RecordTransferPersistenceError::SourceDocumentNotFound)?;
+    if source_kind != "bank" {
+        return Err(RecordTransferPersistenceError::SourceIsNotBankStatement);
+    }
+    let latest_status = public::source_confirmations::table
+        .filter(public::source_confirmations::household_id.eq(household_id))
+        .filter(public::source_confirmations::source_document_id.eq(document_id))
+        .filter(public::source_confirmations::source_reference.eq(reference))
+        .order_by(public::source_confirmations::changed_at.desc())
+        .select(public::source_confirmations::status)
+        .first::<String>(conn)
+        .await
+        .optional()?;
+    if latest_status.as_deref() == Some("confirmed") {
+        return Err(RecordTransferPersistenceError::StatementAlreadyConfirmed);
+    }
+    let result = public::extraction_jobs::table
+        .filter(public::extraction_jobs::household_id.eq(household_id))
+        .filter(public::extraction_jobs::source_document_id.eq(document_id))
+        .filter(public::extraction_jobs::status.eq("succeeded"))
+        .order_by(public::extraction_jobs::version.desc())
+        .select(public::extraction_jobs::result)
+        .first::<Option<serde_json::Value>>(conn)
+        .await
+        .optional()?
+        .flatten()
+        .ok_or(RecordTransferPersistenceError::StatementExtractionUnavailable)?;
+    let rows = result
+        .get("statements")
+        .and_then(serde_json::Value::as_array)
+        .ok_or(RecordTransferPersistenceError::StatementExtractionUnavailable)?;
+    let row = rows.iter().find(|row| {
+        let row_no = row.get("row").and_then(serde_json::Value::as_i64);
+        let row_reference = row
+            .get("sourceReference")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .or_else(|| row_no.map(|number| format!("row:{number}")));
+        row_reference.as_deref() == Some(reference)
+    });
+    let row = row.ok_or(RecordTransferPersistenceError::StatementReferenceNotFound)?;
+    let kind = row
+        .get("kind")
+        .and_then(serde_json::Value::as_str)
+        .ok_or(RecordTransferPersistenceError::StatementExtractionUnavailable)?;
+    let amount_yen = row
+        .get("amount")
+        .and_then(serde_json::Value::as_i64)
+        .ok_or(RecordTransferPersistenceError::StatementExtractionUnavailable)?;
+    let statement_occurred_at = row
+        .get("occurredAt")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| value.with_timezone(&Utc))
+        .ok_or(RecordTransferPersistenceError::StatementExtractionUnavailable)?;
+    let source_account_kind = public::accounts::table
+        .filter(public::accounts::household_id.eq(household_id))
+        .filter(public::accounts::id.eq(source_account_id))
+        .select(public::accounts::kind)
+        .first::<String>(conn)
+        .await
+        .optional()?
+        .ok_or(RecordTransferPersistenceError::AccountNotFound)?;
+    if source_account_kind != "BANK" {
+        return Err(RecordTransferPersistenceError::InvalidAccountKind);
+    }
+    let command = LinkStatementTransferCommand {
+        actor_id: actor_id.to_string(),
+        household_id: household_id.to_string(),
+        ledger_entry_id: ledger_entry_id.to_string(),
+        source_document_id: document_id.to_string(),
+        source_reference: reference.to_owned(),
+        source_account_id: source_account_id.to_string(),
+    };
+    decide_link_statement_transfer(
+        command,
+        StatementTransferObservation {
+            source_kind,
+            kind: kind.to_owned(),
+            amount_yen,
+            occurred_at_unix_micros: statement_occurred_at.timestamp_micros(),
+        },
+        decision.kind.as_str(),
+        amount,
+        occurred_at.timestamp_micros(),
+        decision.payment_account_id.as_ref().map(|id| id.as_str()),
+        decision
+            .destination_account_id
+            .as_ref()
+            .map(|id| id.as_str()),
+    )
+    .map_err(|_| RecordTransferPersistenceError::StatementDoesNotMatchTransfer)?;
+    Ok(Some(StatementConfirmation {
+        source_document_id: document_id,
+        source_reference: reference.to_owned(),
+    }))
+}
+
+async fn validate_statement_replay(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    transfer_id: Uuid,
+    input: &PersistRecordTransfer,
+) -> Result<(), RecordTransferPersistenceError> {
+    let (Some(document_id), Some(reference), Some(_)) = (
+        input.source_document_id.as_deref(),
+        input.source_reference.as_deref(),
+        input.source_account_id.as_deref(),
+    ) else {
+        return Ok(());
+    };
+    let document_id = parse_uuid(document_id, "source_document_id")?;
+    let confirmation = public::source_confirmations::table
+        .filter(public::source_confirmations::household_id.eq(household_id))
+        .filter(public::source_confirmations::source_document_id.eq(document_id))
+        .filter(public::source_confirmations::source_reference.eq(reference))
+        .order_by(public::source_confirmations::changed_at.desc())
+        .select((
+            public::source_confirmations::status,
+            public::source_confirmations::entity_kind,
+            public::source_confirmations::entity_id,
+        ))
+        .first::<(String, String, Uuid)>(conn)
+        .await
+        .optional()?;
+    if confirmation != Some(("confirmed".to_owned(), "transfer".to_owned(), transfer_id)) {
+        return Err(RecordTransferPersistenceError::IdempotencyConflict);
+    }
+    Ok(())
+}
+
+async fn insert_statement_confirmation(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    actor_id: Uuid,
+    transfer_id: Uuid,
+    confirmation: StatementConfirmation,
+) -> Result<(), RecordTransferPersistenceError> {
+    diesel::insert_into(public::source_confirmations::table)
+        .values((
+            public::source_confirmations::id.eq(Uuid::now_v7()),
+            public::source_confirmations::household_id.eq(household_id),
+            public::source_confirmations::source_document_id.eq(confirmation.source_document_id),
+            public::source_confirmations::observation_id.eq(None::<Uuid>),
+            public::source_confirmations::source_reference.eq(confirmation.source_reference),
+            public::source_confirmations::entity_kind.eq("transfer"),
+            public::source_confirmations::entity_id.eq(transfer_id),
+            public::source_confirmations::status.eq("confirmed"),
+            public::source_confirmations::idempotency_key
+                .eq(format!("transfer-confirmation:{}", Uuid::now_v7())),
+            public::source_confirmations::changed_by.eq(actor_id),
+            public::source_confirmations::changed_at.eq(now),
+        ))
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 async fn ensure_open_period(
@@ -527,8 +794,8 @@ async fn validate_transfer_account(
         .optional()?
         .ok_or(RecordTransferPersistenceError::PoolNotFound)?;
     if pool_kind == "PERSONAL" {
-        let funding_version = funding_version
-            .ok_or(RecordTransferPersistenceError::AccountOwnershipMismatch)?;
+        let funding_version =
+            funding_version.ok_or(RecordTransferPersistenceError::AccountOwnershipMismatch)?;
         use public::pool_funding_rules::dsl as funding_rules;
         let owner = funding_rules::pool_funding_rules
             .filter(funding_rules::household_id.eq(household_id))

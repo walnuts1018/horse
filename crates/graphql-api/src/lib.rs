@@ -10,6 +10,7 @@ use uuid::Uuid;
 pub mod account_balances;
 pub mod account_creation;
 pub mod account_mutations;
+pub mod card_last4;
 pub mod catalog_mutations;
 pub mod category;
 pub mod funding;
@@ -274,6 +275,14 @@ impl MutationRoot {
     ) -> Result<catalog_mutations::SetProductAliasResult> {
         catalog_mutations::set_product_alias(ctx, input).await
     }
+
+    async fn set_account_card_last4(
+        &self,
+        ctx: &Context<'_>,
+        input: card_last4::SetAccountCardLast4Input,
+    ) -> Result<card_last4::SetAccountCardLast4Result> {
+        card_last4::set_account_card_last4(ctx, input).await
+    }
 }
 
 async fn issue_or_rotate(
@@ -444,6 +453,7 @@ pub enum MutationError {
     CreateProductConceptUserError(catalog_mutations::CreateProductConceptUserError),
     CreateProductVariantUserError(catalog_mutations::CreateProductVariantUserError),
     SetProductAliasUserError(catalog_mutations::SetProductAliasUserError),
+    SetAccountCardLast4UserError(card_last4::SetAccountCardLast4UserError),
 }
 
 #[derive(Clone, Debug, SimpleObject)]

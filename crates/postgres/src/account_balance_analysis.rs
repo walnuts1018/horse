@@ -267,9 +267,9 @@ async fn load_descriptions(
     household_id: Uuid,
     changes: &mut [AccountBalanceChange],
 ) -> Result<(), AccountBalanceAnalysisError> {
-    use public::ledger_entries::dsl as ledger_entries;
     use public::account_incomes::dsl as incomes;
     use public::account_movements::dsl as movements;
+    use public::ledger_entries::dsl as ledger_entries;
     use public::purchase_corrections::dsl as corrections;
     use public::purchases::dsl as purchases;
     use public::transfers::dsl as transfers;

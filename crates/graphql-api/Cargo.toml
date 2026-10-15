@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 async-graphql = { version = "7", features = ["chrono"] }
-base64 = "0.22"
+base64 = "0.23"
 bookkeeping-domain = { path = "../bookkeeping-domain" }
 bookkeeping-workflows = { path = "../bookkeeping-workflows" }
 chrono = { version = "0.4", features = ["serde"] }

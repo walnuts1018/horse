@@ -10,9 +10,9 @@ use bookkeeping_workflows::{
     AccountId, MemberId, Side,
     account_movement::{
         AccountKind, AccountMovementKind, LinkStatementMovementCommand,
-        LinkStatementMovementDecision, RecordAccountMovementCommand,
-        RecordAccountMovementDecision, StatementMovementObservation, StatementMovementSource,
-        decide_link_statement_movement, decide_record_account_movement,
+        LinkStatementMovementDecision, RecordAccountMovementCommand, RecordAccountMovementDecision,
+        StatementMovementObservation, StatementMovementSource, decide_link_statement_movement,
+        decide_record_account_movement,
     },
 };
 
@@ -447,13 +447,7 @@ pub async fn persist_link_statement_movement(
             )
             .await?;
             Ok(account_movement_result((
-                movement.0,
-                movement.1,
-                movement.2,
-                movement.3,
-                movement.4,
-                movement.5,
-                movement.6,
+                movement.0, movement.1, movement.2, movement.3, movement.4, movement.5, movement.6,
             )))
         })
         .await
@@ -491,13 +485,9 @@ async fn validate_record_statement_source(
     decision: &RecordAccountMovementDecision,
 ) -> Result<Uuid, AccountMovementPersistenceError> {
     let document_id = parse_uuid(&source.source_document_id, "source_document_id")?;
-    let entry = load_statement_movement_entry(
-        conn,
-        household_id,
-        document_id,
-        &source.source_reference,
-    )
-    .await?;
+    let entry =
+        load_statement_movement_entry(conn, household_id, document_id, &source.source_reference)
+            .await?;
     let statement = entry.observation()?;
     let amount = PositiveYen::new(decision.amount.value())
         .map_err(|_| AccountMovementPersistenceError::InvalidDecision)?;
@@ -521,11 +511,11 @@ async fn validate_record_statement_source(
     if &recalculated != decision {
         return Err(AccountMovementPersistenceError::InvalidDecision);
     }
-    let statement_account_id = parse_uuid(source.statement_account_id.as_str(), "statement_account_id")?;
-    let statement_account_kind = parse_account_kind(
-        &account_kind(conn, household_id, statement_account_id).await?,
-    )
-    .ok_or(AccountMovementPersistenceError::InvalidDecision)?;
+    let statement_account_id =
+        parse_uuid(source.statement_account_id.as_str(), "statement_account_id")?;
+    let statement_account_kind =
+        parse_account_kind(&account_kind(conn, household_id, statement_account_id).await?)
+            .ok_or(AccountMovementPersistenceError::InvalidDecision)?;
     decide_link_statement_movement(LinkStatementMovementCommand {
         source_document_id: source.source_document_id.clone(),
         source_reference: source.source_reference.clone(),
@@ -643,7 +633,11 @@ async fn require_statement_movement_confirmation(
         .filter(confirmations::source_document_id.eq(document_id))
         .filter(confirmations::source_reference.eq(&source.source_reference))
         .order_by(confirmations::changed_at.desc())
-        .select((confirmations::entity_kind, confirmations::entity_id, confirmations::status))
+        .select((
+            confirmations::entity_kind,
+            confirmations::entity_id,
+            confirmations::status,
+        ))
         .first::<(String, Uuid, String)>(conn)
         .await
         .optional()?;
