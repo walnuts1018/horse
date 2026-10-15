@@ -60,6 +60,9 @@ jobs:
         run: mise run lint:actions
 
       - parallel:
+          - name: Check Rust workspace
+            run: mise run rust:check
+
           - name: Check Go formatting
             run: test -z "$(find . -name '*.go' -not -path './.git/*' -print0 | xargs -0 gofmt -l)"
 
@@ -82,6 +85,9 @@ jobs:
             run: pnpm install --frozen-lockfile
 
       - parallel:
+          - name: Test Rust workspace
+            run: mise run rust:test
+
           - name: Test Go
             run: mise run test
 
@@ -153,6 +159,29 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildkit-go-build-${{ hashFiles('Dockerfile', 'go.mod', 'go.sum') }}-
 
+      - name: Cache Cargo registry mount
+        id: cargo-registry-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .buildkit-cache/cargo-registry
+          key: ${{ runner.os }}-buildkit-cargo-registry-${{ hashFiles('Dockerfile', 'Cargo.lock') }}
+
+      - name: Cache Cargo git mount
+        id: cargo-git-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .buildkit-cache/cargo-git
+          key: ${{ runner.os }}-buildkit-cargo-git-${{ hashFiles('Dockerfile', 'Cargo.lock') }}
+
+      - name: Cache Cargo target mount
+        id: cargo-target-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .buildkit-cache/cargo-target
+          key: ${{ runner.os }}-buildkit-cargo-target-${{ hashFiles('Dockerfile', 'Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildkit-cargo-target-${{ hashFiles('Dockerfile', 'Cargo.lock') }}-
+
       - name: Restore Go module mount
         uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
         with:
@@ -171,6 +200,36 @@ jobs:
           cache-map: |
             {
               ".buildkit-cache/go-build": { "target": "/root/.cache/go-build", "id": "horse-go-build" }
+            }
+
+      - name: Restore Cargo registry mount
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          skip-extraction: ${{ steps.cargo-registry-cache.outputs.cache-hit }}
+          cache-map: |
+            {
+              ".buildkit-cache/cargo-registry": { "target": "/usr/local/cargo/registry", "id": "horse-cargo-registry" }
+            }
+
+      - name: Restore Cargo git mount
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          skip-extraction: ${{ steps.cargo-git-cache.outputs.cache-hit }}
+          cache-map: |
+            {
+              ".buildkit-cache/cargo-git": { "target": "/usr/local/cargo/git", "id": "horse-cargo-git" }
+            }
+
+      - name: Restore Cargo target mount
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          skip-extraction: ${{ steps.cargo-target-cache.outputs.cache-hit }}
+          cache-map: |
+            {
+              ".buildkit-cache/cargo-target": { "target": "/target", "id": "horse-cargo-target" }
             }
 
       - parallel:
@@ -208,6 +267,23 @@ jobs:
               cache-from: type=gha,scope=horse-web
               cache-to: type=gha,scope=horse-web,mode=max
 
+          - name: Build and publish Rust runtime image
+            id: rust-image
+            uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+            with:
+              context: .
+              file: Dockerfile
+              target: rust-runtime
+              platforms: linux/amd64,linux/arm64
+              push: true
+              provenance: mode=max
+              sbom: true
+              tags: |
+                ghcr.io/${{ github.repository }}-rust:latest
+                ghcr.io/${{ github.repository }}-rust:v0.0.${{ github.run_number }}
+              cache-from: type=gha,scope=horse-rust
+              cache-to: type=gha,scope=horse-rust,mode=max
+
           - name: Build and publish OCR image
             id: ocr-image
             uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -229,10 +305,12 @@ jobs:
           GO_IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
           WEB_IMAGE_DIGEST: ${{ steps.web-image.outputs.digest }}
           OCR_IMAGE_DIGEST: ${{ steps.ocr-image.outputs.digest }}
+          RUST_IMAGE_DIGEST: ${{ steps.rust-image.outputs.digest }}
           IMAGE_TAG: v0.0.${{ github.run_number }}
         run: |
           {
             printf 'Published ghcr.io/%s:%s@%s (Go API, worker, and Atlas).\n' "$GITHUB_REPOSITORY" "$IMAGE_TAG" "$GO_IMAGE_DIGEST"
             printf 'Published ghcr.io/%s-web:%s@%s (Node web).\n' "$GITHUB_REPOSITORY" "$IMAGE_TAG" "$WEB_IMAGE_DIGEST"
             printf 'Published ghcr.io/%s-ocr:%s@%s.\n' "$GITHUB_REPOSITORY" "$IMAGE_TAG" "$OCR_IMAGE_DIGEST"
+            printf 'Published ghcr.io/%s-rust:%s@%s (Rust API, worker, and Atlas).\n' "$GITHUB_REPOSITORY" "$IMAGE_TAG" "$RUST_IMAGE_DIGEST"
           } >> "$GITHUB_STEP_SUMMARY"

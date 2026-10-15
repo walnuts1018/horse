@@ -40,6 +40,29 @@ RUN --mount=type=bind,source=.,target=/src,ro \
     && GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags='-s -w' -o /out/api ./cmd/api \
     && GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags='-s -w' -o /out/worker ./cmd/worker
 
+FROM rust:1.98.1-bookworm AS rust-build
+
+WORKDIR /src
+
+ARG TARGETARCH
+ENV CARGO_TARGET_DIR=/target/${TARGETARCH}
+
+RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev && rm -rf /var/lib/apt/lists/*
+
+COPY Cargo.toml Cargo.lock ./
+COPY apps/ apps/
+COPY crates/ crates/
+COPY rust-migrations/ rust-migrations/
+COPY atlas-rust.hcl ./
+
+RUN --mount=type=cache,id=horse-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=horse-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=horse-cargo-target,target=/target,sharing=locked \
+    cargo build --locked --release -p horse-api -p horse-worker \
+    && mkdir -p /out \
+    && cp "${CARGO_TARGET_DIR}/release/horse-api" /out/api \
+    && cp "${CARGO_TARGET_DIR}/release/horse-worker" /out/worker
+
 FROM docker.io/arigaio/atlas:1.3.0-distroless AS atlas
 
 FROM gcr.io/distroless/base-debian12:nonroot AS go-runtime
@@ -51,6 +74,26 @@ COPY --from=api-build --chown=65532:65532 /out/worker ./worker
 COPY --from=atlas --chown=65532:65532 --chmod=0555 /atlas /usr/local/bin/atlas
 COPY --chown=65532:65532 atlas.hcl ./atlas.hcl
 COPY --chown=65532:65532 migrations/ ./migrations/
+
+USER 65532:65532
+
+EXPOSE 8080 8081
+
+CMD ["/app/api"]
+
+FROM debian:bookworm-slim AS rust-runtime-base
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libpq5 && rm -rf /var/lib/apt/lists/*
+
+FROM rust-runtime-base AS rust-runtime
+
+WORKDIR /app
+
+COPY --from=rust-build --chown=65532:65532 /out/api ./api
+COPY --from=rust-build --chown=65532:65532 /out/worker ./worker
+COPY --from=atlas --chown=65532:65532 --chmod=0555 /atlas /usr/local/bin/atlas
+COPY --chown=65532:65532 atlas-rust.hcl ./atlas-rust.hcl
+COPY --chown=65532:65532 rust-migrations/ ./rust-migrations/
 
 USER 65532:65532
 

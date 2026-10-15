@@ -1,11 +1,12 @@
-use async_graphql::{Context, Error, ID, InputObject, Result, SimpleObject, Union};
+use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_workflows::funding_record::{
     AccountingPeriodStatus, RecordFundingCommand, RecordFundingError, decide_record_funding,
 };
 use horse_postgres::{
     PgPool, funding_command_context as postgres_funding_context,
-    funding_record as postgres_funding, household_access as postgres_household_access,
+    funding_command_result as postgres_funding_result, funding_record as postgres_funding,
+    household_access as postgres_household_access,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -27,18 +28,13 @@ pub struct RecordFundingInput {
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct RecordFundingUserError {
-    code: MutationErrorCode,
-    message: String,
+    pub code: MutationErrorCode,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct RecordFundingSuccess {
-    result: FundingLedgerEntryReference,
-}
-
-#[derive(Clone, Debug, SimpleObject)]
-pub struct FundingLedgerEntryReference {
-    id: ID,
+    result: crate::ledger_entry::LedgerEntry,
 }
 
 #[derive(Union)]
@@ -102,7 +98,13 @@ pub async fn record_funding(
     .await
     {
         Ok(Some(result)) => {
-            return Ok(funding_success(result.ledger_entry_id)?.into());
+            return Ok(funding_success(
+                ctx.data::<PgPool>()?,
+                parsed.household_id,
+                result.ledger_entry_id,
+            )
+            .await?
+            .into());
         }
         Ok(None) => {}
         Err(error) => match persistence_error(&error) {
@@ -142,7 +144,13 @@ pub async fn record_funding(
     )
     .await
     {
-        Ok(result) => Ok(funding_success(result.ledger_entry_id)?.into()),
+        Ok(result) => Ok(funding_success(
+            ctx.data::<PgPool>()?,
+            parsed.household_id,
+            result.ledger_entry_id,
+        )
+        .await?
+        .into()),
         Err(error) => match persistence_error(&error) {
             Some(error) => Ok(error.into()),
             None => Err(internal_error(error)),
@@ -150,13 +158,24 @@ pub async fn record_funding(
     }
 }
 
-fn funding_success(ledger_entry_id: String) -> Result<RecordFundingSuccess> {
+async fn funding_success(
+    pool: &PgPool,
+    household_id: Uuid,
+    ledger_entry_id: String,
+) -> Result<RecordFundingSuccess> {
+    let ledger_entry_id =
+        Uuid::parse_str(&ledger_entry_id).map_err(|error| internal_error(error))?;
+    let projection = postgres_funding_result::load_funding_ledger_entry_result(
+        pool,
+        household_id,
+        ledger_entry_id,
+    )
+    .await
+    .map_err(internal_error)?;
+    let entry =
+        crate::ledger_entry::FundingLedgerEntry::try_from(projection).map_err(internal_error)?;
     Ok(RecordFundingSuccess {
-        result: FundingLedgerEntryReference {
-            id: encode_node_id("LedgerEntry", &ledger_entry_id)
-                .map_err(|_| Error::new("invalid persisted ledger entry id"))?
-                .into(),
-        },
+        result: crate::ledger_entry::LedgerEntry::FundingLedgerEntry(entry),
     })
 }
 
@@ -251,18 +270,6 @@ fn decode_node_id(
         return Err(bad_input_error());
     }
     Ok(id)
-}
-
-fn encode_node_id(kind: &str, raw_id: &str) -> std::result::Result<String, ()> {
-    let id = Uuid::parse_str(raw_id).map_err(|_| ())?;
-    if id.is_nil() {
-        return Err(());
-    }
-    let mut payload = Vec::with_capacity(kind.len() + 17);
-    payload.extend_from_slice(kind.as_bytes());
-    payload.push(b':');
-    payload.extend_from_slice(id.as_bytes());
-    Ok(URL_SAFE_NO_PAD.encode(payload))
 }
 
 fn workflow_error(error: RecordFundingError) -> RecordFundingUserError {

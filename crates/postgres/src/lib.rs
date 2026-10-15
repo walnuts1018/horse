@@ -18,6 +18,7 @@ pub mod create_household;
 pub mod create_pool;
 pub mod create_purchase;
 pub mod funding_command_context;
+pub mod funding_command_result;
 pub mod funding_record;
 pub mod household_access;
 pub mod household_invitation;

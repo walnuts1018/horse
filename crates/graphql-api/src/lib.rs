@@ -8,9 +8,12 @@ use household_workflows::mail_forwarding;
 use uuid::Uuid;
 
 pub mod account_balances;
+pub mod account_creation;
 pub mod account_mutations;
 pub mod category;
 pub mod funding;
+pub mod ledger_entry;
+pub mod member_pool;
 pub mod scalars;
 pub use scalars::{DateTime, Long};
 
@@ -181,6 +184,22 @@ impl MutationRoot {
     ) -> Result<account_mutations::RecordExternalIncomeResult> {
         account_mutations::graphql_record_external_income(ctx, input).await
     }
+
+    async fn create_account(
+        &self,
+        ctx: &Context<'_>,
+        input: account_creation::CreateAccountInput,
+    ) -> Result<account_creation::CreateAccountResult> {
+        account_creation::create_account(ctx, input).await
+    }
+
+    async fn record_funding(
+        &self,
+        ctx: &Context<'_>,
+        input: funding::RecordFundingInput,
+    ) -> Result<funding::RecordFundingResult> {
+        funding::record_funding(ctx, input).await
+    }
 }
 
 async fn issue_or_rotate(
@@ -340,6 +359,8 @@ pub enum MutationError {
     SetCategoryArchivedUserError(category::SetCategoryArchivedUserError),
     RecordAccountMovementUserError(account_mutations::RecordAccountMovementUserError),
     RecordExternalIncomeUserError(account_mutations::RecordExternalIncomeUserError),
+    CreateAccountUserError(account_creation::CreateAccountUserError),
+    RecordFundingUserError(funding::RecordFundingUserError),
 }
 
 #[derive(Clone, Debug, SimpleObject)]
