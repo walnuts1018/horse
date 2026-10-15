@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"os"
 	"sync"
 	"testing"
@@ -103,6 +104,7 @@ func TestConcurrentIdempotentAccountingMutationsReuseResources(t *testing.T) {
 		if err != nil {
 			return "", err
 		}
+
 		return result.ID, nil
 	})
 	assertSameIdempotentResource(t, fundingIDs)
@@ -119,6 +121,7 @@ func TestConcurrentIdempotentAccountingMutationsReuseResources(t *testing.T) {
 		if err != nil {
 			return "", err
 		}
+
 		return result.ID, nil
 	})
 	assertSameIdempotentResource(t, transferIDs)
@@ -130,10 +133,54 @@ func TestConcurrentIdempotentAccountingMutationsReuseResources(t *testing.T) {
 		if err != nil {
 			return "", err
 		}
+
 		return result.ID, nil
 	})
 	assertSameIdempotentResource(t, purchaseIDs)
 	assertSingleAccountingRecord(t, ctx, db, householdUUID, purchaseKey)
+
+	start := make(chan struct{})
+	closeResults := make(chan error, 2)
+	var closers sync.WaitGroup
+	for range 2 {
+		closers.Go(func() {
+			<-start
+			_, err := mutation.closePeriod(ctx, model.ClosePeriodInput{
+				HouseholdID: household.ID, Period: testOctober2026, ExpectedRevision: 0,
+			})
+			closeResults <- err
+		})
+	}
+	close(start)
+	closers.Wait()
+	close(closeResults)
+
+	succeeded, conflicted := 0, 0
+	for err := range closeResults {
+		switch {
+		case err == nil:
+			succeeded++
+		case errors.Is(err, ErrConflict):
+			conflicted++
+		default:
+			t.Fatalf("concurrent settlement close failed unexpectedly: %v", err)
+		}
+	}
+	if succeeded != 1 || conflicted != 1 {
+		t.Fatalf("concurrent settlement close must commit once and reject the stale revision: succeeded=%d conflicted=%d", succeeded, conflicted)
+	}
+
+	settlementRuns, err := models.SettlementRuns.Query(sm.Where(psql.And(
+		models.SettlementRuns.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
+		models.SettlementRuns.Columns.Period.EQ(psql.Arg(testOctober2026)),
+	))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(settlementRuns) != 1 || settlementRuns[0].Revision != 1 {
+		t.Fatalf("concurrent settlement close must create one immutable run: runs=%#v error=%v", settlementRuns, err)
+	}
+	settlementLines, err := models.SettlementLines.Query(sm.Where(models.SettlementLines.Columns.SettlementRunID.EQ(psql.Arg(settlementRuns[0].ID)))).All(ctx, bobpgx.NewPool(db))
+	if err != nil || len(settlementLines) != 2 {
+		t.Fatalf("concurrent settlement close must snapshot one line per household member: lines=%#v error=%v", settlementLines, err)
+	}
 }
 
 func runConcurrentIdempotencyCalls(t *testing.T, call func() (string, error)) []string {
