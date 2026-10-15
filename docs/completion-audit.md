@@ -42,6 +42,8 @@
 | セキュリティと運用 | NetworkPolicy、非公開原本、監視・ログ・トレース、基盤によるSeaweedFSとDBのバックアップ | NetworkPolicy・非公開原本の実装あり。SeaweedFS S3 ingress policyはHorseのAPI・WorkerからTCP 8333を許可する。Infra main commit `59ca8f5ee`の反映後、Argo CD Application `seaweedfs-default`は`Synced`・`Healthy`。Horseと同じpod labelの一時podからS3 Serviceへ接続し、認証なしの期待値であるHTTP 403を受信した。Googleの月500円Spend Capは`CONFIGURED`で、50%・80%・100%の通知設定を確認。Horse専用バックアップは設けず、基盤の全体バックアップに従う |
 | 公開サービス | kurumiの各Pod Ready、正しいTLS、公開URL、OIDCログイン後の主要操作と永続化 | `https://horse.walnuts.dev/healthz`と`/`はHTTP 200。公開環境の合成家庭でTanStackのファイルベースrouteを使い、帳簿・精算・分析・取り込み・設定を直接開いてURLと画面見出しを確認し、各routeを再読み込みしても同じ見出しが表示されることを確認した。ログアウト状態で`/households/00000000-0000-0000-0000-000000000001/ledger?month=2026-10`を直接開き、pathnameとsearchが`returnTo`に保持されることも公開ブラウザーで確認した。このUUIDはroute保持確認用で、家庭の実データは取得していない。 |
 
+2026年10月15日にログイン済みの公開環境で検証用家庭の帳簿と設定画面を直接開いた。帳簿は3件を読み込み、設定画面は口座残高と仕訳を表示した。両画面のブラウザーconsoleにerrorとwarningはなかった。
+
 2026年10月12日14:38 UTC頃の公開監視確認で、VictoriaMetricsの`probe_success{target="horse"}`は1を返した。Tempoの直近1時間を対象に`{resource.service.name="horse-api"}`を検索し、`horse-api`をroot serviceとするトレースを3件確認した。Workerトレースは0件だったが、その時間帯はGeminiが無効でCSV原本も未アップロードだったため、抽出ジョブがclaimされていなかった。Workerの処理成功・失敗はこの結果から判定していない。
 
 
