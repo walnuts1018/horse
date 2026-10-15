@@ -4,10 +4,6 @@
 
 2026年10月16日時点の作業ツリーを確認しました。以下は改善案であり、現行コードが不正または故障しているという主張ではありません。業務要件に照らして、採用する範囲を決める必要があります。
 
-## 更新コマンドの変更意図
-
-[`update_purchase_item.rs`](../../contexts/bookkeeping/application/src/update_purchase_item.rs)は変更フィールド一覧と`quantity_set`・`Option<Measure>`の組み合わせで更新内容を運びます。GraphQLのpatch表現をApplicationの型付きコマンドへ変換し、維持・削除・置換を区別する案があります。
-
 ## Workflowの集約
 
 Workflow構成は複数の層にあります。[`close_period.rs`](../../contexts/bookkeeping/postgres/src/close_period.rs)ではPostgreSQL実装がロード、判断、永続化を含む操作全体を担っています。Application Workflowから順序を読める形に揃えることは、引き続き検討事項です。

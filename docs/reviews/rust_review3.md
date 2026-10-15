@@ -6,10 +6,6 @@
 
 ## 継続して検討したい項目
 
-### 購入明細の更新コマンド
-
-[`update_purchase_item.rs`](../../contexts/bookkeeping/application/src/update_purchase_item.rs)は`quantity_set`と`quantity: Option<Measure>`、`changed_fields`で変更内容を表します。GraphQLのpatch入力から業務コマンドへ変換する境界を設け、数量の維持・削除・設定などの意図を型で表現する案があります。
-
 ### Workflowの構成場所
 
 Workflowの実行責務はApplication、GraphQL、PostgreSQLに分かれています。たとえば[`close_period.rs`](../../contexts/bookkeeping/postgres/src/close_period.rs)ではPostgreSQL側が操作全体を構成します。ユースケースの順序をApplicationから一貫して追えるようにする案があります。
