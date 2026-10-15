@@ -9,7 +9,9 @@ import (
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stephenafamo/bob"
 	"github.com/stephenafamo/bob/dialect/psql"
+	"github.com/stephenafamo/bob/dialect/psql/im"
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
@@ -61,10 +63,10 @@ func TestSourceObservationsMigrationBackfillsLatestSuccessfulExtraction(t *testi
 		jobID, status := migrationUUID(t), "succeeded"
 		versionValue := int32(version + 1)
 		resultValue := sql.Null[types.JSON[json.RawMessage]]{V: result, Valid: true}
-		if _, err := models.ExtractionJobs.Insert(&models.ExtractionJobSetter{
-			ID: &jobID, HouseholdID: &householdID, SourceDocumentID: &documentID,
-			Version: &versionValue, Status: &status, Result: &resultValue,
-		}).Exec(ctx, executor); err != nil {
+		if _, err := psql.Insert(
+			im.Into(models.ExtractionJobs.NameAsExpr(), "id", "household_id", "source_document_id", "version", "status", "result"),
+			im.Values(bob.Expression(psql.Arg(jobID, householdID, documentID, versionValue, status, resultValue))),
+		).Exec(ctx, executor); err != nil {
 			t.Fatal(err)
 		}
 	}
