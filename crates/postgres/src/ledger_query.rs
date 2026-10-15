@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use diesel::{
-    BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, dsl::count_star,
-    result::Error as DieselError,
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
+    OptionalExtension, QueryDsl, dsl::count_star, result::Error as DieselError,
 };
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;

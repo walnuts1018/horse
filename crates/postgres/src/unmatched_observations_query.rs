@@ -1,6 +1,6 @@
 use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
 use diesel::{
-    BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl,
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl,
     result::Error as DieselError,
 };
 use diesel_async::RunQueryDsl;

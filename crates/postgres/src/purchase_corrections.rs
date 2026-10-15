@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PurchaseCorrectionProjection {
     pub id: Uuid,
     pub item_id: Option<Uuid>,
@@ -20,7 +20,7 @@ pub struct PurchaseCorrectionProjection {
     pub payment_allocations: Vec<PurchaseCorrectionPaymentProjection>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PurchaseCorrectionPaymentProjection {
     pub account_id: Uuid,
     pub account_name: String,

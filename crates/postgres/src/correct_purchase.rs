@@ -83,6 +83,7 @@ pub enum CorrectPurchasePersistenceError {
     NumericOutOfRange(&'static str),
     InvalidIdempotencyKey,
     IdempotencyConflict,
+    PurchaseNotFound,
     AccountingPeriodClosed,
     PurchaseNotPosted,
     RefundExceedsPurchaseBalance,

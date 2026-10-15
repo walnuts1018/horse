@@ -1,4 +1,7 @@
-use diesel::{BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl};
+use diesel::{
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
+    OptionalExtension, QueryDsl,
+};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 

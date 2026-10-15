@@ -902,7 +902,7 @@ fn validate_journal_debits(
             }
         };
         let total = actual.entry(pool_id).or_insert(0);
-        *total = total.checked_add(line.amount.value()).ok_or(
+        *total = total.checked_add(line.amount().value()).ok_or(
             PostPurchasePersistenceError::NumericOutOfRange("journal debit total"),
         )?;
     }
