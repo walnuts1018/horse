@@ -79,19 +79,21 @@ pub async fn load_funding_command_context_in_transaction(
         .optional()?
         .ok_or(FundingCommandContextError::HouseholdNotFound)?;
 
-    let pool_kind = pools::pools
-        .filter(pools::household_id.eq(household_id))
-        .filter(pools::id.eq(pool_id))
-        .select(pools::kind)
-        .first::<String>(&mut *conn)
-        .await
-        .optional()?
-        .ok_or(FundingCommandContextError::PoolNotFound)
-        .and_then(parse_pool_kind)?;
-
+    diesel::insert_into(periods::accounting_periods)
+        .values((
+            periods::household_id.eq(household_id),
+            periods::period_start.eq(period_start),
+            periods::status.eq("OPEN"),
+            periods::revision.eq(1_i64),
+        ))
+        .on_conflict((periods::household_id, periods::period_start))
+        .do_nothing()
+        .execute(&mut *conn)
+        .await?;
     let persisted_period = periods::accounting_periods
         .filter(periods::household_id.eq(household_id))
         .filter(periods::period_start.eq(period_start))
+        .for_update()
         .select((periods::status, periods::revision))
         .first::<(String, i64)>(&mut *conn)
         .await
@@ -128,6 +130,16 @@ pub async fn load_funding_command_context_in_transaction(
     .map_err(|_| {
         FundingCommandContextError::InvalidAccountingPeriodStatus(local_date.to_string())
     })?;
+
+    let pool_kind = pools::pools
+        .filter(pools::household_id.eq(household_id))
+        .filter(pools::id.eq(pool_id))
+        .select(pools::kind)
+        .first::<String>(&mut *conn)
+        .await
+        .optional()?
+        .ok_or(FundingCommandContextError::PoolNotFound)
+        .and_then(parse_pool_kind)?;
 
     let source_account = load_account(&mut *conn, household_id, source_account_id).await?;
     let destination_account =

@@ -68,6 +68,7 @@ pub trait ClaimExtractionJobOperations {
         &mut self,
         now_ms: i64,
         job_id: Option<&str>,
+        local_csv_only: bool,
     ) -> Result<Option<Self::Candidate>, Self::Error>;
 
     async fn persist_claim(
@@ -93,13 +94,26 @@ pub async fn claim_next_extraction_job<O>(
 where
     O: ClaimExtractionJobOperations,
 {
-    claim_eligible_job(operations, now_ms, None, lease_token, lease_duration_ms).await
+    claim_eligible_job(operations, now_ms, None, false, lease_token, lease_duration_ms).await
+}
+
+pub async fn claim_next_local_extraction_job<O>(
+    operations: &mut O,
+    now_ms: i64,
+    lease_token: impl Into<String>,
+    lease_duration_ms: i64,
+) -> Result<Option<O::Claimed>, ClaimExtractionJobWorkflowError<O::Error>>
+where
+    O: ClaimExtractionJobOperations,
+{
+    claim_eligible_job(operations, now_ms, None, true, lease_token, lease_duration_ms).await
 }
 
 pub async fn claim_extraction_job_by_id<O>(
     operations: &mut O,
     now_ms: i64,
     job_id: &str,
+    local_csv_only: bool,
     lease_token: impl Into<String>,
     lease_duration_ms: i64,
 ) -> Result<Option<O::Claimed>, ClaimExtractionJobWorkflowError<O::Error>>
@@ -110,6 +124,7 @@ where
         operations,
         now_ms,
         Some(job_id),
+        local_csv_only,
         lease_token,
         lease_duration_ms,
     )
@@ -120,6 +135,7 @@ async fn claim_eligible_job<O>(
     operations: &mut O,
     now_ms: i64,
     job_id: Option<&str>,
+    local_csv_only: bool,
     lease_token: impl Into<String>,
     lease_duration_ms: i64,
 ) -> Result<Option<O::Claimed>, ClaimExtractionJobWorkflowError<O::Error>>
@@ -127,7 +143,7 @@ where
     O: ClaimExtractionJobOperations,
 {
     let Some(candidate) = operations
-        .load_candidate(now_ms, job_id)
+        .load_candidate(now_ms, job_id, local_csv_only)
         .await
         .map_err(ClaimExtractionJobWorkflowError::Operations)?
     else {

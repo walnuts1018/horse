@@ -9,8 +9,9 @@ use evidence_application::ingestion_job::{
     ExtractionFailureKind, ExtractionJob, ExtractionJobStatus, FinishExtractionJobError,
     FinishedJob, QueuedJob, RunningJob, ValidLease,
     claim_extraction_job_by_id as claim_extraction_job_by_id_workflow,
-    claim_next_extraction_job as claim_next_extraction_job_workflow, finish_extraction_failure,
-    finish_extraction_success, recover_expired_extraction_job,
+    claim_next_extraction_job as claim_next_extraction_job_workflow,
+    claim_next_local_extraction_job as claim_next_local_extraction_job_workflow,
+    finish_extraction_failure, finish_extraction_success, recover_expired_extraction_job,
 };
 
 use crate::{PgPool, schema::public};
@@ -60,21 +61,30 @@ pub async fn claim_next_extraction_job(
     pool: &PgPool,
     now: DateTime<Utc>,
 ) -> Result<Option<ClaimedExtractionJob>, IngestionJobError> {
-    claim_extraction_job(pool, None, now).await
+    claim_extraction_job(pool, None, false, now).await
+}
+
+pub async fn claim_next_local_extraction_job(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+) -> Result<Option<ClaimedExtractionJob>, IngestionJobError> {
+    claim_extraction_job(pool, None, true, now).await
 }
 
 pub async fn claim_extraction_job_by_id(
     pool: &PgPool,
     job_id: &str,
+    local_csv_only: bool,
     now: DateTime<Utc>,
 ) -> Result<Option<ClaimedExtractionJob>, IngestionJobError> {
     parse_uuid(job_id, "job_id")?;
-    claim_extraction_job(pool, Some(job_id), now).await
+    claim_extraction_job(pool, Some(job_id), local_csv_only, now).await
 }
 
 async fn claim_extraction_job(
     pool: &PgPool,
     job_id: Option<&str>,
+    local_csv_only: bool,
     now: DateTime<Utc>,
 ) -> Result<Option<ClaimedExtractionJob>, IngestionJobError> {
     let now_ms = now.timestamp_millis();
@@ -92,6 +102,15 @@ async fn claim_extraction_job(
                     &mut operations,
                     now_ms,
                     job_id,
+                    local_csv_only,
+                    lease_token,
+                    LEASE_DURATION_MS,
+                )
+                .await
+            } else if local_csv_only {
+                claim_next_local_extraction_job_workflow(
+                    &mut operations,
+                    now_ms,
                     lease_token,
                     LEASE_DURATION_MS,
                 )
@@ -138,6 +157,7 @@ impl ClaimExtractionJobOperations for PostgresClaimExtractionJobOperations<'_> {
         &mut self,
         now_ms: i64,
         job_id: Option<&str>,
+        local_csv_only: bool,
     ) -> Result<Option<Self::Candidate>, Self::Error> {
         use public::extraction_jobs::dsl as jobs;
 
@@ -153,6 +173,15 @@ impl ClaimExtractionJobOperations for PostgresClaimExtractionJobOperations<'_> {
             .into_boxed();
         if let Some(job_id) = job_id {
             query = query.filter(jobs::id.eq(parse_uuid(job_id, "job_id")?));
+        }
+        if local_csv_only {
+            use public::source_documents::dsl as documents;
+            query = query.filter(jobs::source_document_id.eq_any(
+                documents::source_documents
+                    .filter(documents::mime_type.eq("text/csv"))
+                    .filter(documents::source_kind.eq_any(["card", "bank"]))
+                    .select(documents::id),
+            ));
         }
         let row = query
             .select((

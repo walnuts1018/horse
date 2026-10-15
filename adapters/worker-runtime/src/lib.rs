@@ -17,7 +17,8 @@ use chrono::Utc;
 use evidence_application::ingestion_job::{ExtractionExecutionOutcome, execute_extraction_job};
 use evidence_postgres::ingestion_job::{
     ClaimedExtractionJob, claim_extraction_job_by_id, claim_next_extraction_job,
-    record_extraction_failure, record_extraction_success, recover_expired_extraction_jobs,
+    claim_next_local_extraction_job, record_extraction_failure, record_extraction_success,
+    recover_expired_extraction_jobs,
 };
 use horse_postgres_common::connect;
 use mailbox::MailboxConfig;
@@ -69,22 +70,16 @@ impl Worker {
             if *shutdown.borrow() {
                 break;
             }
-            if !self.config.gemini_enabled() {
-                tokio::select! {
-                    _ = tokio::time::sleep(Duration::from_secs(1)) => {},
-                    changed = shutdown.changed() => {
-                        if changed.is_err() || *shutdown.borrow() {
-                            break;
-                        }
-                    }
-                }
-                continue;
-            }
             let now = Utc::now();
             if let Err(error) = recover_expired_extraction_jobs(&self.pool, now).await {
                 tracing::error!(error = ?error, "recover expired extraction jobs failed");
             }
-            match claim_next_extraction_job(&self.pool, now).await {
+            let claimed = if self.config.gemini_enabled() {
+                claim_next_extraction_job(&self.pool, now).await
+            } else {
+                claim_next_local_extraction_job(&self.pool, now).await
+            };
+            match claimed {
                 Ok(Some(job)) => self.process_one(job).await,
                 Ok(None) => {
                     tokio::select! {
@@ -113,10 +108,12 @@ impl Worker {
         &self,
         job_id: &str,
     ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-        if !self.config.gemini_enabled() {
-            return Ok(false);
-        }
-        let Some(job) = claim_extraction_job_by_id(&self.pool, job_id, Utc::now())
+        let Some(job) = claim_extraction_job_by_id(
+            &self.pool,
+            job_id,
+            !self.config.gemini_enabled(),
+            Utc::now(),
+        )
             .await
             .map_err(|error| std::io::Error::other(format!("claim notified extraction job: {error:?}")))?
         else {
