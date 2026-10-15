@@ -13,7 +13,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
+  queue: max
 
 jobs:
   quality:
@@ -21,7 +22,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
         env:
           POSTGRES_USER: horse_test
           POSTGRES_PASSWORD: horse_test_ci_only
@@ -106,6 +107,7 @@ jobs:
     needs: quality
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    cache-mode: none
     permissions:
       contents: read
       packages: write
@@ -126,59 +128,6 @@ jobs:
         id: buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - name: Cache Cargo registry mount
-        id: cargo-registry-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .buildkit-cache/cargo-registry
-          key: ${{ runner.os }}-buildkit-cargo-registry-${{ hashFiles('Dockerfile', 'Cargo.lock') }}
-
-      - name: Cache Cargo git mount
-        id: cargo-git-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .buildkit-cache/cargo-git
-          key: ${{ runner.os }}-buildkit-cargo-git-${{ hashFiles('Dockerfile', 'Cargo.lock') }}
-
-      - name: Cache Cargo target mount
-        id: cargo-target-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .buildkit-cache/cargo-target
-          key: ${{ runner.os }}-buildkit-cargo-target-${{ hashFiles('Dockerfile', 'Cargo.lock') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildkit-cargo-target-${{ hashFiles('Dockerfile', 'Cargo.lock') }}-
-
-      - name: Restore Cargo registry mount
-        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
-        with:
-          builder: ${{ steps.buildx.outputs.name }}
-          skip-extraction: ${{ steps.cargo-registry-cache.outputs.cache-hit }}
-          cache-map: |
-            {
-              ".buildkit-cache/cargo-registry": { "target": "/usr/local/cargo/registry", "id": "horse-cargo-registry" }
-            }
-
-      - name: Restore Cargo git mount
-        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
-        with:
-          builder: ${{ steps.buildx.outputs.name }}
-          skip-extraction: ${{ steps.cargo-git-cache.outputs.cache-hit }}
-          cache-map: |
-            {
-              ".buildkit-cache/cargo-git": { "target": "/usr/local/cargo/git", "id": "horse-cargo-git" }
-            }
-
-      - name: Restore Cargo target mount
-        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
-        with:
-          builder: ${{ steps.buildx.outputs.name }}
-          skip-extraction: ${{ steps.cargo-target-cache.outputs.cache-hit }}
-          cache-map: |
-            {
-              ".buildkit-cache/cargo-target": { "target": "/target", "id": "horse-cargo-target" }
-            }
-
       - parallel:
           - name: Build and publish Rust API and worker image
             id: image
@@ -194,8 +143,6 @@ jobs:
               tags: |
                 ghcr.io/${{ github.repository }}:latest
                 ghcr.io/${{ github.repository }}:v0.0.${{ github.run_number }}
-              cache-from: type=gha,scope=horse-rust
-              cache-to: type=gha,scope=horse-rust,mode=max
 
           - name: Build and publish Node web image
             id: web-image
@@ -211,8 +158,6 @@ jobs:
               tags: |
                 ghcr.io/${{ github.repository }}-web:latest
                 ghcr.io/${{ github.repository }}-web:v0.0.${{ github.run_number }}
-              cache-from: type=gha,scope=horse-web
-              cache-to: type=gha,scope=horse-web,mode=max
 
           - name: Build and publish OCR image
             id: ocr-image
@@ -227,8 +172,6 @@ jobs:
               tags: |
                 ghcr.io/${{ github.repository }}-ocr:latest
                 ghcr.io/${{ github.repository }}-ocr:v0.0.${{ github.run_number }}
-              cache-from: type=gha,scope=horse-ocr
-              cache-to: type=gha,scope=horse-ocr,mode=max
 
       - name: Report published images
         env:
