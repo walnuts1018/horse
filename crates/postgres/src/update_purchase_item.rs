@@ -814,11 +814,11 @@ async fn adjust_purchase_payments(
     let remainder = usize::try_from(new_total - assigned)
         .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidPaymentAllocation)?;
     let mut priority = (0..apportioned.len()).collect::<Vec<_>>();
-    priority.sort_by_key(|index| {
-        (
-            std::cmp::Reverse(apportioned[*index].2),
-            apportioned[*index].3,
-        )
+    priority.sort_by(|left, right| {
+        apportioned[*right]
+            .2
+            .cmp(&apportioned[*left].2)
+            .then_with(|| payments[*left].0.cmp(&payments[*right].0))
     });
     for index in priority.into_iter().take(remainder) {
         apportioned[index].1 += 1;
@@ -1052,6 +1052,14 @@ async fn sync_posted_accounting(
         let member_id = parse_uuid(snapshot.member_id.as_str(), "member_id")?;
         let source = payment_sources
             .get(&(account_id, pool_id, member_id))
+            .or_else(|| {
+                payment_sources
+                    .iter()
+                    .find(|((_, saved_pool, saved_member), _)| {
+                        *saved_pool == pool_id && *saved_member == member_id
+                    })
+                    .map(|(_, source)| source)
+            })
             .map(String::as_str)
             .unwrap_or("POSTED");
         diesel::insert_into(public::purchase_payment_funding_snapshots::table)
