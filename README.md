@@ -6,7 +6,7 @@
 ## 構成
 
 - React、TanStack Start、Relay、Feature-Sliced Designのフロントエンド。
-- Go、gqlgen、Bob、PostgreSQLのAPIと会計台帳。
+- Rust、async-graphql、Diesel、PostgreSQLのAPI、Worker、会計台帳。
 - AtlasのDBマイグレーション。
 - SeaweedFSの非公開原本、RabbitMQの取り込み通知、PostgreSQLの永続ジョブ。
 - Geminiの直接画像解析と、独立したPP-OCRv6のCPU読取。
@@ -31,8 +31,8 @@ Geminiには無料・有料の別ProjectとAPIキーを設定する。
 Google側の月額Spend Capと警告メールはinfraのTerraformで管理する。
 Spend Capによる停止中も、帳簿の閲覧と手入力は利用できる。
 
-DBスキーマの変更後は`mise run hash:migrations`と`mise run db:generate`を実行する。
-GraphQLスキーマの変更後は`mise run generate:graphql`と`mise run web:relay`を実行する。
+DBスキーマの変更後はAtlas Migrationを追加し、`mise run hash:migrations`でchecksumを更新する。`RUST_DATABASE_URL`を設定した開発DBへMigrationを適用した後、`mise run rust:db:schema`でDiesel Schemaを更新する。
+GraphQLスキーマの変更後は`mise run web:relay`でRelayアーティファクトを更新する。
 
 ## 検証
 
