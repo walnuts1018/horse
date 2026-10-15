@@ -171,26 +171,24 @@ pub enum ExtractionExecutionOutcome<F, E> {
     },
 }
 
-pub async fn execute_extraction_job<J, O, F, E, Process, ProcessFuture, PersistSuccess, SuccessFuture, PersistFailure, FailureFuture>(
-    job: &J,
-    process: Process,
+pub async fn execute_extraction_job<O, F, E, ProcessFuture, PersistSuccess, SuccessFuture, PersistFailure, FailureFuture>(
+    process: ProcessFuture,
     persist_success: PersistSuccess,
     persist_failure: PersistFailure,
 ) -> ExtractionExecutionOutcome<F, E>
 where
-    Process: FnOnce(&J) -> ProcessFuture,
     ProcessFuture: Future<Output = Result<O, F>>,
-    PersistSuccess: FnOnce(&J, O) -> SuccessFuture,
+    PersistSuccess: FnOnce(O) -> SuccessFuture,
     SuccessFuture: Future<Output = Result<bool, E>>,
-    PersistFailure: FnOnce(&J, &F) -> FailureFuture,
+    PersistFailure: FnOnce(&F) -> FailureFuture,
     FailureFuture: Future<Output = Result<bool, E>>,
 {
-    match process(job).await {
+    match process.await {
         Ok(result) => {
-            ExtractionExecutionOutcome::Succeeded(persist_success(job, result).await)
+            ExtractionExecutionOutcome::Succeeded(persist_success(result).await)
         }
         Err(failure) => ExtractionExecutionOutcome::Failed {
-            persistence: persist_failure(job, &failure).await,
+            persistence: persist_failure(&failure).await,
             failure,
         },
     }
