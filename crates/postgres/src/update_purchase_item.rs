@@ -28,6 +28,8 @@ pub struct PersistUpdatePurchaseItem {
 pub struct PersistedUpdatePurchaseItem {
     pub purchase_id: String,
     pub revision: u64,
+    pub accounting_changed: bool,
+    pub payments_changed: bool,
 }
 
 #[derive(Debug)]
@@ -69,8 +71,14 @@ pub async fn persist_update_purchase_item(
     (&mut *pooled)
         .transaction::<PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError, _>(
             async move |conn| {
-                persist_update_purchase_item_in_transaction(conn, household_id, actor_id, command)
-                    .await
+                persist_update_purchase_item_in_transaction(
+                    conn,
+                    household_id,
+                    actor_id,
+                    command,
+                    false,
+                )
+                .await
             },
         )
         .await
@@ -81,6 +89,7 @@ pub async fn persist_update_purchase_item_in_transaction(
     household_id: Uuid,
     actor_id: Uuid,
     command: UpdatePurchaseItemCommand,
+    defer_accounting_sync: bool,
 ) -> Result<PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError> {
     let item_id = parse_uuid(&command.item_id, "item_id")?;
     use public::accounting_periods::dsl as periods;
@@ -508,7 +517,7 @@ pub async fn persist_update_purchase_item_in_transaction(
                 .await?;
         }
     }
-    if purchase.1 == "POSTED" && decision.allocations_changed {
+    if purchase.1 == "POSTED" && decision.allocations_changed && !defer_accounting_sync {
         sync_posted_accounting(
             &mut *conn,
             household_id,
@@ -557,6 +566,8 @@ pub async fn persist_update_purchase_item_in_transaction(
     Ok(PersistedUpdatePurchaseItem {
         purchase_id: observed.1.to_string(),
         revision: decision.revision,
+        accounting_changed: decision.allocations_changed,
+        payments_changed: payment_changed,
     })
 }
 
@@ -837,7 +848,7 @@ async fn adjust_purchase_payments(
         .collect())
 }
 
-async fn sync_posted_accounting(
+pub(crate) async fn sync_posted_accounting(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
     purchase_id: Uuid,

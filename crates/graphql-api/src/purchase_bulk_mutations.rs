@@ -363,6 +363,7 @@ fn bulk_update_persistence_error(
     match error {
         E::InvalidUuid(_) => Some(MutationErrorCode::BadInput),
         E::HouseholdMismatch | E::MemberNotFound | E::PurchaseNotFound => Some(MutationErrorCode::NotFound),
+        E::RevisionConflict => Some(MutationErrorCode::Conflict),
         E::AccountingPeriodClosed => Some(MutationErrorCode::Conflict),
         E::InvalidWorkflow(error) => Some(match error {
             bookkeeping_workflows::bulk_update_purchases::BulkUpdatePurchasesError::InvalidTarget(

@@ -72,6 +72,7 @@ pub async fn persist_update_purchase(
                     actor_id,
                     command,
                     decision,
+                    false,
                 )
                 .await
             },
@@ -85,6 +86,7 @@ pub async fn persist_update_purchase_in_transaction(
     actor_id: Uuid,
     command: bookkeeping_workflows::update_purchase::UpdatePurchaseCommand,
     decision: UpdatePurchaseDecision,
+    defer_accounting_sync: bool,
 ) -> Result<PersistedUpdatePurchase, UpdatePurchasePersistenceError> {
     let purchase_id = parse_uuid(&command.purchase_id, "purchase_id")?;
     let revision = i64::try_from(decision.revision)
@@ -329,7 +331,7 @@ pub async fn persist_update_purchase_in_transaction(
         .execute(&mut *conn)
         .await?;
 
-    if locked.2 == "POSTED" {
+    if locked.2 == "POSTED" && !defer_accounting_sync {
         let accounting_changed = decision.payment_allocations.is_some()
             || occurred_at.is_some_and(|target| target != locked.3);
         if accounting_changed {

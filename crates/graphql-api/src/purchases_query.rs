@@ -7,7 +7,7 @@ use horse_postgres::{
 };
 use uuid::Uuid;
 
-use crate::{Actor, Long, pagination::PageInfo, purchase_mutations};
+use crate::{Long, pagination::PageInfo, purchase_mutations};
 
 #[derive(Clone, Copy, Debug, Enum, Eq, PartialEq)]
 pub enum PurchaseAmountTarget {
@@ -55,7 +55,7 @@ pub async fn graphql_purchases(
     first: Option<i32>,
     last: Option<i32>,
 ) -> Result<PurchaseConnection> {
-    let actor = actor(ctx)?;
+    let actor = crate::actor(ctx)?;
     let household_id = decode_node_id(&filter.household_id, "Household")?;
     let category_id = filter
         .category_id
@@ -191,12 +191,6 @@ pub async fn graphql_purchases(
         total_count,
         sync_cursor: page.sync_cursor.to_string(),
     })
-}
-
-fn actor(ctx: &Context<'_>) -> Result<Actor> {
-    ctx.data::<Actor>()
-        .copied()
-        .map_err(|_| Error::new("authentication required"))
 }
 
 fn origin_name(value: purchase_mutations::PurchaseOrigin) -> String {

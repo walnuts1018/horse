@@ -1152,7 +1152,7 @@ fn parse_linked_refund_observation(
     Ok(observation)
 }
 
-fn statement_observation(
+pub(crate) fn statement_observation(
     value: &serde_json::Value,
     source_reference: &str,
 ) -> Result<StatementRefundObservation, CorrectPurchasePersistenceError> {

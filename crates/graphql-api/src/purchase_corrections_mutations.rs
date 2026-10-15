@@ -77,25 +77,74 @@ pub enum CorrectPurchaseResult {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CorrectPurchaseFingerprint<'a> {
-    operation: &'static str,
-    household_id: &'a str,
-    purchase_id: &'a str,
-    item_id: Option<&'a str>,
-    amount_delta_yen: Option<i64>,
-    reason: &'a str,
-    allocations: &'a [(String, i64)],
-    payments: &'a [(String, i64)],
-    source_document_id: Option<&'a str>,
-    source_reference: Option<&'a str>,
+struct CorrectPurchaseFingerprint {
+    household_id: String,
+    target: CorrectPurchaseTargetFingerprint,
+    amount_delta_yen: i64,
+    reason: String,
+    allocations: Option<Vec<CorrectPurchaseAllocationFingerprint>>,
+    payment_allocations: Option<Vec<CorrectPurchasePaymentFingerprint>>,
+    idempotency_key: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CorrectPurchaseFromStatementFingerprint {
+    household_id: String,
+    source_document_id: String,
+    source_reference: String,
+    target: CorrectPurchaseTargetFingerprint,
+    reason: String,
+    idempotency_key: String,
+}
+
+#[derive(Serialize)]
+struct CorrectPurchaseTargetFingerprint {
+    purchase: Option<PurchaseTargetFingerprint>,
+    item: Option<ItemTargetFingerprint>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PurchaseTargetFingerprint {
+    purchase_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ItemTargetFingerprint {
+    purchase_id: String,
+    item_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CorrectPurchaseAllocationFingerprint {
+    pool_id: String,
+    weight: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CorrectPurchasePaymentFingerprint {
+    payment_account_id: String,
+    amount_yen: i64,
 }
 
 pub async fn correct_purchase(
     ctx: &Context<'_>,
     input: CorrectPurchaseInput,
 ) -> Result<CorrectPurchaseResult> {
-    let (household_id, purchase_id, item_id) = match parse_target(&input.household_id, input.target)
-    {
+    let (household_id, purchase_id, item_id) =
+        match parse_target(&input.household_id, &input.target) {
+            Ok(value) => value,
+            Err(()) => return Ok(bad_input().into()),
+        };
+    let fingerprint_allocations = match fingerprint_allocations(input.allocations.as_deref()) {
+        Ok(value) => value,
+        Err(()) => return Ok(bad_input().into()),
+    };
+    let fingerprint_payments = match fingerprint_payments(input.payment_allocations.as_deref()) {
         Ok(value) => value,
         Err(()) => return Ok(bad_input().into()),
     };
@@ -107,17 +156,18 @@ pub async fn correct_purchase(
         Ok(value) => value,
         Err(()) => return Ok(bad_input().into()),
     };
+    let target_fingerprint = match fingerprint_target(&input.target) {
+        Ok(value) => value,
+        Err(()) => return Ok(bad_input().into()),
+    };
     let fingerprint = fingerprint(CorrectPurchaseFingerprint {
-        operation: "correctPurchase",
-        household_id: &household_id.to_string(),
-        purchase_id: &purchase_id.to_string(),
-        item_id: item_id.as_deref(),
-        amount_delta_yen: Some(input.amount_delta_yen.0),
-        reason: &input.reason,
-        allocations: &allocations,
-        payments: &payments,
-        source_document_id: None,
-        source_reference: None,
+        household_id: household_id.to_string(),
+        target: target_fingerprint,
+        amount_delta_yen: input.amount_delta_yen.0,
+        reason: input.reason.clone(),
+        allocations: fingerprint_allocations,
+        payment_allocations: fingerprint_payments,
+        idempotency_key: input.idempotency_key.clone(),
     })?;
     execute(
         ctx,
@@ -143,11 +193,11 @@ pub async fn correct_purchase_from_statement(
     ctx: &Context<'_>,
     input: CorrectPurchaseFromStatementInput,
 ) -> Result<CorrectPurchaseResult> {
-    let (household_id, purchase_id, item_id) = match parse_target(&input.household_id, input.target)
-    {
-        Ok(value) => value,
-        Err(()) => return Ok(bad_input().into()),
-    };
+    let (household_id, purchase_id, item_id) =
+        match parse_target(&input.household_id, &input.target) {
+            Ok(value) => value,
+            Err(()) => return Ok(bad_input().into()),
+        };
     let source_document_id = match Uuid::parse_str(input.source_document_id.as_str()) {
         Ok(id) if !id.is_nil() => id,
         _ => return Ok(bad_input().into()),
@@ -160,18 +210,17 @@ pub async fn correct_purchase_from_statement(
     {
         return Ok(bad_input().into());
     }
-    let empty = Vec::new();
-    let fingerprint = fingerprint(CorrectPurchaseFingerprint {
-        operation: "correctPurchaseFromStatement",
-        household_id: &household_id.to_string(),
-        purchase_id: &purchase_id.to_string(),
-        item_id: item_id.as_deref(),
-        amount_delta_yen: None,
-        reason: &input.reason,
-        allocations: &empty,
-        payments: &empty,
-        source_document_id: Some(&source_document_id.to_string()),
-        source_reference: Some(&input.source_reference),
+    let target_fingerprint = match fingerprint_target(&input.target) {
+        Ok(value) => value,
+        Err(()) => return Ok(bad_input().into()),
+    };
+    let fingerprint = fingerprint(CorrectPurchaseFromStatementFingerprint {
+        household_id: household_id.to_string(),
+        source_document_id: input.source_document_id.to_string(),
+        source_reference: input.source_reference.clone(),
+        target: target_fingerprint,
+        reason: input.reason.clone(),
+        idempotency_key: input.idempotency_key.clone(),
     })?;
     execute(
         ctx,
@@ -217,7 +266,7 @@ async fn execute(
 
 fn parse_target(
     household_id: &ID,
-    target: CorrectPurchaseTargetInput,
+    target: &CorrectPurchaseTargetInput,
 ) -> std::result::Result<(Uuid, Uuid, Option<Uuid>), ()> {
     let household_id = decode_node_id(household_id, "Household")?;
     let (purchase_id, item_id) = match target {
@@ -245,6 +294,63 @@ fn parse_allocations(
             Ok((pool_id.to_string(), allocation.weight.0))
         })
         .collect()
+}
+
+fn fingerprint_allocations(
+    allocations: Option<&[CorrectPurchaseAllocationInput]>,
+) -> std::result::Result<Option<Vec<CorrectPurchaseAllocationFingerprint>>, ()> {
+    let Some(allocations) = allocations.filter(|values| !values.is_empty()) else {
+        return Ok(None);
+    };
+    allocations
+        .iter()
+        .map(|allocation| {
+            Ok(CorrectPurchaseAllocationFingerprint {
+                pool_id: decode_node_id(&allocation.pool_id, "Pool")?.to_string(),
+                weight: allocation.weight.0,
+            })
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map(Some)
+}
+
+fn fingerprint_payments(
+    payments: Option<&[CorrectPurchasePaymentInput]>,
+) -> std::result::Result<Option<Vec<CorrectPurchasePaymentFingerprint>>, ()> {
+    let Some(payments) = payments.filter(|values| !values.is_empty()) else {
+        return Ok(None);
+    };
+    payments
+        .iter()
+        .map(|payment| {
+            Ok(CorrectPurchasePaymentFingerprint {
+                payment_account_id: decode_node_id(&payment.payment_account_id, "Account")?
+                    .to_string(),
+                amount_yen: payment.amount_yen.0,
+            })
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map(Some)
+}
+
+fn fingerprint_target(
+    target: &CorrectPurchaseTargetInput,
+) -> std::result::Result<CorrectPurchaseTargetFingerprint, ()> {
+    match target {
+        CorrectPurchaseTargetInput::Purchase(target) => Ok(CorrectPurchaseTargetFingerprint {
+            purchase: Some(PurchaseTargetFingerprint {
+                purchase_id: decode_node_id(&target.purchase_id, "Purchase")?.to_string(),
+            }),
+            item: None,
+        }),
+        CorrectPurchaseTargetInput::Item(target) => Ok(CorrectPurchaseTargetFingerprint {
+            purchase: None,
+            item: Some(ItemTargetFingerprint {
+                purchase_id: decode_node_id(&target.purchase_id, "Purchase")?.to_string(),
+                item_id: decode_node_id(&target.item_id, "PurchaseItem")?.to_string(),
+            }),
+        }),
+    }
 }
 
 fn parse_payments(
@@ -276,7 +382,7 @@ fn decode_node_id(id: &ID, expected_kind: &str) -> std::result::Result<Uuid, ()>
     Ok(id)
 }
 
-fn fingerprint(value: CorrectPurchaseFingerprint<'_>) -> Result<[u8; 32]> {
+fn fingerprint(value: impl Serialize) -> Result<[u8; 32]> {
     Ok(Sha256::digest(serde_json::to_vec(&value).map_err(crate::internal_error)?).into())
 }
 
@@ -296,18 +402,18 @@ fn user_error(
             MutationErrorCode::BadInput
         }
         E::StatementNotRefundable => MutationErrorCode::BadInput,
-        E::PurchaseNotFound | E::SourceDocumentNotFound | E::MemberNotFound => {
-            MutationErrorCode::NotFound
-        }
+        E::PurchaseNotFound
+        | E::SourceDocumentNotFound
+        | E::StatementReferenceNotFound
+        | E::MemberNotFound => MutationErrorCode::NotFound,
         E::IdempotencyConflict
         | E::AccountingPeriodClosed
         | E::PurchaseNotPosted
         | E::RefundExceedsPurchaseBalance
         | E::RefundExceedsItemBalance
         | E::StatementAlreadyConfirmed
-        | E::StatementExtractionUnavailable
-        | E::StatementReferenceNotFound
         | E::RefundDoesNotMatchCorrection => MutationErrorCode::Conflict,
+        E::StatementExtractionUnavailable => MutationErrorCode::BadInput,
         E::HouseholdMismatch => MutationErrorCode::NotFound,
         E::Pool(_)
         | E::Database(_)

@@ -68,17 +68,49 @@ pub struct LoanBasis {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RecordTransferCommand {
+pub struct TransferBase {
     pub actor_id: MemberId,
     pub from_member_id: MemberId,
     pub to_member_id: MemberId,
-    pub kind: TransferKind,
     pub amount: PositiveYen,
     pub description: String,
     pub period_status: AccountingPeriodStatus,
     pub payment_account: Option<TransferAccount>,
     pub destination_account: Option<TransferAccount>,
-    pub loan: Option<LoanBasis>,
+}
+
+// 操作の種類ごとに必要な入力を区別する。返済にはLoanBasisが必須で、それ以外の操作にはLoanBasisを持たせられない。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecordTransferCommand {
+    Advance(TransferBase),
+    Loan(TransferBase),
+    Gift(TransferBase),
+    Repayment { base: TransferBase, loan: LoanBasis },
+}
+
+impl RecordTransferCommand {
+    pub const fn kind(&self) -> TransferKind {
+        match self {
+            Self::Advance(_) => TransferKind::Advance,
+            Self::Loan(_) => TransferKind::Loan,
+            Self::Gift(_) => TransferKind::Gift,
+            Self::Repayment { .. } => TransferKind::Repayment,
+        }
+    }
+
+    pub const fn base(&self) -> &TransferBase {
+        match self {
+            Self::Advance(base) | Self::Loan(base) | Self::Gift(base) => base,
+            Self::Repayment { base, .. } => base,
+        }
+    }
+
+    pub const fn loan(&self) -> Option<&LoanBasis> {
+        match self {
+            Self::Repayment { loan, .. } => Some(loan),
+            Self::Advance(_) | Self::Loan(_) | Self::Gift(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,8 +164,6 @@ pub enum RecordTransferError {
     AccountingPeriodClosed,
     SameParticipants,
     SameAccounts,
-    RepaymentRequiresLoan,
-    LoanOnlyValidForRepayment,
     LoanDirectionMismatch,
     RepaymentExceedsOutstanding,
     EmptyLoanId,
@@ -144,62 +174,58 @@ pub enum RecordTransferError {
 pub fn decide_record_transfer(
     command: RecordTransferCommand,
 ) -> Result<RecordTransferDecision, RecordTransferError> {
-    if command.period_status == AccountingPeriodStatus::Closed {
+    let base = command.base();
+    if base.period_status == AccountingPeriodStatus::Closed {
         return Err(RecordTransferError::AccountingPeriodClosed);
     }
-    if command.from_member_id == command.to_member_id {
+    if base.from_member_id == base.to_member_id {
         return Err(RecordTransferError::SameParticipants);
     }
-    if command
+    if base
         .payment_account
         .as_ref()
-        .zip(command.destination_account.as_ref())
+        .zip(base.destination_account.as_ref())
         .is_some_and(|(payment, destination)| payment.id == destination.id)
     {
         return Err(RecordTransferError::SameAccounts);
     }
 
-    match (command.kind, command.loan.as_ref()) {
-        (TransferKind::Repayment, None) => {
-            return Err(RecordTransferError::RepaymentRequiresLoan);
+    if let RecordTransferCommand::Repayment { base, loan } = &command {
+        if base.from_member_id != loan.borrower_id || base.to_member_id != loan.lender_id {
+            return Err(RecordTransferError::LoanDirectionMismatch);
         }
-        (TransferKind::Repayment, Some(loan)) => {
-            if command.from_member_id != loan.borrower_id || command.to_member_id != loan.lender_id
-            {
-                return Err(RecordTransferError::LoanDirectionMismatch);
-            }
-            let outstanding = loan
-                .principal_yen
-                .value()
-                .checked_sub(loan.repaid_yen.value())
-                .ok_or(RecordTransferError::AmountOverflow)?;
-            if outstanding < 0 || command.amount.value() > outstanding {
-                return Err(RecordTransferError::RepaymentExceedsOutstanding);
-            }
+        let outstanding = loan
+            .principal_yen
+            .value()
+            .checked_sub(loan.repaid_yen.value())
+            .ok_or(RecordTransferError::AmountOverflow)?;
+        if outstanding < 0 || base.amount.value() > outstanding {
+            return Err(RecordTransferError::RepaymentExceedsOutstanding);
         }
-        (_, Some(_)) => return Err(RecordTransferError::LoanOnlyValidForRepayment),
-        (_, None) => {}
     }
 
     let journal_lines = build_journal_lines(&command)?;
     let settlement_adjustments = settlement_adjustments(&command);
-    let description = normalized_description(&command.description, command.kind);
+    let kind = command.kind();
+    let description = normalized_description(&command.base().description, kind);
     let payment_account_id = command
+        .base()
         .payment_account
         .as_ref()
         .map(|account| account.id.clone());
     let destination_account_id = command
+        .base()
         .destination_account
         .as_ref()
         .map(|account| account.id.clone());
-    let loan_id = command.loan.map(|loan| loan.id);
+    let loan_id = command.loan().cloned().map(|loan| loan.id);
 
     Ok(RecordTransferDecision {
-        actor_id: command.actor_id.clone(),
-        from_member_id: command.from_member_id,
-        to_member_id: command.to_member_id,
-        kind: command.kind,
-        amount: command.amount,
+        actor_id: command.base().actor_id.clone(),
+        from_member_id: command.base().from_member_id.clone(),
+        to_member_id: command.base().to_member_id.clone(),
+        kind,
+        amount: command.base().amount,
         description,
         payment_account_id,
         destination_account_id,
@@ -207,7 +233,7 @@ pub fn decide_record_transfer(
         journal_lines,
         settlement_adjustments,
         event: TransferRecordedEvent {
-            actor_id: command.actor_id,
+            actor_id: command.base().actor_id.clone(),
             revision: 1,
             changed_fields: &["amountYen", "kind"],
         },
@@ -217,35 +243,37 @@ pub fn decide_record_transfer(
 fn build_journal_lines(
     command: &RecordTransferCommand,
 ) -> Result<Vec<JournalLine>, RecordTransferError> {
+    let base = command.base();
+    let kind = command.kind();
     let mut lines = vec![
         JournalLine {
             line_no: 1,
             side: PostingSide::Debit,
             account_id: None,
             pool_id: None,
-            member_id: Some(command.to_member_id.clone()),
-            amount: command.amount,
-            memo: command.kind.as_str(),
+            member_id: Some(base.to_member_id.clone()),
+            amount: base.amount,
+            memo: kind.as_str(),
         },
         JournalLine {
             line_no: 2,
             side: PostingSide::Credit,
             account_id: None,
             pool_id: None,
-            member_id: Some(command.from_member_id.clone()),
-            amount: command.amount,
-            memo: command.kind.as_str(),
+            member_id: Some(base.from_member_id.clone()),
+            amount: base.amount,
+            memo: kind.as_str(),
         },
     ];
 
-    if let Some(account) = &command.payment_account {
+    if let Some(account) = &base.payment_account {
         lines.push(JournalLine {
             line_no: next_line_no(&lines)?,
             side: PostingSide::Credit,
             account_id: None,
             pool_id: Some(account.pool_id.clone()),
             member_id: None,
-            amount: command.amount,
+            amount: base.amount,
             memo: "Transfer settlement",
         });
         lines.push(JournalLine {
@@ -254,7 +282,7 @@ fn build_journal_lines(
             account_id: None,
             pool_id: None,
             member_id: None,
-            amount: command.amount,
+            amount: base.amount,
             memo: "Transfer settlement offset",
         });
         lines.push(JournalLine {
@@ -263,7 +291,7 @@ fn build_journal_lines(
             account_id: Some(account.id.clone()),
             pool_id: None,
             member_id: None,
-            amount: command.amount,
+            amount: base.amount,
             memo: "Transfer source account",
         });
         lines.push(JournalLine {
@@ -272,19 +300,19 @@ fn build_journal_lines(
             account_id: None,
             pool_id: None,
             member_id: None,
-            amount: command.amount,
+            amount: base.amount,
             memo: "Transfer source account offset",
         });
     }
 
-    if let Some(account) = &command.destination_account {
+    if let Some(account) = &base.destination_account {
         lines.push(JournalLine {
             line_no: next_line_no(&lines)?,
             side: PostingSide::Debit,
             account_id: Some(account.id.clone()),
             pool_id: None,
             member_id: None,
-            amount: command.amount,
+            amount: base.amount,
             memo: "Transfer destination account",
         });
         lines.push(JournalLine {
@@ -293,7 +321,7 @@ fn build_journal_lines(
             account_id: None,
             pool_id: None,
             member_id: None,
-            amount: command.amount,
+            amount: base.amount,
             memo: "Transfer destination account offset",
         });
     }
@@ -305,27 +333,28 @@ fn next_line_no(lines: &[JournalLine]) -> Result<u32, RecordTransferError> {
 }
 
 fn settlement_adjustments(command: &RecordTransferCommand) -> Vec<SettlementAdjustment> {
-    match command.kind {
+    let base = command.base();
+    match command.kind() {
         TransferKind::Gift => Vec::new(),
         TransferKind::Repayment
-            if command
+            if base
                 .payment_account
                 .as_ref()
                 .is_some_and(|account| account.pool_kind == PoolKind::Shared) =>
         {
             vec![SettlementAdjustment {
-                member_id: command.to_member_id.clone(),
-                amount_yen: command.amount.value(),
+                member_id: base.to_member_id.clone(),
+                amount_yen: base.amount.value(),
             }]
         }
         TransferKind::Advance | TransferKind::Loan | TransferKind::Repayment => vec![
             SettlementAdjustment {
-                member_id: command.from_member_id.clone(),
-                amount_yen: -command.amount.value(),
+                member_id: base.from_member_id.clone(),
+                amount_yen: -base.amount.value(),
             },
             SettlementAdjustment {
-                member_id: command.to_member_id.clone(),
-                amount_yen: command.amount.value(),
+                member_id: base.to_member_id.clone(),
+                amount_yen: base.amount.value(),
             },
         ],
     }
@@ -357,18 +386,29 @@ mod tests {
         }
     }
 
-    fn command(kind: TransferKind) -> RecordTransferCommand {
-        RecordTransferCommand {
+    fn base() -> TransferBase {
+        TransferBase {
             actor_id: member("actor"),
             from_member_id: member("from"),
             to_member_id: member("to"),
-            kind,
             amount: PositiveYen::new(80).unwrap(),
             description: "  rent  ".into(),
             period_status: AccountingPeriodStatus::Open,
             payment_account: None,
             destination_account: None,
-            loan: None,
+        }
+    }
+
+    fn command(kind: TransferKind) -> RecordTransferCommand {
+        let base = base();
+        match kind {
+            TransferKind::Advance => RecordTransferCommand::Advance(base),
+            TransferKind::Loan => RecordTransferCommand::Loan(base),
+            TransferKind::Gift => RecordTransferCommand::Gift(base),
+            TransferKind::Repayment => RecordTransferCommand::Repayment {
+                base,
+                loan: loan_basis(),
+            },
         }
     }
 
@@ -384,12 +424,12 @@ mod tests {
 
     #[test]
     fn transfer_builds_balanced_ordered_journal_and_normalizes_description() {
-        let mut input = command(TransferKind::Gift);
-        input.description = "  ".into();
-        input.payment_account = Some(account("payment", "pool", PoolKind::Shared));
-        input.destination_account = Some(account("destination", "pool", PoolKind::Personal));
+        let mut base = base();
+        base.description = "  ".into();
+        base.payment_account = Some(account("payment", "pool", PoolKind::Shared));
+        base.destination_account = Some(account("destination", "pool", PoolKind::Personal));
 
-        let decision = decide_record_transfer(input).unwrap();
+        let decision = decide_record_transfer(RecordTransferCommand::Gift(base)).unwrap();
 
         assert_eq!(decision.description, "GIFT");
         assert_eq!(decision.journal_lines.len(), 8);
@@ -419,11 +459,12 @@ mod tests {
 
     #[test]
     fn transfer_applies_loan_and_shared_repayment_adjustments() {
-        let mut loan = command(TransferKind::Repayment);
-        loan.from_member_id = member("to");
-        loan.to_member_id = member("from");
-        loan.loan = Some(loan_basis());
-        let decision = decide_record_transfer(loan).unwrap();
+        let mut base = base();
+        base.from_member_id = member("to");
+        base.to_member_id = member("from");
+        let decision =
+            decide_record_transfer(RecordTransferCommand::Repayment { base, loan: loan_basis() })
+                .unwrap();
         assert_eq!(decision.loan_id.as_ref().unwrap().as_str(), "loan-1");
         assert_eq!(
             decision
@@ -434,13 +475,15 @@ mod tests {
             vec![("to", -80), ("from", 80)]
         );
 
-        let mut shared_repayment = command(TransferKind::Repayment);
-        shared_repayment.from_member_id = member("to");
-        shared_repayment.to_member_id = member("from");
-        shared_repayment.loan = Some(loan_basis());
-        shared_repayment.payment_account =
-            Some(account("payment", "shared-pool", PoolKind::Shared));
-        let decision = decide_record_transfer(shared_repayment).unwrap();
+        let mut shared_base = base();
+        shared_base.from_member_id = member("to");
+        shared_base.to_member_id = member("from");
+        shared_base.payment_account = Some(account("payment", "shared-pool", PoolKind::Shared));
+        let decision = decide_record_transfer(RecordTransferCommand::Repayment {
+            base: shared_base,
+            loan: loan_basis(),
+        })
+        .unwrap();
         assert_eq!(decision.settlement_adjustments.len(), 1);
         assert_eq!(
             decision.settlement_adjustments[0].member_id.as_str(),

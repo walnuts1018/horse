@@ -10,36 +10,38 @@ use uuid::Uuid;
 pub mod account_balances;
 pub mod account_creation;
 pub mod account_history;
-pub mod allocation_rule_query;
 pub mod account_mutations;
+pub mod allocation_rule_query;
 pub mod card_last4;
 pub mod catalog_mutations;
-pub mod category;
 pub mod catalog_queries;
-pub mod funding;
+pub mod category;
 pub mod financial_mutations;
+pub mod funding;
+pub mod funding_schedule_query;
+pub mod home_summary_query;
 pub mod household_lifecycle;
 pub mod household_membership;
 pub mod household_query;
-pub mod home_summary_query;
 pub mod ledger_entry;
+pub mod ledger_query;
 pub mod member_pool;
 pub mod monthly_spending_query;
 pub mod pagination;
 pub mod policy_mutations;
 pub mod pool_mutations;
-pub mod purchase_edit_mutations;
-pub mod purchase_defaults_query;
-pub mod purchase_correction_query;
 pub mod purchase_analytics_query;
+pub mod purchase_correction_query;
 pub mod purchase_corrections_mutations;
+pub mod purchase_defaults_query;
+pub mod purchases_query;
+pub mod purchase_edit_mutations;
 pub mod purchase_mutations;
+pub mod scalars;
 pub mod settlement_mutations;
 pub mod shared_purchase_draft;
-pub mod funding_schedule_query;
 pub mod statement_link_mutations;
 pub mod viewer_query;
-pub mod scalars;
 pub use scalars::{DateTime, Long};
 
 pub type Schema = GraphqlSchema<QueryRoot, MutationRoot, EmptySubscription>;
@@ -120,14 +122,8 @@ impl QueryRoot {
         merchant: Option<String>,
         #[graphql(default = 8)] first: i32,
     ) -> Result<Vec<catalog_queries::ProductSuggestion>> {
-        catalog_queries::graphql_product_suggestions(
-            ctx,
-            household_id,
-            query,
-            merchant,
-            first,
-        )
-        .await
+        catalog_queries::graphql_product_suggestions(ctx, household_id, query, merchant, first)
+            .await
     }
 
     async fn product_catalog(
@@ -139,15 +135,8 @@ impl QueryRoot {
         first: Option<i32>,
         last: Option<i32>,
     ) -> Result<catalog_queries::ProductConceptConnection> {
-        catalog_queries::graphql_product_catalog(
-            ctx,
-            household_id,
-            after,
-            before,
-            first,
-            last,
-        )
-        .await
+        catalog_queries::graphql_product_catalog(ctx, household_id, after, before, first, last)
+            .await
     }
 
     async fn settlement(
@@ -230,15 +219,8 @@ impl QueryRoot {
         first: Option<i32>,
         last: Option<i32>,
     ) -> Result<account_history::AccountMovementConnection> {
-        account_history::graphql_account_movements(
-            ctx,
-            household_id,
-            after,
-            before,
-            first,
-            last,
-        )
-        .await
+        account_history::graphql_account_movements(ctx, household_id, after, before, first, last)
+            .await
     }
 
     async fn account_incomes(
@@ -250,15 +232,8 @@ impl QueryRoot {
         first: Option<i32>,
         last: Option<i32>,
     ) -> Result<account_history::AccountIncomeConnection> {
-        account_history::graphql_account_incomes(
-            ctx,
-            household_id,
-            after,
-            before,
-            first,
-            last,
-        )
-        .await
+        account_history::graphql_account_incomes(ctx, household_id, after, before, first, last)
+            .await
     }
 
     async fn household_mail_forwarding(
@@ -329,21 +304,11 @@ impl QueryRoot {
         first: Option<i32>,
         last: Option<i32>,
     ) -> Result<household_lifecycle::HouseholdInvitationConnection> {
-        household_lifecycle::household_invitations(
-            ctx,
-            household_id,
-            after,
-            before,
-            first,
-            last,
-        )
-        .await
+        household_lifecycle::household_invitations(ctx, household_id, after, before, first, last)
+            .await
     }
 
-    async fn households(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Vec<household_lifecycle::Household>> {
+    async fn households(&self, ctx: &Context<'_>) -> Result<Vec<household_lifecycle::Household>> {
         household_query::graphql_households(ctx).await
     }
 
@@ -416,6 +381,30 @@ impl QueryRoot {
             item_ids,
         )
         .await
+    }
+
+    async fn purchases(
+        &self,
+        ctx: &Context<'_>,
+        filter: purchases_query::PurchaseFilter,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<purchases_query::PurchaseConnection> {
+        purchases_query::graphql_purchases(ctx, filter, after, before, first, last).await
+    }
+
+    async fn ledger(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        after: Option<String>,
+        before: Option<String>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Result<ledger_query::LedgerConnection> {
+        ledger_query::graphql_ledger(ctx, household_id, after, before, first, last).await
     }
 }
 

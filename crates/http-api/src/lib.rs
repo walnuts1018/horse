@@ -231,14 +231,14 @@ async fn me(State(state): State<ApiState>, headers: HeaderMap) -> Response {
         .unwrap_or_default();
     match resolve_cookie(&state.pool, cookie).await {
         Ok(Some(principal)) => Json(json!({
-                "authenticated": true,
-                "viewer": {
-                    "id": principal.member_id.to_string(),
-                    "subject": principal.subject,
-                    "displayName": principal.display_name,
-                },
-            }))
-            .into_response(),
+            "authenticated": true,
+            "viewer": {
+                "id": principal.member_id.to_string(),
+                "subject": principal.subject,
+                "displayName": principal.display_name,
+            },
+        }))
+        .into_response(),
         Ok(None) => Json(json!({
             "authenticated": false,
             "loginURL": "/auth/login",
@@ -246,7 +246,11 @@ async fn me(State(state): State<ApiState>, headers: HeaderMap) -> Response {
         .into_response(),
         Err(error) => {
             tracing::error!(error = ?error, "OIDC session lookup failed");
-            (StatusCode::SERVICE_UNAVAILABLE, "authentication unavailable").into_response()
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "authentication unavailable",
+            )
+                .into_response()
         }
     }
 }
@@ -265,8 +269,8 @@ async fn logout(State(state): State<ApiState>, headers: HeaderMap) -> Response {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
 
-    let secure = Url::parse(&state.config.public_origin)
-        .is_ok_and(|origin| origin.scheme() == "https");
+    let secure =
+        Url::parse(&state.config.public_origin).is_ok_and(|origin| origin.scheme() == "https");
     let cookie = if secure {
         "horse_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"
     } else {
@@ -287,9 +291,11 @@ fn cookie_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {
 }
 
 fn set_cookie(response: &mut Response, cookie: &Cookie) {
-    let max_age = cookie
-        .max_age_seconds
-        .or_else(|| cookie.expires_at.map(|expiry| (expiry - chrono::Utc::now()).num_seconds()));
+    let max_age = cookie.max_age_seconds.or_else(|| {
+        cookie
+            .expires_at
+            .map(|expiry| (expiry - chrono::Utc::now()).num_seconds())
+    });
     let mut value = format!("{}={}; Path={}", cookie.name, cookie.value, cookie.path);
     if let Some(max_age) = max_age {
         value.push_str(&format!("; Max-Age={max_age}"));

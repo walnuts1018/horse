@@ -1370,10 +1370,7 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
             "TAX_INCLUDED" => {
                 if !tax_group.is_empty() {
                     if by_id.contains_key(&tax_group) {
-                        included
-                            .entry(tax_group.clone())
-                            .or_default()
-                            .push(index);
+                        included.entry(tax_group.clone()).or_default().push(index);
                     } else {
                         issues.push(format!("品目{}の税率が未確定です。", index + 1));
                     }
@@ -1381,10 +1378,7 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
             }
             "TAX_EXCLUDED" => {
                 if by_id.contains_key(&tax_group) {
-                    excluded
-                        .entry(tax_group.clone())
-                        .or_default()
-                        .push(index);
+                    excluded.entry(tax_group.clone()).or_default().push(index);
                 } else {
                     issues.push(format!("品目{}の税率が未確定です。", index + 1));
                 }

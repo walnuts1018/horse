@@ -1,5 +1,7 @@
 use chrono::Utc;
-use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, result::Error as DieselError};
+use diesel::{
+    ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, result::Error as DieselError,
+};
 use diesel_async::{AsyncPgConnection, RunQueryDsl, pooled_connection::bb8::Pool};
 use horse_postgres::schema::public::{members, oidc_sessions};
 use sha2::{Digest, Sha256};

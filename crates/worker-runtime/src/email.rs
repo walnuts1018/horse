@@ -196,10 +196,7 @@ fn safe_attachment_filename(name: Option<&str>, mime_type: &str, ordinal: usize)
         _ => "",
     };
     let normalized_name = name.unwrap_or_default().replace('\\', "/");
-    let basename = normalized_name
-        .rsplit('/')
-        .next()
-        .unwrap_or_default();
+    let basename = normalized_name.rsplit('/').next().unwrap_or_default();
     let mut filename = basename
         .chars()
         .filter(|character| !character.is_control())

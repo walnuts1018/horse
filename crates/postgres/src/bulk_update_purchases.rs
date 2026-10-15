@@ -25,6 +25,7 @@ pub enum BulkUpdatePurchasesPersistenceError {
     HouseholdMismatch,
     MemberNotFound,
     PurchaseNotFound,
+    RevisionConflict,
     AccountingPeriodClosed,
     InvalidWorkflow(BulkUpdatePurchasesError),
     InvalidUpdate(update_purchase::UpdatePurchasePersistenceError),
@@ -203,7 +204,10 @@ pub async fn persist_bulk_update_purchases(
                     || owner != *observed_owner
                     || occurred_at != *observed_occurred_at
                 {
-                    return Err(BulkUpdatePurchasesPersistenceError::HouseholdMismatch);
+                    if owner != household_id || owner != *observed_owner {
+                        return Err(BulkUpdatePurchasesPersistenceError::HouseholdMismatch);
+                    }
+                    return Err(BulkUpdatePurchasesPersistenceError::RevisionConflict);
                 }
                 let command = commands_by_id
                     .get(&id)
@@ -255,6 +259,7 @@ pub async fn persist_bulk_update_purchases(
                     actor_id,
                     command,
                     decision,
+                    false,
                 )
                 .await
                 .map_err(BulkUpdatePurchasesPersistenceError::InvalidUpdate)?;

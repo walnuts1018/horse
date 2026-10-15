@@ -94,7 +94,10 @@ impl<State, Event> Decision<State, Event> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PurchaseEvent {
-    Posted { purchase_id: PurchaseId, total: PositiveYen },
+    Posted {
+        purchase_id: PurchaseId,
+        total: PositiveYen,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

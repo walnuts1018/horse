@@ -6,10 +6,11 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as Di
 use diesel_async::{AsyncPgConnection, RunQueryDsl, pooled_connection::bb8::Pool};
 use horse_postgres::schema::public::{members, oidc_sessions, oidc_states};
 use openidconnect::{
-    AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce,
-    OAuth2TokenResponse, PkceCodeChallenge, RedirectUrl, Scope, TokenResponse,
+    AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet, EndpointNotSet,
+    EndpointSet, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, RedirectUrl, Scope,
+    TokenResponse, TokenUrl,
     core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
-    EndpointMaybeSet, EndpointNotSet, EndpointSet, TokenUrl, reqwest,
+    reqwest,
 };
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
@@ -143,8 +144,8 @@ impl AuthService {
             RedirectUrl::new(config.redirect_url.clone())
                 .map_err(|error| OidcError::Provider(error.to_string()))?,
         );
-        let secure_cookie = Url::parse(&config.public_origin)
-            .is_ok_and(|origin| origin.scheme() == "https");
+        let secure_cookie =
+            Url::parse(&config.public_origin).is_ok_and(|origin| origin.scheme() == "https");
 
         Ok(Some(Self {
             pool,
@@ -357,13 +358,20 @@ impl AuthService {
             .any(|expected| {
                 expected.scheme().eq_ignore_ascii_case(origin.scheme())
                     && expected.host_str().is_some_and(|host| {
-                        origin.host_str().is_some_and(|actual| host.eq_ignore_ascii_case(actual))
+                        origin
+                            .host_str()
+                            .is_some_and(|actual| host.eq_ignore_ascii_case(actual))
                     })
                     && expected.port_or_known_default() == origin.port_or_known_default()
             })
     }
 
-    async fn connection(&self) -> Result<diesel_async::pooled_connection::bb8::PooledConnection<'_, AsyncPgConnection>, OidcError> {
+    async fn connection(
+        &self,
+    ) -> Result<
+        diesel_async::pooled_connection::bb8::PooledConnection<'_, AsyncPgConnection>,
+        OidcError,
+    > {
         self.pool
             .get()
             .await
@@ -391,6 +399,9 @@ fn safe_redirect(value: &str) -> String {
         return "/".to_owned();
     }
     let path = parsed.path();
-    let query = parsed.query().map(|query| format!("?{query}")).unwrap_or_default();
+    let query = parsed
+        .query()
+        .map(|query| format!("?{query}"))
+        .unwrap_or_default();
     format!("{path}{query}")
 }
