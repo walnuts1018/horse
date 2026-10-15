@@ -20,7 +20,6 @@ import (
 	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/stephenafamo/bob/types"
-	"github.com/walnuts1018/horse/internal/application/accounting"
 	"github.com/walnuts1018/horse/internal/application/apperror"
 	"github.com/walnuts1018/horse/internal/application/inputvalidation"
 	"github.com/walnuts1018/horse/internal/application/txcleanup"
@@ -176,147 +175,37 @@ func (s *Service) create(ctx context.Context, tx pgx.Tx, input CreateCommand, fi
 	if err != nil {
 		return CreateResult{}, err
 	}
-	merchant := input.Merchant
 	householdUUID, err := parseUUID(input.HouseholdID, "household")
 	if err != nil {
 		return CreateResult{}, err
 	}
 	executor := bobpgx.NewTx(tx, nil)
-	householdRow, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdUUID))), sm.ForShare()).One(ctx, executor)
+	authorization, err := authorizeCreate(ctx, executor, householdUUID, input.ActorID)
 	if err != nil {
 		return CreateResult{}, err
 	}
-	actorUUID, err := parseUUID(input.ActorID, "actor")
+	existing, found, err := findCreateIdempotentResult(ctx, executor, householdUUID, input.IdempotencyKey, fingerprint)
 	if err != nil {
 		return CreateResult{}, err
 	}
-	member, err := models.HouseholdMembers.Query(sm.Where(psql.And(
-		models.HouseholdMembers.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.HouseholdMembers.Columns.MemberID.EQ(psql.Arg(actorUUID)),
-		models.HouseholdMembers.Columns.LeftAt.IsNull(),
-	))).Exists(ctx, executor)
+	if found {
+		return existing, nil
+	}
+	if err := lockCreateAccountingPeriod(ctx, executor, householdUUID, input.OccurredAt); err != nil {
+		return CreateResult{}, err
+	}
+	source, err := resolveCreateSourceDocument(ctx, executor, householdUUID, input)
 	if err != nil {
 		return CreateResult{}, err
 	}
-	if !member {
-		return CreateResult{}, ErrNotFound
+	if source.existingPurchaseID != "" {
+		return CreateResult{PurchaseID: source.existingPurchaseID}, nil
 	}
-	key, operation := input.IdempotencyKey, "createPurchase"
-	existing, err := models.IdempotencyKeys.Query(sm.Where(psql.And(
-		models.IdempotencyKeys.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.IdempotencyKeys.Columns.Key.EQ(psql.Arg(key)),
-		models.IdempotencyKeys.Columns.Operation.EQ(psql.Arg(operation)),
-	))).One(ctx, executor)
-	if err == nil {
-		if err := validateIdempotencyFingerprint(existing, fingerprint); err != nil {
-			return CreateResult{}, err
-		}
-
-		return CreateResult{PurchaseID: existing.ResourceID.V.String()}, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return CreateResult{}, err
-	}
-	period := accounting.PeriodFor(input.OccurredAt)
-	if err := ensureAccountingPeriod(ctx, executor, householdUUID, period); err != nil {
-		return CreateResult{}, err
-	}
-	periodRow, err := models.AccountingPeriods.Query(sm.Where(psql.And(
-		models.AccountingPeriods.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-		models.AccountingPeriods.Columns.Period.EQ(psql.Arg(period)),
-	)), sm.ForUpdate()).One(ctx, executor)
+	defaults, err := loadCreateDefaultWeights(ctx, tx, householdUUID, authorization.allocationRuleVersion)
 	if err != nil {
 		return CreateResult{}, err
 	}
-	if periodRow.Status == "CLOSED" {
-		return CreateResult{}, fmt.Errorf("%w: accounting period is closed", ErrConflict)
-	}
-	var sourceDocumentUUID *gofrsuuid.UUID
-	if input.SourceDocumentID != nil {
-		sourceReference := ""
-		if input.SourceReference != nil {
-			sourceReference = *input.SourceReference
-		}
-		if len(sourceReference) > 256 {
-			return CreateResult{}, fmt.Errorf("%w: source reference is too long", ErrBadInput)
-		}
-		documentUUID, parseErr := parseUUID(*input.SourceDocumentID, "source document")
-		if parseErr != nil {
-			return CreateResult{}, parseErr
-		}
-		sourceDocumentUUID = &documentUUID
-		document, err := models.SourceDocuments.Query(sm.Where(models.SourceDocuments.Columns.ID.EQ(psql.Arg(documentUUID))), sm.ForUpdate()).One(ctx, executor)
-		if errors.Is(err, sql.ErrNoRows) {
-			return CreateResult{}, ErrNotFound
-		}
-		if err != nil {
-			return CreateResult{}, err
-		}
-		if document.HouseholdID != householdUUID {
-			return CreateResult{}, ErrNotFound
-		}
-		confirmation, err := models.DocumentConfirmations.Query(sm.Where(psql.And(
-			models.DocumentConfirmations.Columns.SourceDocumentID.EQ(psql.Arg(documentUUID)),
-			models.DocumentConfirmations.Columns.SourceReference.EQ(psql.Arg(sourceReference)),
-		))).One(ctx, executor)
-		if err == nil {
-			if confirmation.CorrectionID.Valid || !confirmation.PurchaseID.Valid {
-				return CreateResult{}, fmt.Errorf("%w: source row is already confirmed as a correction", ErrConflict)
-			}
-			return CreateResult{PurchaseID: confirmation.PurchaseID.V.String()}, nil
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return CreateResult{}, err
-		}
-	}
-	ruleVersion := householdRow.DefaultAllocationVersion
-	defaults, err := loadWeights(ctx, tx, householdUUID, ruleVersion)
-	if err != nil {
-		return CreateResult{}, err
-	}
-	if len(defaults) == 0 {
-		return CreateResult{}, fmt.Errorf("%w: configure a default allocation before adding purchases", ErrBadInput)
-	}
-	merchantRuleKey := normalizeMerchant(merchant)
-	purchaseUUID := newUUID()
-	purchaseID := purchaseUUID.String()
-	createdBy := actorUUID
-	purchaseStatus := draftStatus
-	if _, err := models.Purchases.Insert(&models.PurchaseSetter{
-		ID: &purchaseUUID, HouseholdID: &householdUUID, OccurredAt: &input.OccurredAt, DatePrecision: &input.DatePrecision, Merchant: &merchant,
-		Status: &purchaseStatus, AllocationRuleVersion: &ruleVersion, CreatedBy: &createdBy, Origin: &origin,
-	}).Exec(ctx, executor); err != nil {
-		return CreateResult{}, err
-	}
-	purchaseItemUUIDs, err := createPurchaseItems(ctx, tx, executor, householdUUID, purchaseUUID, merchantRuleKey, ruleVersion, defaults, input.Items)
-	if err != nil {
-		return CreateResult{}, err
-	}
-	if len(input.PaymentAllocations) > 0 {
-		payments, err := validatePayments(ctx, tx, householdUUID, input.PaymentAllocations)
-		if err != nil {
-			return CreateResult{}, err
-		}
-		if err := replacePayments(ctx, executor, householdUUID, purchaseUUID, payments); err != nil {
-			return CreateResult{}, err
-		}
-	}
-	purchaseResource := sql.Null[gofrsuuid.UUID]{V: purchaseUUID, Valid: true}
-	fingerprintValue := sql.Null[[]byte]{V: fingerprint[:], Valid: true}
-	if _, err := models.IdempotencyKeys.Insert(&models.IdempotencyKeySetter{
-		HouseholdID: &householdUUID, Key: &key, Operation: &operation, ResourceID: &purchaseResource, RequestFingerprint: &fingerprintValue,
-	}).Exec(ctx, executor); err != nil {
-		return CreateResult{}, err
-	}
-	if input.SourceDocumentID != nil {
-		if err := linkSourceDocument(ctx, executor, householdUUID, purchaseUUID, createdBy, *sourceDocumentUUID, purchaseItemUUIDs, input); err != nil {
-			return CreateResult{}, err
-		}
-	}
-	if err := accounting.RecordEvent(ctx, executor, householdUUID, purchaseUUID, "purchase.created", 1, []string{}, createdBy); err != nil {
-		return CreateResult{}, err
-	}
-	return CreateResult{PurchaseID: purchaseID}, nil
+	return persistCreate(ctx, tx, executor, input, origin, fingerprint, householdUUID, authorization, source.documentID, defaults)
 }
 
 type itemMeasure struct {
