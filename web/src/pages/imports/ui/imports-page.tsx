@@ -43,6 +43,7 @@ const noCompletedReceipts = new Set<string>();
 
 export function ImportsPage({
   household,
+  captureRequested,
   documentFilters,
   filterLocation,
   onApplyDocumentFilters,
@@ -50,6 +51,7 @@ export function ImportsPage({
   onUnsavedChanges,
 }: {
   household: Household;
+  captureRequested: boolean;
   documentFilters: DocumentFilters;
   filterLocation: object;
   onApplyDocumentFilters: (filters: DocumentFilters) => void;
@@ -58,6 +60,11 @@ export function ImportsPage({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<CameraCaptureHandle>(null);
+  useEffect(() => {
+    if (!captureRequested) return;
+    const frame = window.requestAnimationFrame(() => cameraRef.current?.open());
+    return () => window.cancelAnimationFrame(frame);
+  }, [captureRequested]);
   const [files, setFiles] = useState<PendingUpload[]>([]);
   const [importModel, setImportModel] = useState<ImportModel>(defaultImportModel);
   // 親への未保存通知は effect で状態を push せず、変化したイベントから直接行う
@@ -112,15 +119,8 @@ export function ImportsPage({
     loadOlderDocuments,
   } = useImportDocuments(household.id, documentFilters, setMessage);
   const [pending, setPending] = useState(false);
-  const [handledQuotaLimits, setHandledQuotaLimits] = useState<Set<string>>(() => new Set());
   const quotaLimitedDocuments = documents.filter(isQuotaLimitedExtraction);
-  const quotaLimitKeys = quotaLimitedDocuments.map(
-    (document) => `${document.id}:${document.errorCode}`,
-  );
-  const unhandledQuotaLimit = quotaLimitedDocuments.find(
-    (document) => !handledQuotaLimits.has(`${document.id}:${document.errorCode}`),
-  );
-  const importModelForUpload = unhandledQuotaLimit ? proImportModel : importModel;
+  const importModelForUpload = quotaLimitedDocuments.length > 0 ? proImportModel : importModel;
   const selectedDocumentID = useRef(selected);
   useEffect(() => {
     selectedDocumentID.current = selected;
@@ -288,9 +288,6 @@ export function ImportsPage({
     const quotaLimited = isQuotaLimitedExtraction(document);
     if (quotaLimited) {
       setImportModel(proImportModel);
-      setHandledQuotaLimits(
-        (current) => new Set([...current, `${document.id}:${document.errorCode}`]),
-      );
     }
     setPending(true);
     setMessage("");
@@ -519,11 +516,9 @@ export function ImportsPage({
             <select
               id="import-model"
               value={importModelForUpload}
+              disabled={quotaLimitedDocuments.length > 0}
               onChange={(event) => {
-                if (isImportModel(event.target.value)) {
-                  setImportModel(event.target.value);
-                  setHandledQuotaLimits((current) => new Set([...current, ...quotaLimitKeys]));
-                }
+                if (isImportModel(event.target.value)) setImportModel(event.target.value);
               }}
             >
               <optgroup label="無料枠">
