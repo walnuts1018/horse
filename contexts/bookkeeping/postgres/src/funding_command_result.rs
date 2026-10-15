@@ -1,7 +1,8 @@
 use bookkeeping_domain::SettlementPolicy;
 use chrono::{DateTime, Utc};
 use diesel::{
-    ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, result::Error as DieselError,
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl,
+    result::Error as DieselError,
 };
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
@@ -79,7 +80,7 @@ pub async fn load_funding_ledger_entry_result(
         ledger::ledger_entries
             .filter(ledger::household_id.eq(household_id))
             .filter(ledger::id.eq(ledger_entry_id))
-            .filter(ledger::source_kind.eq("FUNDING"))
+            .filter(ledger::source_kind.eq_any(["FUNDING", "funding"]))
             .select((
                 ledger::id,
                 ledger::household_id,
@@ -118,6 +119,261 @@ pub async fn load_funding_ledger_entry_result(
         member,
         pool,
     })
+}
+
+pub async fn load_funding_ledger_entry_results(
+    pool: &PgPool,
+    household_ids: &[Uuid],
+    ledger_entry_ids: &[Uuid],
+) -> Result<std::collections::HashMap<Uuid, FundingLedgerEntryResult>, FundingCommandResultError> {
+    use std::collections::HashMap;
+
+    let mut result = HashMap::with_capacity(ledger_entry_ids.len());
+    if household_ids.is_empty() || ledger_entry_ids.is_empty() {
+        return Ok(result);
+    }
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| FundingCommandResultError::Pool(error.to_string()))?;
+
+    use public::ledger_entries::dsl as ledger;
+    let ledger_rows = ledger::ledger_entries
+        .filter(ledger::household_id.eq_any(household_ids))
+        .filter(ledger::id.eq_any(ledger_entry_ids))
+        .filter(ledger::source_kind.eq_any(["FUNDING", "funding"]))
+        .select((
+            ledger::id,
+            ledger::household_id,
+            ledger::occurred_at,
+            ledger::description,
+            ledger::amount_yen,
+            ledger::from_member_id,
+            ledger::pool_id,
+            ledger::created_at,
+        ))
+        .load::<(
+            Uuid,
+            Uuid,
+            DateTime<Utc>,
+            String,
+            i64,
+            Option<Uuid>,
+            Option<Uuid>,
+            DateTime<Utc>,
+        )>(&mut *conn)
+        .await?;
+    if ledger_rows.is_empty() {
+        return Ok(result);
+    }
+
+    let mut member_ids = Vec::with_capacity(ledger_rows.len());
+    let mut pool_ids = Vec::with_capacity(ledger_rows.len());
+    for (_, _, _, _, _, member_id, pool_id, _) in &ledger_rows {
+        member_ids.push(member_id.ok_or(FundingCommandResultError::MissingFundingMember)?);
+        pool_ids.push(pool_id.ok_or(FundingCommandResultError::MissingFundingPool)?);
+    }
+    member_ids.sort_unstable();
+    member_ids.dedup();
+    pool_ids.sort_unstable();
+    pool_ids.dedup();
+
+    let members = public::members::table
+        .filter(public::members::id.eq_any(&member_ids))
+        .select((public::members::id, public::members::display_name))
+        .load::<(Uuid, String)>(&mut *conn)
+        .await?
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+    let roles = public::household_members::table
+        .filter(public::household_members::household_id.eq_any(household_ids))
+        .filter(public::household_members::member_id.eq_any(&member_ids))
+        .select((
+            public::household_members::household_id,
+            public::household_members::member_id,
+            public::household_members::role,
+        ))
+        .load::<(Uuid, Uuid, String)>(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|(household_id, member_id, role)| ((household_id, member_id), role))
+        .collect::<HashMap<_, _>>();
+
+    let pool_rows = public::pools::table
+        .filter(public::pools::household_id.eq_any(household_ids))
+        .filter(public::pools::id.eq_any(&pool_ids))
+        .select((
+            public::pools::id,
+            public::pools::household_id,
+            public::pools::name,
+            public::pools::kind,
+            public::pools::current_funding_version,
+        ))
+        .load::<(Uuid, Uuid, String, String, Option<i32>)>(&mut *conn)
+        .await?;
+    let pool_rows = pool_rows
+        .into_iter()
+        .map(|(id, household_id, name, kind, version)| ((household_id, id), (name, kind, version)))
+        .collect::<HashMap<_, _>>();
+    let default_shares = public::households::table
+        .inner_join(
+            public::allocation_defaults::table.on(public::households::id
+                .eq(public::allocation_defaults::household_id)
+                .and(
+                    public::households::default_allocation_version
+                        .eq(public::allocation_defaults::version),
+                )),
+        )
+        .filter(public::households::id.eq_any(household_ids))
+        .filter(public::allocation_defaults::pool_id.eq_any(&pool_ids))
+        .select((
+            public::households::id,
+            public::allocation_defaults::pool_id,
+            public::allocation_defaults::weight,
+        ))
+        .load::<(Uuid, Uuid, i64)>(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|(household_id, pool_id, weight)| ((household_id, pool_id), weight))
+        .collect::<HashMap<_, _>>();
+
+    let rules = public::pool_funding_rules::table
+        .filter(public::pool_funding_rules::household_id.eq_any(household_ids))
+        .filter(public::pool_funding_rules::pool_id.eq_any(&pool_ids))
+        .select((
+            public::pool_funding_rules::household_id,
+            public::pool_funding_rules::pool_id,
+            public::pool_funding_rules::version,
+            public::pool_funding_rules::owner_member_id,
+            public::pool_funding_rules::settlement_policy,
+        ))
+        .load::<(Uuid, Uuid, i32, Option<Uuid>, Option<String>)>(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|(household_id, pool_id, version, owner, policy)| {
+            ((household_id, pool_id, version), (owner, policy))
+        })
+        .collect::<HashMap<_, _>>();
+
+    let versions = pool_rows
+        .values()
+        .filter_map(|(_, _, version)| *version)
+        .collect::<Vec<_>>();
+    let mut shares_by_rule = HashMap::<(Uuid, Uuid, i32), Vec<FundingPoolShare>>::new();
+    if !versions.is_empty() {
+        let shares = public::pool_funding_shares::table
+            .inner_join(
+                public::members::table
+                    .on(public::pool_funding_shares::member_id.eq(public::members::id)),
+            )
+            .filter(public::pool_funding_shares::household_id.eq_any(household_ids))
+            .filter(public::pool_funding_shares::pool_id.eq_any(&pool_ids))
+            .filter(public::pool_funding_shares::version.eq_any(&versions))
+            .select((
+                public::pool_funding_shares::household_id,
+                public::pool_funding_shares::pool_id,
+                public::pool_funding_shares::version,
+                public::pool_funding_shares::member_id,
+                public::members::display_name,
+                public::pool_funding_shares::weight,
+            ))
+            .load::<(Uuid, Uuid, i32, Uuid, String, i64)>(&mut *conn)
+            .await?;
+        for (household_id, pool_id, version, member_id, member_name, weight) in shares {
+            shares_by_rule
+                .entry((household_id, pool_id, version))
+                .or_default()
+                .push(FundingPoolShare {
+                    member_id,
+                    member_name,
+                    weight,
+                });
+        }
+        for shares in shares_by_rule.values_mut() {
+            shares.sort_by_key(|share| share.member_id);
+        }
+    }
+
+    for (id, household_id, occurred_at, description, amount_yen, member_id, pool_id, created_at) in
+        ledger_rows
+    {
+        let member_id = member_id.ok_or(FundingCommandResultError::MissingFundingMember)?;
+        let pool_id = pool_id.ok_or(FundingCommandResultError::MissingFundingPool)?;
+        let display_name = members
+            .get(&member_id)
+            .cloned()
+            .ok_or(FundingCommandResultError::MissingFundingMember)?;
+        let role = roles
+            .get(&(household_id, member_id))
+            .cloned()
+            .unwrap_or_else(|| "MEMBER".to_owned());
+        if !matches!(role.as_str(), "OWNER" | "MEMBER") {
+            return Err(FundingCommandResultError::InvalidMemberRole(role));
+        }
+        let member = FundingLedgerMember {
+            id: member_id,
+            display_name,
+            role,
+        };
+        let (name, kind, current_version) = pool_rows
+            .get(&(household_id, pool_id))
+            .cloned()
+            .ok_or(FundingCommandResultError::MissingFundingPool)?;
+        if !matches!(kind.as_str(), "PERSONAL" | "SHARED") {
+            return Err(FundingCommandResultError::InvalidPoolKind(kind));
+        }
+        let default_share_weight = default_shares
+            .get(&(household_id, pool_id))
+            .copied()
+            .unwrap_or_default();
+        let mut owner_member_id = None;
+        let mut settlement_policy = None;
+        let mut funding_shares = Vec::new();
+        if let Some(version) = current_version {
+            if let Some((owner, policy)) = rules.get(&(household_id, pool_id, version)) {
+                owner_member_id = *owner;
+                if let Some(policy) = policy.as_deref() {
+                    settlement_policy = Some(match policy {
+                        "BALANCE_TO_STANDARD" => SettlementPolicy::BalanceToStandard,
+                        "REIMBURSE_PERSONAL" => SettlementPolicy::ReimbursePersonal,
+                        value => {
+                            return Err(FundingCommandResultError::InvalidSettlementPolicy(
+                                value.to_owned(),
+                            ));
+                        }
+                    });
+                }
+                funding_shares = shares_by_rule
+                    .get(&(household_id, pool_id, version))
+                    .cloned()
+                    .unwrap_or_default();
+            }
+        }
+        result.insert(
+            id,
+            FundingLedgerEntryResult {
+                id,
+                household_id,
+                occurred_at,
+                description,
+                amount_yen,
+                currency: "JPY".to_owned(),
+                created_at,
+                member,
+                pool: FundingLedgerPool {
+                    id: pool_id,
+                    name,
+                    kind,
+                    default_share_weight,
+                    funding_shares,
+                    funding_rule_version: current_version.unwrap_or_default(),
+                    owner_member_id,
+                    settlement_policy,
+                },
+            },
+        );
+    }
+    Ok(result)
 }
 
 async fn load_member(

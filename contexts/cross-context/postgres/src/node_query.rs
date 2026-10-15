@@ -3,6 +3,7 @@ use diesel::{
     OptionalExtension, QueryDsl,
 };
 use diesel_async::RunQueryDsl;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::{PgPool, financial_command_result, schema::public};
@@ -12,6 +13,8 @@ pub struct AccountOpeningBalanceNodeResult {
     pub account_id: Uuid,
     pub account_name: String,
     pub account_kind: String,
+    pub card_last4: Option<String>,
+    pub pool_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,6 +291,94 @@ pub async fn load_account_movement_node(
     ))
 }
 
+pub async fn load_account_movement_nodes(
+    pool: &PgPool,
+    household_ids: &[Uuid],
+    movement_ids: &[Uuid],
+) -> Result<HashMap<Uuid, crate::account_history_query::AccountMovementProjection>, NodeQueryError>
+{
+    if household_ids.is_empty() || movement_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| NodeQueryError::Pool(error.to_string()))?;
+    let rows = public::account_movements::table
+        .filter(public::account_movements::household_id.eq_any(household_ids))
+        .filter(public::account_movements::id.eq_any(movement_ids))
+        .select((
+            public::account_movements::id,
+            public::account_movements::household_id,
+            public::account_movements::kind,
+            public::account_movements::occurred_at,
+            public::account_movements::from_account_id,
+            public::account_movements::to_account_id,
+            public::account_movements::amount_yen,
+            public::account_movements::description,
+            public::account_movements::created_at,
+        ))
+        .load::<(
+            Uuid,
+            Uuid,
+            String,
+            chrono::DateTime<chrono::Utc>,
+            Uuid,
+            Uuid,
+            i64,
+            String,
+            chrono::DateTime<chrono::Utc>,
+        )>(&mut *conn)
+        .await?;
+    let account_ids = rows
+        .iter()
+        .flat_map(|row| [row.4, row.5])
+        .collect::<Vec<_>>();
+    let accounts =
+        load_account_projections_for_households(&mut conn, household_ids, &account_ids).await?;
+    let mut result = HashMap::with_capacity(rows.len());
+    for (
+        id,
+        household_id,
+        kind,
+        occurred_at,
+        from_account_id,
+        to_account_id,
+        amount_yen,
+        description,
+        created_at,
+    ) in rows
+    {
+        let from_account = accounts
+            .iter()
+            .find(|account| account.id == from_account_id)
+            .cloned()
+            .ok_or(NodeQueryError::InvalidPersistedData)?;
+        let to_account = accounts
+            .iter()
+            .find(|account| account.id == to_account_id)
+            .cloned()
+            .ok_or(NodeQueryError::InvalidPersistedData)?;
+        result.insert(
+            id,
+            crate::account_history_query::AccountMovementProjection {
+                id,
+                household_id,
+                kind,
+                occurred_at,
+                from_account_id,
+                from_account,
+                to_account_id,
+                to_account,
+                amount_yen,
+                description,
+                created_at,
+            },
+        );
+    }
+    Ok(result)
+}
+
 pub async fn load_account_income_node(
     pool: &PgPool,
     household_id: Uuid,
@@ -343,13 +434,107 @@ pub async fn load_account_income_node(
     ))
 }
 
+pub async fn load_account_income_nodes(
+    pool: &PgPool,
+    household_ids: &[Uuid],
+    income_ids: &[Uuid],
+) -> Result<HashMap<Uuid, crate::account_history_query::AccountIncomeProjection>, NodeQueryError> {
+    if household_ids.is_empty() || income_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| NodeQueryError::Pool(error.to_string()))?;
+    let rows = public::account_incomes::table
+        .filter(public::account_incomes::household_id.eq_any(household_ids))
+        .filter(public::account_incomes::id.eq_any(income_ids))
+        .select((
+            public::account_incomes::id,
+            public::account_incomes::household_id,
+            public::account_incomes::account_id,
+            public::account_incomes::amount_yen,
+            public::account_incomes::occurred_at,
+            public::account_incomes::description,
+            public::account_incomes::created_at,
+        ))
+        .load::<(
+            Uuid,
+            Uuid,
+            Uuid,
+            i64,
+            chrono::DateTime<chrono::Utc>,
+            String,
+            chrono::DateTime<chrono::Utc>,
+        )>(&mut *conn)
+        .await?;
+    let account_ids = rows.iter().map(|row| row.2).collect::<Vec<_>>();
+    let accounts =
+        load_account_projections_for_households(&mut conn, household_ids, &account_ids).await?;
+    let mut result = HashMap::with_capacity(rows.len());
+    for (id, household_id, account_id, amount_yen, occurred_at, description, created_at) in rows {
+        let account = accounts
+            .iter()
+            .find(|account| account.id == account_id)
+            .cloned()
+            .ok_or(NodeQueryError::InvalidPersistedData)?;
+        result.insert(
+            id,
+            crate::account_history_query::AccountIncomeProjection {
+                id,
+                household_id,
+                account_id,
+                account,
+                amount_yen,
+                occurred_at,
+                description,
+                created_at,
+            },
+        );
+    }
+    Ok(result)
+}
+
 async fn load_account_projections(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     account_ids: &[Uuid],
 ) -> Result<Vec<crate::account_history_query::AccountProjection>, NodeQueryError> {
     let rows = public::accounts::table
-        .filter(public::accounts::household_id.eq(household_id))
+        .filter(public::accounts::household_id.eq_any(household_ids))
+        .filter(public::accounts::id.eq_any(account_ids))
+        .select((
+            public::accounts::id,
+            public::accounts::name,
+            public::accounts::kind,
+            public::accounts::card_last4,
+            public::accounts::pool_id,
+        ))
+        .load::<(Uuid, String, String, Option<String>, Option<Uuid>)>(conn)
+        .await?;
+    rows.into_iter()
+        .map(|(id, name, kind, card_last4, pool_id)| {
+            if !matches!(kind.as_str(), "BANK" | "CASH" | "CARD" | "OTHER") {
+                return Err(NodeQueryError::InvalidPersistedData);
+            }
+            Ok(crate::account_history_query::AccountProjection {
+                id,
+                name,
+                kind,
+                card_last4,
+                pool_id,
+            })
+        })
+        .collect()
+}
+
+async fn load_account_projections_for_households(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_ids: &[Uuid],
+    account_ids: &[Uuid],
+) -> Result<Vec<crate::account_history_query::AccountProjection>, NodeQueryError> {
+    let rows = public::accounts::table
+        .filter(public::accounts::household_id.eq_any(household_ids))
         .filter(public::accounts::id.eq_any(account_ids))
         .select((
             public::accounts::id,
@@ -398,18 +583,72 @@ pub async fn load_account_opening_balance_node(
             public::accounts::id,
             public::accounts::name,
             public::accounts::kind,
+            public::accounts::card_last4,
+            public::accounts::pool_id,
         ))
-        .first::<(Uuid, String, String)>(&mut *conn)
+        .first::<(Uuid, String, String, Option<String>, Option<Uuid>)>(&mut *conn)
         .await
         .optional()?
         .map(
-            |(account_id, account_name, account_kind)| AccountOpeningBalanceNodeResult {
-                account_id,
-                account_name,
-                account_kind,
+            |(account_id, account_name, account_kind, card_last4, pool_id)| {
+                AccountOpeningBalanceNodeResult {
+                    account_id,
+                    account_name,
+                    account_kind,
+                    card_last4,
+                    pool_id,
+                }
             },
         );
     Ok(result)
+}
+
+pub async fn load_account_opening_balance_nodes(
+    pool: &PgPool,
+    household_ids: &[Uuid],
+    account_ids: &[Uuid],
+) -> Result<HashMap<Uuid, AccountOpeningBalanceNodeResult>, NodeQueryError> {
+    if household_ids.is_empty() || account_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| NodeQueryError::Pool(error.to_string()))?;
+    Ok(public::accounts::table
+        .inner_join(
+            public::journals::table.on(public::journals::household_id
+                .eq(public::accounts::household_id)
+                .and(public::journals::source_id.eq(public::accounts::id))
+                .and(public::journals::source_kind.eq("ACCOUNT_OPENING_BALANCE"))),
+        )
+        .filter(public::accounts::household_id.eq_any(household_ids))
+        .filter(public::accounts::id.eq_any(account_ids))
+        .select((
+            public::accounts::id,
+            public::accounts::name,
+            public::accounts::kind,
+            public::accounts::card_last4,
+            public::accounts::pool_id,
+        ))
+        .load::<(Uuid, String, String, Option<String>, Option<Uuid>)>(&mut *conn)
+        .await?
+        .into_iter()
+        .map(
+            |(account_id, account_name, account_kind, card_last4, pool_id)| {
+                (
+                    account_id,
+                    AccountOpeningBalanceNodeResult {
+                        account_id,
+                        account_name,
+                        account_kind,
+                        card_last4,
+                        pool_id,
+                    },
+                )
+            },
+        )
+        .collect())
 }
 
 pub async fn active_household_ids(

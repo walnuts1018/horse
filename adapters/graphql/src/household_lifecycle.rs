@@ -620,7 +620,7 @@ pub(crate) fn resolve_household_node_from_model(
     node
 }
 
-fn map_invitation(
+pub(crate) fn map_invitation(
     value: postgres_invitation::InvitationStateDto,
     now: chrono::DateTime<Utc>,
 ) -> Result<HouseholdInvitation> {

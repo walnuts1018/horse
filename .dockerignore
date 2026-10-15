@@ -25,9 +25,6 @@ LICENSE
 README.md
 plan.md
 docs
-**/*_test.go
-cmd/evaluate
-internal/evaluation
 coverage
 tmp
 *.log

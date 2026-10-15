@@ -112,19 +112,19 @@ pub enum FundingScheduleCadence {
 #[derive(Clone, Debug, SimpleObject)]
 #[graphql(name = "Allocation")]
 pub struct AllocationObject {
-    pool_id: ID,
-    pool_name: String,
-    weight: Long,
+    pub(crate) pool_id: ID,
+    pub(crate) pool_name: String,
+    pub(crate) weight: Long,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
 #[graphql(name = "AllocationRule")]
 pub struct AllocationRuleObject {
     pub(crate) id: ID,
-    household_id: ID,
-    target: crate::catalog_mutations::AllocationRuleTarget,
-    revision: i32,
-    allocations: Vec<AllocationObject>,
+    pub(crate) household_id: ID,
+    pub(crate) target: crate::catalog_mutations::AllocationRuleTarget,
+    pub(crate) revision: i32,
+    pub(crate) allocations: Vec<AllocationObject>,
 }
 
 #[derive(Clone, Debug, SimpleObject)]

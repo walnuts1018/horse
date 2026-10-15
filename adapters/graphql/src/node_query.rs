@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::ledger_entry::{self, LedgerEntry};
 
 pub async fn graphql_node(ctx: &Context<'_>, global_id: ID) -> Result<Option<ledger_entry::Node>> {
-    graphql_node_with_households(ctx, global_id, None, None).await
+    graphql_node_with_households(ctx, global_id, None, None, None, None).await
 }
 
 async fn graphql_node_with_households(
@@ -18,11 +18,16 @@ async fn graphql_node_with_households(
     global_id: ID,
     known_households: Option<&[Uuid]>,
     preloaded_household_nodes: Option<&HashMap<(String, Uuid), ledger_entry::Node>>,
+    preloaded_settlements: Option<&HashMap<(Uuid, String), ledger_entry::Node>>,
+    preloaded_observations: Option<&HashMap<(Uuid, String), ledger_entry::Node>>,
 ) -> Result<Option<ledger_entry::Node>> {
     let decoded = decode_relay_id(&global_id)?;
     match decoded.type_name.as_str() {
         "UnmatchedObservation" => {
             let (document_id, source_reference) = decode_unmatched_payload(&decoded.payload)?;
+            if let Some(observations) = preloaded_observations {
+                return Ok(observations.get(&(document_id, source_reference)).cloned());
+            }
             let household_ids = match known_households {
                 Some(household_ids) => household_ids.to_vec(),
                 None => {
@@ -47,13 +52,24 @@ async fn graphql_node_with_households(
             }
             Ok(None)
         }
-        "Settlement" => resolve_settlement_node(ctx, &decoded.payload).await,
+        "Settlement" => {
+            if let Some(settlements) = preloaded_settlements {
+                let key = decode_settlement_payload(&decoded.payload)?;
+                return Ok(settlements.get(&key).cloned());
+            }
+            resolve_settlement_node(ctx, &decoded.payload).await
+        }
         type_name => {
             if !is_known_node_type(type_name) {
                 return Err(Error::new(format!("unknown node type {type_name:?}")));
             }
             let id = decode_uuid_payload(type_name, &decoded.payload)?;
             if type_name == "Household" {
+                if let Some(node) = preloaded_household_nodes
+                    .and_then(|nodes| nodes.get(&(type_name.to_owned(), id)))
+                {
+                    return Ok(Some(node.clone()));
+                }
                 return crate::household_query::graphql_household(
                     ctx,
                     encode_global_node_id("Household", id),
@@ -64,10 +80,10 @@ async fn graphql_node_with_households(
             if !is_supported_node_type(type_name) {
                 return Ok(None);
             }
-            if matches!(type_name, "Account" | "Category" | "Member" | "Pool") {
-                return Ok(preloaded_household_nodes
-                    .and_then(|nodes| nodes.get(&(type_name.to_owned(), id)))
-                    .cloned());
+            if let Some(nodes) = preloaded_household_nodes {
+                if is_batched_node_type(type_name) {
+                    return Ok(nodes.get(&(type_name.to_owned(), id)).cloned());
+                }
             }
             let household_ids = match known_households {
                 Some(household_ids) => household_ids.to_vec(),
@@ -205,8 +221,19 @@ fn is_supported_node_type(type_name: &str) -> bool {
             | "Category"
             | "Member"
             | "Pool"
+            | "FundingSchedule"
+            | "Budget"
+            | "LoanBalance"
+            | "AllocationRule"
+            | "HouseholdInvitation"
+            | "ProductAlias"
+            | "ProductConcept"
+            | "ProductVariant"
             | "Purchase"
             | "PurchaseCorrection"
+            | "PurchaseItem"
+            | "RecurringExpense"
+            | "Tag"
             | "LedgerEntry"
     )
 }
@@ -215,19 +242,7 @@ async fn resolve_settlement_node(
     ctx: &Context<'_>,
     payload: &[u8],
 ) -> Result<Option<ledger_entry::Node>> {
-    let payload = std::str::from_utf8(payload)
-        .map_err(|_| Error::new("invalid Settlement node ID payload"))?;
-    let (household_id, period) = payload
-        .split_once(':')
-        .ok_or_else(|| Error::new("invalid Settlement node ID payload"))?;
-    let household_id =
-        Uuid::parse_str(household_id).map_err(|_| Error::new("invalid Settlement household ID"))?;
-    if household_id.is_nil() {
-        return Err(Error::new("invalid Settlement household ID"));
-    }
-    if period.len() != 7 || period.as_bytes().get(4) != Some(&b'-') {
-        return Err(Error::new("invalid Settlement period"));
-    }
+    let (household_id, period) = decode_settlement_payload(payload)?;
     let month = NaiveDate::parse_from_str(&format!("{period}-01"), "%Y-%m-%d")
         .map_err(|_| Error::new("invalid Settlement period"))?;
     match crate::settlement_mutations::settlement(
@@ -255,6 +270,36 @@ async fn resolve_settlement_node(
     }
 }
 
+fn decode_settlement_payload(payload: &[u8]) -> Result<(Uuid, String)> {
+    let payload = std::str::from_utf8(payload)
+        .map_err(|_| Error::new("invalid Settlement node ID payload"))?;
+    let (household_id, period) = payload
+        .split_once(':')
+        .ok_or_else(|| Error::new("invalid Settlement node ID payload"))?;
+    let household_id =
+        Uuid::parse_str(household_id).map_err(|_| Error::new("invalid Settlement household ID"))?;
+    if household_id.is_nil() {
+        return Err(Error::new("invalid Settlement household ID"));
+    }
+    if period.len() != 7 || period.as_bytes().get(4) != Some(&b'-') {
+        return Err(Error::new("invalid Settlement period"));
+    }
+    NaiveDate::parse_from_str(&format!("{period}-01"), "%Y-%m-%d")
+        .map_err(|_| Error::new("invalid Settlement period"))?;
+    Ok((household_id, period.to_owned()))
+}
+
+fn map_settlement_node(settlement: crate::settlement_mutations::Settlement) -> ledger_entry::Node {
+    match settlement {
+        crate::settlement_mutations::Settlement::OpenSettlement(value) => {
+            ledger_entry::Node::OpenSettlement(value)
+        }
+        crate::settlement_mutations::Settlement::ClosedSettlement(value) => {
+            ledger_entry::Node::ClosedSettlement(value)
+        }
+    }
+}
+
 pub async fn graphql_nodes(
     ctx: &Context<'_>,
     global_ids: Vec<ID>,
@@ -262,23 +307,89 @@ pub async fn graphql_nodes(
     if global_ids.is_empty() {
         return Ok(Vec::new());
     }
+    for global_id in &global_ids {
+        let decoded = decode_relay_id(global_id)?;
+        match decoded.type_name.as_str() {
+            "Settlement" => {
+                decode_settlement_payload(&decoded.payload)?;
+            }
+            "UnmatchedObservation" => {
+                decode_unmatched_payload(&decoded.payload)?;
+            }
+            type_name => {
+                if !is_known_node_type(type_name) {
+                    return Err(Error::new(format!("unknown node type {type_name:?}")));
+                }
+                decode_uuid_payload(type_name, &decoded.payload)?;
+            }
+        }
+    }
     let actor = crate::actor(ctx)?;
     let household_ids = postgres_query::active_household_ids(ctx.data::<PgPool>()?, actor.0)
         .await
         .map_err(crate::internal_error)?;
     let mut household_node_ids = Vec::new();
+    let mut settlement_keys = Vec::new();
+    let mut observation_keys = Vec::new();
     for global_id in &global_ids {
         let decoded = decode_relay_id(global_id)?;
+        if decoded.type_name == "Settlement" {
+            let key = decode_settlement_payload(&decoded.payload)?;
+            if !household_ids.contains(&key.0) {
+                return Err(Error::new("not found"));
+            }
+            if !settlement_keys.contains(&key) {
+                settlement_keys.push(key);
+            }
+            continue;
+        }
+        if decoded.type_name == "UnmatchedObservation" {
+            let key = decode_unmatched_payload(&decoded.payload)?;
+            if !observation_keys.contains(&key) {
+                observation_keys.push(key);
+            }
+            continue;
+        }
         if matches!(
             decoded.type_name.as_str(),
-            "Account" | "Category" | "Member" | "Pool"
+            "Account"
+                | "Category"
+                | "Member"
+                | "Pool"
+                | "AccountOpeningBalance"
+                | "AccountMovement"
+                | "AccountIncome"
+                | "FundingSchedule"
+                | "Budget"
+                | "LoanBalance"
+                | "AllocationRule"
+                | "HouseholdInvitation"
+                | "ProductAlias"
+                | "ProductConcept"
+                | "ProductVariant"
+                | "RecurringExpense"
+                | "Tag"
+                | "LedgerEntry"
+                | "Purchase"
+                | "PurchaseItem"
+                | "PurchaseCorrection"
+                | "Household"
         ) {
             let id = decode_uuid_payload(&decoded.type_name, &decoded.payload)?;
             household_node_ids.push((decoded.type_name, id));
         }
     }
     let mut household_nodes = HashMap::new();
-    if !household_node_ids.is_empty() {
+    let household_types = household_node_ids
+        .iter()
+        .filter(|(type_name, _)| {
+            matches!(
+                type_name.as_str(),
+                "Account" | "Category" | "Member" | "Pool"
+            )
+        })
+        .collect::<Vec<_>>();
+    if !household_types.is_empty() {
         for household_id in &household_ids {
             let household = crate::household_lifecycle::load_household_graphql(
                 ctx.data::<PgPool>()?,
@@ -286,17 +397,188 @@ pub async fn graphql_nodes(
                 *household_id,
             )
             .await?;
-            for (type_name, id) in &household_node_ids {
+            for (type_name, id) in &household_types {
                 if let Some(node) = crate::household_lifecycle::resolve_household_node_from_model(
-                    &household, type_name, *id,
+                    &household, type_name, **id,
                 ) {
                     household_nodes
-                        .entry((type_name.clone(), *id))
+                        .entry(((*type_name).clone(), **id))
                         .or_insert(node);
                 }
             }
         }
     }
+    for (id, account) in postgres_query::load_account_opening_balance_nodes(
+        ctx.data::<PgPool>()?,
+        &household_ids,
+        &requested_ids(&household_node_ids, "AccountOpeningBalance"),
+    )
+    .await
+    .map_err(crate::internal_error)?
+    {
+        let kind = match account.account_kind.as_str() {
+            "BANK" => crate::account_mutations::AccountKind::Bank,
+            "CASH" => crate::account_mutations::AccountKind::Cash,
+            "CARD" => crate::account_mutations::AccountKind::Card,
+            "OTHER" => crate::account_mutations::AccountKind::Other,
+            value => {
+                return Err(crate::internal_error(format!(
+                    "invalid account kind {value}"
+                )));
+            }
+        };
+        household_nodes
+            .entry(("AccountOpeningBalance".to_owned(), id))
+            .or_insert(ledger_entry::Node::AccountOpeningBalance(
+                crate::account_balance_analysis::AccountOpeningBalance {
+                    id: encode_global_node_id("AccountOpeningBalance", id),
+                    account: crate::account_mutations::AccountObject {
+                        id: encode_global_node_id("Account", id),
+                        name: account.account_name,
+                        kind,
+                        card_last4: account.card_last4,
+                        pool_id: account.pool_id.map(|id| encode_global_node_id("Pool", id)),
+                    },
+                },
+            ));
+    }
+    for (id, value) in postgres_query::load_account_movement_nodes(
+        ctx.data::<PgPool>()?,
+        &household_ids,
+        &requested_ids(&household_node_ids, "AccountMovement"),
+    )
+    .await
+    .map_err(crate::internal_error)?
+    {
+        let kind = match value.kind.as_str() {
+            "TRANSFER" => crate::account_mutations::AccountMovementKind::Transfer,
+            "CARD_BILL_PAYMENT" => crate::account_mutations::AccountMovementKind::CardBillPayment,
+            other => {
+                return Err(crate::internal_error(format!(
+                    "invalid account movement kind {other}"
+                )));
+            }
+        };
+        household_nodes
+            .entry(("AccountMovement".to_owned(), id))
+            .or_insert(ledger_entry::Node::AccountMovement(
+                crate::account_mutations::AccountMovementObject {
+                    id: encode_global_node_id("AccountMovement", value.id),
+                    household_id: encode_global_node_id("Household", value.household_id),
+                    kind,
+                    occurred_at: value.occurred_at.into(),
+                    from_account_id: encode_global_node_id("Account", value.from_account_id),
+                    from_account: value.from_account.into(),
+                    to_account_id: encode_global_node_id("Account", value.to_account_id),
+                    to_account: value.to_account.into(),
+                    amount_yen: crate::Long(value.amount_yen),
+                    currency: "JPY".to_owned(),
+                    description: value.description,
+                    created_at: value.created_at.into(),
+                },
+            ));
+    }
+    for (id, value) in postgres_query::load_account_income_nodes(
+        ctx.data::<PgPool>()?,
+        &household_ids,
+        &requested_ids(&household_node_ids, "AccountIncome"),
+    )
+    .await
+    .map_err(crate::internal_error)?
+    {
+        household_nodes
+            .entry(("AccountIncome".to_owned(), id))
+            .or_insert(ledger_entry::Node::AccountIncome(
+                crate::account_mutations::AccountIncomeObject {
+                    id: encode_global_node_id("AccountIncome", value.id),
+                    household_id: encode_global_node_id("Household", value.household_id),
+                    account_id: encode_global_node_id("Account", value.account_id),
+                    amount_yen: crate::Long(value.amount_yen),
+                    currency: "JPY".to_owned(),
+                    occurred_at: value.occurred_at.into(),
+                    description: value.description,
+                    created_at: value.created_at.into(),
+                },
+            ));
+    }
+    let financial_batches = [
+        (
+            "FundingSchedule",
+            crate::node_financial_batch::load_funding_schedules(
+                ctx.data::<PgPool>()?,
+                &household_ids,
+                &requested_ids(&household_node_ids, "FundingSchedule"),
+            )
+            .await?,
+        ),
+        (
+            "Budget",
+            crate::node_financial_batch::load_budgets(
+                ctx.data::<PgPool>()?,
+                &household_ids,
+                &requested_ids(&household_node_ids, "Budget"),
+            )
+            .await?,
+        ),
+        (
+            "LoanBalance",
+            crate::node_financial_batch::load_loan_balances(
+                ctx.data::<PgPool>()?,
+                &household_ids,
+                &requested_ids(&household_node_ids, "LoanBalance"),
+            )
+            .await?,
+        ),
+    ];
+    for (type_name, nodes) in financial_batches {
+        household_nodes.extend(
+            nodes
+                .into_iter()
+                .map(|(id, node)| ((type_name.to_owned(), id), node)),
+        );
+    }
+    let household_ids_requested = requested_ids(&household_node_ids, "Household");
+    if !household_ids_requested.is_empty() {
+        for household in
+            crate::household_query::load_households_for_actor(ctx.data::<PgPool>()?, actor.0)
+                .await?
+        {
+            let Ok(id) = decode_global_node_id(&household.id, "Household") else {
+                continue;
+            };
+            if household_ids_requested.contains(&id) {
+                household_nodes.insert(
+                    ("Household".to_owned(), id),
+                    ledger_entry::Node::Household(household),
+                );
+            }
+        }
+    }
+    household_nodes.extend(
+        crate::node_batch_catalog_planning::load(ctx, &household_ids, &household_node_ids).await?,
+    );
+    household_nodes.extend(
+        crate::node_ledger_entry_batch::load(
+            ctx,
+            &household_ids,
+            &requested_ids(&household_node_ids, "LedgerEntry"),
+        )
+        .await?
+        .into_iter()
+        .map(|(id, node)| (("LedgerEntry".to_owned(), id), node)),
+    );
+    household_nodes
+        .extend(crate::node_purchase_batch::load(ctx, &household_ids, &household_node_ids).await?);
+    let settlements = crate::settlement_mutations::load_settlements_for_nodes(
+        ctx.data::<PgPool>()?,
+        &settlement_keys,
+    )
+    .await?
+    .into_iter()
+    .map(|(key, settlement)| (key, map_settlement_node(settlement)))
+    .collect::<HashMap<_, _>>();
+    let observations =
+        crate::node_observation_batch::load(ctx, &household_ids, &observation_keys).await?;
     let mut result = Vec::with_capacity(global_ids.len());
     for global_id in global_ids {
         result.push(
@@ -305,11 +587,51 @@ pub async fn graphql_nodes(
                 global_id,
                 Some(&household_ids),
                 Some(&household_nodes),
+                Some(&settlements),
+                Some(&observations),
             )
             .await?,
         );
     }
     Ok(result)
+}
+
+fn requested_ids(requested: &[(String, Uuid)], type_name: &str) -> Vec<Uuid> {
+    let mut ids = Vec::new();
+    for (requested_type, id) in requested {
+        if requested_type == type_name && !ids.contains(id) {
+            ids.push(*id);
+        }
+    }
+    ids
+}
+
+fn is_batched_node_type(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "Account"
+            | "Category"
+            | "Member"
+            | "Pool"
+            | "AccountOpeningBalance"
+            | "AccountMovement"
+            | "AccountIncome"
+            | "FundingSchedule"
+            | "Budget"
+            | "LoanBalance"
+            | "AllocationRule"
+            | "HouseholdInvitation"
+            | "ProductAlias"
+            | "ProductConcept"
+            | "ProductVariant"
+            | "RecurringExpense"
+            | "Tag"
+            | "LedgerEntry"
+            | "Purchase"
+            | "PurchaseItem"
+            | "PurchaseCorrection"
+            | "Household"
+    )
 }
 
 pub(crate) async fn resolve_graphql_node(
@@ -328,6 +650,36 @@ pub(crate) async fn resolve_graphql_node(
     }
 
     match type_name {
+        "FundingSchedule" => {
+            crate::node_financial_batch::load_funding_schedules(pool, &[household_id], &[id])
+                .await?
+                .remove(&id)
+                .ok_or_else(|| Error::new("not found"))
+        }
+        "Budget" => crate::node_financial_batch::load_budgets(pool, &[household_id], &[id])
+            .await?
+            .remove(&id)
+            .ok_or_else(|| Error::new("not found")),
+        "LoanBalance" => {
+            crate::node_financial_batch::load_loan_balances(pool, &[household_id], &[id])
+                .await?
+                .remove(&id)
+                .ok_or_else(|| Error::new("not found"))
+        }
+        "AllocationRule"
+        | "HouseholdInvitation"
+        | "ProductAlias"
+        | "ProductConcept"
+        | "ProductVariant"
+        | "RecurringExpense"
+        | "Tag" => crate::node_batch_catalog_planning::load(
+            ctx,
+            &[household_id],
+            &[(type_name.to_owned(), id)],
+        )
+        .await?
+        .remove(&(type_name.to_owned(), id))
+        .ok_or_else(|| Error::new("not found")),
         "Account" | "Category" | "Member" | "Pool" => {
             crate::household_lifecycle::resolve_household_node(
                 pool,
@@ -362,20 +714,17 @@ pub(crate) async fn resolve_graphql_node(
                         id: encode_global_node_id("Account", account.account_id),
                         name: account.account_name,
                         kind,
-                        card_last4: None,
-                        pool_id: None,
+                        card_last4: account.card_last4,
+                        pool_id: account.pool_id.map(|id| encode_global_node_id("Pool", id)),
                     },
                 },
             ))
         }
-        "Purchase" => {
-            let purchase =
-                crate::purchase_mutations::purchase_result(pool, household_id, &id.to_string())
-                    .await?;
-            Ok(ledger_entry::Node::Purchase(purchase))
-        }
-        "PurchaseCorrection" => {
-            crate::purchase_mutations::resolve_purchase_correction_node(ctx, household_id, id).await
+        "Purchase" | "PurchaseItem" | "PurchaseCorrection" => {
+            crate::node_purchase_batch::load(ctx, &[household_id], &[(type_name.to_owned(), id)])
+                .await?
+                .remove(&(type_name.to_owned(), id))
+                .ok_or_else(|| Error::new("not found"))
         }
         "AccountMovement" => {
             let projection = postgres_query::load_account_movement_node(pool, household_id, id)

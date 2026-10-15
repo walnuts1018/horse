@@ -1,1 +1,0 @@
-ALTER TABLE evidence_links ALTER COLUMN item_id DROP NOT NULL;

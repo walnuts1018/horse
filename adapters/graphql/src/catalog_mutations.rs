@@ -63,10 +63,10 @@ pub struct SetProductAliasInput {
 #[derive(Clone, Debug, SimpleObject)]
 pub struct Tag {
     pub(crate) id: ID,
-    household_id: ID,
-    name: String,
-    archived: bool,
-    revision: i32,
+    pub(crate) household_id: ID,
+    pub(crate) name: String,
+    pub(crate) archived: bool,
+    pub(crate) revision: i32,
 }
 
 #[derive(Clone, Debug, SimpleObject)]

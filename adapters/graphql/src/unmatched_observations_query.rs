@@ -21,28 +21,28 @@ pub enum UnmatchedObservationState {
 #[derive(Clone, Debug, SimpleObject)]
 pub struct UnmatchedObservation {
     pub(crate) id: ID,
-    document_id: ID,
-    source_reference: String,
-    source_kind: SourceKind,
-    merchant: String,
-    occurred_at: Option<DateTime>,
-    amount_yen: Long,
-    order_id: String,
-    transaction_id: String,
+    pub(crate) document_id: ID,
+    pub(crate) source_reference: String,
+    pub(crate) source_kind: SourceKind,
+    pub(crate) merchant: String,
+    pub(crate) occurred_at: Option<DateTime>,
+    pub(crate) amount_yen: Long,
+    pub(crate) order_id: String,
+    pub(crate) transaction_id: String,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct ConfirmedObservation {
     pub(crate) id: ID,
-    document_id: ID,
-    source_reference: String,
-    source_kind: SourceKind,
-    merchant: String,
-    occurred_at: Option<DateTime>,
-    amount_yen: Long,
-    order_id: String,
-    transaction_id: String,
-    purchase: PurchaseObject,
+    pub(crate) document_id: ID,
+    pub(crate) source_reference: String,
+    pub(crate) source_kind: SourceKind,
+    pub(crate) merchant: String,
+    pub(crate) occurred_at: Option<DateTime>,
+    pub(crate) amount_yen: Long,
+    pub(crate) order_id: String,
+    pub(crate) transaction_id: String,
+    pub(crate) purchase: PurchaseObject,
 }
 
 #[derive(Clone, Debug, Interface)]
@@ -260,7 +260,7 @@ fn encode_cursor(document_id: Uuid, source_reference: &str) -> String {
     };
     URL_SAFE_NO_PAD.encode(serde_json::to_vec(&value).expect("cursor payload serializes"))
 }
-fn encode_node_id(document_id: Uuid, reference: &str) -> Result<ID> {
+pub(crate) fn encode_node_id(document_id: Uuid, reference: &str) -> Result<ID> {
     let mut bytes = b"UnmatchedObservation:".to_vec();
     bytes.extend_from_slice(document_id.as_bytes());
     bytes.push(0);
@@ -268,7 +268,7 @@ fn encode_node_id(document_id: Uuid, reference: &str) -> Result<ID> {
     bytes.extend_from_slice(reference.as_bytes());
     Ok(ID(URL_SAFE_NO_PAD.encode(bytes)))
 }
-fn parse_source_kind(value: &str) -> Result<SourceKind> {
+pub(crate) fn parse_source_kind(value: &str) -> Result<SourceKind> {
     match value.to_ascii_uppercase().as_str() {
         "RECEIPT" => Ok(SourceKind::Receipt),
         "ORDER" => Ok(SourceKind::Order),

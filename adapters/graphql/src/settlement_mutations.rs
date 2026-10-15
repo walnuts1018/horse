@@ -166,7 +166,7 @@ pub async fn settlement(
 }
 
 async fn load_settlement(pool: &PgPool, household_id: Uuid, period: &str) -> Result<Settlement> {
-    let mut result = postgres_settlement::get_many(
+    let result = postgres_settlement::get_many(
         pool,
         &[GetSettlementQuery {
             household_id: household_id.to_string(),
@@ -178,8 +178,45 @@ async fn load_settlement(pool: &PgPool, household_id: Uuid, period: &str) -> Res
     .into_iter()
     .next()
     .ok_or_else(|| crate::internal_error("settlement query returned no result"))?;
+    map_settlement_result(result)
+}
+
+pub(crate) async fn load_settlements_for_nodes(
+    pool: &PgPool,
+    requested: &[(Uuid, String)],
+) -> Result<std::collections::HashMap<(Uuid, String), Settlement>> {
+    if requested.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let queries = requested
+        .iter()
+        .map(|(household_id, period)| GetSettlementQuery {
+            household_id: household_id.to_string(),
+            period: period.clone(),
+        })
+        .collect::<Vec<_>>();
+    let values = postgres_settlement::get_many(pool, &queries)
+        .await
+        .map_err(crate::internal_error)?;
+    values
+        .into_iter()
+        .map(|result| {
+            let household_id =
+                Uuid::parse_str(&result.household_id).map_err(crate::internal_error)?;
+            let period = result.period.clone();
+            let settlement = map_settlement_result(result)?;
+            Ok(((household_id, period), settlement))
+        })
+        .collect()
+}
+
+fn map_settlement_result(
+    mut result: bookkeeping_application::settlement_query::SettlementQueryResult,
+) -> Result<Settlement> {
+    let household_id = Uuid::parse_str(&result.household_id).map_err(crate::internal_error)?;
+    let period_value = result.period.clone();
     let household_node_id = encode_uuid_node("Household", household_id)?;
-    let settlement_id = encode_settlement_id(household_id, period);
+    let settlement_id = encode_settlement_id(household_id, &period_value);
     let mut lines = Vec::with_capacity(result.lines.len());
     for line in result.lines.drain(..) {
         let member_id = Uuid::parse_str(&line.member_id).map_err(crate::internal_error)?;
@@ -222,7 +259,7 @@ async fn load_settlement(pool: &PgPool, household_id: Uuid, period: &str) -> Res
     }
     let revision = i32::try_from(result.revision).map_err(crate::internal_error)?;
     let period = super::policy_mutations::YearMonth::from_naive_date(
-        chrono::NaiveDate::parse_from_str(&format!("{}-01", result.period), "%Y-%m-%d")
+        chrono::NaiveDate::parse_from_str(&format!("{}-01", period_value), "%Y-%m-%d")
             .map_err(crate::internal_error)?,
     );
     match result.status.as_str() {
