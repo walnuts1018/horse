@@ -47,7 +47,7 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 
 一方、`households()`と`viewer()`は所属情報を取得した後、`loadHouseholds()`でHouseholdの基本情報と要求された詳細をまとめて取得し、所属情報の順序に合わせて結果を組み立てます。resolverの選択fieldに応じた専用loaderを各フィールドに用意しておらず、Household以外の親子関係を含む要求を汎用的にbatchする仕組みもありません。特にNode解決や複数親から同じ関連データを参照するクエリについて、クエリ数と取得範囲を確認し、必要ならBobの一括取得を使うbatch loaderを追加する余地があります。
 
-Member、Account、Category、Household、Pool Nodeの複数ID解決では、所属確認と対象データ取得をBobで一括取得するよう変更しました。重複IDを含む順序維持、家庭所属の認可、CategoryのParentID mappingをfocused integration testで確認しています。単一LedgerEntry Nodeもbatch loaderへ通し、既存テストでLoanBalanceを含む型を解決できることを確認しました。`nodes(ids:)`で複数のUnmatchedObservation Nodeを取得する経路も、所属家庭、SourceObservation、DocumentConfirmation、必要なCorrectionをまとめて取得するよう変更しました。複合Node IDの重複、順序、未存在行、家庭所属の認可をfocused integration testで確認しました。Settlement Nodeは個別解決のままです。
+Member、Account、Category、Household、Pool Nodeの複数ID解決では、所属確認と対象データ取得をBobで一括取得するよう変更しました。重複IDを含む順序維持、家庭所属の認可、CategoryのParentID mappingをfocused integration testで確認しています。単一LedgerEntry Nodeもbatch loaderへ通し、既存テストでLoanBalanceを含む型を解決できることを確認しました。`nodes(ids:)`で複数のUnmatchedObservation Nodeを取得する経路も、所属家庭、SourceObservation、DocumentConfirmation、必要なCorrectionをまとめて取得するよう変更しました。複合Node IDの重複、順序、未存在行、家庭所属の認可をfocused integration testで確認しました。Settlement Nodeのclosed run取得を一括化しました。未確定periodのpreview計算はSettlement Serviceを個別に呼び出します。
 
 また、`loadHousehold()`と`loadPurchases()`は取得データからGraphQL表示モデルを組み立てる処理も担っています。Householdの未要求詳細取得は解消しましたが、表示モデル組み立ての責務や`loadPurchases()`の大きさ、残るNode解決のbatchingは引き続き見直し対象です。
 

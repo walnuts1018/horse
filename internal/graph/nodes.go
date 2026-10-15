@@ -135,18 +135,27 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 			result[index] = node
 		}
 	}
-
-	for index, nodeID := range decoded {
-		if nodeID.kind != nodeTypeSettlement {
-			continue
-		}
-		node, err := r.node(ctx, ids[index])
+	if hasSettlementNode(decoded) {
+		resolved, err := r.loadSettlementNodes(ctx, decoded)
 		if err != nil {
 			return nil, err
 		}
-		result[index] = node
+		for index, node := range resolved {
+			if decoded[index].kind == nodeTypeSettlement {
+				result[index] = node
+			}
+		}
 	}
 	return result, nil
+}
+
+func hasSettlementNode(nodes []decodedNodeID) bool {
+	for _, node := range nodes {
+		if node.kind == nodeTypeSettlement {
+			return true
+		}
+	}
+	return false
 }
 
 func requiresLoadedHouseholdNodeData(kind string) bool {

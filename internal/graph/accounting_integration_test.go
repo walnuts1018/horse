@@ -888,6 +888,39 @@ func TestSettlementUsesPoolFundingSnapshotAndCarriesClosedBalanceOnce(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
+	closedNodeID, err := encodeSettlementNodeID(household.ID, testApril2026)
+	if err != nil {
+		t.Fatal(err)
+	}
+	openNodeID, err := encodeSettlementNodeID(household.ID, "2026-06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	settlementNodes, err := apiResolver.Query().Nodes(ctx, []string{closedNodeID, openNodeID, closedNodeID})
+	if err != nil || len(settlementNodes) != 3 {
+		t.Fatalf("batch settlement node lookup failed: nodes=%#v error=%v", settlementNodes, err)
+	}
+	batchClosed, closedOK := settlementNodes[0].(*model.ClosedSettlement)
+	batchOpen, openOK := settlementNodes[1].(*model.OpenSettlement)
+	duplicateClosed, duplicateOK := settlementNodes[2].(*model.ClosedSettlement)
+	if !closedOK || !openOK || !duplicateOK || batchClosed.ID != closedNodeID || duplicateClosed.ID != closedNodeID || batchOpen.Period != "2026-06" {
+		t.Fatalf("batch settlement nodes did not preserve order, duplicates, or open periods: %#v", settlementNodes)
+	}
+	otherMemberContext := auth.WithPrincipal(ctx, auth.Principal{MemberID: memberB, Subject: "settlement-integration:" + memberB, DisplayName: "B"})
+	foreignHousehold, err := mutation.createHousehold(otherMemberContext, model.CreateHouseholdInput{Name: "other settlement household"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = models.Households.Delete(dm.Where(models.Households.Columns.ID.EQ(psql.Arg(foreignHousehold.ID)))).Exec(t.Context(), bobpgx.NewPool(db))
+	}()
+	foreignSettlementID, err := encodeSettlementNodeID(foreignHousehold.ID, testApril2026)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := apiResolver.Query().Nodes(ctx, []string{closedNodeID, foreignSettlementID}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("batch settlement node lookup exposed another household: %v", err)
+	}
 	reloadedLines := settlementByMember(t, settlementData(t, reloadedClosed).Lines)
 	if reloadedLines[memberA].AmountDueYen != 400 || reloadedLines[memberA].MonthlyAdjustmentYen != 400 || reloadedLines[memberB].AmountDueYen != -400 || reloadedLines[memberB].MonthlyAdjustmentYen != -400 {
 		t.Fatalf("editing a pool rule rewrote the closed snapshot: %#v", reloadedLines)
