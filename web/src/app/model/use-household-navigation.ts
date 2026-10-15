@@ -42,7 +42,6 @@ export function useHouseholdNavigation(unsavedChangesRegistry: UnsavedChangesReg
       void navigate({
         to: toByPage[nextPage],
         params: { householdId: id },
-        search: true,
         replace,
       });
     },

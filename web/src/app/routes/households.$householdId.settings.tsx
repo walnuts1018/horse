@@ -12,7 +12,6 @@ export const Route = createFileRoute("/households/$householdId/settings")({
   validateSearch: (
     search: Record<string, unknown>,
   ): Record<string, unknown> & { tab?: SettingsTab } => ({
-    ...search,
     tab: isSettingsTab(search.tab) ? search.tab : defaultSettingsTab,
   }),
   component: HouseholdSettings,

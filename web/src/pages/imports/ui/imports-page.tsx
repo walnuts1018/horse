@@ -524,7 +524,6 @@ export function ImportsPage({
               className="button button-soft"
               to="/households/$householdId/new"
               params={{ householdId: household.id }}
-              search
             >
               <PenLine size={16} />
               手入力で追加

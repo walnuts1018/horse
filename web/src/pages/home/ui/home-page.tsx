@@ -127,7 +127,6 @@ export function HomePage({
           className="button button-primary"
           to="/households/$householdId/new"
           params={{ householdId: household.id }}
-          search
           onClick={onNavigateToPurchase}
         >
           <Plus size={17} /> 買い物を追加
@@ -156,7 +155,6 @@ export function HomePage({
               className="text-button"
               to="/households/$householdId/analysis"
               params={{ householdId: household.id }}
-              search
             >
               分析を見る <ChevronRight size={15} />
             </Link>
@@ -190,7 +188,6 @@ export function HomePage({
             className="button button-soft"
             to="/households/$householdId/settlement"
             params={{ householdId: household.id }}
-            search
           >
             精算を確認 <ChevronRight size={16} />
           </Link>
@@ -215,7 +212,6 @@ export function HomePage({
           className="quick-card"
           to="/households/$householdId/imports"
           params={{ householdId: household.id }}
-          search
         >
           <span className="quick-icon" aria-hidden="true">
             <Upload />
@@ -235,7 +231,6 @@ export function HomePage({
           className="text-button"
           to="/households/$householdId/ledger"
           params={{ householdId: household.id }}
-          search
         >
           帳簿を見る <ChevronRight size={15} />
         </Link>
@@ -251,7 +246,6 @@ export function HomePage({
                 className="text-button"
                 to="/households/$householdId/new"
                 params={{ householdId: household.id }}
-                search
                 onClick={onNavigateToPurchase}
               >
                 最初の買い物を追加 <ChevronRight size={15} />

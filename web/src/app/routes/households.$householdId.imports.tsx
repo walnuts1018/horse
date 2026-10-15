@@ -5,7 +5,10 @@ import { ImportsPage, parseDocumentFilters, serializeDocumentFilters } from "../
 import { useHouseholdRouteContext } from "../household-route-context";
 
 export const Route = createFileRoute("/households/$householdId/imports")({
-  validateSearch: (search: Record<string, unknown>) => search,
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...serializeDocumentFilters(parseDocumentFilters(search)),
+    ...(search.capture === "1" ? { capture: "1" } : {}),
+  }),
   component: HouseholdImports,
 });
 

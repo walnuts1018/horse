@@ -306,7 +306,6 @@ export function App() {
                 className="brand"
                 to="/households/$householdId"
                 params={{ householdId: householdId ?? "" }}
-                search
               >
                 <span className="brand-mark">h</span>
                 <span>
@@ -448,7 +447,6 @@ export function App() {
                   className={`sync-status-pill ${failedOutboxCount ? "sync-status-error" : ""}`}
                   to="/households/$householdId/new"
                   params={{ householdId: householdId ?? "" }}
-                  search
                   onClick={(event) => {
                     if (!household) {
                       event.preventDefault();
@@ -473,7 +471,6 @@ export function App() {
                 className="search-pill"
                 to="/households/$householdId/ledger"
                 params={{ householdId: householdId ?? "" }}
-                search
               >
                 <Search size={16} />
                 <span>帳簿を開く</span>
@@ -552,7 +549,6 @@ export function App() {
             aria-current={page === "home" ? "page" : undefined}
             to="/households/$householdId"
             params={{ householdId: householdId ?? "" }}
-            search
           >
             <Home />
             <span>ホーム</span>
@@ -562,7 +558,6 @@ export function App() {
             aria-current={page === "ledger" ? "page" : undefined}
             to="/households/$householdId/ledger"
             params={{ householdId: householdId ?? "" }}
-            search
           >
             <BookOpen />
             <span>帳簿</span>
@@ -571,7 +566,6 @@ export function App() {
             className="dock-add"
             to="/households/$householdId/new"
             params={{ householdId: householdId ?? "" }}
-            search
             onClick={() => {
               onNavigateToPurchase();
             }}
@@ -584,7 +578,6 @@ export function App() {
             aria-current={page === "settlement" ? "page" : undefined}
             to="/households/$householdId/settlement"
             params={{ householdId: householdId ?? "" }}
-            search
           >
             <ArrowLeftRight />
             <span>精算</span>
@@ -594,7 +587,6 @@ export function App() {
             aria-current={page === "analysis" ? "page" : undefined}
             to="/households/$householdId/analysis"
             params={{ householdId: householdId ?? "" }}
-            search
           >
             <BarChart3 />
             <span>分析</span>
@@ -629,7 +621,6 @@ function NavItem({
       className={`nav-item ${active ? "nav-active" : ""}`}
       to={to}
       params={{ householdId }}
-      search
       aria-current={active ? "page" : undefined}
     >
       {icon}

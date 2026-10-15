@@ -85,7 +85,6 @@ export function SetupGuidance({
                 to="/households/$householdId/settings"
                 params={{ householdId: household.id }}
                 hash={step.hash}
-                search
                 aria-label={step.action}
               >
                 {step.action}
@@ -96,7 +95,6 @@ export function SetupGuidance({
                 className={`button button-soft ${styles.action}`}
                 to="/households/$householdId/new"
                 params={{ householdId: household.id }}
-                search
                 onClick={onNavigateToPurchase}
                 aria-label={step.action}
               >
