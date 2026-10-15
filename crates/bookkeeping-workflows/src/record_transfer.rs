@@ -446,11 +446,11 @@ mod tests {
 
     #[test]
     fn transfer_applies_loan_and_shared_repayment_adjustments() {
-        let mut base = base();
-        base.from_member_id = member("to");
-        base.to_member_id = member("from");
+        let mut loan_base = base();
+        loan_base.from_member_id = member("to");
+        loan_base.to_member_id = member("from");
         let decision = decide_record_transfer(RecordTransferCommand::Repayment {
-            base,
+            base: loan_base,
             loan: loan_basis(),
         })
         .unwrap();
