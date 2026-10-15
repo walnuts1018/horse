@@ -419,7 +419,11 @@ async fn upload_document(
 
 fn document_mime(filename: &str, declared: &str, data: &[u8]) -> Option<&'static str> {
     let lower = filename.to_ascii_lowercase();
-    if data.starts_with(b"%PDF-") && (declared == "application/pdf" || lower.ends_with(".pdf")) {
+    if declared == "message/rfc822" && (lower.ends_with(".eml") || lower.ends_with(".rfc822")) {
+        Some("message/rfc822")
+    } else if declared == "text/csv" && lower.ends_with(".csv") {
+        Some("text/csv")
+    } else if data.starts_with(b"%PDF-") && (declared == "application/pdf" || lower.ends_with(".pdf")) {
         Some("application/pdf")
     } else if data.starts_with(&[0xff, 0xd8, 0xff])
         && (declared == "image/jpeg" || lower.ends_with(".jpg") || lower.ends_with(".jpeg"))
@@ -514,6 +518,115 @@ async fn document_content(
             StatusCode::BAD_GATEWAY.into_response()
         }
     }
+}
+
+async fn events(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<Response, Response> {
+    let cookie = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let principal = match resolve_cookie(&state.pool, cookie).await {
+        Ok(Some(principal)) => principal,
+        Ok(None) => return Err(StatusCode::UNAUTHORIZED.into_response()),
+        Err(error) => {
+            tracing::error!(error = ?error, "Event stream session lookup failed");
+            return Err(StatusCode::SERVICE_UNAVAILABLE.into_response());
+        }
+    };
+    let household_id = query
+        .get("householdId")
+        .and_then(|value| uuid::Uuid::parse_str(value).ok())
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "household not found").into_response())?;
+    use horse_postgres_common::schema::public::household_members;
+    let mut pooled = state
+        .pool
+        .get()
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE.into_response())?;
+    let member = household_members::table
+        .filter(household_members::household_id.eq(household_id))
+        .filter(household_members::member_id.eq(principal.member_id))
+        .select(household_members::member_id)
+        .first::<uuid::Uuid>(&mut *pooled)
+        .await;
+    match member {
+        Ok(_) => {}
+        Err(diesel::result::Error::NotFound) => {
+            return Err((StatusCode::NOT_FOUND, "household not found").into_response());
+        }
+        Err(error) => {
+            tracing::error!(error = ?error, "Event stream membership lookup failed");
+            return Err(StatusCode::SERVICE_UNAVAILABLE.into_response());
+        }
+    }
+    let mut cursor = query
+        .get("after")
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0);
+    if let Some(last_event_id) = headers.get("last-event-id").and_then(|value| value.to_str().ok()) {
+        cursor = last_event_id.parse::<i64>().unwrap_or(cursor);
+    }
+    if cursor < 0 {
+        return Err((StatusCode::BAD_REQUEST, "invalid event cursor").into_response());
+    }
+    drop(pooled);
+    use horse_postgres_common::schema::public::household_events;
+    let stream = stream::unfold(
+        (state.pool, household_id, cursor),
+        |(pool, household_id, cursor)| async move {
+            let mut connection = match pool.get().await {
+                Ok(connection) => connection,
+                Err(_) => {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    return Some((Ok(Event::default().comment("keepalive")), (pool, household_id, cursor)));
+                }
+            };
+            let events = household_events::table
+                .filter(household_events::household_id.eq(household_id))
+                .filter(household_events::cursor.gt(cursor))
+                .order_by(household_events::cursor.asc())
+                .limit(100)
+                .select((
+                    household_events::cursor,
+                    household_events::event_type,
+                    household_events::entity_id,
+                    household_events::revision,
+                    household_events::changed_fields,
+                    household_events::created_at,
+                ))
+                .load::<(i64, String, uuid::Uuid, i64, Vec<Option<String>>, chrono::DateTime<chrono::Utc>)>(&mut *connection)
+                .await
+                .unwrap_or_default();
+            if let Some((event_cursor, event_type, entity_id, revision, changed_fields, created_at)) = events.first() {
+                let event = json!({
+                    "cursor": event_cursor,
+                    "type": event_type,
+                    "entityId": entity_id,
+                    "revision": revision,
+                    "changedFields": changed_fields.iter().flatten().collect::<Vec<_>>(),
+                    "occurredAt": created_at,
+                });
+                let stream_event = Event::default()
+                    .id(event_cursor.to_string())
+                    .event(event_type.clone())
+                    .json_data(event)
+                    .unwrap_or_else(|_| Event::default().comment("event encoding failed"));
+                return Some((Ok(stream_event), (pool, household_id, *event_cursor)));
+            }
+            drop(connection);
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            Some((Ok(Event::default().comment("keepalive")), (pool, household_id, cursor)))
+        },
+    );
+    let stream: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> =
+        Box::pin(stream);
+    Ok(Sse::new(stream)
+        .keep_alive(axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)))
+        .into_response())
 }
 
 async fn ready(State(state): State<ApiState>) -> StatusCode {

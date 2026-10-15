@@ -239,6 +239,101 @@ pub async fn register_document(
         .await
 }
 
+pub async fn enqueue_extraction_job(
+    pool: &PgPool,
+    household_id: Uuid,
+    document_id: Uuid,
+    actor_id: Uuid,
+    provider: &str,
+    model: &str,
+    idempotency_key: &str,
+    request: serde_json::Value,
+) -> Result<Uuid, RegisterDocumentError> {
+    if provider.is_empty() || provider.len() > 128 || model.len() > 256 {
+        return Err(RegisterDocumentError::InvalidInput("provider/model"));
+    }
+    if idempotency_key.is_empty() || idempotency_key.len() > 200 {
+        return Err(RegisterDocumentError::InvalidInput("idempotency_key"));
+    }
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|error| RegisterDocumentError::Pool(error.to_string()))?;
+    (&mut *pooled)
+        .transaction::<Uuid, RegisterDocumentError, _>(async move |conn| {
+            use horse_postgres_common::schema::public::{
+                extraction_jobs, household_events, source_documents,
+            };
+            let now = Utc::now();
+            let document_exists = source_documents::table
+                .filter(source_documents::household_id.eq(household_id))
+                .filter(source_documents::id.eq(document_id))
+                .select(source_documents::id)
+                .first::<Uuid>(conn)
+                .await
+                .optional()?
+                .is_some();
+            if !document_exists {
+                return Err(RegisterDocumentError::InvalidInput("document_id"));
+            }
+            let existing = extraction_jobs::table
+                .filter(extraction_jobs::household_id.eq(household_id))
+                .filter(extraction_jobs::idempotency_key.eq(idempotency_key))
+                .select(extraction_jobs::id)
+                .first::<Uuid>(conn)
+                .await
+                .optional()?;
+            if let Some(id) = existing {
+                return Ok(id);
+            }
+            let version = extraction_jobs::table
+                .filter(extraction_jobs::household_id.eq(household_id))
+                .filter(extraction_jobs::source_document_id.eq(document_id))
+                .select(diesel::dsl::max(extraction_jobs::version))
+                .first::<Option<i32>>(conn)
+                .await?
+                .unwrap_or_default()
+                + 1;
+            let id = Uuid::now_v7();
+            diesel::insert_into(extraction_jobs::table)
+                .values((
+                    extraction_jobs::id.eq(id),
+                    extraction_jobs::household_id.eq(household_id),
+                    extraction_jobs::source_document_id.eq(document_id),
+                    extraction_jobs::version.eq(version),
+                    extraction_jobs::status.eq("queued"),
+                    extraction_jobs::provider.eq(provider),
+                    extraction_jobs::model.eq(model),
+                    extraction_jobs::idempotency_key.eq(idempotency_key),
+                    extraction_jobs::request.eq(&request),
+                    extraction_jobs::attempt_count.eq(0),
+                    extraction_jobs::failure_count.eq(0),
+                    extraction_jobs::max_attempts.eq(5),
+                    extraction_jobs::available_at.eq(now),
+                    extraction_jobs::created_at.eq(now),
+                    extraction_jobs::updated_at.eq(now),
+                ))
+                .execute(conn)
+                .await?;
+            diesel::insert_into(household_events::table)
+                .values((
+                    household_events::household_id.eq(household_id),
+                    household_events::event_type.eq("receipt.extraction.started"),
+                    household_events::entity_kind.eq("source_document"),
+                    household_events::entity_id.eq(document_id),
+                    household_events::revision.eq(i64::from(version)),
+                    household_events::changed_fields.eq(vec![Some("status".to_owned())]),
+                    household_events::payload.eq(serde_json::json!({"jobId": id})),
+                    household_events::actor_id.eq(actor_id),
+                    household_events::created_at.eq(now),
+                ))
+                .execute(conn)
+                .await?;
+            Ok(id)
+        })
+        .await
+}
+
 fn validate(command: &RegisterDocumentCommand) -> Result<(), RegisterDocumentError> {
     if command.sha256.len() != 64 || !command.sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(RegisterDocumentError::InvalidInput("sha256"));

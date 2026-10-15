@@ -21,6 +21,7 @@ use evidence_postgres::ingestion_job::{
 };
 use horse_postgres_common::connect;
 use object_store::ObjectStore;
+use mailbox::MailboxConfig;
 use processing::{ProcessConfig, process};
 use serde_json::Value;
 
@@ -28,6 +29,7 @@ pub struct Worker {
     pool: horse_postgres_common::PgPool,
     store: ObjectStore,
     config: ProcessConfig,
+    mailbox: Option<MailboxConfig>,
 }
 
 impl Worker {
@@ -35,14 +37,31 @@ impl Worker {
         let database_url = required_env("DATABASE_URL")?;
         let store = ObjectStore::from_env().await?;
         let pool = connect(database_url).await?;
+        let mailbox = MailboxConfig::from_env()?;
         Ok(Self {
             pool,
             store,
             config: ProcessConfig::from_env(),
+            mailbox,
         })
     }
 
     pub async fn run(
+        &self,
+        shutdown: tokio::sync::watch::Receiver<bool>,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        if let Some(config) = &self.mailbox {
+            let (worker_result, ()) = tokio::join!(
+                self.run_extractions(shutdown.clone()),
+                mailbox::run(&self.pool, &self.store, config, shutdown),
+            );
+            worker_result?;
+            return Ok(());
+        }
+        self.run_extractions(shutdown).await
+    }
+
+    async fn run_extractions(
         &self,
         mut shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {

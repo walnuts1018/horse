@@ -2274,12 +2274,7 @@ dependencies = [
 name = "horse-worker-runtime"
 version = "0.1.0"
 dependencies = [
- "aes-gcm",
  "async-imap",
- "aws-config",
- "aws-credential-types",
- "aws-sdk-s3",
- "base64 0.23.1",
  "chrono",
  "csv",
  "diesel",
@@ -2287,8 +2282,6 @@ dependencies = [
  "evidence-application",
  "evidence-postgres",
  "futures-util",
- "hex",
- "hmac 0.13.0",
  "horse-gemini-developer-api",
  "horse-object-storage",
  "horse-postgres-common",

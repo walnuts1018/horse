@@ -352,7 +352,8 @@ async fn poll_with_timeout(
             batch.next.uid = uid;
             continue;
         }
-        if batch_bytes.saturating_add(size) > MAX_BATCH_BYTES {
+        let remaining_batch_bytes = MAX_BATCH_BYTES.saturating_sub(batch_bytes);
+        if size > remaining_batch_bytes {
             break;
         }
         let Some(raw) = fetch_body(&mut session, uid).await? else {
@@ -360,7 +361,15 @@ async fn poll_with_timeout(
             batch.next.uid = uid;
             continue;
         };
-        if raw.len() > config.max_message_bytes || raw.len() > MAX_BATCH_BYTES - batch_bytes {
+        if raw.len() > config.max_message_bytes {
+            batch.rejected_uids.push(uid);
+            batch.next.uid = uid;
+            continue;
+        }
+        if raw.len() > remaining_batch_bytes {
+            if remaining_batch_bytes < config.max_message_bytes {
+                break;
+            }
             batch.rejected_uids.push(uid);
             batch.next.uid = uid;
             continue;

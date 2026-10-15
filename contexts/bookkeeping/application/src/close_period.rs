@@ -1,16 +1,11 @@
 use bookkeeping_domain::{
-    SettlementError, SettlementInput as DomainSettlementInput,
+    AccountingPeriod, AccountingPeriodStatus, AccountingPeriodTransitionError, SettlementError,
+    SettlementInput as DomainSettlementInput, YearMonth,
     calculate_settlement as calculate_domain_settlement,
 };
 
 use crate::{MemberId, PurchaseId};
 use std::collections::BTreeMap;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccountingPeriodStatus {
-    Open,
-    Closed,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettlementInput {
@@ -52,21 +47,19 @@ pub struct FundingObligationDecision {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PurchaseToClose {
+pub struct PurchaseSnapshot {
     pub id: PurchaseId,
     pub revision: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClosePeriodCommand {
-    pub period: String,
-    pub status: AccountingPeriodStatus,
-    pub revision: u64,
+    pub period: AccountingPeriod,
     pub expected_revision: u64,
-    pub has_draft_purchases: bool,
+    pub draft_purchases: Vec<PurchaseId>,
     pub actor_id: MemberId,
     pub settlements: Vec<SettlementInput>,
-    pub posted_purchases: Vec<PurchaseToClose>,
+    pub purchases: Vec<PurchaseSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,26 +75,19 @@ pub struct SettlementLine {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PurchaseClosure {
-    pub purchase_id: PurchaseId,
-    pub expected_revision: u64,
-    pub revision: u64,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeriodClosedEvent {
     pub actor_id: MemberId,
-    pub period: String,
+    pub period: YearMonth,
     pub revision: u64,
     pub changed_fields: &'static [&'static str],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClosePeriodDecision {
-    pub period: String,
-    pub revision: u64,
+    pub period: AccountingPeriod,
     pub settlements: Vec<SettlementLine>,
-    pub purchase_closures: Vec<PurchaseClosure>,
+    pub purchases: Vec<PurchaseSnapshot>,
     pub event: PeriodClosedEvent,
 }
 
@@ -235,24 +221,29 @@ fn funding_schedule_amount(
 pub fn decide_close_period(
     command: ClosePeriodCommand,
 ) -> Result<ClosePeriodDecision, ClosePeriodError> {
-    validate_period(&command.period)?;
-    if command.status == AccountingPeriodStatus::Closed {
+    if command.period.status() == AccountingPeriodStatus::Closed {
         return Err(ClosePeriodError::PeriodAlreadyClosed);
     }
-    if command.revision != command.expected_revision {
+    if command.period.revision() != command.expected_revision {
         return Err(ClosePeriodError::RevisionMismatch {
             expected: command.expected_revision,
-            actual: command.revision,
+            actual: command.period.revision(),
         });
     }
-    if command.has_draft_purchases {
+    if !command.draft_purchases.is_empty() {
         return Err(ClosePeriodError::DraftPurchasesExist);
     }
-
-    let revision = command
-        .revision
-        .checked_add(1)
-        .ok_or(ClosePeriodError::RevisionOverflow)?;
+    let period = command.period.close(command.expected_revision).map_err(|error| match error {
+        AccountingPeriodTransitionError::AlreadyClosed => ClosePeriodError::PeriodAlreadyClosed,
+        AccountingPeriodTransitionError::RevisionMismatch => {
+            ClosePeriodError::RevisionMismatch {
+                expected: command.expected_revision,
+                actual: command.period.revision(),
+            }
+        }
+        AccountingPeriodTransitionError::RevisionOverflow => ClosePeriodError::RevisionOverflow,
+    })?;
+    let revision = period.revision();
 
     let mut settlements = command
         .settlements
@@ -268,7 +259,7 @@ pub fn decide_close_period(
     }
 
     let mut purchase_ids = command
-        .posted_purchases
+        .purchases
         .iter()
         .map(|purchase| purchase.id.clone())
         .collect::<Vec<_>>();
@@ -277,30 +268,16 @@ pub fn decide_close_period(
         return Err(ClosePeriodError::DuplicatePurchase);
     }
 
-    let mut purchase_closures = command
-        .posted_purchases
-        .into_iter()
-        .map(|purchase| {
-            Ok(PurchaseClosure {
-                purchase_id: purchase.id,
-                expected_revision: purchase.revision,
-                revision: purchase
-                    .revision
-                    .checked_add(1)
-                    .ok_or(ClosePeriodError::RevisionOverflow)?,
-            })
-        })
-        .collect::<Result<Vec<_>, ClosePeriodError>>()?;
-    purchase_closures.sort_by(|left, right| left.purchase_id.cmp(&right.purchase_id));
+    let mut purchases = command.purchases;
+    purchases.sort_by(|left, right| left.id.cmp(&right.id));
 
     Ok(ClosePeriodDecision {
-        period: command.period.clone(),
-        revision,
+        period: period.clone(),
         settlements,
-        purchase_closures,
+        purchases,
         event: PeriodClosedEvent {
             actor_id: command.actor_id,
-            period: command.period,
+            period: period.year_month(),
             revision,
             changed_fields: &["status"],
         },
@@ -338,30 +315,6 @@ fn calculate_close_settlement(input: SettlementInput) -> Result<SettlementLine, 
     })
 }
 
-fn validate_period(period: &str) -> Result<(), ClosePeriodError> {
-    let bytes = period.as_bytes();
-    if bytes.len() != 7
-        || bytes[4] != b'-'
-        || !bytes[..4].iter().all(u8::is_ascii_digit)
-        || !bytes[5..].iter().all(u8::is_ascii_digit)
-    {
-        return Err(ClosePeriodError::InvalidPeriod);
-    }
-    let month = period[5..]
-        .parse::<u8>()
-        .map_err(|_| ClosePeriodError::InvalidPeriod)?;
-    if month == 0 || month > 12 {
-        return Err(ClosePeriodError::InvalidPeriod);
-    }
-    let year = period[..4]
-        .parse::<u16>()
-        .map_err(|_| ClosePeriodError::InvalidPeriod)?;
-    if year == 0 {
-        return Err(ClosePeriodError::InvalidPeriod);
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -377,11 +330,9 @@ mod tests {
 
     fn command() -> ClosePeriodCommand {
         ClosePeriodCommand {
-            period: "2025-02".into(),
-            status: AccountingPeriodStatus::Open,
-            revision: 3,
+            period: AccountingPeriod::open(YearMonth::new(2025, 2).unwrap(), 3).unwrap(),
             expected_revision: 3,
-            has_draft_purchases: false,
+            draft_purchases: Vec::new(),
             actor_id: member("actor"),
             settlements: vec![SettlementInput {
                 member_id: member("member-b"),
@@ -392,7 +343,7 @@ mod tests {
                 monthly_adjustment_yen: 300,
                 advance_credit_yen: 100,
             }],
-            posted_purchases: vec![PurchaseToClose {
+            purchases: vec![PurchaseSnapshot {
                 id: purchase("purchase-1"),
                 revision: 8,
             }],
@@ -400,12 +351,12 @@ mod tests {
     }
 
     #[test]
-    fn closing_calculates_snapshot_and_revisioned_transitions() {
+    fn closing_preserves_purchase_revision_in_the_period_snapshot() {
         let decision = decide_close_period(command()).unwrap();
 
-        assert_eq!(decision.revision, 4);
+        assert_eq!(decision.period.revision(), 4);
         assert_eq!(decision.settlements[0].amount_due_yen, 1_700);
-        assert_eq!(decision.purchase_closures[0].revision, 9);
+        assert_eq!(decision.purchases[0].revision, 8);
         assert_eq!(decision.event.actor_id.as_str(), "actor");
         assert_eq!(decision.event.changed_fields, &["status"]);
     }
@@ -420,7 +371,7 @@ mod tests {
         ));
 
         let mut with_draft = command();
-        with_draft.has_draft_purchases = true;
+        with_draft.draft_purchases.push(purchase("draft-1"));
         assert_eq!(
             decide_close_period(with_draft),
             Err(ClosePeriodError::DraftPurchasesExist)
@@ -436,12 +387,7 @@ mod tests {
 
     #[test]
     fn closing_rejects_invalid_period_and_amount_overflow() {
-        let mut invalid_period = command();
-        invalid_period.period = "2025-13".into();
-        assert_eq!(
-            decide_close_period(invalid_period),
-            Err(ClosePeriodError::InvalidPeriod)
-        );
+        assert!(YearMonth::new(2025, 13).is_err());
 
         let mut overflow = command();
         overflow.settlements[0].scheduled_yen = i64::MAX;
