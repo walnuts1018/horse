@@ -21,11 +21,7 @@ import {
 
 import styles from "./document-conversation.module.css";
 
-type PendingMessage = {
-  text: string;
-  conversationLength: number;
-  status: "processing" | "failed";
-};
+type PendingInteraction = NonNullable<DocumentReview["pendingInteraction"]>;
 
 type ConversationMessage = NonNullable<
   NonNullable<DocumentReview["result"]>["conversation"]
@@ -67,55 +63,6 @@ function renderExtractionRows(rows: ExtractionRowChange[]) {
   ));
 }
 
-function pendingMessageStorageKey(documentId: string) {
-  return `document-interaction:${documentId}`;
-}
-
-function readPendingMessage(documentId: string): PendingMessage | null {
-  try {
-    const stored = sessionStorage.getItem(pendingMessageStorageKey(documentId));
-    if (!stored) return null;
-    const value: unknown = JSON.parse(stored);
-    if (
-      typeof value !== "object" ||
-      value === null ||
-      !("text" in value) ||
-      typeof value.text !== "string" ||
-      !("conversationLength" in value) ||
-      typeof value.conversationLength !== "number" ||
-      !("status" in value) ||
-      (value.status !== "processing" && value.status !== "failed")
-    ) {
-      return null;
-    }
-    return {
-      text: value.text,
-      conversationLength: value.conversationLength,
-      status: value.status,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function storePendingMessage(documentId: string, pendingMessage: PendingMessage) {
-  try {
-    sessionStorage.setItem(pendingMessageStorageKey(documentId), JSON.stringify(pendingMessage));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function clearPendingMessage(documentId: string) {
-  try {
-    sessionStorage.removeItem(pendingMessageStorageKey(documentId));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function DocumentConversation({
   document,
   onError,
@@ -133,9 +80,7 @@ export function DocumentConversation({
   const [selectedVersionId, setSelectedVersionId] = useState("");
   const [selectedExtraction, setSelectedExtraction] = useState<DocumentExtraction | null>(null);
   const [branchJobId, setBranchJobId] = useState("");
-  const [storedPendingMessage, setPendingMessage] = useState<PendingMessage | null>(() =>
-    readPendingMessage(document.id),
-  );
+  const [acceptedInteraction, setAcceptedInteraction] = useState<PendingInteraction | null>(null);
   const sendingRef = useRef(false);
   const messages = selectedExtraction?.result.conversation ?? document.result?.conversation;
   const keyedMessages = withConversationKeys(messages);
@@ -147,7 +92,11 @@ export function DocumentConversation({
     selectedModel?.label ?? (activeModel === "pro" ? "既定の有料モデル" : "既定の無料モデル");
   const paidModel = selectedModel?.tier === "paid" || activeModel === "pro";
   const quotaLimited = isQuotaLimitedExtraction(document);
-  const processing = ["queued", "running"].includes(document.status.toLowerCase());
+  const pendingInteraction = acceptedInteraction ?? document.pendingInteraction;
+  const interactionProcessing =
+    pendingInteraction?.status === "queued" || pendingInteraction?.status === "running";
+  const processing =
+    ["queued", "running"].includes(document.status.toLowerCase()) || interactionProcessing;
   const previousExtraction = readReceiptExtractionSnapshot(document.id);
   const extractionDiff =
     previousExtraction &&
@@ -165,21 +114,6 @@ export function DocumentConversation({
       extractionDiff.paymentChanges.length > 0 ||
       extractionDiff.statementChanges.length > 0),
   );
-  const pendingMessageCompleted =
-    !!storedPendingMessage &&
-    !!messages
-      ?.slice(storedPendingMessage.conversationLength)
-      .some((entry) => entry.role === "user" && entry.text === storedPendingMessage.text);
-  const pendingMessage =
-    storedPendingMessage &&
-    !pendingMessageCompleted &&
-    storedPendingMessage.status === "processing" &&
-    document.status.toLowerCase() === "failed"
-      ? { ...storedPendingMessage, status: "failed" as const }
-      : pendingMessageCompleted
-        ? null
-        : storedPendingMessage;
-
   useEffect(() => {
     if (!historyOpened) return;
     const controller = new AbortController();
@@ -254,20 +188,16 @@ export function DocumentConversation({
   }, [branchJobId, document.id, document.jobId, document.status, historyOpened, onError]);
 
   useEffect(() => {
-    if (!storedPendingMessage) return;
-    if (pendingMessageCompleted) {
-      clearPendingMessage(document.id);
-    } else if (
-      storedPendingMessage.status === "processing" &&
-      document.status.toLowerCase() === "failed"
-    ) {
-      storePendingMessage(document.id, { ...storedPendingMessage, status: "failed" });
-    } else {
-      storePendingMessage(document.id, storedPendingMessage);
+    if (document.pendingInteraction?.jobId === acceptedInteraction?.jobId) {
+      setAcceptedInteraction(null);
+      return;
     }
-  }, [document.id, document.status, pendingMessageCompleted, storedPendingMessage]);
+    if (acceptedInteraction && document.jobId === acceptedInteraction.jobId) {
+      setAcceptedInteraction(null);
+    }
+  }, [acceptedInteraction, document.jobId, document.pendingInteraction]);
 
-  const send = async (text: string, modelOverride?: string) => {
+  const send = async (text: string, modelOverride?: string, baseJobIdOverride?: string) => {
     const instruction = text.trim();
     if (
       !instruction ||
@@ -279,6 +209,8 @@ export function DocumentConversation({
     }
     sendingRef.current = true;
     setSending(true);
+    const baseJobId = baseJobIdOverride ?? selectedExtraction?.id;
+    if (baseJobIdOverride && !historyOpened) setHistoryOpened(true);
     try {
       const response = await fetch(`/documents/${encodeURIComponent(document.id)}/interaction`, {
         method: "POST",
@@ -287,7 +219,7 @@ export function DocumentConversation({
         body: JSON.stringify({
           message: instruction,
           ...(modelOverride ? { model: modelOverride } : {}),
-          ...(selectedExtraction ? { baseJobId: selectedExtraction.id } : {}),
+          ...(baseJobId ? { baseJobId } : {}),
         }),
       });
       if (!response.ok) throw new Error(`再確認を開始できませんでした (${response.status})`);
@@ -299,26 +231,33 @@ export function DocumentConversation({
         typeof accepted.jobId === "string"
           ? accepted.jobId
           : undefined;
-      if (selectedExtraction && nextJobId) setBranchJobId(nextJobId);
-      const nextPendingMessage: PendingMessage = {
-        text: instruction,
-        conversationLength: messages?.length ?? 0,
-        status: "processing",
-      };
+      if (baseJobId && nextJobId) setBranchJobId(nextJobId);
+      const interactionModel = modelOverride ?? pendingInteraction?.model ?? activeModel;
+      if (nextJobId) {
+        setAcceptedInteraction({
+          jobId: nextJobId,
+          status: "queued",
+          message: instruction,
+          ...(interactionModel ? { model: interactionModel } : {}),
+          ...(baseJobId ? { baseJobId } : {}),
+        });
+      }
+      const snapshotResult =
+        baseJobIdOverride && selectedExtraction?.id !== baseJobIdOverride
+          ? undefined
+          : (selectedExtraction?.result ?? activeResult);
       if (
         document.jobId &&
-        (activeResult?.receipt || activeResult?.statements?.length) &&
+        (snapshotResult?.receipt || snapshotResult?.statements?.length) &&
         nextJobId
       ) {
         storeReceiptExtractionSnapshot(document.id, {
-          jobId: selectedExtraction?.id ?? document.jobId,
+          jobId: baseJobId ?? document.jobId,
           nextJobId,
-          receipt: activeResult?.receipt,
-          statements: activeResult?.statements,
+          receipt: snapshotResult?.receipt,
+          statements: snapshotResult?.statements,
         });
       }
-      storePendingMessage(document.id, nextPendingMessage);
-      setPendingMessage(nextPendingMessage);
       if (instruction === message.trim()) setMessage("");
       await onUpdated();
     } catch (reason) {
@@ -403,7 +342,7 @@ export function DocumentConversation({
           過去の抽出版から分岐
         </button>
       )}
-      {((messages?.length ?? 0) > 0 || pendingMessage) && (
+      {((messages?.length ?? 0) > 0 || pendingInteraction) && (
         <ol className={styles.messages}>
           {keyedMessages.map((entry) => (
             <li
@@ -414,30 +353,44 @@ export function DocumentConversation({
               <p>{entry.text}</p>
             </li>
           ))}
-          {pendingMessage && (
+          {pendingInteraction && (
             <li
               className={
-                pendingMessage.status === "failed" ? styles.failedMessage : styles.userMessage
+                pendingInteraction.status === "failed" ? styles.failedMessage : styles.userMessage
               }
             >
-              <span role={pendingMessage.status === "failed" ? "status" : undefined}>
-                {pendingMessage.status === "failed" ? "再確認に失敗しました" : "あなた"}
+              <span role={pendingInteraction.status === "failed" ? "status" : undefined}>
+                {pendingInteraction.status === "failed" ? "再確認に失敗しました" : "あなた"}
               </span>
-              <p>{pendingMessage.text}</p>
-              {pendingMessage.status === "failed" && (
+              <p>{pendingInteraction.message}</p>
+              {pendingInteraction.status === "failed" && (
                 <div className={styles.retryActions}>
                   <button
                     type="button"
                     disabled={sending || processing}
-                    onClick={() => void send(pendingMessage.text)}
+                    onClick={() =>
+                      void send(
+                        pendingInteraction.message,
+                        pendingInteraction.model === proImportModel ? proImportModel : undefined,
+                        pendingInteraction.baseJobId,
+                      )
+                    }
                   >
-                    {paidModel ? "有料モデルで同じ指示を再送" : "同じ指示を再送"}
+                    {pendingInteraction.model === proImportModel
+                      ? "有料モデルで同じ指示を再送"
+                      : "同じ指示を再送"}
                   </button>
-                  {quotaLimited && !paidModel && (
+                  {quotaLimited && pendingInteraction.model !== proImportModel && (
                     <button
                       type="button"
                       disabled={sending || processing}
-                      onClick={() => void send(pendingMessage.text, proImportModel)}
+                      onClick={() =>
+                        void send(
+                          pendingInteraction.message,
+                          proImportModel,
+                          pendingInteraction.baseJobId,
+                        )
+                      }
                     >
                       Gemini 3.1 Pro Previewで同じ指示を再送・有料
                     </button>

@@ -26,9 +26,9 @@ function FailedConversation() {
   });
 
   useEffect(() => {
-    sessionStorage.removeItem("document-interaction:story-document");
     const originalFetch = window.fetch;
-    window.fetch = async () => new Response(null, { status: 202 });
+    window.fetch = async () =>
+      Response.json({ jobId: "story-interaction", status: "queued" }, { status: 202 });
     return () => {
       window.fetch = originalFetch;
     };
@@ -48,6 +48,13 @@ function FailedConversation() {
             ...current,
             status: "failed",
             errorCode: "rate_limited",
+            pendingInteraction: {
+              jobId: "story-interaction",
+              status: "failed",
+              message: "店名を確認してください",
+              model: "gemini-3.8-flash",
+              baseJobId: "story-base-job",
+            },
           }))
         }
       />
@@ -236,7 +243,6 @@ function BranchConversation() {
       window.fetch = originalFetch;
       window.sessionStorage.removeItem("story-branch-request");
       window.sessionStorage.removeItem("story-branch-complete");
-      window.sessionStorage.removeItem("document-interaction:story-branch-document");
       window.sessionStorage.removeItem("document-extraction:story-branch-document");
     };
   }, []);

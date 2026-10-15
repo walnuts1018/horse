@@ -249,6 +249,13 @@ export type VerificationCandidate = {
 export type DocumentReview = {
   id: string;
   jobId?: string;
+  pendingInteraction?: {
+    jobId: string;
+    status: "queued" | "running" | "failed";
+    message: string;
+    model?: string;
+    baseJobId?: string;
+  };
   name?: string;
   attachments?: Array<{
     id: string;
