@@ -25,7 +25,7 @@ Horseの原本だけを復元する必要がある場合は、infra側のSeaweed
 
 ## 公開probe
 
-Blackbox exporterは`https://horse.walnuts.dev/healthz`を30秒間隔で確認します。`target="horse"`のprobeが5分間連続で失敗すると`HorsePublicProbeFailed` alertを発火します。HorseのPodがまだ存在しないため、このalertの発火とAlertmanagerへの配送は本番環境で未検証です。
+Blackbox exporterは`https://horse.walnuts.dev/healthz`を30秒間隔で確認します。`target="horse"`のprobeが5分間連続で失敗すると`HorsePublicProbeFailed` alertを発火します。2026年10月15日にHorseのAPI、Worker、Web PodがReadyであることと、公開`/`・`/healthz`がHTTP200を返すことを確認しました。アラートの強制発火とAlertmanagerへの配送は未検証です。
 
 ## Gemini APIの課金
 
@@ -37,7 +37,7 @@ Google Cloud Free TrialのWelcome creditはGemini APIとAI Studioの利用料に
 
 2026年10月12日にTerraform applyが成功し、有料ProjectのGemini API serviceだけを対象にした月500円のSpendCapが`CONFIGURED`状態になりました。予算filterはcreditsを除外し、通知しきい値は50%、80%、100%です。Project Ownersへの通知も有効です。同じscopeにあった300円のalerts-only Budgetは削除し、Terraform stateから安全に除外しました。SpendCapの作成前に有料APIキーを発行していません。予算APIの認証はapplyフェーズの短期トークンを使用し、予算更新のupdateMaskから変更できないbudgetFilterを除外します。[Googleの請求手順](https://ai.google.dev/gemini-api/docs/billing/)に従い、請求状態とSpendCapを定期的に確認してください。
 
-SpendCapは請求の見積り遅延を伴い、適用は即時ではありません。Googleの公式説明では請求データ処理に約10分の遅れが発生する場合があり、上限を超えた請求が発生する可能性があります。SpendCapは超過を完全には保証しません。2026年10月12日にESOの同期を再試行し、`horse-ai`の4フィールドをSecretへ同期しました。2026年10月14日に隔離した検証用JobからPaid Projectへ合成PNGを1回送り、抽出結果を確認しました。一時Job、Pod、ServiceAccount、NetworkPolicyは削除し、APIキー値は読み取らず出力していません。通常Workerの`GEMINI_ENABLED`はfalseに戻し、通常の購入・取込処理からのGemini呼び出しを無効にしています。
+SpendCapは請求の見積り遅延を伴い、適用は即時ではありません。Googleの公式説明では請求データ処理に約10分の遅れが発生する場合があり、上限を超えた請求が発生する可能性があります。SpendCapは超過を完全には保証しません。2026年10月12日にESOの同期を再試行し、`horse-ai`の4フィールドをSecretへ同期しました。2026年10月14日に隔離した検証用JobからPaid Projectへ合成PNGを1回送り、抽出結果を確認しました。一時Job、Pod、ServiceAccount、NetworkPolicyは削除し、APIキー値は読み取らず出力していません。SpendCapの設定とSecret同期後、通常Workerの`GEMINI_ENABLED`を`true`に設定し、Pod ReadyとSecret参照を確認しました。通常の購入・取込経路を通した実Gemini呼び出しは未確認です。
 
 ## Google CloudのTerraform認証
 
@@ -49,7 +49,7 @@ HCP Terraformの`walnuts-dev`組織、`Default Project`、`infra` workspaceだ�
 
 初回のWIF、サービスアカウント、カスタムロール、IAM bindingは管理者がConsoleまたはgcloudで設定し、現在値をTerraformコードへ定義してimportします。HCP TerraformのGoogle Cloud認証変数もTerraformで管理します。通常のapplyではこれらの設定を読取できても権限変更はできません。IAMや認証設定に差分が出た場合は適用を止め、管理者が変更内容を確認してbootstrap手順で対応します。通常のapplyを成功させるために権限を自動で追加しないでください。
 
-有料APIキーは月500円のSpendCap作成後に発行し、キーの利用先をGemini APIに限定します。キーは1PasswordのCONCEALEDフィールドへ保存し、External Secretsを通じてWorkerだけへ渡します。Workerの外部HTTPS通信は`generativelanguage.googleapis.com`だけを許可します。DNSとDB、S3、RabbitMQ、OCR、OTelへの内部通信は別途許可します。Workerの`GEMINI_ENABLED`はfalseのまま維持します。
+有料APIキーは月500円のSpendCap作成後に発行し、キーの利用先をGemini APIに限定します。キーは1PasswordのCONCEALEDフィールドへ保存し、External Secretsを通じてWorkerだけへ渡します。Workerの外部HTTPS通信は`generativelanguage.googleapis.com`だけを許可します。DNSとDB、S3、RabbitMQ、OCR、OTelへの内部通信は別途許可します。通常Workerの`GEMINI_ENABLED`は`true`です。
 
 ## 検証状況
 
