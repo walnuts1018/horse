@@ -66,6 +66,7 @@ pub async fn persist_record_account_movement(
     let from_account_id = parse_uuid(decision.from_account_id.as_str(), "from_account_id")?;
     let to_account_id = parse_uuid(decision.to_account_id.as_str(), "to_account_id")?;
     if actor_id != decision_actor
+        || decision.occurred_at_unix_micros != input.occurred_at.timestamp_micros()
         || decision.amount.value() <= 0
         || decision.amount.value() > 1_000_000_000_000
         || from_account_id == to_account_id

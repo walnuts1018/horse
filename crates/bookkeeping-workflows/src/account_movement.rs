@@ -46,6 +46,7 @@ pub struct RecordAccountMovementCommand {
     pub to_account_id: AccountId,
     pub to_account_kind: AccountKind,
     pub kind: AccountMovementKind,
+    pub occurred_at_unix_micros: i64,
     pub amount: PositiveYen,
     pub description: String,
     pub accounting_period_open: bool,
@@ -68,6 +69,7 @@ pub struct RecordAccountMovementDecision {
     pub to_account_id: AccountId,
     pub to_account_kind: AccountKind,
     pub kind: AccountMovementKind,
+    pub occurred_at_unix_micros: i64,
     pub amount: PositiveYen,
     pub description: String,
     pub journal_lines: [AccountMovementJournalLine; 2],
@@ -127,6 +129,7 @@ pub fn decide_record_account_movement(
         to_account_id: command.to_account_id.clone(),
         to_account_kind: command.to_account_kind,
         kind: command.kind,
+        occurred_at_unix_micros: command.occurred_at_unix_micros,
         amount: command.amount,
         description,
         journal_lines: [
@@ -172,6 +175,7 @@ mod tests {
                 AccountKind::Cash
             },
             kind,
+            occurred_at_unix_micros: 1_791_128_400_000_000,
             amount: PositiveYen::new(500).unwrap(),
             description: "  transfer  ".to_owned(),
             accounting_period_open: true,
