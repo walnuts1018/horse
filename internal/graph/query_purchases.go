@@ -291,13 +291,9 @@ func escapeLikePattern(value string) string {
 }
 
 func (r *queryResolver) purchaseCorrections(ctx context.Context, purchaseID string, first *int, after *string) (*model.PurchaseCorrectionConnection, error) {
-	decodedID, err := decodeNodeID(purchaseID, nodeTypePurchase)
+	id, err := gofrsuuid.FromString(purchaseID)
 	if err != nil {
-		return nil, err
-	}
-	id, err := gofrsuuid.FromString(decodedID)
-	if err != nil {
-		return nil, fmt.Errorf("parse purchase id: %w", err)
+		return nil, fmt.Errorf("%w: invalid purchase ID", ErrBadInput)
 	}
 	purchase, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(id)))).One(ctx, queryExecutor(r.DB))
 	if errors.Is(err, sql.ErrNoRows) {

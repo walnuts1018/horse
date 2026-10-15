@@ -2,7 +2,9 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/walnuts1018/horse/internal/graph/model"
@@ -13,7 +15,7 @@ func TestNodeIDDirectiveDecodesList(t *testing.T) {
 	globalIDs := make([]string, 2)
 	want := []string{"123e4567-e89b-42d3-a456-426614174000", "123e4567-e89b-42d3-a456-426614174001"}
 	for i := range want {
-		id, err := encodeNodeID("Tag", want[i])
+		id, err := encodeNodeID(nodeTypeTag, want[i])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -22,13 +24,73 @@ func TestNodeIDDirectiveDecodesList(t *testing.T) {
 
 	value, err := NodeIDDirective(t.Context(), map[string]any{"ids": globalIDs}, func(context.Context) (any, error) {
 		return globalIDs, nil
-	}, "Tag")
+	}, nodeTypeTag)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, ok := value.([]string)
 	if !ok || !slices.Equal(got, want) {
 		t.Fatalf("NodeIDDirective() = %#v, want %#v", value, want)
+	}
+}
+
+func TestNodeIDDirectiveRejectsMalformedUserIDs(t *testing.T) {
+	t.Parallel()
+
+	const rejectedID = "private-rejected-global-id"
+	validTagID, err := encodeNodeID(nodeTypeTag, "123e4567-e89b-42d3-a456-426614174000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name  string
+		value any
+		of    string
+	}{
+		{name: "malformed scalar", value: rejectedID, of: nodeTypeTag},
+		{name: "wrong scalar node type", value: validTagID, of: nodeTypePurchase},
+		{name: "malformed list member", value: []string{validTagID, rejectedID}, of: nodeTypeTag},
+		{name: "wrong list member node type", value: []string{validTagID}, of: nodeTypePurchase},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := NodeIDDirective(t.Context(), nil, func(context.Context) (any, error) {
+				return testCase.value, nil
+			}, testCase.of)
+			if !errors.Is(err, ErrBadInput) {
+				t.Fatalf("NodeIDDirective() error = %v, want ErrBadInput", err)
+			}
+			if strings.Contains(err.Error(), rejectedID) || strings.Contains(err.Error(), validTagID) {
+				t.Fatalf("NodeIDDirective() exposed rejected ID: %v", err)
+			}
+		})
+	}
+}
+
+func TestNodeIDDirectiveRejectsWrongResolverOutputType(t *testing.T) {
+	t.Parallel()
+	const rejectedValue = "private-rejected-value"
+	for _, value := range []any{42, []any{rejectedValue}} {
+		_, err := NodeIDDirective(t.Context(), nil, func(context.Context) (any, error) {
+			return value, nil
+		}, nodeTypeTag)
+		if !errors.Is(err, ErrBadInput) {
+			t.Fatalf("NodeIDDirective() error = %v, want ErrBadInput", err)
+		}
+		if strings.Contains(err.Error(), rejectedValue) {
+			t.Fatalf("NodeIDDirective() exposed rejected value: %v", err)
+		}
+	}
+}
+
+func TestNodeIDDirectiveKeepsUnknownStaticTypeInternal(t *testing.T) {
+	t.Parallel()
+	_, err := NodeIDDirective(t.Context(), nil, func(context.Context) (any, error) {
+		return "rejected-user-value", nil
+	}, "UnknownStaticType")
+	if err == nil || errors.Is(err, ErrBadInput) {
+		t.Fatalf("NodeIDDirective() error = %v, want internal error", err)
 	}
 }
 

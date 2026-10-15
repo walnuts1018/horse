@@ -1,11 +1,17 @@
 package graph
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"uuid"
 
+	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
@@ -79,22 +85,51 @@ func TestPurchaseCorrectionConnectionPagesDatabaseRowsAndRefundableAmounts(t *te
 	}
 	pageSize := 2
 	query := &queryResolver{Resolver: resolver.Resolver}
-	purchaseNodeID, err := encodeNodeID(nodeTypePurchase, purchase.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	firstPage, err := query.purchaseCorrections(ctx, purchaseNodeID, &pageSize, nil)
+	firstPage, err := query.purchaseCorrections(ctx, purchase.ID, &pageSize, nil)
 	if err != nil || len(firstPage.Edges) != pageSize || !firstPage.PageInfo.HasNextPage || firstPage.TotalCount != len(corrections) {
 		t.Fatalf("first correction page is wrong: connection=%#v error=%v", firstPage, err)
 	}
-	secondPage, err := query.purchaseCorrections(ctx, purchaseNodeID, &pageSize, firstPage.PageInfo.EndCursor)
+	secondPage, err := query.purchaseCorrections(ctx, purchase.ID, &pageSize, firstPage.PageInfo.EndCursor)
 	if err != nil || len(secondPage.Edges) != 1 || secondPage.PageInfo.HasNextPage || secondPage.TotalCount != len(corrections) {
 		t.Fatalf("second correction page is wrong: connection=%#v error=%v", secondPage, err)
 	}
 	legacyCursor := encodeCursor(nodeTypePurchaseCorrection, firstPage.Edges[len(firstPage.Edges)-1].Node.GetID())
-	legacyPage, err := query.purchaseCorrections(ctx, purchaseNodeID, &pageSize, &legacyCursor)
+	legacyPage, err := query.purchaseCorrections(ctx, purchase.ID, &pageSize, &legacyCursor)
 	if err != nil || len(legacyPage.Edges) != 1 || legacyPage.Edges[0].Node.GetID() != secondPage.Edges[0].Node.GetID() {
 		t.Fatalf("legacy correction cursor is wrong: connection=%#v error=%v", legacyPage, err)
+	}
+	purchaseNodeID, err := encodeNodeID(nodeTypePurchase, purchase.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestBody, err := json.Marshal(struct {
+		Query string `json:"query"`
+	}{Query: fmt.Sprintf("query { purchaseCorrections(purchaseId: %q, first: 2) { totalCount } }", purchaseNodeID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/query", strings.NewReader(string(requestBody))).WithContext(ctx)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.NewDefaultServer(NewExecutableSchema(Config{
+		Resolvers:  resolver.Resolver,
+		Directives: DirectiveRoot{NodeID: NodeIDDirective},
+	})).ServeHTTP(response, request)
+	var graphQLResponse struct {
+		Data struct {
+			PurchaseCorrections struct {
+				TotalCount int `json:"totalCount"`
+			} `json:"purchaseCorrections"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&graphQLResponse); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK || len(graphQLResponse.Errors) != 0 || graphQLResponse.Data.PurchaseCorrections.TotalCount != len(corrections) {
+		t.Fatalf("GraphQL purchaseCorrections query failed: status=%d data=%#v errors=%#v", response.Code, graphQLResponse.Data, graphQLResponse.Errors)
 	}
 	loaded, err := loadPurchase(ctx, db, purchase.ID)
 	if err != nil {

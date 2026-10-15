@@ -8,6 +8,10 @@ import (
 )
 
 func NodeIDDirective(ctx context.Context, value any, next graphql.Resolver, of string) (any, error) {
+	if _, ok := nodeTypes[of]; !ok {
+		return nil, fmt.Errorf("unknown node type %q", of)
+	}
+
 	resolved, err := next(ctx)
 	if err != nil {
 		return nil, err
@@ -18,11 +22,11 @@ func NodeIDDirective(ctx context.Context, value any, next graphql.Resolver, of s
 
 	switch globalID := resolved.(type) {
 	case string:
-		return decodeNodeID(globalID, of)
+		return decodeDirectiveNodeID(globalID, of)
 	case []string:
 		decoded := make([]string, len(globalID))
 		for i := range globalID {
-			id, err := decodeNodeID(globalID[i], of)
+			id, err := decodeDirectiveNodeID(globalID[i], of)
 			if err != nil {
 				return nil, err
 			}
@@ -30,6 +34,15 @@ func NodeIDDirective(ctx context.Context, value any, next graphql.Resolver, of s
 		}
 		return decoded, nil
 	default:
-		return nil, fmt.Errorf("node ID must be a string or a list of strings")
+		return nil, fmt.Errorf("%w: node ID must be a string or a list of strings", ErrBadInput)
 	}
+}
+
+func decodeDirectiveNodeID(globalID, of string) (string, error) {
+	id, err := decodeNodeID(globalID, of)
+	if err != nil {
+		return "", fmt.Errorf("%w: invalid node ID", ErrBadInput)
+	}
+
+	return id, nil
 }
