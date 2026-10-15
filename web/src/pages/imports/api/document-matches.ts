@@ -30,6 +30,7 @@ export async function readDocumentMatches(
   const response = await fetch(`/documents/${encodeURIComponent(documentId)}/matches${query}`, {
     credentials: "include",
   });
+  if (response.status === 404) return { observations: [], truncated: false };
   if (!response.ok) throw new Error(`照合候補を取得できませんでした (${response.status})`);
   return toDocumentMatches(await response.json());
 }
