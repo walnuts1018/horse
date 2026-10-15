@@ -63,10 +63,28 @@ pub struct SetAllocationRuleCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatedSetAllocationRuleCommand {
-    pub actor_id: String,
-    pub household_id: String,
-    pub target: AllocationRuleTarget,
-    pub weights: Vec<AllocationRuleWeight>,
+    actor_id: String,
+    household_id: String,
+    target: AllocationRuleTarget,
+    weights: Vec<AllocationRuleWeight>,
+}
+
+impl ValidatedSetAllocationRuleCommand {
+    pub fn actor_id(&self) -> &str {
+        &self.actor_id
+    }
+
+    pub fn household_id(&self) -> &str {
+        &self.household_id
+    }
+
+    pub fn target(&self) -> &AllocationRuleTarget {
+        &self.target
+    }
+
+    pub fn weights(&self) -> &[AllocationRuleWeight] {
+        &self.weights
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

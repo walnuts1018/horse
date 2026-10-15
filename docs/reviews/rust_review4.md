@@ -15,11 +15,3 @@ Workflow構成は複数の層にあります。[`close_period.rs`](../../context
 ## Bounded Contextとテーブル所有権
 
 [`purchase_command_context.rs`](../../contexts/bookkeeping/postgres/src/purchase_command_context.rs)などでは、Bookkeepingの処理から他Contextが所有するテーブルを参照します。共有DB自体ではなく、テーブルの更新規則と所有者をどのContextに置くかが検討事項です。現在の整合性境界を保つための直接参照か、Context間の契約へ移すかを業務モデルに基づいて決める必要があります。
-
-## Aggregateの復元
-
-[`post_purchase_loader.rs`](../../contexts/bookkeeping/postgres/src/post_purchase_loader.rs)はDB値から`DraftPurchase`を直接組み立てます。個々のValue Objectの検証に加え、Aggregate全体の復元条件をDomainの構築経路で表現する案があります。
-
-## 検証済み入力の表現
-
-[`set_allocation_rule.rs`](../../contexts/policy/application/src/set_allocation_rule.rs)の`ValidatedSetAllocationRuleCommand`は公開フィールドを持ちます。検証後の値を外部から直接構築できない形にし、検証結果を型で保持する余地があります。

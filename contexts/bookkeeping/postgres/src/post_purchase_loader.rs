@@ -5,7 +5,7 @@ use bookkeeping_application::{
     MemberFundingBasis, MemberId, MemberWeight, Payment, PaymentFundingBasis, PoolAllocation,
     PostPurchaseCommand, PurchaseId, PurchaseItem, SettlementPolicy, YearMonth,
 };
-use bookkeeping_domain::{PoolId, PositiveYen, Yen};
+use bookkeeping_domain::{DraftPurchaseReconstitutionError, PoolId, PositiveYen, Yen};
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
@@ -29,6 +29,7 @@ pub enum PostPurchaseLoadError {
     IncompleteFundingRule(&'static str),
     InvalidPaymentLineNumber,
     InvalidFundingBasis(FundingBasisError),
+    InvalidDraftPurchase(DraftPurchaseReconstitutionError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -484,14 +485,15 @@ pub async fn load_post_purchase_command(
 
     Ok(LoadedPostPurchaseCommand {
         command: PostPurchaseCommand {
-            draft: DraftPurchase {
-                id: draft_id,
+            draft: DraftPurchase::reconstitute(
+                draft_id,
                 revision,
                 total,
-                items: purchase_items,
+                purchase_items,
                 allocations,
-                payments: payment_values,
-            },
+                payment_values,
+            )
+            .map_err(PostPurchaseLoadError::InvalidDraftPurchase)?,
             expected_revision,
             period,
         },

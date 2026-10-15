@@ -70,12 +70,160 @@ fn identifier(value: impl Into<String>) -> Result<String, IdentifierError> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DraftPurchase {
-    pub id: PurchaseId,
-    pub revision: u64,
-    pub total: PositiveYen,
-    pub items: Vec<PurchaseItem>,
-    pub allocations: Vec<PoolAllocation>,
-    pub payments: Vec<Payment>,
+    id: PurchaseId,
+    revision: u64,
+    total: PositiveYen,
+    items: Vec<PurchaseItem>,
+    allocations: Vec<PoolAllocation>,
+    payments: Vec<Payment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DraftPurchaseReconstitutionError {
+    InvalidRevision,
+    DuplicateItemId(ItemId),
+    ItemTotalMismatch,
+    UnknownAllocationItem(ItemId),
+    DuplicateItemPoolAllocation { item_id: ItemId, pool_id: PoolId },
+    ItemAllocationTotalMismatch(ItemId),
+    AmountOverflow,
+}
+
+impl DraftPurchase {
+    pub fn id(&self) -> &PurchaseId {
+        &self.id
+    }
+
+    pub const fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub const fn total(&self) -> PositiveYen {
+        self.total
+    }
+
+    pub fn items(&self) -> &[PurchaseItem] {
+        &self.items
+    }
+
+    pub fn allocations(&self) -> &[PoolAllocation] {
+        &self.allocations
+    }
+
+    pub fn payments(&self) -> &[Payment] {
+        &self.payments
+    }
+
+    pub fn update_allocation_funding(
+        &mut self,
+        item_id: &ItemId,
+        pool_id: &PoolId,
+        funding: MemberFundingBasis,
+    ) -> bool {
+        if let Some(allocation) = self
+            .allocations
+            .iter_mut()
+            .find(|allocation| allocation.item_id == *item_id && allocation.pool_id == *pool_id)
+        {
+            allocation.funding = funding;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn update_payment_funding(
+        &mut self,
+        account_id: &AccountId,
+        pool_id: &PoolId,
+        rule: MemberFundingBasis,
+    ) -> bool {
+        let mut updated = false;
+        for payment in self.payments.iter_mut().filter(|payment| {
+            payment.account_id == *account_id && payment.funding.pool_id == *pool_id
+        }) {
+            payment.funding.rule = rule.clone();
+            updated = true;
+        }
+        updated
+    }
+
+    pub fn reconstitute(
+        id: PurchaseId,
+        revision: u64,
+        total: PositiveYen,
+        items: Vec<PurchaseItem>,
+        allocations: Vec<PoolAllocation>,
+        payments: Vec<Payment>,
+    ) -> Result<Self, DraftPurchaseReconstitutionError> {
+        if revision == 0 {
+            return Err(DraftPurchaseReconstitutionError::InvalidRevision);
+        }
+
+        let mut item_amounts = BTreeMap::new();
+        let mut item_total = Yen::new(0).expect("zero is in range");
+        for item in &items {
+            if item_amounts.insert(item.id.clone(), item.amount).is_some() {
+                return Err(DraftPurchaseReconstitutionError::DuplicateItemId(
+                    item.id.clone(),
+                ));
+            }
+            item_total = item_total
+                .checked_add(item.amount)
+                .map_err(|_| DraftPurchaseReconstitutionError::AmountOverflow)?;
+        }
+        if item_total != total.yen() {
+            return Err(DraftPurchaseReconstitutionError::ItemTotalMismatch);
+        }
+
+        let mut allocation_totals = BTreeMap::<ItemId, Yen>::new();
+        let mut item_pool_pairs = std::collections::BTreeSet::new();
+        for allocation in &allocations {
+            if !item_amounts.contains_key(&allocation.item_id) {
+                return Err(DraftPurchaseReconstitutionError::UnknownAllocationItem(
+                    allocation.item_id.clone(),
+                ));
+            }
+            if !item_pool_pairs.insert((allocation.item_id.clone(), allocation.pool_id.clone())) {
+                return Err(
+                    DraftPurchaseReconstitutionError::DuplicateItemPoolAllocation {
+                        item_id: allocation.item_id.clone(),
+                        pool_id: allocation.pool_id.clone(),
+                    },
+                );
+            }
+            let current = allocation_totals
+                .get(&allocation.item_id)
+                .copied()
+                .unwrap_or_else(|| Yen::new(0).expect("zero is in range"));
+            allocation_totals.insert(
+                allocation.item_id.clone(),
+                current
+                    .checked_add(allocation.amount)
+                    .map_err(|_| DraftPurchaseReconstitutionError::AmountOverflow)?,
+            );
+        }
+        if !allocations.is_empty() {
+            for (item_id, amount) in &item_amounts {
+                if allocation_totals.get(item_id).copied() != Some(*amount) {
+                    return Err(
+                        DraftPurchaseReconstitutionError::ItemAllocationTotalMismatch(
+                            item_id.clone(),
+                        ),
+                    );
+                }
+            }
+        }
+
+        Ok(Self {
+            id,
+            revision,
+            total,
+            items,
+            allocations,
+            payments,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -728,4 +876,114 @@ fn sum_yen(mut values: impl Iterator<Item = Yen>) -> Result<Yen, PostPurchaseErr
 
 fn next_line_no(current_count: usize) -> Result<u32, PostPurchaseError> {
     u32::try_from(current_count + 1).map_err(|_| PostPurchaseError::JournalLineCountOverflow)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::YearMonth;
+
+    fn yen(value: i64) -> Yen {
+        Yen::new(value).expect("valid yen")
+    }
+
+    fn item(id: &str, amount: i64) -> PurchaseItem {
+        PurchaseItem {
+            id: ItemId::new(id).expect("valid item id"),
+            amount: yen(amount),
+        }
+    }
+
+    fn allocation(item_id: &str, amount: i64) -> PoolAllocation {
+        PoolAllocation {
+            item_id: ItemId::new(item_id).expect("valid item id"),
+            pool_id: PoolId::new("pool").expect("valid pool id"),
+            amount: yen(amount),
+            funding: MemberFundingBasis::personal(
+                1,
+                MemberId::new("member").expect("valid member id"),
+            )
+            .expect("valid funding basis"),
+        }
+    }
+
+    #[test]
+    fn reconstitution_rejects_duplicate_items_and_mismatched_totals() {
+        let total = PositiveYen::new(10).expect("positive total");
+        let duplicate_items = vec![item("item", 5), item("item", 5)];
+        assert_eq!(
+            DraftPurchase::reconstitute(
+                PurchaseId::new("purchase").expect("valid purchase id"),
+                1,
+                total,
+                duplicate_items,
+                Vec::new(),
+                Vec::new(),
+            ),
+            Err(DraftPurchaseReconstitutionError::DuplicateItemId(
+                ItemId::new("item").expect("valid item id")
+            ))
+        );
+
+        assert_eq!(
+            DraftPurchase::reconstitute(
+                PurchaseId::new("purchase").expect("valid purchase id"),
+                1,
+                total,
+                vec![item("item", 9)],
+                Vec::new(),
+                Vec::new(),
+            ),
+            Err(DraftPurchaseReconstitutionError::ItemTotalMismatch)
+        );
+    }
+
+    #[test]
+    fn reconstitution_rejects_incomplete_item_allocations() {
+        let item_id = ItemId::new("item").expect("valid item id");
+        assert_eq!(
+            DraftPurchase::reconstitute(
+                PurchaseId::new("purchase").expect("valid purchase id"),
+                1,
+                PositiveYen::new(10).expect("positive total"),
+                vec![item("item", 10)],
+                vec![allocation("item", 9)],
+                Vec::new(),
+            ),
+            Err(DraftPurchaseReconstitutionError::ItemAllocationTotalMismatch(item_id))
+        );
+
+        let pool_id = PoolId::new("pool").expect("valid pool id");
+        let payments = vec![Payment {
+            account_id: AccountId::new("account").expect("valid account id"),
+            amount: PositiveYen::new(9).expect("positive payment"),
+            funding: PaymentFundingBasis {
+                pool_id,
+                rule: MemberFundingBasis::personal(
+                    1,
+                    MemberId::new("member").expect("valid member id"),
+                )
+                .expect("valid funding basis"),
+            },
+        }];
+        let draft = DraftPurchase::reconstitute(
+            PurchaseId::new("purchase").expect("valid purchase id"),
+            1,
+            PositiveYen::new(10).expect("positive total"),
+            vec![item("item", 10)],
+            vec![allocation("item", 10)],
+            payments,
+        )
+        .expect("payment mismatch is allowed in a draft");
+        let command = PostPurchaseCommand {
+            draft,
+            expected_revision: 1,
+            period: AccountingPeriod::open(YearMonth::new(2026, 10).expect("valid month"), 1)
+                .expect("valid period"),
+        };
+        assert_eq!(
+            decide_post_purchase(command),
+            Err(PostPurchaseError::PaymentTotalMismatch)
+        );
+    }
 }

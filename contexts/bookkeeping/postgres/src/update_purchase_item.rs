@@ -939,15 +939,29 @@ pub(crate) async fn sync_posted_accounting(
         _ => UpdatePurchaseItemPersistenceError::InvalidDecision,
     })?;
     let mut command = loaded.command;
-    command.expected_revision = command.draft.revision;
-    for allocation in &mut command.draft.allocations {
+    command.expected_revision = command.draft.revision();
+    let mut allocation_funding_updates = Vec::new();
+    for allocation in command.draft.allocations() {
         let item_id = parse_uuid(allocation.item_id.as_str(), "allocation_item_id")?;
         let pool_id = parse_uuid(allocation.pool_id.as_str(), "allocation_pool_id")?;
         if let Some(basis) = burden_bases.get(&(item_id, pool_id)) {
-            allocation.funding = basis.clone();
+            allocation_funding_updates.push((
+                allocation.item_id.clone(),
+                allocation.pool_id.clone(),
+                basis.clone(),
+            ));
         }
     }
-    for payment in &mut command.draft.payments {
+    for (item_id, pool_id, basis) in allocation_funding_updates {
+        if !command
+            .draft
+            .update_allocation_funding(&item_id, &pool_id, basis)
+        {
+            return Err(UpdatePurchaseItemPersistenceError::InvalidDecision);
+        }
+    }
+    let mut payment_funding_updates = Vec::new();
+    for payment in command.draft.payments() {
         let account_id = parse_uuid(payment.account_id.as_str(), "payment_account_id")?;
         let pool_id = parse_uuid(payment.funding.pool_id.as_str(), "payment_pool_id")?;
         if let Some(basis) = payment_bases.get(&(account_id, pool_id)).or_else(|| {
@@ -956,9 +970,21 @@ pub(crate) async fn sync_posted_accounting(
                 .find(|((_, saved_pool), _)| *saved_pool == pool_id)
                 .map(|(_, basis)| basis)
         }) {
-            payment.funding.rule = basis.clone();
+            payment_funding_updates.push((
+                payment.account_id.clone(),
+                payment.funding.pool_id.clone(),
+                basis.clone(),
+            ));
         } else if payments_changed && previous_account_ids.contains(&account_id) {
             return Err(UpdatePurchaseItemPersistenceError::InvalidFundingSnapshot);
+        }
+    }
+    for (account_id, pool_id, basis) in payment_funding_updates {
+        if !command
+            .draft
+            .update_payment_funding(&account_id, &pool_id, basis)
+        {
+            return Err(UpdatePurchaseItemPersistenceError::InvalidDecision);
         }
     }
     let decision = decide_post_purchase(command)

@@ -30,11 +30,12 @@ pub mod update_purchase_item;
 
 pub use bookkeeping_domain::{
     AccountId, AccountingPeriod, AccountingPeriodError, AccountingPeriodStatus, BalancedJournal,
-    DraftPurchase, FundingBasisError, IdentifierError, ItemId, JournalError, JournalLine,
-    MemberBurdenSnapshot, MemberFundingBasis, MemberId, MemberWeight, Payment, PaymentFundingBasis,
-    PaymentFundingSnapshot, PoolAllocation, PoolId, PostPurchaseCommand, PostPurchaseDecision,
-    PostPurchaseError, PostingTarget, Purchase, PurchaseEvent, PurchaseId, PurchaseItem,
-    PurchaseLifecycle, SettlementPolicy, Side, YearMonth, decide_post_purchase,
+    DraftPurchase, DraftPurchaseReconstitutionError, FundingBasisError, IdentifierError, ItemId,
+    JournalError, JournalLine, MemberBurdenSnapshot, MemberFundingBasis, MemberId, MemberWeight,
+    Payment, PaymentFundingBasis, PaymentFundingSnapshot, PoolAllocation, PoolId,
+    PostPurchaseCommand, PostPurchaseDecision, PostPurchaseError, PostingTarget, Purchase,
+    PurchaseEvent, PurchaseId, PurchaseItem, PurchaseLifecycle, SettlementPolicy, Side, YearMonth,
+    decide_post_purchase,
 };
 
 pub type PurchaseDraft = DraftPurchase;

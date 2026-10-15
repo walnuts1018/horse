@@ -454,17 +454,31 @@ async fn sync_posted_accounting(
         _ => BulkDeletePurchaseItemsPersistenceError::InvalidDecision,
     })?;
     let mut command = loaded.command;
-    command.expected_revision = command.draft.revision;
-    for allocation in &mut command.draft.allocations {
+    command.expected_revision = command.draft.revision();
+    let mut allocation_funding_updates = Vec::new();
+    for allocation in command.draft.allocations() {
         let key = (
             parse_uuid(allocation.item_id.as_str(), "item_id")?,
             parse_uuid(allocation.pool_id.as_str(), "pool_id")?,
         );
         if let Some(basis) = burden_bases.get(&key) {
-            allocation.funding = basis.clone();
+            allocation_funding_updates.push((
+                allocation.item_id.clone(),
+                allocation.pool_id.clone(),
+                basis.clone(),
+            ));
         }
     }
-    for payment in &mut command.draft.payments {
+    for (item_id, pool_id, basis) in allocation_funding_updates {
+        if !command
+            .draft
+            .update_allocation_funding(&item_id, &pool_id, basis)
+        {
+            return Err(BulkDeletePurchaseItemsPersistenceError::InvalidDecision);
+        }
+    }
+    let mut payment_funding_updates = Vec::new();
+    for payment in command.draft.payments() {
         let account = parse_uuid(payment.account_id.as_str(), "account_id")?;
         let pool = parse_uuid(payment.funding.pool_id.as_str(), "pool_id")?;
         if let Some(basis) = payment_bases.get(&(account, pool)).or_else(|| {
@@ -473,9 +487,21 @@ async fn sync_posted_accounting(
                 .find(|((_, old_pool), _)| *old_pool == pool)
                 .map(|(_, basis)| basis)
         }) {
-            payment.funding.rule = basis.clone();
+            payment_funding_updates.push((
+                payment.account_id.clone(),
+                payment.funding.pool_id.clone(),
+                basis.clone(),
+            ));
         } else if payments_changed && accounts.contains(&account) {
             return Err(BulkDeletePurchaseItemsPersistenceError::InvalidFundingSnapshot);
+        }
+    }
+    for (account_id, pool_id, basis) in payment_funding_updates {
+        if !command
+            .draft
+            .update_payment_funding(&account_id, &pool_id, basis)
+        {
+            return Err(BulkDeletePurchaseItemsPersistenceError::InvalidDecision);
         }
     }
     let decision = decide_post_purchase(command)
