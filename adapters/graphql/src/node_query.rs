@@ -4,18 +4,20 @@ use bookkeeping_postgres::financial_command_result;
 use chrono::NaiveDate;
 use cross_context_postgres::node_query as postgres_query;
 use horse_postgres_common::PgPool;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::ledger_entry::{self, LedgerEntry};
 
 pub async fn graphql_node(ctx: &Context<'_>, global_id: ID) -> Result<Option<ledger_entry::Node>> {
-    graphql_node_with_households(ctx, global_id, None).await
+    graphql_node_with_households(ctx, global_id, None, None).await
 }
 
 async fn graphql_node_with_households(
     ctx: &Context<'_>,
     global_id: ID,
     known_households: Option<&[Uuid]>,
+    preloaded_household_nodes: Option<&HashMap<(String, Uuid), ledger_entry::Node>>,
 ) -> Result<Option<ledger_entry::Node>> {
     let decoded = decode_relay_id(&global_id)?;
     match decoded.type_name.as_str() {
@@ -61,6 +63,11 @@ async fn graphql_node_with_households(
             }
             if !is_supported_node_type(type_name) {
                 return Ok(None);
+            }
+            if matches!(type_name, "Account" | "Category" | "Member" | "Pool") {
+                return Ok(preloaded_household_nodes
+                    .and_then(|nodes| nodes.get(&(type_name.to_owned(), id)))
+                    .cloned());
             }
             let household_ids = match known_households {
                 Some(household_ids) => household_ids.to_vec(),
@@ -259,9 +266,48 @@ pub async fn graphql_nodes(
     let household_ids = postgres_query::active_household_ids(ctx.data::<PgPool>()?, actor.0)
         .await
         .map_err(crate::internal_error)?;
+    let mut household_node_ids = Vec::new();
+    for global_id in &global_ids {
+        let decoded = decode_relay_id(global_id)?;
+        if matches!(
+            decoded.type_name.as_str(),
+            "Account" | "Category" | "Member" | "Pool"
+        ) {
+            let id = decode_uuid_payload(&decoded.type_name, &decoded.payload)?;
+            household_node_ids.push((decoded.type_name, id));
+        }
+    }
+    let mut household_nodes = HashMap::new();
+    if !household_node_ids.is_empty() {
+        for household_id in &household_ids {
+            let household = crate::household_lifecycle::load_household_graphql(
+                ctx.data::<PgPool>()?,
+                actor.0,
+                *household_id,
+            )
+            .await?;
+            for (type_name, id) in &household_node_ids {
+                if let Some(node) = crate::household_lifecycle::resolve_household_node_from_model(
+                    &household, type_name, *id,
+                ) {
+                    household_nodes
+                        .entry((type_name.clone(), *id))
+                        .or_insert(node);
+                }
+            }
+        }
+    }
     let mut result = Vec::with_capacity(global_ids.len());
     for global_id in global_ids {
-        result.push(graphql_node_with_households(ctx, global_id, Some(&household_ids)).await?);
+        result.push(
+            graphql_node_with_households(
+                ctx,
+                global_id,
+                Some(&household_ids),
+                Some(&household_nodes),
+            )
+            .await?,
+        );
     }
     Ok(result)
 }

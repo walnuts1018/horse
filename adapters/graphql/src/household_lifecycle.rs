@@ -581,31 +581,43 @@ pub(crate) async fn resolve_household_node(
     id: Uuid,
 ) -> Result<Option<crate::ledger_entry::Node>> {
     let household = load_household_graphql(pool, actor_id, household_id).await?;
+    Ok(resolve_household_node_from_model(&household, type_name, id))
+}
+
+pub(crate) fn resolve_household_node_from_model(
+    household: &Household,
+    type_name: &str,
+    id: Uuid,
+) -> Option<crate::ledger_entry::Node> {
     let global_id = crate::node_query::encode_global_node_id(type_name, id);
     let node = match type_name {
         "Account" => household
             .accounts
-            .into_iter()
+            .iter()
             .find(|value| value.id == global_id)
+            .cloned()
             .map(crate::ledger_entry::Node::Account),
         "Category" => household
             .categories
-            .into_iter()
+            .iter()
             .find(|value| value.id == global_id)
+            .cloned()
             .map(crate::ledger_entry::Node::Category),
         "Member" => household
             .members
-            .into_iter()
+            .iter()
             .find(|value| value.id == global_id)
+            .cloned()
             .map(crate::ledger_entry::Node::Member),
         "Pool" => household
             .pools
-            .into_iter()
+            .iter()
             .find(|value| value.node_id() == &global_id)
+            .cloned()
             .map(crate::ledger_entry::Node::Pool),
         _ => None,
     };
-    Ok(node)
+    node
 }
 
 fn map_invitation(
