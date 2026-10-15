@@ -1,0 +1,36 @@
+type PurchaseAnalyticsEntry {
+  dimension: String!
+  id: String!
+  name: String!
+  period: YearMonth!
+  amountYen: Long!
+  count: Int!
+}
+
+type PurchasePriceObservation {
+  itemId: String!
+  occurredAt: DateTime!
+  amountYen: Long!
+  remainingRefundableAmountYen: Long!
+  effectiveUnitPriceNumeratorYen: String
+  effectiveUnitPriceDenominator: String
+  printedUnitPriceYen: Long
+  printedUnitPriceQuantityNumerator: String
+  printedUnitPriceQuantityDenominator: String
+  printedUnitPriceUnit: String
+}
+
+extend type Query {
+  purchaseAnalytics(
+    householdId: ID! @nodeID(of: "Household")
+    from: YearMonth!
+    to: YearMonth!
+  ): [PurchaseAnalyticsEntry!]!
+
+  purchasePriceObservations(
+    householdId: ID! @nodeID(of: "Household")
+    from: YearMonth!
+    to: YearMonth!
+    itemIds: [String!]!
+  ): [PurchasePriceObservation!]!
+}

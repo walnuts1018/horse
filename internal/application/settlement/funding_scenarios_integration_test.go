@@ -11,8 +11,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/funding"
+	"github.com/walnuts1018/horse/internal/application/funding_schedule"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -210,5 +212,62 @@ func TestIrregularFundingOverpaymentCarriesAcrossClosedPeriod(t *testing.T) {
 	}
 	if closedScheduled[memberA.String()] != 12000 || closedScheduled[memberB.String()] != 4500 {
 		t.Fatalf("materialized weekly and custom obligations should match preview: %#v", closedScheduled)
+	}
+
+	newStartsOn := time.Date(2026, time.September, 15, 0, 0, 0, 0, time.FixedZone("JST", 9*60*60))
+	scheduleService := funding_schedule.NewService(db)
+	if _, err := scheduleService.Set(ctx, funding_schedule.SetCommand{
+		ActorID: memberA.String(), HouseholdID: householdID.String(), MemberID: memberA.String(), PoolID: poolID.String(),
+		AmountYen: 8000, Cadence: "MONTHLY", StartsOn: newStartsOn,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	latestStartsOn := time.Date(2026, time.September, 25, 0, 0, 0, 0, time.FixedZone("JST", 9*60*60))
+	latestSchedule, err := scheduleService.Set(ctx, funding_schedule.SetCommand{
+		ActorID: memberA.String(), HouseholdID: householdID.String(), MemberID: memberA.String(), PoolID: poolID.String(),
+		AmountYen: 10000, Cadence: "MONTHLY", StartsOn: latestStartsOn,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	september, err := settlements.Preview(ctx, householdID.String(), "2026-09")
+	if err != nil {
+		t.Fatal(err)
+	}
+	septemberScheduled := make(map[string]int64, len(september))
+	for _, line := range september {
+		septemberScheduled[line.MemberID] = line.ScheduledYen
+	}
+	if septemberScheduled[memberA.String()] != 10000 {
+		t.Fatalf("monthly schedule should use the amount effective at period end: %#v", septemberScheduled)
+	}
+	closedSeptember, err := settlements.Close(ctx, CloseCommand{ActorID: memberA.String(), HouseholdID: householdID.String(), Period: "2026-09"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var closedMemberAScheduled int64
+	for _, line := range closedSeptember.Lines {
+		if line.MemberID == memberA.String() {
+			closedMemberAScheduled = line.ScheduledYen
+		}
+	}
+	if closedMemberAScheduled != septemberScheduled[memberA.String()] {
+		t.Fatalf("closed settlement should match the preview obligation: got %d, want %d", closedMemberAScheduled, septemberScheduled[memberA.String()])
+	}
+	memberAObligation, err := models.FundingObligations.Query(sm.Where(psql.And(
+		models.FundingObligations.Columns.HouseholdID.EQ(psql.Arg(householdID)),
+		models.FundingObligations.Columns.MemberID.EQ(psql.Arg(memberA)),
+		models.FundingObligations.Columns.PoolID.EQ(psql.Arg(poolID)),
+		models.FundingObligations.Columns.Period.EQ(psql.Arg("2026-09")),
+	))).One(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latestScheduleID, err := gofrsuuid.FromString(latestSchedule.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if memberAObligation.AmountYen != septemberScheduled[memberA.String()] || !memberAObligation.ScheduleID.Valid || memberAObligation.ScheduleID.V != latestScheduleID {
+		t.Fatalf("obligation should preserve the period-end amount and schedule: %#v", memberAObligation)
 	}
 }

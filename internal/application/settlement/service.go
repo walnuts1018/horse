@@ -1,12 +1,14 @@
 package settlement
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	stdjson "encoding/json"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
@@ -255,19 +257,38 @@ func materializeFundingObligations(ctx context.Context, executor bob.Executor, h
 	if err != nil {
 		return err
 	}
-	for _, schedule := range schedules {
-		amountYen, err := fundingScheduleAmount(start, end, schedule)
+	amounts, err := aggregateFundingSchedules(start, end, schedules)
+	if err != nil {
+		return err
+	}
+	keys := make([]fundingKey, 0, len(amounts))
+	for key := range amounts {
+		keys = append(keys, key)
+	}
+	slices.SortFunc(keys, func(left, right fundingKey) int {
+		if comparison := cmp.Compare(left.memberID, right.memberID); comparison != 0 {
+			return comparison
+		}
+		return cmp.Compare(left.poolID, right.poolID)
+	})
+	for _, key := range keys {
+		amount := amounts[key]
+		memberID, err := gofrsuuid.FromString(key.memberID)
 		if err != nil {
 			return err
 		}
-		scheduleID := sql.Null[gofrsuuid.UUID]{V: schedule.ID, Valid: true}
+		poolID, err := gofrsuuid.FromString(key.poolID)
+		if err != nil {
+			return err
+		}
+		scheduleID := sql.Null[gofrsuuid.UUID]{V: amount.schedule.ID, Valid: true}
 		obligationID, err := gofrsuuid.NewV7()
 		if err != nil {
 			return err
 		}
 		if _, err := models.FundingObligations.Insert(&models.FundingObligationSetter{
-			ID: &obligationID, HouseholdID: &householdID, ScheduleID: &scheduleID, MemberID: &schedule.MemberID,
-			PoolID: &schedule.PoolID, Period: &period, AmountYen: &amountYen,
+			ID: &obligationID, HouseholdID: &householdID, ScheduleID: &scheduleID, MemberID: &memberID,
+			PoolID: &poolID, Period: &period, AmountYen: &amount.amount,
 		}, im.OnConflict("household_id", "member_id", "pool_id", "period").DoUpdate(
 			im.SetCol("schedule_id").To(im.Excluded("schedule_id")),
 			im.SetCol("amount_yen").To(im.Excluded("amount_yen")),

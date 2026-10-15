@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -37,5 +38,43 @@ func TestMemberActiveDuringPeriod(t *testing.T) {
 				t.Fatalf("memberActiveDuringPeriod() = %t, want %t", got, test.want)
 			}
 		})
+	}
+}
+
+func TestFundingScheduleUsesPeriodEndSnapshot(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, 0)
+	memberID := gofrsuuid.Must(gofrsuuid.NewV7())
+	poolID := gofrsuuid.Must(gofrsuuid.NewV7())
+	priorID := gofrsuuid.Must(gofrsuuid.NewV7())
+	middleID := gofrsuuid.Must(gofrsuuid.NewV7())
+	latestID := gofrsuuid.Must(gofrsuuid.NewV7())
+	nextMonthID := gofrsuuid.Must(gofrsuuid.NewV7())
+	endedID := gofrsuuid.Must(gofrsuuid.NewV7())
+	cadence := "MONTHLY"
+	active := true
+
+	schedules := models.FundingScheduleSlice{
+		{ID: priorID, MemberID: memberID, PoolID: poolID, AmountYen: 4000, Cadence: cadence,
+			StartsOn: start, EndsOn: sql.Null[time.Time]{V: start.AddDate(0, 0, 14), Valid: true}},
+		{ID: middleID, MemberID: memberID, PoolID: poolID, AmountYen: 8000, Cadence: cadence,
+			StartsOn: start.AddDate(0, 0, 14), EndsOn: sql.Null[time.Time]{V: start.AddDate(0, 0, 24), Valid: true}},
+		{ID: latestID, MemberID: memberID, PoolID: poolID, AmountYen: 10000, Cadence: cadence,
+			StartsOn: start.AddDate(0, 0, 24), Active: active},
+		{ID: nextMonthID, MemberID: memberID, PoolID: poolID, AmountYen: 12000, Cadence: cadence,
+			StartsOn: end, Active: active},
+		{ID: endedID, MemberID: memberID, PoolID: poolID, AmountYen: 2000, Cadence: cadence,
+			StartsOn: start.AddDate(0, -1, 0), EndsOn: sql.Null[time.Time]{V: start.AddDate(0, 0, -1), Valid: true}},
+	}
+
+	amounts, err := aggregateFundingSchedules(start, end, schedules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := fundingKey{memberID: memberID.String(), poolID: poolID.String()}
+	got, exists := amounts[key]
+	if !exists || got.amount != 10000 || got.schedule.ID != latestID {
+		t.Fatalf("period-end schedule snapshot = %#v, want latest 10000-yen schedule", got)
 	}
 }

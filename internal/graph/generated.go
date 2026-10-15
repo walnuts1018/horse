@@ -917,6 +917,15 @@ type ComplexityRoot struct {
 		UpdatedAt                    func(childComplexity int) int
 	}
 
+	PurchaseAnalyticsEntry struct {
+		AmountYen func(childComplexity int) int
+		Count     func(childComplexity int) int
+		Dimension func(childComplexity int) int
+		ID        func(childComplexity int) int
+		Name      func(childComplexity int) int
+		Period    func(childComplexity int) int
+	}
+
 	PurchaseChange struct {
 		ChangedFields func(childComplexity int) int
 		Cursor        func(childComplexity int) int
@@ -1007,6 +1016,18 @@ type ComplexityRoot struct {
 		PaymentAccountID func(childComplexity int) int
 	}
 
+	PurchasePriceObservation struct {
+		AmountYen                           func(childComplexity int) int
+		EffectiveUnitPriceDenominator       func(childComplexity int) int
+		EffectiveUnitPriceNumeratorYen      func(childComplexity int) int
+		ItemID                              func(childComplexity int) int
+		OccurredAt                          func(childComplexity int) int
+		PrintedUnitPriceQuantityDenominator func(childComplexity int) int
+		PrintedUnitPriceQuantityNumerator   func(childComplexity int) int
+		PrintedUnitPriceUnit                func(childComplexity int) int
+		PrintedUnitPriceYen                 func(childComplexity int) int
+	}
+
 	PurchaseQuantity struct {
 		Denominator func(childComplexity int) int
 		Numerator   func(childComplexity int) int
@@ -1043,8 +1064,10 @@ type ComplexityRoot struct {
 		Nodes                      func(childComplexity int, ids []string) int
 		ProductCatalog             func(childComplexity int, householdID string, after *string, before *string, first *int, last *int) int
 		ProductSuggestions         func(childComplexity int, householdID string, query string, merchant *string, first int) int
+		PurchaseAnalytics          func(childComplexity int, householdID string, from model.YearMonth, to model.YearMonth) int
 		PurchaseCorrections        func(childComplexity int, purchaseID string, first *int, after *string) int
 		PurchaseDefaults           func(childComplexity int, householdID string) int
+		PurchasePriceObservations  func(childComplexity int, householdID string, from model.YearMonth, to model.YearMonth, itemIds []string) int
 		Purchases                  func(childComplexity int, filter model.PurchaseFilter, after *string, before *string, first *int, last *int) int
 		RecurringExpenses          func(childComplexity int, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) int
 		Settlement                 func(childComplexity int, householdID string, period model.YearMonth) int
@@ -1713,6 +1736,8 @@ type QueryResolver interface {
 	ProductCatalog(ctx context.Context, householdID string, after *string, before *string, first *int, last *int) (*model.ProductConceptConnection, error)
 	ProductSuggestions(ctx context.Context, householdID string, query string, merchant *string, first int) ([]*model.ProductSuggestion, error)
 	Purchases(ctx context.Context, filter model.PurchaseFilter, after *string, before *string, first *int, last *int) (*model.PurchaseConnection, error)
+	PurchaseAnalytics(ctx context.Context, householdID string, from model.YearMonth, to model.YearMonth) ([]*model.PurchaseAnalyticsEntry, error)
+	PurchasePriceObservations(ctx context.Context, householdID string, from model.YearMonth, to model.YearMonth, itemIds []string) ([]*model.PurchasePriceObservation, error)
 	PurchaseCorrections(ctx context.Context, purchaseID string, first *int, after *string) (*model.PurchaseCorrectionConnection, error)
 	PurchaseDefaults(ctx context.Context, householdID string) ([]*model.PurchaseDefault, error)
 	RecurringExpenses(ctx context.Context, householdID string, includeArchived bool, after *string, before *string, first *int, last *int) (*model.RecurringExpenseConnection, error)
@@ -4902,6 +4927,43 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Purchase.UpdatedAt(childComplexity), true
 
+	case "PurchaseAnalyticsEntry.amountYen":
+		if e.ComplexityRoot.PurchaseAnalyticsEntry.AmountYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseAnalyticsEntry.AmountYen(childComplexity), true
+	case "PurchaseAnalyticsEntry.count":
+		if e.ComplexityRoot.PurchaseAnalyticsEntry.Count == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseAnalyticsEntry.Count(childComplexity), true
+	case "PurchaseAnalyticsEntry.dimension":
+		if e.ComplexityRoot.PurchaseAnalyticsEntry.Dimension == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseAnalyticsEntry.Dimension(childComplexity), true
+	case "PurchaseAnalyticsEntry.id":
+		if e.ComplexityRoot.PurchaseAnalyticsEntry.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseAnalyticsEntry.ID(childComplexity), true
+	case "PurchaseAnalyticsEntry.name":
+		if e.ComplexityRoot.PurchaseAnalyticsEntry.Name == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseAnalyticsEntry.Name(childComplexity), true
+	case "PurchaseAnalyticsEntry.period":
+		if e.ComplexityRoot.PurchaseAnalyticsEntry.Period == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchaseAnalyticsEntry.Period(childComplexity), true
+
 	case "PurchaseChange.changedFields":
 		if e.ComplexityRoot.PurchaseChange.ChangedFields == nil {
 			break
@@ -5255,6 +5317,61 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.PurchasePayment.PaymentAccountID(childComplexity), true
 
+	case "PurchasePriceObservation.amountYen":
+		if e.ComplexityRoot.PurchasePriceObservation.AmountYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchasePriceObservation.AmountYen(childComplexity), true
+	case "PurchasePriceObservation.effectiveUnitPriceDenominator":
+		if e.ComplexityRoot.PurchasePriceObservation.EffectiveUnitPriceDenominator == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchasePriceObservation.EffectiveUnitPriceDenominator(childComplexity), true
+	case "PurchasePriceObservation.effectiveUnitPriceNumeratorYen":
+		if e.ComplexityRoot.PurchasePriceObservation.EffectiveUnitPriceNumeratorYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchasePriceObservation.EffectiveUnitPriceNumeratorYen(childComplexity), true
+	case "PurchasePriceObservation.itemId":
+		if e.ComplexityRoot.PurchasePriceObservation.ItemID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchasePriceObservation.ItemID(childComplexity), true
+	case "PurchasePriceObservation.occurredAt":
+		if e.ComplexityRoot.PurchasePriceObservation.OccurredAt == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchasePriceObservation.OccurredAt(childComplexity), true
+	case "PurchasePriceObservation.printedUnitPriceQuantityDenominator":
+		if e.ComplexityRoot.PurchasePriceObservation.PrintedUnitPriceQuantityDenominator == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchasePriceObservation.PrintedUnitPriceQuantityDenominator(childComplexity), true
+	case "PurchasePriceObservation.printedUnitPriceQuantityNumerator":
+		if e.ComplexityRoot.PurchasePriceObservation.PrintedUnitPriceQuantityNumerator == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchasePriceObservation.PrintedUnitPriceQuantityNumerator(childComplexity), true
+	case "PurchasePriceObservation.printedUnitPriceUnit":
+		if e.ComplexityRoot.PurchasePriceObservation.PrintedUnitPriceUnit == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchasePriceObservation.PrintedUnitPriceUnit(childComplexity), true
+	case "PurchasePriceObservation.printedUnitPriceYen":
+		if e.ComplexityRoot.PurchasePriceObservation.PrintedUnitPriceYen == nil {
+			break
+		}
+
+		return e.ComplexityRoot.PurchasePriceObservation.PrintedUnitPriceYen(childComplexity), true
+
 	case "PurchaseQuantity.denominator":
 		if e.ComplexityRoot.PurchaseQuantity.Denominator == nil {
 			break
@@ -5527,6 +5644,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.ProductSuggestions(childComplexity, args["householdId"].(string), args["query"].(string), args["merchant"].(*string), args["first"].(int)), true
+	case "Query.purchaseAnalytics":
+		if e.ComplexityRoot.Query.PurchaseAnalytics == nil {
+			break
+		}
+
+		args, err := ec.field_Query_purchaseAnalytics_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.PurchaseAnalytics(childComplexity, args["householdId"].(string), args["from"].(model.YearMonth), args["to"].(model.YearMonth)), true
 	case "Query.purchaseCorrections":
 		if e.ComplexityRoot.Query.PurchaseCorrections == nil {
 			break
@@ -5549,6 +5677,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Query.PurchaseDefaults(childComplexity, args["householdId"].(string)), true
+	case "Query.purchasePriceObservations":
+		if e.ComplexityRoot.Query.PurchasePriceObservations == nil {
+			break
+		}
+
+		args, err := ec.field_Query_purchasePriceObservations_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Query.PurchasePriceObservations(childComplexity, args["householdId"].(string), args["from"].(model.YearMonth), args["to"].(model.YearMonth), args["itemIds"].([]string)), true
 	case "Query.purchases":
 		if e.ComplexityRoot.Query.Purchases == nil {
 			break
@@ -8614,6 +8753,42 @@ extend type Query {
   ): PurchaseConnection!
 }
 `, BuiltIn: false},
+	{Name: "../../graphql/purchase_analytics.graphql", Input: `type PurchaseAnalyticsEntry {
+  dimension: String!
+  id: String!
+  name: String!
+  period: YearMonth!
+  amountYen: Long!
+  count: Int!
+}
+
+type PurchasePriceObservation {
+  itemId: String!
+  occurredAt: DateTime!
+  amountYen: Long!
+  effectiveUnitPriceNumeratorYen: String
+  effectiveUnitPriceDenominator: String
+  printedUnitPriceYen: Long
+  printedUnitPriceQuantityNumerator: String
+  printedUnitPriceQuantityDenominator: String
+  printedUnitPriceUnit: String
+}
+
+extend type Query {
+  purchaseAnalytics(
+    householdId: ID! @nodeID(of: "Household")
+    from: YearMonth!
+    to: YearMonth!
+  ): [PurchaseAnalyticsEntry!]!
+
+  purchasePriceObservations(
+    householdId: ID! @nodeID(of: "Household")
+    from: YearMonth!
+    to: YearMonth!
+    itemIds: [String!]!
+  ): [PurchasePriceObservation!]!
+}
+`, BuiltIn: false},
 	{Name: "../../graphql/purchase_correction.graphql", Input: `interface PurchaseCorrection implements Node {
   id: ID! @goField(forceResolver: true)
   amountDeltaYen: Long!
@@ -10468,6 +10643,24 @@ func (ec *executionContext) childFields_Purchase(ctx context.Context, field grap
 	return nil, fmt.Errorf("no field named %q was found under type Purchase", field.Name)
 }
 
+func (ec *executionContext) childFields_PurchaseAnalyticsEntry(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "dimension":
+		return ec.fieldContext_PurchaseAnalyticsEntry_dimension(ctx, field)
+	case "id":
+		return ec.fieldContext_PurchaseAnalyticsEntry_id(ctx, field)
+	case "name":
+		return ec.fieldContext_PurchaseAnalyticsEntry_name(ctx, field)
+	case "period":
+		return ec.fieldContext_PurchaseAnalyticsEntry_period(ctx, field)
+	case "amountYen":
+		return ec.fieldContext_PurchaseAnalyticsEntry_amountYen(ctx, field)
+	case "count":
+		return ec.fieldContext_PurchaseAnalyticsEntry_count(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type PurchaseAnalyticsEntry", field.Name)
+}
+
 func (ec *executionContext) childFields_PurchaseChange(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 	switch field.Name {
 	case "cursor":
@@ -10606,6 +10799,30 @@ func (ec *executionContext) childFields_PurchasePayment(ctx context.Context, fie
 		return ec.fieldContext_PurchasePayment_amountYen(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type PurchasePayment", field.Name)
+}
+
+func (ec *executionContext) childFields_PurchasePriceObservation(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "itemId":
+		return ec.fieldContext_PurchasePriceObservation_itemId(ctx, field)
+	case "occurredAt":
+		return ec.fieldContext_PurchasePriceObservation_occurredAt(ctx, field)
+	case "amountYen":
+		return ec.fieldContext_PurchasePriceObservation_amountYen(ctx, field)
+	case "effectiveUnitPriceNumeratorYen":
+		return ec.fieldContext_PurchasePriceObservation_effectiveUnitPriceNumeratorYen(ctx, field)
+	case "effectiveUnitPriceDenominator":
+		return ec.fieldContext_PurchasePriceObservation_effectiveUnitPriceDenominator(ctx, field)
+	case "printedUnitPriceYen":
+		return ec.fieldContext_PurchasePriceObservation_printedUnitPriceYen(ctx, field)
+	case "printedUnitPriceQuantityNumerator":
+		return ec.fieldContext_PurchasePriceObservation_printedUnitPriceQuantityNumerator(ctx, field)
+	case "printedUnitPriceQuantityDenominator":
+		return ec.fieldContext_PurchasePriceObservation_printedUnitPriceQuantityDenominator(ctx, field)
+	case "printedUnitPriceUnit":
+		return ec.fieldContext_PurchasePriceObservation_printedUnitPriceUnit(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type PurchasePriceObservation", field.Name)
 }
 
 func (ec *executionContext) childFields_PurchaseQuantity(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -13246,6 +13463,79 @@ func (ec *executionContext) field_Query_productSuggestions_argsHouseholdID(
 	}
 }
 
+func (ec *executionContext) field_Query_purchaseAnalytics_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+
+	arg0, err := ec.field_Query_purchaseAnalytics_argsHouseholdID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "from",
+		func(ctx context.Context, v any) (model.YearMonth, error) {
+			return ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["from"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "to",
+		func(ctx context.Context, v any) (model.YearMonth, error) {
+			return ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["to"] = arg2
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_purchaseAnalytics_argsHouseholdID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["householdId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["householdId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Household")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
+}
+
 func (ec *executionContext) field_Query_purchaseCorrections_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -13332,6 +13622,87 @@ func (ec *executionContext) field_Query_purchaseDefaults_args(ctx context.Contex
 }
 
 func (ec *executionContext) field_Query_purchaseDefaults_argsHouseholdID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["householdId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("householdId"))
+	directive0 := func(ctx context.Context) (any, error) {
+		tmp, ok := rawArgs["householdId"]
+		if !ok {
+			var zeroVal string
+			return zeroVal, nil
+		}
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	directive1 := func(ctx context.Context) (any, error) {
+		of, err := ec.unmarshalNString2string(ctx, "Household")
+		if err != nil {
+			var zeroVal string
+			return zeroVal, err
+		}
+		if ec.Directives.NodeID == nil {
+			var zeroVal string
+			return zeroVal, errors.New("directive nodeID is not implemented")
+		}
+		return ec.Directives.NodeID(ctx, rawArgs, directive0, of)
+	}
+
+	tmp, err := directive1(ctx)
+	if err != nil {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, err)
+	}
+	if data, ok := tmp.(string); ok {
+		return data, nil
+	} else {
+		var zeroVal string
+		return zeroVal, graphql.ErrorOnPath(ctx, fmt.Errorf(`unexpected type %T from directive, should be string`, tmp))
+	}
+}
+
+func (ec *executionContext) field_Query_purchasePriceObservations_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+
+	arg0, err := ec.field_Query_purchasePriceObservations_argsHouseholdID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["householdId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "from",
+		func(ctx context.Context, v any) (model.YearMonth, error) {
+			return ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["from"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "to",
+		func(ctx context.Context, v any) (model.YearMonth, error) {
+			return ec.unmarshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["to"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "itemIds",
+		func(ctx context.Context, v any) ([]string, error) {
+			return ec.unmarshalNString2ᚕstringᚄ(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["itemIds"] = arg3
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_purchasePriceObservations_argsHouseholdID(
 	ctx context.Context,
 	rawArgs map[string]any,
 ) (string, error) {
@@ -26445,6 +26816,144 @@ func (ec *executionContext) fieldContext_Purchase_updatedAt(_ context.Context, f
 	return graphql.NewScalarFieldContext("Purchase", field, false, false, errors.New("field of type DateTime does not have child fields"))
 }
 
+func (ec *executionContext) _PurchaseAnalyticsEntry_dimension(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseAnalyticsEntry) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseAnalyticsEntry_dimension(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Dimension, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseAnalyticsEntry_dimension(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseAnalyticsEntry", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseAnalyticsEntry_id(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseAnalyticsEntry) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseAnalyticsEntry_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseAnalyticsEntry_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseAnalyticsEntry", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseAnalyticsEntry_name(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseAnalyticsEntry) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseAnalyticsEntry_name(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseAnalyticsEntry_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseAnalyticsEntry", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseAnalyticsEntry_period(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseAnalyticsEntry) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseAnalyticsEntry_period(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Period, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.YearMonth) graphql.Marshaler {
+			return ec.marshalNYearMonth2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐYearMonth(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseAnalyticsEntry_period(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseAnalyticsEntry", field, false, false, errors.New("field of type YearMonth does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseAnalyticsEntry_amountYen(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseAnalyticsEntry) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseAnalyticsEntry_amountYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.AmountYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseAnalyticsEntry_amountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseAnalyticsEntry", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _PurchaseAnalyticsEntry_count(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseAnalyticsEntry) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchaseAnalyticsEntry_count(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Count, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchaseAnalyticsEntry_count(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchaseAnalyticsEntry", field, false, false, errors.New("field of type Int does not have child fields"))
+}
+
 func (ec *executionContext) _PurchaseChange_cursor(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseChange) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -27891,6 +28400,213 @@ func (ec *executionContext) fieldContext_PurchasePayment_amountYen(_ context.Con
 	return graphql.NewScalarFieldContext("PurchasePayment", field, false, false, errors.New("field of type Long does not have child fields"))
 }
 
+func (ec *executionContext) _PurchasePriceObservation_itemId(ctx context.Context, field graphql.CollectedField, obj *model.PurchasePriceObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchasePriceObservation_itemId(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ItemID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchasePriceObservation_itemId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchasePriceObservation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchasePriceObservation_occurredAt(ctx context.Context, field graphql.CollectedField, obj *model.PurchasePriceObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchasePriceObservation_occurredAt(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.OccurredAt, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.DateTime) graphql.Marshaler {
+			return ec.marshalNDateTime2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐDateTime(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchasePriceObservation_occurredAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchasePriceObservation", field, false, false, errors.New("field of type DateTime does not have child fields"))
+}
+
+func (ec *executionContext) _PurchasePriceObservation_amountYen(ctx context.Context, field graphql.CollectedField, obj *model.PurchasePriceObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchasePriceObservation_amountYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.AmountYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v model.Long) graphql.Marshaler {
+			return ec.marshalNLong2githubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_PurchasePriceObservation_amountYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchasePriceObservation", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _PurchasePriceObservation_effectiveUnitPriceNumeratorYen(ctx context.Context, field graphql.CollectedField, obj *model.PurchasePriceObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchasePriceObservation_effectiveUnitPriceNumeratorYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.EffectiveUnitPriceNumeratorYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchasePriceObservation_effectiveUnitPriceNumeratorYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchasePriceObservation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchasePriceObservation_effectiveUnitPriceDenominator(ctx context.Context, field graphql.CollectedField, obj *model.PurchasePriceObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchasePriceObservation_effectiveUnitPriceDenominator(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.EffectiveUnitPriceDenominator, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchasePriceObservation_effectiveUnitPriceDenominator(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchasePriceObservation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchasePriceObservation_printedUnitPriceYen(ctx context.Context, field graphql.CollectedField, obj *model.PurchasePriceObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchasePriceObservation_printedUnitPriceYen(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PrintedUnitPriceYen, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Long) graphql.Marshaler {
+			return ec.marshalOLong2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐLong(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchasePriceObservation_printedUnitPriceYen(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchasePriceObservation", field, false, false, errors.New("field of type Long does not have child fields"))
+}
+
+func (ec *executionContext) _PurchasePriceObservation_printedUnitPriceQuantityNumerator(ctx context.Context, field graphql.CollectedField, obj *model.PurchasePriceObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchasePriceObservation_printedUnitPriceQuantityNumerator(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PrintedUnitPriceQuantityNumerator, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchasePriceObservation_printedUnitPriceQuantityNumerator(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchasePriceObservation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchasePriceObservation_printedUnitPriceQuantityDenominator(ctx context.Context, field graphql.CollectedField, obj *model.PurchasePriceObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchasePriceObservation_printedUnitPriceQuantityDenominator(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PrintedUnitPriceQuantityDenominator, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchasePriceObservation_printedUnitPriceQuantityDenominator(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchasePriceObservation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
+func (ec *executionContext) _PurchasePriceObservation_printedUnitPriceUnit(ctx context.Context, field graphql.CollectedField, obj *model.PurchasePriceObservation) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_PurchasePriceObservation_printedUnitPriceUnit(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.PrintedUnitPriceUnit, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *string) graphql.Marshaler {
+			return ec.marshalOString2ᚖstring(ctx, selections, v)
+		},
+		true,
+		false,
+	)
+}
+func (ec *executionContext) fieldContext_PurchasePriceObservation_printedUnitPriceUnit(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("PurchasePriceObservation", field, false, false, errors.New("field of type String does not have child fields"))
+}
+
 func (ec *executionContext) _PurchaseQuantity_numerator(ctx context.Context, field graphql.CollectedField, obj *model.PurchaseQuantity) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -29057,6 +29773,94 @@ func (ec *executionContext) fieldContext_Query_purchases(ctx context.Context, fi
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_purchases_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_purchaseAnalytics(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_purchaseAnalytics(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().PurchaseAnalytics(ctx, fc.Args["householdId"].(string), fc.Args["from"].(model.YearMonth), fc.Args["to"].(model.YearMonth))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.PurchaseAnalyticsEntry) graphql.Marshaler {
+			return ec.marshalNPurchaseAnalyticsEntry2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseAnalyticsEntryᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_purchaseAnalytics(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PurchaseAnalyticsEntry(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_purchaseAnalytics_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_purchasePriceObservations(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Query_purchasePriceObservations(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Query().PurchasePriceObservations(ctx, fc.Args["householdId"].(string), fc.Args["from"].(model.YearMonth), fc.Args["to"].(model.YearMonth), fc.Args["itemIds"].([]string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.PurchasePriceObservation) graphql.Marshaler {
+			return ec.marshalNPurchasePriceObservation2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePriceObservationᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Query_purchasePriceObservations(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PurchasePriceObservation(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_purchasePriceObservations_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -53407,6 +54211,69 @@ func (ec *executionContext) _Purchase(ctx context.Context, sel ast.SelectionSet,
 	return out
 }
 
+var purchaseAnalyticsEntryImplementors = []string{"PurchaseAnalyticsEntry"}
+
+func (ec *executionContext) _PurchaseAnalyticsEntry(ctx context.Context, sel ast.SelectionSet, obj *model.PurchaseAnalyticsEntry) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, purchaseAnalyticsEntryImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("PurchaseAnalyticsEntry")
+		case "dimension":
+			out.Values[i] = ec._PurchaseAnalyticsEntry_dimension(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "id":
+			out.Values[i] = ec._PurchaseAnalyticsEntry_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "name":
+			out.Values[i] = ec._PurchaseAnalyticsEntry_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "period":
+			out.Values[i] = ec._PurchaseAnalyticsEntry_period(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "amountYen":
+			out.Values[i] = ec._PurchaseAnalyticsEntry_amountYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "count":
+			out.Values[i] = ec._PurchaseAnalyticsEntry_count(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var purchaseChangeImplementors = []string{"PurchaseChange"}
 
 func (ec *executionContext) _PurchaseChange(ctx context.Context, sel ast.SelectionSet, obj *model.PurchaseChange) graphql.Marshaler {
@@ -54352,6 +55219,84 @@ func (ec *executionContext) _PurchasePayment(ctx context.Context, sel ast.Select
 	return out
 }
 
+var purchasePriceObservationImplementors = []string{"PurchasePriceObservation"}
+
+func (ec *executionContext) _PurchasePriceObservation(ctx context.Context, sel ast.SelectionSet, obj *model.PurchasePriceObservation) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, purchasePriceObservationImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferredFieldSet := graphql.NewFieldSet(nil)
+	deferLabelToView := make(map[string]*graphql.FieldSetView)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("PurchasePriceObservation")
+		case "itemId":
+			out.Values[i] = ec._PurchasePriceObservation_itemId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "occurredAt":
+			out.Values[i] = ec._PurchasePriceObservation_occurredAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "amountYen":
+			out.Values[i] = ec._PurchasePriceObservation_amountYen(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "effectiveUnitPriceNumeratorYen":
+			out.Values[i] = ec._PurchasePriceObservation_effectiveUnitPriceNumeratorYen(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "effectiveUnitPriceDenominator":
+			out.Values[i] = ec._PurchasePriceObservation_effectiveUnitPriceDenominator(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "printedUnitPriceYen":
+			out.Values[i] = ec._PurchasePriceObservation_printedUnitPriceYen(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "printedUnitPriceQuantityNumerator":
+			out.Values[i] = ec._PurchasePriceObservation_printedUnitPriceQuantityNumerator(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "printedUnitPriceQuantityDenominator":
+			out.Values[i] = ec._PurchasePriceObservation_printedUnitPriceQuantityDenominator(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		case "printedUnitPriceUnit":
+			out.Values[i] = ec._PurchasePriceObservation_printedUnitPriceUnit(ctx, field, obj)
+			if out.Values[i] == graphql.RequiredNull {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.Deferred, int32(min(len(deferLabelToView), math.MaxInt32)))
+
+	ec.ProcessDeferredGroup(graphql.DeferredGroup{
+		Defers:   deferLabelToView,
+		Path:     graphql.GetPath(ctx),
+		FieldSet: deferredFieldSet,
+		Context:  ctx,
+	})
+
+	return out
+}
+
 var purchaseQuantityImplementors = []string{"PurchaseQuantity"}
 
 func (ec *executionContext) _PurchaseQuantity(ctx context.Context, sel ast.SelectionSet, obj *model.PurchaseQuantity) graphql.Marshaler {
@@ -54988,6 +55933,50 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_purchases(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "purchaseAnalytics":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_purchaseAnalytics(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "purchasePriceObservations":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_purchasePriceObservations(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -61166,6 +62155,32 @@ func (ec *executionContext) marshalNPurchase2ᚖgithubᚗcomᚋwalnuts1018ᚋhor
 	return ec._Purchase(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNPurchaseAnalyticsEntry2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseAnalyticsEntryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.PurchaseAnalyticsEntry) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNPurchaseAnalyticsEntry2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseAnalyticsEntry(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNPurchaseAnalyticsEntry2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseAnalyticsEntry(ctx context.Context, sel ast.SelectionSet, v *model.PurchaseAnalyticsEntry) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._PurchaseAnalyticsEntry(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNPurchaseChange2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseChange(ctx context.Context, sel ast.SelectionSet, v *model.PurchaseChange) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -61488,6 +62503,32 @@ func (ec *executionContext) marshalNPurchasePayment2ᚖgithubᚗcomᚋwalnuts101
 		return graphql.Null
 	}
 	return ec._PurchasePayment(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNPurchasePriceObservation2ᚕᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePriceObservationᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.PurchasePriceObservation) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNPurchasePriceObservation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePriceObservation(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNPurchasePriceObservation2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchasePriceObservation(ctx context.Context, sel ast.SelectionSet, v *model.PurchasePriceObservation) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._PurchasePriceObservation(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNPurchaseQuantity2ᚖgithubᚗcomᚋwalnuts1018ᚋhorseᚋinternalᚋgraphᚋmodelᚐPurchaseQuantity(ctx context.Context, sel ast.SelectionSet, v *model.PurchaseQuantity) graphql.Marshaler {

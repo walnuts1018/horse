@@ -1609,6 +1609,15 @@ func (Purchase) IsAccountBalanceSource() {}
 
 func (Purchase) IsNode() {}
 
+type PurchaseAnalyticsEntry struct {
+	Dimension string    `json:"dimension"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Period    YearMonth `json:"period"`
+	AmountYen Long      `json:"amountYen"`
+	Count     int       `json:"count"`
+}
+
 type PurchaseChange struct {
 	Cursor        string                `json:"cursor"`
 	Kind          PurchaseChangeKind    `json:"kind"`
@@ -1780,6 +1789,18 @@ type PurchasePayment struct {
 	PaymentAccountID string   `json:"paymentAccountId"`
 	Account          *Account `json:"account"`
 	AmountYen        Long     `json:"amountYen"`
+}
+
+type PurchasePriceObservation struct {
+	ItemID                              string   `json:"itemId"`
+	OccurredAt                          DateTime `json:"occurredAt"`
+	AmountYen                           Long     `json:"amountYen"`
+	EffectiveUnitPriceNumeratorYen      *string  `json:"effectiveUnitPriceNumeratorYen,omitempty"`
+	EffectiveUnitPriceDenominator       *string  `json:"effectiveUnitPriceDenominator,omitempty"`
+	PrintedUnitPriceYen                 *Long    `json:"printedUnitPriceYen,omitempty"`
+	PrintedUnitPriceQuantityNumerator   *string  `json:"printedUnitPriceQuantityNumerator,omitempty"`
+	PrintedUnitPriceQuantityDenominator *string  `json:"printedUnitPriceQuantityDenominator,omitempty"`
+	PrintedUnitPriceUnit                *string  `json:"printedUnitPriceUnit,omitempty"`
 }
 
 type PurchaseQuantity struct {

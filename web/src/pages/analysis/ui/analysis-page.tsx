@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { Household } from "../../../shared/api";
 
 import { InlineError } from "../../../shared/ui";
-import { purchaseDimensions, type AnalyticsRow } from "../model/purchase-analytics";
+import type { AnalyticsRow } from "../model/purchase-analytics";
 import { useAnalysisData } from "../model/use-analysis-data";
 import { useAnalysisPeriod } from "../model/use-analysis-period";
 import { AnalysisBreakdown } from "./analysis-breakdown";
@@ -47,12 +47,8 @@ export function AnalysisPage({ household }: { household: Household }) {
   } = period;
   const finalMonth = months[months.length - 1];
   const {
-    purchases,
-    loadingMore,
-    moreError,
-    hasNextPage,
-    loadMore,
-    refreshPurchases,
+    purchaseAnalytics,
+    itemPriceObservations,
     spending,
     spendingLoading,
     spendingError,
@@ -64,21 +60,14 @@ export function AnalysisPage({ household }: { household: Household }) {
     budgetError,
     recurringExpenses,
     recurringError,
-  } = useAnalysisData(household.id, months[0], finalMonth, currentMonth, dimension);
+  } = useAnalysisData(household.id, months[0], finalMonth, currentMonth, dimension, itemMetric);
 
   const usesPurchases = dimension !== "category" && dimension !== "member";
-  const aggregateError = usesPurchases
-    ? moreError
-    : dimension === "category"
-      ? spendingError
-      : memberSpendingError;
-  const aggregateLoading = usesPurchases
-    ? loadingMore || hasNextPage
-    : dimension === "category"
-      ? spendingLoading
-      : memberSpendingLoading;
+  const aggregateError = dimension === "category" ? spendingError : memberSpendingError;
+  const aggregateLoading =
+    dimension === "category" ? spendingLoading : memberSpendingLoading;
   const aggregateReady = !aggregateError && !aggregateLoading;
-  const data = aggregateReady && usesPurchases ? purchaseDimensions(purchases, household) : null;
+  const data = aggregateReady && usesPurchases ? purchaseAnalytics : null;
   const categories = aggregateReady
     ? sorted(
         Array.from(
@@ -212,19 +201,10 @@ export function AnalysisPage({ household }: { household: Household }) {
       />
       {loadError && <InlineError message={loadError} />}
       {aggregateError && <InlineError message={aggregateError} />}
-      {usesPurchases && moreError && (
-        <button
-          className="text-button"
-          type="button"
-          onClick={hasNextPage ? loadMore : refreshPurchases}
-        >
-          再試行
-        </button>
-      )}
       {aggregateLoading && (
         <div className="empty-state compact">
           <BarChart3 />
-          <span>{usesPurchases ? "購入履歴を取得中" : "集計中"}</span>
+          <span>集計中</span>
         </div>
       )}
       {aggregateReady && (
@@ -259,8 +239,8 @@ export function AnalysisPage({ household }: { household: Household }) {
       {dimension === "item" && (
         <ItemPricePanel
           rows={rows}
-          data={data}
-          purchases={purchases}
+          monthly={data?.monthly.item ?? []}
+          observations={itemPriceObservations}
           itemMetric={itemMetric}
           setItemMetric={setItemMetric}
         />

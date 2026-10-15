@@ -16,6 +16,13 @@ import (
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
+type fundingKey struct{ memberID, poolID string }
+
+type scheduledFunding struct {
+	amount   int64
+	schedule *models.FundingSchedule
+}
+
 func PoolFundingRules(ctx context.Context, db bob.Executor, householdID string) (map[string]domain.PoolFundingRule, error) {
 	householdUUID, err := gofrsuuid.FromString(householdID)
 	if err != nil {
@@ -257,7 +264,6 @@ func CalculatePeriod(ctx context.Context, db bob.Executor, householdID, period s
 }
 
 func addFundingAmountsFromRows(start, end time.Time, obligations models.FundingObligationSlice, schedules models.FundingScheduleSlice, inputs []domain.SettlementInput, memberIndex map[string]int) error {
-	type fundingKey struct{ memberID, poolID string }
 	type funding struct{ scheduled, paid int64 }
 	amounts := make(map[fundingKey]funding)
 	for _, obligation := range obligations {
@@ -270,21 +276,9 @@ func addFundingAmountsFromRows(start, end time.Time, obligations models.FundingO
 		}
 		return cmp.Compare(left.PoolID.String(), right.PoolID.String())
 	})
-	scheduleAmounts := make(map[fundingKey]int64)
-	for _, schedule := range schedules {
-		if !schedule.Active && !schedule.EndsOn.Valid || !schedule.StartsOn.Before(end) || schedule.EndsOn.Valid && schedule.EndsOn.V.Before(start) {
-			continue
-		}
-		amount, err := fundingScheduleAmount(start, end, schedule)
-		if err != nil {
-			return err
-		}
-		key := fundingKey{memberID: schedule.MemberID.String(), poolID: schedule.PoolID.String()}
-		var ok bool
-		scheduleAmounts[key], ok = checkedAdd(scheduleAmounts[key], amount)
-		if !ok {
-			return domain.ErrInvalidSettlement
-		}
+	scheduleAmounts, err := aggregateFundingSchedules(start, end, schedules)
+	if err != nil {
+		return err
 	}
 	scheduleKeys := make([]fundingKey, 0, len(scheduleAmounts))
 	for key := range scheduleAmounts {
@@ -298,8 +292,8 @@ func addFundingAmountsFromRows(start, end time.Time, obligations models.FundingO
 	})
 	for _, key := range scheduleKeys {
 		value := amounts[key]
-		if scheduleAmounts[key] > value.scheduled {
-			value.scheduled = scheduleAmounts[key]
+		if scheduleAmounts[key].amount > value.scheduled {
+			value.scheduled = scheduleAmounts[key].amount
 		}
 		amounts[key] = value
 	}
@@ -332,15 +326,52 @@ func addFundingAmountsFromRows(start, end time.Time, obligations models.FundingO
 	return nil
 }
 
-func fundingScheduleAmount(start, end time.Time, schedule *models.FundingSchedule) (int64, error) {
-	date := func(value time.Time) time.Time {
-		return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
+func aggregateFundingSchedules(start, end time.Time, schedules models.FundingScheduleSlice) (map[fundingKey]scheduledFunding, error) {
+	amounts := make(map[fundingKey]scheduledFunding)
+	periodEnd := dateOnly(end.AddDate(0, 0, -1))
+	for _, schedule := range schedules {
+		startsOn := dateOnly(schedule.StartsOn)
+		endsOn := time.Time{}
+		if schedule.EndsOn.Valid {
+			endsOn = dateOnly(schedule.EndsOn.V)
+		}
+		if !startsOn.Before(end) || schedule.EndsOn.Valid && endsOn.Before(periodEnd) || !schedule.EndsOn.Valid && !schedule.Active {
+			continue
+		}
+		key := fundingKey{memberID: schedule.MemberID.String(), poolID: schedule.PoolID.String()}
+		current, exists := amounts[key]
+		if exists && !scheduleIsNewer(schedule, current.schedule) {
+			continue
+		}
+		amount, err := fundingScheduleAmount(start, end, schedule)
+		if err != nil {
+			return nil, err
+		}
+		amounts[key] = scheduledFunding{amount: amount, schedule: schedule}
 	}
-	periodStart, periodEnd := date(start), date(end)
-	startsOn := date(schedule.StartsOn)
+	return amounts, nil
+}
+
+func scheduleIsNewer(candidate, current *models.FundingSchedule) bool {
+	if !candidate.StartsOn.Equal(current.StartsOn) {
+		return candidate.StartsOn.After(current.StartsOn)
+	}
+	if !candidate.CreatedAt.Equal(current.CreatedAt) {
+		return candidate.CreatedAt.After(current.CreatedAt)
+	}
+	return candidate.ID.String() > current.ID.String()
+}
+
+func dateOnly(value time.Time) time.Time {
+	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func fundingScheduleAmount(start, end time.Time, schedule *models.FundingSchedule) (int64, error) {
+	periodStart, periodEnd := dateOnly(start), dateOnly(end)
+	startsOn := dateOnly(schedule.StartsOn)
 	endsOn := time.Time{}
 	if schedule.EndsOn.Valid {
-		endsOn = date(schedule.EndsOn.V)
+		endsOn = dateOnly(schedule.EndsOn.V)
 	}
 	switch schedule.Cadence {
 	case "MONTHLY":

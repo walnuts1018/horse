@@ -4,19 +4,20 @@ import { useLazyLoadQuery, usePaginationFragment } from "react-relay";
 import type {
   AnalysisBudgetsFragment$key,
   AnalysisDashboardQuery,
+  AnalysisPurchasePriceObservationsQuery,
   AnalysisRecurringExpensesFragment$key,
   Budget,
   RecurringExpense,
 } from "../../../shared/api";
-import type { Dimension } from "./purchase-analytics";
+import type { Dimension, ItemMetric } from "./purchase-analytics";
 
-import { useHouseholdPurchases } from "../../../entities/purchase";
+import { aggregatePurchaseAnalytics } from "./purchase-analytics";
 import {
+  analysisPurchasePriceObservationsQuery,
   analysisBudgetsFragment,
   analysisDashboardQuery,
   analysisRecurringExpensesFragment,
 } from "../api/operations";
-import { exclusiveMonthEnd } from "./use-analysis-period";
 
 export function useAnalysisData(
   householdId: string,
@@ -24,6 +25,7 @@ export function useAnalysisData(
   toMonth: string,
   currentMonth: string,
   dimension: Dimension,
+  itemMetric: ItemMetric,
 ) {
   const variables = useMemo(
     () => ({ householdId, from: fromMonth, to: toMonth, period: currentMonth }),
@@ -32,6 +34,25 @@ export function useAnalysisData(
   const dashboard = useLazyLoadQuery<AnalysisDashboardQuery>(analysisDashboardQuery, variables, {
     fetchPolicy: "network-only",
   });
+  const purchaseAnalytics = useMemo(
+    () => aggregatePurchaseAnalytics(dashboard.purchaseAnalytics),
+    [dashboard.purchaseAnalytics],
+  );
+  const priceItemIds = useMemo(
+    () =>
+      itemMetric === "amount"
+        ? []
+        : Array.from(purchaseAnalytics.rows.item.values())
+            .sort((a, b) => b.amount - a.amount)
+            .slice(0, 5)
+            .map((row) => row.id),
+    [itemMetric, purchaseAnalytics.rows.item],
+  );
+  const priceObservations = useLazyLoadQuery<AnalysisPurchasePriceObservationsQuery>(
+    analysisPurchasePriceObservationsQuery,
+    { ...variables, itemIds: priceItemIds },
+    { fetchPolicy: "network-only" },
+  );
   const {
     data: budgetData,
     hasNext: hasMoreBudgets,
@@ -50,12 +71,6 @@ export function useAnalysisData(
     analysisRecurringExpensesFragment,
     dashboard,
   );
-  const { purchases, loadingMore, moreError, hasNextPage, loadMore, refresh } =
-    useHouseholdPurchases(householdId, 100, {
-      from: `${fromMonth}-01T00:00:00+09:00`,
-      to: exclusiveMonthEnd(toMonth),
-      loadAll: dimension !== "category" && dimension !== "member",
-    });
   const requestKey = JSON.stringify(variables);
   const [budgetErrorState, setBudgetErrorState] = useState<{ key: string; message: string } | null>(
     null,
@@ -150,12 +165,8 @@ export function useAnalysisData(
   );
 
   return {
-    purchases,
-    loadingMore,
-    moreError,
-    hasNextPage,
-    loadMore,
-    refreshPurchases: refresh,
+    purchaseAnalytics,
+    itemPriceObservations: priceObservations.purchasePriceObservations,
     spending,
     spendingLoading: false,
     spendingError: "",

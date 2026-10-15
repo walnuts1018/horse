@@ -14,6 +14,32 @@ export const monthlyMemberSpendingQuery = graphql`
   }
 `;
 
+export const analysisPurchasePriceObservationsQuery = graphql`
+  query AnalysisPurchasePriceObservationsQuery(
+    $householdId: ID!
+    $from: YearMonth!
+    $to: YearMonth!
+    $itemIds: [String!]!
+  ) {
+    purchasePriceObservations(
+      householdId: $householdId
+      from: $from
+      to: $to
+      itemIds: $itemIds
+    ) {
+      itemId
+      occurredAt
+      amountYen
+      effectiveUnitPriceNumeratorYen
+      effectiveUnitPriceDenominator
+      printedUnitPriceYen
+      printedUnitPriceQuantityNumerator
+      printedUnitPriceQuantityDenominator
+      printedUnitPriceUnit
+    }
+  }
+`;
+
 export const analysisDashboardQuery = graphql`
   query AnalysisDashboardQuery(
     $householdId: ID!
@@ -35,6 +61,14 @@ export const analysisDashboardQuery = graphql`
         amountYen
       }
       hasUnattributedPurchases
+    }
+    purchaseAnalytics(householdId: $householdId, from: $from, to: $to) {
+      dimension
+      id
+      name
+      period
+      amountYen
+      count
     }
     ...AnalysisBudgetsFragment @arguments(householdId: $householdId, period: $period)
     ...AnalysisRecurringExpensesFragment @arguments(householdId: $householdId)

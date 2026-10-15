@@ -143,6 +143,10 @@ export type {
   AnalysisDashboardQuery$data,
 } from "./__generated__/AnalysisDashboardQuery.graphql";
 export type {
+  AnalysisPurchasePriceObservationsQuery,
+  AnalysisPurchasePriceObservationsQuery$data,
+} from "./__generated__/AnalysisPurchasePriceObservationsQuery.graphql";
+export type {
   HomeDashboardQuery,
   HomeDashboardQuery$data,
 } from "./__generated__/HomeDashboardQuery.graphql";
