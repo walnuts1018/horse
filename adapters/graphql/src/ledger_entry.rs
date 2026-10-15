@@ -223,7 +223,6 @@ pub(crate) fn correction_ledger_entry(
 pub enum FundingLedgerEntryMappingError {
     InvalidMemberRole,
     InvalidPoolKind,
-    InvalidSettlementPolicy,
     InvalidTransferKind,
     MissingLoanBalance,
     InvalidLoanBalance,
@@ -418,16 +417,14 @@ impl TryFrom<FundingLedgerEntryResult> for FundingLedgerEntry {
             "SHARED" => PoolKind::Shared,
             _ => return Err(FundingLedgerEntryMappingError::InvalidPoolKind),
         };
-        let settlement_policy = value
-            .pool
-            .settlement_policy
-            .as_deref()
-            .map(|policy| match policy {
-                "BALANCE_TO_STANDARD" => Ok(SharedPoolSettlementPolicy::BalanceToStandard),
-                "REIMBURSE_PERSONAL" => Ok(SharedPoolSettlementPolicy::ReimbursePersonal),
-                _ => Err(FundingLedgerEntryMappingError::InvalidSettlementPolicy),
-            })
-            .transpose()?;
+        let settlement_policy = value.pool.settlement_policy.map(|policy| match policy {
+            bookkeeping_domain::SettlementPolicy::BalanceToStandard => {
+                SharedPoolSettlementPolicy::BalanceToStandard
+            }
+            bookkeeping_domain::SettlementPolicy::ReimbursePersonal => {
+                SharedPoolSettlementPolicy::ReimbursePersonal
+            }
+        });
 
         let member = MemberProjection {
             id: value.member.id,

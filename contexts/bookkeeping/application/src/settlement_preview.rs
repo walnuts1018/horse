@@ -1,4 +1,6 @@
-use bookkeeping_domain::{SettlementInput as DomainSettlementInput, calculate_settlement};
+use bookkeeping_domain::{
+    SettlementInput as DomainSettlementInput, SettlementPolicy, calculate_settlement,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,7 +23,7 @@ pub struct PreviewSchedule {
     pub member_id: usize,
     pub pool_id: String,
     pub amount_yen: i64,
-    pub cadence: String,
+    pub cadence: PreviewScheduleCadence,
     pub starts_on_day: i32,
     pub ends_on_day: Option<i32>,
     pub active: bool,
@@ -45,10 +47,23 @@ pub struct PreviewPurchaseAdjustment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewFundingRule {
     pub id: String,
-    pub kind: String,
+    pub kind: PreviewFundingRuleKind,
     pub owner_member_id: Option<String>,
-    pub settlement_policy: Option<String>,
+    pub settlement_policy: Option<SettlementPolicy>,
     pub shares: Vec<(String, i64)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreviewScheduleCadence {
+    Monthly,
+    Weekly,
+    Custom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreviewFundingRuleKind {
+    Personal,
+    Shared,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -339,10 +354,10 @@ fn calculate_purchase_adjustments(
                 let allocation_rule = rules
                     .get(allocation_rule_id.as_str())
                     .ok_or(SettlementPreviewError::InvalidSettlement)?;
-                if rule.kind == "SHARED"
-                    && rule.settlement_policy.as_deref() == Some("REIMBURSE_PERSONAL")
+                if rule.kind == PreviewFundingRuleKind::Shared
+                    && rule.settlement_policy == Some(SettlementPolicy::ReimbursePersonal)
                 {
-                    if allocation_rule.kind == "SHARED" {
+                    if allocation_rule.kind == PreviewFundingRuleKind::Shared {
                         continue;
                     }
                     let current = reimburse_personal_adjustments
@@ -359,8 +374,8 @@ fn calculate_purchase_adjustments(
                     .unwrap_or_default();
                 responsibilities.insert(member_id, add_amount(current, burden)?);
             }
-            match rule.kind.as_str() {
-                "PERSONAL" => {
+            match rule.kind {
+                PreviewFundingRuleKind::Personal => {
                     let owner = rule
                         .owner_member_id
                         .as_ref()
@@ -392,8 +407,8 @@ fn calculate_purchase_adjustments(
                         entry.1 = add_amount(entry.1, payment.amount_yen)?;
                     }
                 }
-                "SHARED" => match rule.settlement_policy.as_deref() {
-                    Some("BALANCE_TO_STANDARD") => {
+                PreviewFundingRuleKind::Shared => match rule.settlement_policy {
+                    Some(SettlementPolicy::BalanceToStandard) => {
                         for (member_id, baseline) in
                             allocate_amount(payment.amount_yen, &rule.shares)?
                         {
@@ -411,7 +426,7 @@ fn calculate_purchase_adjustments(
                             entry.0 = add_amount(entry.0, burden)?;
                         }
                     }
-                    Some("REIMBURSE_PERSONAL") => {
+                    Some(SettlementPolicy::ReimbursePersonal) => {
                         for (member_id, amount) in reimburse_personal_adjustments {
                             let entry = totals.entry(member_id).or_default();
                             entry.0 = add_amount(entry.0, amount)?;
@@ -419,7 +434,6 @@ fn calculate_purchase_adjustments(
                     }
                     _ => return Err(SettlementPreviewError::InvalidSettlement),
                 },
-                _ => return Err(SettlementPreviewError::InvalidSettlement),
             }
         }
     }
@@ -501,22 +515,22 @@ fn schedule_amount(
 ) -> Result<i64, SettlementPreviewError> {
     let schedule_start = schedule.starts_on_day;
     let schedule_end = schedule.ends_on_day.unwrap_or(i32::MAX);
-    match schedule.cadence.as_str() {
-        "MONTHLY" => {
+    match schedule.cadence {
+        PreviewScheduleCadence::Monthly => {
             if schedule_start < end && schedule_end >= start {
                 Ok(schedule.amount_yen)
             } else {
                 Ok(0)
             }
         }
-        "CUSTOM" => {
+        PreviewScheduleCadence::Custom => {
             if schedule_start >= start && schedule_start < end && schedule_end >= schedule_start {
                 Ok(schedule.amount_yen)
             } else {
                 Ok(0)
             }
         }
-        "WEEKLY" => {
+        PreviewScheduleCadence::Weekly => {
             let days = (start - schedule_start).max(0);
             let mut occurrence = schedule_start
                 .checked_add((days / 7 + i32::from(days % 7 != 0)) * 7)
@@ -532,7 +546,6 @@ fn schedule_amount(
             }
             Ok(total)
         }
-        _ => Err(SettlementPreviewError::InvalidSchedule),
     }
 }
 

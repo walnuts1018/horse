@@ -1,3 +1,4 @@
+use bookkeeping_domain::SettlementPolicy;
 use chrono::{DateTime, Utc};
 use diesel::{
     ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, result::Error as DieselError,
@@ -30,7 +31,7 @@ pub struct FundingLedgerPool {
     pub funding_shares: Vec<FundingPoolShare>,
     pub funding_rule_version: i32,
     pub owner_member_id: Option<Uuid>,
-    pub settlement_policy: Option<String>,
+    pub settlement_policy: Option<SettlementPolicy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,13 +217,11 @@ async fn load_pool(
         if let Some((owner, policy)) = rule {
             owner_member_id = owner;
             if let Some(policy) = policy {
-                if !matches!(
-                    policy.as_str(),
-                    "BALANCE_TO_STANDARD" | "REIMBURSE_PERSONAL"
-                ) {
-                    return Err(FundingCommandResultError::InvalidSettlementPolicy(policy));
-                }
-                settlement_policy = Some(policy);
+                settlement_policy = Some(match policy.as_str() {
+                    "BALANCE_TO_STANDARD" => SettlementPolicy::BalanceToStandard,
+                    "REIMBURSE_PERSONAL" => SettlementPolicy::ReimbursePersonal,
+                    _ => return Err(FundingCommandResultError::InvalidSettlementPolicy(policy)),
+                });
             }
             let shares = public::pool_funding_shares::table
                 .inner_join(

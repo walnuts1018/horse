@@ -9,11 +9,10 @@ use bookkeeping_application::funding_record::{
 };
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
 
-use crate::{PgPool, schema::public};
+use crate::schema::public;
 
 #[derive(Debug)]
 pub enum FundingCommandContextError {
-    Pool(String),
     Database(diesel::result::Error),
     InvalidTokyoOffset,
     HouseholdNotFound,
@@ -30,30 +29,7 @@ impl From<diesel::result::Error> for FundingCommandContextError {
     }
 }
 
-pub async fn load_funding_command_context(
-    pool: &PgPool,
-    household_id: Uuid,
-    pool_id: Uuid,
-    source_account_id: Option<Uuid>,
-    destination_account_id: Option<Uuid>,
-    occurred_at: DateTime<Utc>,
-) -> Result<FundingCommandContext, FundingCommandContextError> {
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| FundingCommandContextError::Pool(error.to_string()))?;
-    load_funding_command_context_in_transaction(
-        &mut *pooled,
-        household_id,
-        pool_id,
-        source_account_id,
-        destination_account_id,
-        occurred_at,
-    )
-    .await
-}
-
-pub async fn load_funding_command_context_in_transaction(
+pub(crate) async fn load_funding_command_context_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     pool_id: Uuid,

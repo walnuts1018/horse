@@ -455,6 +455,8 @@ pub enum Purchase {
 
 画面では単に「購入を編集」と見せても構いません。内部のモデルまで CRUD にする必要はありません。
 
+この状態モデルを採用し、`Purchase`は`Draft`から`Posted`へだけ遷移し、`AccountingPeriod`は独立して`Open`から`Closed`へ遷移します。月次締めは購入revisionを変更せず、締め時点のrevisionと精算結果を保存します。締め済み購入の訂正は現在の開いた会計期間へ計上し、元の購入日時と訂正の有効会計期間を別々に記録します。既存GraphQLが購入状態として`CLOSED`を返すProjectionは、関連する`AccountingPeriod`から導出します。
+
 ## 7. Workflow は「Command → Decision → Events」を基本にする
 
 私が最も採用したい実装パターンです。

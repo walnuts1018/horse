@@ -792,22 +792,6 @@ pub async fn link_statement_refund_correction(
         .await
 }
 
-pub async fn persist_correct_purchase(
-    pool: &PgPool,
-    input: PersistCorrectPurchase,
-    decision: CorrectPurchaseDecision,
-) -> Result<PersistedCorrectPurchase, CorrectPurchasePersistenceError> {
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| CorrectPurchasePersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
-        .transaction::<PersistedCorrectPurchase, CorrectPurchasePersistenceError, _>(async |conn| {
-            persist_correct_purchase_in_transaction(conn, input, decision).await
-        })
-        .await
-}
-
 async fn find_correct_purchase_replay(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,

@@ -94,7 +94,15 @@ pub async fn claim_next_extraction_job<O>(
 where
     O: ClaimExtractionJobOperations,
 {
-    claim_eligible_job(operations, now_ms, None, false, lease_token, lease_duration_ms).await
+    claim_eligible_job(
+        operations,
+        now_ms,
+        None,
+        false,
+        lease_token,
+        lease_duration_ms,
+    )
+    .await
 }
 
 pub async fn claim_next_local_extraction_job<O>(
@@ -106,7 +114,15 @@ pub async fn claim_next_local_extraction_job<O>(
 where
     O: ClaimExtractionJobOperations,
 {
-    claim_eligible_job(operations, now_ms, None, true, lease_token, lease_duration_ms).await
+    claim_eligible_job(
+        operations,
+        now_ms,
+        None,
+        true,
+        lease_token,
+        lease_duration_ms,
+    )
+    .await
 }
 
 pub async fn claim_extraction_job_by_id<O>(

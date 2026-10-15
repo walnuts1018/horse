@@ -5,6 +5,8 @@ use bookkeeping_application::settlement_preview::{
     PreviewPurchase, PreviewPurchaseAdjustment, PreviewPurchaseItem, PreviewPurchasePayment,
     PreviewSchedule, SettlementPreviewError, calculate_settlement_preview,
 };
+use bookkeeping_application::settlement_preview::{PreviewFundingRuleKind, PreviewScheduleCadence};
+use bookkeeping_domain::SettlementPolicy;
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
 use diesel::{
     BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, dsl::min,
@@ -290,6 +292,12 @@ async fn load_month(
                     .get(&member)
                     .copied()
                     .ok_or(SettlementPreviewPersistenceError::InvalidFundingSnapshot)?;
+                let cadence = match cadence.as_str() {
+                    "MONTHLY" => PreviewScheduleCadence::Monthly,
+                    "WEEKLY" => PreviewScheduleCadence::Weekly,
+                    "CUSTOM" => PreviewScheduleCadence::Custom,
+                    _ => return Err(SettlementPreviewPersistenceError::InvalidFundingSnapshot),
+                };
                 Ok(PreviewSchedule {
                     member_id,
                     pool_id: pool.to_string(),
@@ -509,10 +517,17 @@ async fn load_purchase_expenses(
             }
             let alias = format!("{purchase_id}:payment:{line_no}");
             let (kind, owner_member_id, policy, shares) = if let Some(policy) = &first.6 {
+                let policy = match policy.as_str() {
+                    "BALANCE_TO_STANDARD" => SettlementPolicy::BalanceToStandard,
+                    "REIMBURSE_PERSONAL" => SettlementPolicy::ReimbursePersonal,
+                    _ => {
+                        return Err(SettlementPreviewPersistenceError::InvalidFundingSnapshot);
+                    }
+                };
                 (
-                    "SHARED".to_owned(),
+                    PreviewFundingRuleKind::Shared,
                     None,
-                    Some(policy.clone()),
+                    Some(policy),
                     rows.iter().map(|row| (row.3.to_string(), row.5)).collect(),
                 )
             } else {
@@ -520,7 +535,7 @@ async fn load_purchase_expenses(
                     return Err(SettlementPreviewPersistenceError::InvalidFundingSnapshot);
                 }
                 (
-                    "PERSONAL".to_owned(),
+                    PreviewFundingRuleKind::Personal,
                     Some(first.3.to_string()),
                     None,
                     Vec::new(),
@@ -569,7 +584,7 @@ async fn load_purchase_expenses(
                     }
                     PreviewFundingRule {
                         id: allocation_alias.clone(),
-                        kind: "PERSONAL".to_owned(),
+                        kind: PreviewFundingRuleKind::Personal,
                         owner_member_id: Some(member_id.to_string()),
                         settlement_policy: None,
                         shares: Vec::new(),
@@ -584,7 +599,7 @@ async fn load_purchase_expenses(
                     }
                     PreviewFundingRule {
                         id: allocation_alias.clone(),
-                        kind: "SHARED".to_owned(),
+                        kind: PreviewFundingRuleKind::Shared,
                         owner_member_id: None,
                         settlement_policy: None,
                         shares: vec![(member_id.to_string(), 1)],

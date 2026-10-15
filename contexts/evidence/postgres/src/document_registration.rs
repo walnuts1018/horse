@@ -72,6 +72,9 @@ pub async fn register_document_in_transaction(
             source_documents::source_kind.eq(&command.source_kind),
             source_documents::original_filename.eq(&command.original_filename),
             source_documents::metadata.eq(&command.metadata),
+            source_documents::analysis_object_key.eq(&command.analysis_object_key),
+            source_documents::analysis_mime_type.eq(&command.analysis_mime_type),
+            source_documents::analysis_transform.eq(&command.analysis_transform),
             source_documents::created_by.eq(command.created_by),
             source_documents::created_at.eq(now),
         ))

@@ -538,13 +538,11 @@ async fn upload_document(
             });
         }
     }
-    let mut metadata = json!({});
-    if let Some((key, hash, analysis_mime)) = &stored_analysis {
-        metadata["analysisObjectKey"] = json!(key);
-        metadata["analysisSha256"] = json!(hash);
-        metadata["analysisMimeType"] = json!(analysis_mime);
-        metadata["analysisTransform"] = analysis_transform.clone();
-    }
+    let metadata = json!({});
+    let (analysis_object_key, analysis_mime_type) = stored_analysis
+        .as_ref()
+        .map(|(key, _, mime_type)| (Some(key.clone()), Some(mime_type.clone())))
+        .unwrap_or((None, None));
     let result = evidence_postgres::document_registration::register_document(
         &state.pool,
         evidence_application::RegisterDocumentCommand {
@@ -555,6 +553,9 @@ async fn upload_document(
             mime_type: mime_type.to_owned(),
             sha256: sha256.clone(),
             object_key,
+            analysis_object_key,
+            analysis_mime_type,
+            analysis_transform: stored_analysis.as_ref().map(|_| analysis_transform.clone()),
             metadata,
             provider: "gemini_developer_api".to_owned(),
             model,
@@ -889,7 +890,7 @@ async fn list_documents(
                 }
             };
         if result.is_none() {
-            result = extraction_jobs::table
+            result = match extraction_jobs::table
                 .filter(extraction_jobs::household_id.eq(household_id))
                 .filter(extraction_jobs::source_document_id.eq(id))
                 .filter(extraction_jobs::status.eq("succeeded"))
@@ -898,8 +899,13 @@ async fn list_documents(
                 .first::<Option<Value>>(&mut *pooled)
                 .await
                 .optional()
-                .unwrap_or(None)
-                .flatten();
+            {
+                Ok(result) => result.flatten(),
+                Err(error) => {
+                    tracing::error!(error = ?error, "Previous document extraction result lookup failed");
+                    return StatusCode::SERVICE_UNAVAILABLE.into_response();
+                }
+            };
         }
         let has_evidence = diesel::select(
             diesel::dsl::exists(
@@ -914,8 +920,14 @@ async fn list_documents(
             )),
         )
         .get_result::<bool>(&mut *pooled)
-        .await
-        .unwrap_or(false);
+        .await;
+        let has_evidence = match has_evidence {
+            Ok(has_evidence) => has_evidence,
+            Err(error) => {
+                tracing::error!(error = ?error, "Document evidence lookup failed");
+                return StatusCode::SERVICE_UNAVAILABLE.into_response();
+            }
+        };
         let (confirmations, attachments, attachment_parent) =
             match document_relationships(&mut pooled, household_id, id).await {
                 Ok(relationships) => relationships,
@@ -1069,7 +1081,8 @@ async fn document_relationships(
     document_id: uuid::Uuid,
 ) -> Result<(Vec<Value>, Vec<Value>, Option<Value>), diesel::result::Error> {
     use horse_postgres_common::schema::public::{
-        extraction_jobs, source_confirmations, source_document_attachments, source_documents,
+        extraction_jobs, purchase_corrections, source_confirmations, source_document_attachments,
+        source_documents,
     };
     let confirmation_rows = source_confirmations::table
         .filter(source_confirmations::household_id.eq(household_id))
@@ -1092,8 +1105,24 @@ async fn document_relationships(
             Option<uuid::Uuid>,
         )>(connection)
         .await?;
+    let correction_ids = confirmation_rows
+        .iter()
+        .filter_map(|row| row.2)
+        .collect::<Vec<_>>();
+    let corrections_by_id = if correction_ids.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        purchase_corrections::table
+            .filter(purchase_corrections::id.eq_any(correction_ids))
+            .select((purchase_corrections::id, purchase_corrections::purchase_id))
+            .load::<(uuid::Uuid, uuid::Uuid)>(connection)
+            .await?
+            .into_iter()
+            .collect::<std::collections::HashMap<_, _>>()
+    };
     let confirmations = confirmation_rows.into_iter().map(|(source_reference, purchase_id, correction_id, account_movement_id, account_income_id, transfer_id)| {
-        let mut confirmation = json!({"sourceReference": source_reference, "purchaseId": purchase_id.map(|id| id.to_string()).unwrap_or_default()});
+        let resolved_purchase = purchase_id.or_else(|| correction_id.and_then(|id| corrections_by_id.get(&id).copied()));
+        let mut confirmation = json!({"sourceReference": source_reference, "purchaseId": resolved_purchase.map(|id| id.to_string()).unwrap_or_default()});
         if let Some(id) = correction_id { confirmation["correctionId"] = json!(id); }
         if let Some(id) = account_movement_id { confirmation["accountMovementId"] = json!(id); }
         if let Some(id) = account_income_id { confirmation["accountIncomeId"] = json!(id); }
@@ -1385,8 +1414,8 @@ async fn delete_document(
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
     use horse_postgres_common::schema::public::{
-        correction_evidence_links, evidence_links, extraction_jobs, household_members, source_confirmations,
-        source_document_attachments, source_documents,
+        correction_evidence_links, evidence_links, extraction_jobs, household_members,
+        source_confirmations, source_document_attachments, source_documents,
     };
     let mut pooled = match state.pool.get().await {
         Ok(pooled) => pooled,
@@ -1713,6 +1742,9 @@ async fn retry_document(
     if !same_origin(&headers, &state.config) {
         return (StatusCode::FORBIDDEN, "request origin rejected").into_response();
     }
+    if state.config.object_store.is_none() {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
     let Ok(document_id) = uuid::Uuid::parse_str(&raw_id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -1755,7 +1787,14 @@ async fn retry_document(
             return (StatusCode::BAD_REQUEST, "invalid extraction crop").into_response();
         }
     }
-    use horse_postgres_common::schema::public::{household_members, source_documents};
+    let source_kind = input.get("sourceKind").and_then(Value::as_str);
+    if source_kind.is_some_and(|kind| !matches!(kind, "receipt" | "order" | "card" | "bank")) {
+        return (StatusCode::BAD_REQUEST, "invalid extraction retry input").into_response();
+    }
+    use horse_postgres_common::schema::public::{
+        correction_evidence_links, evidence_links, extraction_jobs, household_events,
+        household_members, source_confirmations, source_document_attachments, source_documents,
+    };
     let mut pooled = match state.pool.get().await {
         Ok(pooled) => pooled,
         Err(error) => {
@@ -1763,61 +1802,352 @@ async fn retry_document(
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         }
     };
-    let household_id = source_documents::table
-        .inner_join(
-            household_members::table
-                .on(household_members::household_id.eq(source_documents::household_id)),
-        )
-        .filter(source_documents::id.eq(document_id))
-        .filter(household_members::member_id.eq(principal.member_id))
-        .select(source_documents::household_id)
-        .first::<uuid::Uuid>(&mut *pooled)
+    let requested_kind = source_kind.map(str::to_owned);
+    let crop = input.get("crop").cloned();
+    let now = chrono::Utc::now();
+    let result = (&mut *pooled)
+        .transaction::<Result<uuid::Uuid, RetryError>, diesel::result::Error, _>(async |conn| {
+            let (household_id, current_kind, mime_type) = source_documents::table
+                .inner_join(
+                    household_members::table
+                        .on(household_members::household_id.eq(source_documents::household_id)),
+                )
+                .filter(source_documents::id.eq(document_id))
+                .filter(household_members::member_id.eq(principal.member_id))
+                .for_update()
+                .select((
+                    source_documents::household_id,
+                    source_documents::source_kind,
+                    source_documents::mime_type,
+                ))
+                .first::<(uuid::Uuid, String, String)>(conn)
+                .await
+                .optional()?
+                .ok_or(diesel::result::Error::NotFound)?;
+            let reclassify = requested_kind
+                .as_ref()
+                .is_some_and(|new_kind| new_kind != &current_kind);
+            if crop.is_some()
+                && !matches!(
+                    mime_type.as_str(),
+                    "image/jpeg" | "image/png" | "image/webp" | "application/pdf"
+                )
+            {
+                return Ok(Err(RetryError::InvalidCrop));
+            }
+            if crop.as_ref().is_some_and(|crop| {
+                crop.get("page").and_then(Value::as_i64).unwrap_or(0) < 0
+                    || crop
+                        .get("top")
+                        .and_then(Value::as_f64)
+                        .is_none_or(|v| !v.is_finite() || v < 0.0)
+                    || crop
+                        .get("left")
+                        .and_then(Value::as_f64)
+                        .is_none_or(|v| !v.is_finite() || v < 0.0)
+                    || crop
+                        .get("bottom")
+                        .and_then(Value::as_f64)
+                        .is_none_or(|v| !v.is_finite() || v > 1.0)
+                    || crop
+                        .get("right")
+                        .and_then(Value::as_f64)
+                        .is_none_or(|v| !v.is_finite() || v > 1.0)
+                    || crop.get("top").and_then(Value::as_f64).unwrap_or(0.0)
+                        >= crop.get("bottom").and_then(Value::as_f64).unwrap_or(0.0)
+                    || crop.get("left").and_then(Value::as_f64).unwrap_or(0.0)
+                        >= crop.get("right").and_then(Value::as_f64).unwrap_or(0.0)
+                    || (mime_type != "application/pdf"
+                        && crop.get("page").and_then(Value::as_i64).unwrap_or(0) != 0)
+            }) {
+                return Ok(Err(RetryError::InvalidCrop));
+            }
+            if let Some(new_kind) = &requested_kind {
+                if mime_type == "message/rfc822" {
+                    return Ok(Err(RetryError::InvalidReclassification));
+                }
+                let is_attachment = diesel::select(diesel::dsl::exists(
+                    source_document_attachments::table
+                        .filter(source_document_attachments::household_id.eq(household_id))
+                        .filter(source_document_attachments::child_document_id.eq(document_id)),
+                ))
+                .get_result::<bool>(conn)
+                .await?;
+                if !is_attachment {
+                    return Ok(Err(RetryError::InvalidReclassification));
+                }
+                if new_kind != &current_kind {
+                    let has_confirmation = diesel::select(diesel::dsl::exists(
+                        source_confirmations::table
+                            .filter(source_confirmations::household_id.eq(household_id))
+                            .filter(source_confirmations::source_document_id.eq(document_id)),
+                    ))
+                    .get_result::<bool>(conn)
+                    .await?;
+                    let has_evidence = diesel::select(diesel::dsl::exists(
+                        evidence_links::table
+                            .filter(evidence_links::household_id.eq(household_id))
+                            .filter(evidence_links::source_document_id.eq(document_id)),
+                    ))
+                    .get_result::<bool>(conn)
+                    .await?;
+                    let has_correction = diesel::select(diesel::dsl::exists(
+                        correction_evidence_links::table
+                            .filter(correction_evidence_links::household_id.eq(household_id))
+                            .filter(correction_evidence_links::source_document_id.eq(document_id)),
+                    ))
+                    .get_result::<bool>(conn)
+                    .await?;
+                    if has_confirmation || has_evidence || has_correction {
+                        return Ok(Err(RetryError::EvidenceConflict));
+                    }
+                }
+            }
+            let latest = extraction_jobs::table
+                .filter(extraction_jobs::household_id.eq(household_id))
+                .filter(extraction_jobs::source_document_id.eq(document_id))
+                .order_by(extraction_jobs::version.desc())
+                .for_update()
+                .select((
+                    extraction_jobs::id,
+                    extraction_jobs::version,
+                    extraction_jobs::status,
+                    extraction_jobs::error_code,
+                    extraction_jobs::request,
+                ))
+                .first::<(uuid::Uuid, i32, String, Option<String>, Value)>(conn)
+                .await
+                .optional()?;
+            if let Some((id, version, status, error_code, request)) = latest {
+                if status == "running" {
+                    return Ok(Err(RetryError::AlreadyRunning));
+                }
+                let rate_limited = requested_kind.is_none()
+                    && crop.is_none()
+                    && input.get("model").is_some()
+                    && status == "queued"
+                    && error_code.as_deref().is_some_and(|code| {
+                        matches!(
+                            code,
+                            "rate_limited"
+                                | "quota_reservation_deferred"
+                                | "spend_cap_reached"
+                                | "paid_route_unavailable"
+                        )
+                    });
+                if status == "queued" {
+                    if !rate_limited && (requested_kind.is_none() || crop.is_some()) {
+                        return Ok(Err(RetryError::AlreadyQueued));
+                    }
+                    if rate_limited {
+                        let selected_model = if model == "free" { "" } else { model };
+                        let mut updated_request = request;
+                        let Some(object) = updated_request.as_object_mut() else {
+                            return Ok(Err(RetryError::InvalidRequest));
+                        };
+                        object.insert("model".to_owned(), json!(selected_model));
+                        diesel::update(extraction_jobs::table.filter(extraction_jobs::id.eq(id)))
+                            .set((
+                                extraction_jobs::request.eq(updated_request),
+                                extraction_jobs::error_code.eq::<Option<String>>(None),
+                                extraction_jobs::attempt_count.eq(0),
+                                extraction_jobs::failure_count.eq(0),
+                                extraction_jobs::available_at.eq(now),
+                                extraction_jobs::updated_at.eq(now),
+                            ))
+                            .execute(conn)
+                            .await?;
+                    }
+                    if reclassify {
+                        diesel::update(
+                            source_documents::table.filter(source_documents::id.eq(document_id)),
+                        )
+                        .set(
+                            source_documents::source_kind
+                                .eq(requested_kind.as_ref().expect("reclassification kind")),
+                        )
+                        .execute(conn)
+                        .await?;
+                    }
+                    return Ok(Ok(id));
+                }
+                let selected_model = if input.get("model").is_some() {
+                    if model == "free" {
+                        "".to_owned()
+                    } else {
+                        model.to_owned()
+                    }
+                } else {
+                    request
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_owned()
+                };
+                let mut new_request = json!({"purpose":"interactive", "model":selected_model});
+                if let Some(crop) = crop {
+                    new_request["crop"] = crop;
+                }
+                let job_id = uuid::Uuid::now_v7();
+                let next_version = version + 1;
+                diesel::insert_into(extraction_jobs::table)
+                    .values((
+                        extraction_jobs::id.eq(job_id),
+                        extraction_jobs::household_id.eq(household_id),
+                        extraction_jobs::source_document_id.eq(document_id),
+                        extraction_jobs::version.eq(next_version),
+                        extraction_jobs::status.eq("queued"),
+                        extraction_jobs::provider.eq("gemini_developer_api"),
+                        extraction_jobs::model.eq(&selected_model),
+                        extraction_jobs::idempotency_key.eq(format!("retry:{job_id}")),
+                        extraction_jobs::request.eq(new_request),
+                        extraction_jobs::attempt_count.eq(0),
+                        extraction_jobs::failure_count.eq(0),
+                        extraction_jobs::max_attempts.eq(5),
+                        extraction_jobs::available_at.eq(now),
+                        extraction_jobs::created_at.eq(now),
+                        extraction_jobs::updated_at.eq(now),
+                    ))
+                    .execute(conn)
+                    .await?;
+                diesel::insert_into(household_events::table)
+                    .values((
+                        household_events::household_id.eq(household_id),
+                        household_events::event_type.eq("receipt.extraction.started"),
+                        household_events::entity_kind.eq("source_document"),
+                        household_events::entity_id.eq(document_id),
+                        household_events::revision.eq(i64::from(next_version)),
+                        household_events::changed_fields.eq(vec![Some("status".to_owned())]),
+                        household_events::payload.eq(json!({"jobId": job_id})),
+                        household_events::actor_id.eq(principal.member_id),
+                        household_events::created_at.eq(now),
+                    ))
+                    .execute(conn)
+                    .await?;
+                if reclassify {
+                    diesel::update(
+                        source_documents::table.filter(source_documents::id.eq(document_id)),
+                    )
+                    .set(
+                        source_documents::source_kind
+                            .eq(requested_kind.as_ref().expect("reclassification kind")),
+                    )
+                    .execute(conn)
+                    .await?;
+                }
+                return Ok(Ok(job_id));
+            }
+            let selected_model = if model == "free" { "" } else { model };
+            let mut new_request = json!({"purpose":"interactive"});
+            if !selected_model.is_empty() {
+                new_request["model"] = json!(selected_model);
+            }
+            if let Some(crop) = crop {
+                new_request["crop"] = crop;
+            }
+            let job_id = uuid::Uuid::now_v7();
+            diesel::insert_into(extraction_jobs::table)
+                .values((
+                    extraction_jobs::id.eq(job_id),
+                    extraction_jobs::household_id.eq(household_id),
+                    extraction_jobs::source_document_id.eq(document_id),
+                    extraction_jobs::version.eq(1),
+                    extraction_jobs::status.eq("queued"),
+                    extraction_jobs::provider.eq("gemini_developer_api"),
+                    extraction_jobs::model.eq(selected_model),
+                    extraction_jobs::idempotency_key.eq(format!("retry:{job_id}")),
+                    extraction_jobs::request.eq(new_request),
+                    extraction_jobs::attempt_count.eq(0),
+                    extraction_jobs::failure_count.eq(0),
+                    extraction_jobs::max_attempts.eq(5),
+                    extraction_jobs::available_at.eq(now),
+                    extraction_jobs::created_at.eq(now),
+                    extraction_jobs::updated_at.eq(now),
+                ))
+                .execute(conn)
+                .await?;
+            diesel::insert_into(household_events::table)
+                .values((
+                    household_events::household_id.eq(household_id),
+                    household_events::event_type.eq("receipt.extraction.started"),
+                    household_events::entity_kind.eq("source_document"),
+                    household_events::entity_id.eq(document_id),
+                    household_events::revision.eq(1_i64),
+                    household_events::changed_fields.eq(vec![Some("status".to_owned())]),
+                    household_events::payload.eq(json!({"jobId": job_id})),
+                    household_events::actor_id.eq(principal.member_id),
+                    household_events::created_at.eq(now),
+                ))
+                .execute(conn)
+                .await?;
+            if reclassify {
+                diesel::update(
+                    source_documents::table.filter(source_documents::id.eq(document_id)),
+                )
+                .set(
+                    source_documents::source_kind
+                        .eq(requested_kind.as_ref().expect("reclassification kind")),
+                )
+                .execute(conn)
+                .await?;
+            }
+            Ok(Ok(job_id))
+        })
         .await;
-    let household_id = match household_id {
-        Ok(household_id) => household_id,
+    drop(pooled);
+    let job_id = match result {
+        Ok(Ok(job_id)) => job_id,
+        Ok(Err(RetryError::InvalidCrop)) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "image crop is invalid for this document",
+            )
+                .into_response();
+        }
+        Ok(Err(RetryError::InvalidReclassification)) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "only email attachments can be reclassified",
+            )
+                .into_response();
+        }
+        Ok(Err(RetryError::EvidenceConflict)) => {
+            return (
+                StatusCode::CONFLICT,
+                "document with confirmed evidence cannot be reclassified",
+            )
+                .into_response();
+        }
+        Ok(Err(RetryError::AlreadyRunning)) => {
+            return (StatusCode::CONFLICT, "extraction is already running").into_response();
+        }
+        Ok(Err(RetryError::AlreadyQueued)) => {
+            return (StatusCode::CONFLICT, "extraction is already queued").into_response();
+        }
+        Ok(Err(RetryError::InvalidRequest)) => {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
         Err(diesel::result::Error::NotFound) => return StatusCode::NOT_FOUND.into_response(),
         Err(error) => {
-            tracing::error!(error = ?error, "Document retry authorization lookup failed");
-            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+            tracing::error!(error = ?error, "Document retry registration failed");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
-    drop(pooled);
-    let mut request = serde_json::Map::new();
-    request.insert(
-        "purpose".to_owned(),
-        Value::String("interactive".to_owned()),
-    );
-    if model != "free" {
-        request.insert("model".to_owned(), Value::String(model.to_owned()));
-    }
-    if let Some(crop) = input.get("crop") {
-        request.insert("crop".to_owned(), crop.clone());
-    }
-    let job = evidence_postgres::document_registration::enqueue_extraction_job(
-        &state.pool,
-        household_id,
-        document_id,
-        principal.member_id,
-        "gemini_developer_api",
-        if model == "free" { "" } else { model },
-        &format!("retry:{}", uuid::Uuid::now_v7()),
-        Value::Object(request),
+    publish_jobs(&state, vec![job_id]).await;
+    (
+        StatusCode::ACCEPTED,
+        Json(json!({"jobId": job_id, "status": "queued"})),
     )
-    .await;
-    match job {
-        Ok(job_id) => {
-            publish_jobs(&state, vec![job_id]).await;
-            (
-                StatusCode::ACCEPTED,
-                Json(json!({"jobId": job_id, "status": "queued"})),
-            )
-                .into_response()
-        }
-        Err(error) => {
-            tracing::error!(error = ?error, "Document retry registration failed");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-    }
+        .into_response()
+}
+
+enum RetryError {
+    InvalidCrop,
+    InvalidReclassification,
+    EvidenceConflict,
+    AlreadyRunning,
+    AlreadyQueued,
+    InvalidRequest,
 }
 
 async fn document_extractions(
@@ -2537,6 +2867,27 @@ async fn confirm_document_evidence(
     let Some(document_id) = uuid::Uuid::parse_str(&raw_document_id).ok() else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    let item_id = input.get("itemId").and_then(Value::as_str);
+    let observation_job_id = input.get("observationJobId").and_then(Value::as_str);
+    let item_index = input.get("sourceItemIndex");
+    if input
+        .get("sourceReference")
+        .is_some_and(|reference| !reference.is_string())
+        || input
+            .get("sourceReference")
+            .and_then(Value::as_str)
+            .is_some_and(|reference| reference.len() > 256)
+        || item_index.is_some_and(|index| {
+            index.as_i64().is_none_or(|value| value < 0)
+                || item_id.is_none()
+                || observation_job_id.is_none()
+        })
+        || observation_job_id.is_some() != item_index.is_some()
+        || item_id.is_some_and(|id| decode_relay_uuid(id, "PurchaseItem").is_none())
+        || observation_job_id.is_some_and(|id| uuid::Uuid::parse_str(id).is_err())
+    {
+        return (StatusCode::BAD_REQUEST, "invalid evidence confirmation").into_response();
+    }
     let source = json!({
         "documentId": document_id,
         "sourceReference": input.get("sourceReference").cloned().unwrap_or_else(|| Value::String(String::new())),
@@ -3148,6 +3499,41 @@ async fn link_purchase_evidence(
     if sources.is_empty() || sources.len() > 100 {
         return (StatusCode::BAD_REQUEST, "invalid evidence sources").into_response();
     }
+    if sources.iter().any(|source| {
+        source
+            .get("documentId")
+            .and_then(Value::as_str)
+            .and_then(|id| uuid::Uuid::parse_str(id).ok())
+            .is_none()
+            || source
+                .get("sourceReference")
+                .is_some_and(|reference| !reference.is_string())
+            || source
+                .get("sourceReference")
+                .and_then(Value::as_str)
+                .is_some_and(|reference| reference.len() > 256)
+            || source
+                .get("itemId")
+                .and_then(Value::as_str)
+                .is_some_and(|id| decode_relay_uuid(id, "PurchaseItem").is_none())
+            || source
+                .get("sourceItemIndex")
+                .is_some_and(|index| index.as_i64().is_none_or(|value| value < 0))
+            || source.get("sourceItemIndex").is_some_and(|_| {
+                source.get("itemId").and_then(Value::as_str).is_none()
+                    || source
+                        .get("observationJobId")
+                        .and_then(Value::as_str)
+                        .is_none()
+            })
+            || source.get("observationJobId").is_some() != source.get("sourceItemIndex").is_some()
+            || source
+                .get("observationJobId")
+                .and_then(Value::as_str)
+                .is_some_and(|id| uuid::Uuid::parse_str(id).is_err())
+    }) {
+        return (StatusCode::BAD_REQUEST, "invalid evidence source").into_response();
+    }
     let cookie = headers
         .get(header::COOKIE)
         .and_then(|value| value.to_str().ok())
@@ -3511,9 +3897,16 @@ async fn events(
 }
 
 fn event_stream_response(mut response: Response) -> Response {
-    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache, no-transform"));
-    response.headers_mut().insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));
-    response.headers_mut().insert("x-accel-buffering", HeaderValue::from_static("no"));
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-cache, no-transform"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));
+    response
+        .headers_mut()
+        .insert("x-accel-buffering", HeaderValue::from_static("no"));
     response
 }
 

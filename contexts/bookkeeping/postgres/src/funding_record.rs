@@ -31,29 +31,7 @@ pub struct PersistedFunding {
     pub ledger_entry_id: String,
 }
 
-pub async fn replay_record_funding(
-    pool: &PgPool,
-    input: &PersistRecordFunding,
-    member_id: Uuid,
-    pool_id: Uuid,
-) -> Result<Option<PersistedFunding>, RecordFundingPersistenceError> {
-    if input.idempotency_key.trim().is_empty() || input.idempotency_key.len() > 200 {
-        return Err(RecordFundingPersistenceError::InvalidIdempotencyKey);
-    }
-    let household_id = parse_uuid(&input.household_id, "household_id")?;
-    let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| RecordFundingPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
-        .transaction::<Option<PersistedFunding>, RecordFundingPersistenceError, _>(async |conn| {
-            replay_record_funding_in_transaction(conn, input, member_id, pool_id).await
-        })
-        .await
-}
-
-pub async fn replay_record_funding_in_transaction(
+async fn replay_record_funding_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
     input: &PersistRecordFunding,
     member_id: Uuid,
@@ -64,6 +42,22 @@ pub async fn replay_record_funding_in_transaction(
     }
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
+    public::households::table
+        .filter(public::households::id.eq(household_id))
+        .select(public::households::id)
+        .first::<Uuid>(&mut *conn)
+        .await
+        .optional()?
+        .ok_or(RecordFundingPersistenceError::HouseholdNotFound)?;
+    let tokyo_offset = FixedOffset::east_opt(9 * 60 * 60)
+        .ok_or(RecordFundingPersistenceError::InvalidOccurredAt)?;
+    let period_start = input
+        .occurred_at
+        .with_timezone(&tokyo_offset)
+        .date_naive()
+        .with_day(1)
+        .ok_or(RecordFundingPersistenceError::InvalidOccurredAt)?;
+    lock_accounting_period(conn, household_id, period_start).await?;
     use public::idempotency_records::dsl as idem;
 
     for id in [actor_id, member_id] {
@@ -155,9 +149,9 @@ pub async fn record_funding_workflow(
 > {
     let mut pooled = pool.get().await.map_err(|error| {
         application::RecordFundingWorkflowError::Operations(
-            RecordFundingWorkflowAdapterError::Persistence(
-                RecordFundingPersistenceError::Pool(error.to_string()),
-            ),
+            RecordFundingWorkflowAdapterError::Persistence(RecordFundingPersistenceError::Pool(
+                error.to_string(),
+            )),
         )
     })?;
     let result = (&mut *pooled)
@@ -274,23 +268,7 @@ impl application::RecordFundingOperations for PgRecordFundingOperations<'_> {
     }
 }
 
-pub async fn persist_record_funding(
-    pool: &PgPool,
-    input: PersistRecordFunding,
-    decision: RecordFundingDecision,
-) -> Result<PersistedFunding, RecordFundingPersistenceError> {
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| RecordFundingPersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
-        .transaction::<PersistedFunding, RecordFundingPersistenceError, _>(async |conn| {
-            persist_record_funding_in_transaction(conn, input, decision).await
-        })
-        .await
-}
-
-pub async fn persist_record_funding_in_transaction(
+async fn persist_record_funding_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
     input: PersistRecordFunding,
     decision: RecordFundingDecision,
@@ -361,13 +339,12 @@ pub async fn persist_record_funding_in_transaction(
     use public::idempotency_records::dsl as idem;
     use public::journals::dsl as journals;
 
-    ensure_open_period(
-        &mut *conn,
-        household_id,
-        period_start,
-        decision.accounting_period.revision(),
-    )
-    .await?;
+    let (status, revision) = lock_accounting_period(conn, household_id, period_start).await?;
+    let expected_revision = i64::try_from(decision.accounting_period.revision())
+        .map_err(|_| RecordFundingPersistenceError::InvalidDecision)?;
+    if status != "OPEN" || revision != expected_revision {
+        return Err(RecordFundingPersistenceError::AccountingPeriodClosed);
+    }
     public::households::table
         .filter(public::households::id.eq(household_id))
         .select(public::households::id)
@@ -587,6 +564,20 @@ async fn ensure_open_period(
     period_start: NaiveDate,
     expected_revision: u64,
 ) -> Result<(), RecordFundingPersistenceError> {
+    let (status, revision) = lock_accounting_period(conn, household_id, period_start).await?;
+    let expected_revision = i64::try_from(expected_revision)
+        .map_err(|_| RecordFundingPersistenceError::InvalidDecision)?;
+    if status != "OPEN" || revision != expected_revision {
+        return Err(RecordFundingPersistenceError::AccountingPeriodClosed);
+    }
+    Ok(())
+}
+
+async fn lock_accounting_period(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    period_start: NaiveDate,
+) -> Result<(String, i64), RecordFundingPersistenceError> {
     diesel::insert_into(public::accounting_periods::table)
         .values((
             public::accounting_periods::household_id.eq(household_id),
@@ -601,7 +592,7 @@ async fn ensure_open_period(
         .do_nothing()
         .execute(&mut *conn)
         .await?;
-    let (status, revision) = public::accounting_periods::table
+    let period = public::accounting_periods::table
         .filter(public::accounting_periods::household_id.eq(household_id))
         .filter(public::accounting_periods::period_start.eq(period_start))
         .for_update()
@@ -611,12 +602,7 @@ async fn ensure_open_period(
         ))
         .first::<(String, i64)>(conn)
         .await?;
-    let expected_revision = i64::try_from(expected_revision)
-        .map_err(|_| RecordFundingPersistenceError::InvalidDecision)?;
-    if status != "OPEN" || revision != expected_revision {
-        return Err(RecordFundingPersistenceError::AccountingPeriodClosed);
-    }
-    Ok(())
+    Ok(period)
 }
 
 async fn validate_account(

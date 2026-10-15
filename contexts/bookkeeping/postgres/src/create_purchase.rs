@@ -202,23 +202,7 @@ impl application::CreatePurchaseOperations for PgCreatePurchaseOperations<'_> {
     }
 }
 
-pub async fn persist_create_purchase(
-    pool: &PgPool,
-    input: PersistCreatePurchase,
-    decision: CreatePurchaseDecision,
-) -> Result<PersistedCreatePurchase, CreatePurchasePersistenceError> {
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| CreatePurchasePersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
-        .transaction::<PersistedCreatePurchase, CreatePurchasePersistenceError, _>(async |conn| {
-            persist_create_purchase_in_transaction(conn, input, decision).await
-        })
-        .await
-}
-
-pub async fn persist_create_purchase_in_transaction(
+async fn persist_create_purchase_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
     input: PersistCreatePurchase,
     mut decision: CreatePurchaseDecision,

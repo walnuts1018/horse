@@ -45,44 +45,6 @@ impl From<DieselError> for ClosePeriodPersistenceError {
     }
 }
 
-pub async fn persist_close_period(
-    pool: &PgPool,
-    household_id: &str,
-    decision: ClosePeriodDecision,
-) -> Result<PersistedClosePeriod, ClosePeriodPersistenceError> {
-    let household_id = parse_uuid(household_id, "household_id")?;
-    let actor_id = parse_uuid(decision.event.actor_id.as_str(), "actor_id")?;
-    let (period_start, period_end) = period_bounds(decision.period.year_month())?;
-    let revision = i64::try_from(decision.period.revision())
-        .map_err(|_| ClosePeriodPersistenceError::NumericOutOfRange("period revision"))?;
-    let expected_revision = revision
-        .checked_sub(1)
-        .ok_or(ClosePeriodPersistenceError::InvalidDecision)?;
-    validate_decision(&decision, period_start, revision, actor_id)?;
-    let settlement_run_id = Uuid::now_v7();
-
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| ClosePeriodPersistenceError::Pool(error.to_string()))?;
-    let conn = &mut *pooled;
-    conn.transaction::<PersistedClosePeriod, ClosePeriodPersistenceError, _>(async |conn| {
-        persist_close_period_in_transaction(
-            conn,
-            household_id,
-            decision,
-            period_start,
-            period_end,
-            revision,
-            expected_revision,
-            actor_id,
-            settlement_run_id,
-        )
-        .await
-    })
-    .await
-}
-
 pub async fn close_period(
     pool: &PgPool,
     household_id: &str,

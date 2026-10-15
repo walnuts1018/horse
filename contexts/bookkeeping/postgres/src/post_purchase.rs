@@ -166,22 +166,6 @@ impl From<DieselError> for PostPurchasePersistenceError {
     }
 }
 
-pub async fn persist_post_purchase(
-    pool: &PgPool,
-    input: PersistPostPurchase,
-    decision: PostPurchaseDecision,
-) -> Result<PersistedPostPurchase, PostPurchasePersistenceError> {
-    let mut pooled = pool
-        .get()
-        .await
-        .map_err(|error| PostPurchasePersistenceError::Pool(error.to_string()))?;
-    (&mut *pooled)
-        .transaction::<PersistedPostPurchase, PostPurchasePersistenceError, _>(async |conn| {
-            persist_post_purchase_in_transaction(conn, input, decision).await
-        })
-        .await
-}
-
 pub async fn find_idempotent_post_purchase(
     pool: &PgPool,
     household_id: Uuid,
@@ -234,7 +218,7 @@ pub async fn find_idempotent_post_purchase(
     }))
 }
 
-pub async fn persist_post_purchase_in_transaction(
+async fn persist_post_purchase_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
     input: PersistPostPurchase,
     decision: PostPurchaseDecision,
