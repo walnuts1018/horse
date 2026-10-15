@@ -143,6 +143,7 @@ func (t geminiResponseTransport) RoundTrip(request *http.Request) (*http.Respons
 			if request.Body != nil {
 				_ = request.Body.Close()
 			}
+
 			return nil, errGeminiInlineImageRequestTooLarge
 		}
 	}
