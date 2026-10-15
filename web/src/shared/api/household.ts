@@ -157,6 +157,7 @@ export type AccountMovement = {
 };
 export type AccountBalance = { accountId: string; balanceYen: number; currency: string };
 export type AccountBalanceChangeSource =
+  | { __typename: "UnknownBalanceChangeSource" }
   | { id: string; __typename: "AccountOpeningBalance"; account: { id: string; name: string } }
   | { id: string; __typename: "Purchase" }
   | { id: string; __typename: "PurchaseWideCorrection" }
@@ -272,11 +273,12 @@ export type PurchasePayment = PurchasePaymentInput & {
 };
 export type PurchaseOrigin = "AI" | "MANUAL" | "UNKNOWN";
 export type SourceKind = "RECEIPT" | "ORDER" | "EMAIL" | "CARD" | "BANK";
+export type ObservationSourceKind = SourceKind | "UNKNOWN";
 export type UnmatchedObservationState = "UNMATCHED" | "CONFIRMED";
 type ObservationFields = {
   documentId: string;
   sourceReference: string;
-  sourceKind: SourceKind;
+  sourceKind: ObservationSourceKind;
   merchant: string;
   occurredAt?: string | null;
   amountYen: number;

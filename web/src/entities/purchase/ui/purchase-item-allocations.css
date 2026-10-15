@@ -3,15 +3,25 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  height: 27px;
-  padding: 0 7px;
+  min-height: 36px;
+  padding: 4px 8px;
   border: 0;
   border-radius: 7px;
   background: #f3f7f2;
   color: #5f6d65;
-  font-size: 9px;
-  white-space: nowrap;
+  font-size: 12px;
+  text-align: left;
   cursor: pointer;
+}
+
+.allocation-chip:hover {
+  background: #e7f0e9;
+  color: var(--green-dark);
+}
+
+.allocation-chip:focus-visible {
+  outline: 3px solid rgb(35 115 95 / 0.22);
+  outline-offset: 2px;
 }
 
 .allocation-label {

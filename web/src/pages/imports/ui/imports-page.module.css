@@ -141,15 +141,68 @@
   display: flex;
   gap: 0.75rem;
   list-style: none;
+  min-height: 52px;
+  padding: 8px 12px;
+  color: var(--ink);
+}
+
+.receiptItemSummary::before {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-right: 1.5px solid var(--green);
+  border-bottom: 1.5px solid var(--green);
+  content: "";
+  transform: rotate(-45deg);
+  transition: transform 140ms ease;
+}
+
+.receiptItemSummary:hover {
+  background: var(--green-wash);
+}
+
+.receiptItemSummary:focus-visible {
+  outline: 3px solid rgb(35 115 95 / 0.22);
+  outline-offset: -3px;
+}
+
+.receiptItemSummary strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.receiptItemSummary small {
+  width: fit-content;
+  border-radius: 999px;
+  background: var(--surface-muted, #f1f4f1);
+  padding: 3px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.receiptItemSummary .receiptItemReviewAttention {
+  background: #fff3e3;
+  color: #89520f;
+}
+
+.receiptItemSummary .receiptItemReviewConfirmed {
+  background: var(--green-wash);
+  color: var(--green-dark);
+}
+
+.receiptItemSummary[data-expanded="true"]::before {
+  transform: rotate(45deg);
+}
+
+.receiptItemSummary[data-expanded="true"] {
+  border-bottom: 1px solid var(--line);
 }
 
 .receiptItemSummary > span {
   flex: 1;
   min-width: 0;
-}
-
-.receiptItemSummary small {
-  color: var(--color-warning, #9a5b00);
 }
 
 .receiptItemSummary::-webkit-details-marker {
@@ -323,6 +376,20 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
+}
+
+.evidenceCropSummary::after {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-right: 1.5px solid var(--green);
+  border-bottom: 1.5px solid var(--green);
+  content: "";
+  transform: rotate(-45deg);
+}
+
+.evidenceCropPanel[open] > .evidenceCropSummary::after {
+  transform: rotate(45deg);
 }
 
 .evidenceCropSummary small {

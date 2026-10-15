@@ -74,8 +74,8 @@ export function SettlementPreview({
             {settlement?.__typename === "ClosedSettlement" ? "締め済み" : "未締め"}
           </span>
         </div>
-        <details className="settlement-account-select">
-          <summary>
+        <details className="settlement-disclosure">
+          <summary className="settlement-disclosure-summary">
             共通入金先:{" "}
             {household.accounts.find((account) => account.id === fundingDestinationAccountId)
               ?.name ?? "未指定"}
@@ -149,8 +149,8 @@ export function SettlementPreview({
                     {formatSettlementYen(line.amountDueYen)}
                   </b>
                   <small>次回精算残高</small>
-                  <details className="settlement-account-select">
-                    <summary>
+                  <details className="settlement-disclosure">
+                    <summary className="settlement-disclosure-summary">
                       {household.accounts.find(
                         (account) => account.id === fundingSourceAccounts[line.memberId],
                       )?.name ?? "口座外"}

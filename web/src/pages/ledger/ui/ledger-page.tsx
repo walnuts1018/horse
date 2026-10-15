@@ -726,7 +726,7 @@ export function LedgerPage({
                     )}
                     {purchase.items.map((item) => (
                       <div
-                        className={`expanded-item ${highlightedEvidenceItem === item.id ? "evidence-item-highlighted" : ""}`}
+                        className={`expanded-item ${editing === purchase.id ? "expanded-item-editing" : ""} ${highlightedEvidenceItem === item.id ? "evidence-item-highlighted" : ""}`}
                         key={item.id}
                       >
                         <input
@@ -751,15 +751,17 @@ export function LedgerPage({
                           }
                         />
                         {editing === purchase.id ? (
-                          <PurchaseItemEditor
-                            item={item}
-                            draft={itemDrafts[item.id]}
-                            household={household}
-                            merchant={purchase.merchant}
-                            categories={household.categories}
-                            catalog={catalog}
-                            onChange={(updates) => updateItemDraft(item.id, updates)}
-                          />
+                          <div className="expanded-item-editor">
+                            <PurchaseItemEditor
+                              item={item}
+                              draft={itemDrafts[item.id]}
+                              household={household}
+                              merchant={purchase.merchant}
+                              categories={household.categories}
+                              catalog={catalog}
+                              onChange={(updates) => updateItemDraft(item.id, updates)}
+                            />
+                          </div>
                         ) : (
                           <>
                             <span>{item.name}</span>

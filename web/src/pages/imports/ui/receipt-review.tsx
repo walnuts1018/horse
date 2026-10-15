@@ -566,6 +566,7 @@ export function ReceiptReview({
               >
                 <summary
                   className={styles.receiptItemSummary}
+                  data-expanded={expandedReceiptItems[itemKey] ?? needsAttention}
                   onFocus={() =>
                     selectReceiptEvidenceItem(selectedDocument.id, {
                       itemKey,
@@ -592,7 +593,15 @@ export function ReceiptReview({
                       ),
                     )}
                   </strong>
-                  {needsAttention ? <small>確認が必要</small> : <small>編集</small>}
+                  <small
+                    className={
+                      needsAttention
+                        ? styles.receiptItemReviewAttention
+                        : styles.receiptItemReviewConfirmed
+                    }
+                  >
+                    {needsAttention ? "確認が必要" : "編集"}
+                  </small>
                 </summary>
                 <div>
                   <input

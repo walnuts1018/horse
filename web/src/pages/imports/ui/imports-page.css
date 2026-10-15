@@ -318,6 +318,125 @@
   color: var(--green-dark);
 }
 
+.review-fields {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.review-fields > .review-merchant {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.review-fields label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.review-fields input:not([type="checkbox"]),
+.review-fields select,
+.review-fields textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.review-fields input:focus-visible,
+.review-fields select:focus-visible,
+.review-fields textarea:focus-visible {
+  border-color: var(--green);
+}
+
+.review-fields small {
+  color: var(--muted);
+}
+
+.review-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  border: 1px solid #cbd9cf;
+  border-radius: 10px;
+  background: var(--green-wash);
+  padding: 12px 14px;
+  color: var(--green-dark);
+}
+
+.review-total span {
+  font-size: 12px;
+}
+
+.review-total b {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.review-fields .receipt-item-review {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.review-fields .receipt-item-review[open] {
+  border-color: #cbd9cf;
+}
+
+.review-fields .receipt-item-review > div,
+.review-fields .receipt-item-review > label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.review-fields .receipt-item-review > label {
+  border-top: 1px solid var(--line);
+  background: #fafbf9;
+}
+
+.review-fields .receipt-item-review > label input {
+  max-width: 220px;
+  font-variant-numeric: tabular-nums;
+}
+
+.review-fields .receipt-item-review .receipt-measure-details {
+  margin: 0 12px 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.review-fields .receipt-item-review .receipt-measure-details label {
+  display: inline-flex;
+  align-items: center;
+  margin: 3px 8px 3px 0;
+}
+
+.review-fields .receipt-item-review .receipt-measure-details input {
+  width: 76px;
+  min-height: 36px;
+  padding: 4px 7px;
+  font-size: 12px;
+}
+
 .candidate-difference-jump {
   justify-self: start;
   border: 0;
@@ -331,9 +450,8 @@
 
 .receipt-item-candidate-difference {
   border-radius: 10px;
-  outline: 1px solid var(--green);
+  border-color: var(--green);
   background: var(--green-wash);
-  padding: 10px;
 }
 
 .receipt-item-add,
@@ -368,6 +486,10 @@
 }
 
 @media (width <= 600px) {
+  .review-fields > .review-merchant {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .statement-row {
     padding: 10px 0;
   }

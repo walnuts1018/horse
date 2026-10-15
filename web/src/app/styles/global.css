@@ -16,6 +16,11 @@
   --green-wash: #edf4ef;
   --amber: #93601d;
   --paper: #fff;
+  --surface: #fff;
+  --surface-muted: #f1f4f1;
+  --accent: var(--green-dark);
+  --danger: #a43c32;
+  --color-warning: #89520f;
   --shadow: none;
   --mobile-font-dense: 12px;
 }
@@ -74,6 +79,47 @@ select:disabled {
   background-color: #f3f5f3;
   color: var(--muted);
   cursor: not-allowed;
+}
+
+details > summary:not([class]) {
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+details > summary:not([class])::-webkit-details-marker {
+  display: none;
+  content: "";
+}
+
+details > summary:not([class])::before {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-inline-end: 8px;
+  border-right: 1.5px solid var(--green);
+  border-bottom: 1.5px solid var(--green);
+  content: "";
+  transform: rotate(-45deg);
+  vertical-align: 2px;
+}
+
+details[open] > summary:not([class])::before {
+  transform: rotate(45deg);
+}
+
+details > summary:not([class]):hover {
+  color: var(--green-dark);
+}
+
+details > summary:hover {
+  color: var(--green-dark);
+}
+
+details > summary:focus-visible {
+  outline: 3px solid rgb(35 115 95 / 0.22);
+  outline-offset: 3px;
 }
 
 button {
@@ -975,8 +1021,11 @@ a {
 
 .item-measure-details summary,
 .receipt-measure-details summary {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
   width: fit-content;
-  padding: 4px 0;
+  padding: 6px 0;
   cursor: pointer;
 }
 
@@ -990,15 +1039,16 @@ a {
 
 .item-measure-details input,
 .receipt-measure-details input {
-  width: 72px;
+  width: 76px;
   min-width: 0;
-  height: 28px;
-  padding: 0 6px;
+  min-height: 36px;
+  height: 36px;
+  padding: 0 7px;
   border: 1px solid #e4eae4;
   border-radius: 6px;
   background: #fff;
   color: #56655c;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .row-remove {
@@ -1439,8 +1489,9 @@ form.ledger-filters .select-filter input[type="number"] {
 
   .field-group input,
   .field-group select {
-    height: 34px;
-    font-size: 10px;
+    min-height: 44px;
+    height: 44px;
+    font-size: 14px;
   }
 
   .mobile-dock {

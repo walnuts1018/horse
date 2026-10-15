@@ -94,3 +94,26 @@ export const Selects: Story = {
     </div>
   ),
 };
+
+export const Disclosures: Story = {
+  render: () => (
+    <div style={{ ...galleryStyle, gridTemplateColumns: "minmax(260px, 1fr)" }}>
+      <section style={exampleStyle}>
+        <details>
+          <summary>補足情報</summary>
+          <p style={{ margin: "0.75rem 0 0", color: "var(--muted)" }}>
+            必要なときに確認する補足項目です。
+          </p>
+        </details>
+      </section>
+      <section style={exampleStyle}>
+        <details open>
+          <summary>入力の詳細</summary>
+          <p style={{ margin: "0.75rem 0 0", color: "var(--muted)" }}>
+            開閉状態とフォーカス表示を調整できます。
+          </p>
+        </details>
+      </section>
+    </div>
+  ),
+};

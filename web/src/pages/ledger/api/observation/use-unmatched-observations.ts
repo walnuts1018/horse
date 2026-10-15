@@ -3,6 +3,7 @@ import { useLazyLoadQuery, usePaginationFragment } from "react-relay";
 
 import type {
   SourceKind,
+  ObservationSourceKind,
   UnmatchedObservation,
   UnmatchedObservationState,
   UnmatchedObservationsFragment$data,
@@ -49,7 +50,10 @@ export function useUnmatchedObservations(householdId: string, options: Options =
   const [moreError, setMoreError] = useState("");
   const [refreshError, setRefreshError] = useState("");
   const page = data.unmatchedObservations;
-  const observations = page.edges.map(({ node }) => mapObservation(node));
+  const observations = page.edges.flatMap(({ node }) => {
+    const observation = mapObservation(node);
+    return observation ? [observation] : [];
+  });
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -87,7 +91,7 @@ export function useUnmatchedObservations(householdId: string, options: Options =
   };
 }
 
-function mapObservation(record: ObservationRecord): UnmatchedObservation {
+function mapObservation(record: ObservationRecord): UnmatchedObservation | null {
   const fields = {
     documentId: record.documentId,
     sourceReference: record.sourceReference,
@@ -102,7 +106,7 @@ function mapObservation(record: ObservationRecord): UnmatchedObservation {
     case "UnmatchedObservation":
       return { __typename: record.__typename, ...fields };
     case "ConfirmedObservation":
-      if (!record.purchase) throw new Error("照合済み候補に購入情報がありません");
+      if (!record.purchase) return null;
       return {
         __typename: record.__typename,
         ...fields,
@@ -113,11 +117,11 @@ function mapObservation(record: ObservationRecord): UnmatchedObservation {
         },
       };
     default:
-      throw new Error(`未対応の照合候補型です: ${record.__typename}`);
+      return null;
   }
 }
 
-function mapSourceKind(sourceKind: ObservationRecord["sourceKind"]): SourceKind {
+function mapSourceKind(sourceKind: ObservationRecord["sourceKind"]): ObservationSourceKind {
   switch (sourceKind) {
     case "BANK":
     case "CARD":
@@ -127,6 +131,6 @@ function mapSourceKind(sourceKind: ObservationRecord["sourceKind"]): SourceKind 
       return sourceKind;
     case "%future added value":
     default:
-      throw new Error(`未対応の照合元です: ${sourceKind}`);
+      return "UNKNOWN";
   }
 }

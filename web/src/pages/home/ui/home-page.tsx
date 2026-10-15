@@ -198,7 +198,7 @@ export function HomePage({
       </section>
       <div className="quick-actions">
         <Link
-          className="quick-card import-card"
+          className="quick-card"
           to="/households/$householdId/imports"
           params={{ householdId: household.id }}
           search

@@ -141,6 +141,69 @@
   text-align: left;
 }
 
+.settlement-disclosure {
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid #dce4de;
+  border-radius: 8px;
+  background: #fff;
+  text-align: left;
+}
+
+.settlement-disclosure > summary {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  color: #43564a;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  list-style: none;
+}
+
+.settlement-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settlement-disclosure > summary::after {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-right: 1.5px solid currentcolor;
+  border-bottom: 1.5px solid currentcolor;
+  content: "";
+  transform: rotate(-45deg);
+  transition: transform 140ms ease;
+}
+
+.settlement-disclosure > summary:hover {
+  background: #f5f8f5;
+}
+
+.settlement-disclosure > summary:focus-visible {
+  outline: 3px solid rgb(35 115 95 / 0.22);
+  outline-offset: -3px;
+}
+
+.settlement-disclosure[open] {
+  border-color: #bdcfc2;
+}
+
+.settlement-disclosure[open] > summary {
+  border-bottom: 1px solid #e2e8e3;
+}
+
+.settlement-disclosure[open] > .settlement-disclosure-summary::after {
+  transform: rotate(45deg);
+}
+
+.settlement-disclosure > .settlement-account-select {
+  margin: 10px;
+}
+
 .settlement-account-select > span {
   color: #5f6d65;
   font-size: 11px;
@@ -174,6 +237,62 @@
 .settlement-amount .text-button {
   padding-right: 0;
   font-size: 12px;
+}
+
+.transfer-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 14px 12px;
+}
+
+.transfer-form > label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.transfer-form > label > input,
+.transfer-form > label > select {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.transfer-form > .inline-error,
+.transfer-form > .settlement-confirmation,
+.transfer-form > .transfer-description,
+.transfer-form > button {
+  grid-column: 1 / -1;
+}
+
+.transfer-form > button {
+  min-height: 44px;
+  justify-self: start;
+}
+
+.settlement-confirmation {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid #c8ddce;
+  border-radius: 8px;
+  background: #edf5ef;
+  padding: 8px 11px;
+  color: #285a42;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .settlement-actions {
@@ -223,6 +342,17 @@
 }
 
 @media (width <= 760px) {
+  .transfer-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .transfer-form > .inline-error,
+  .transfer-form > .settlement-confirmation,
+  .transfer-form > .transfer-description,
+  .transfer-form > button {
+    grid-column: 1;
+  }
+
   .settlement-hero {
     min-height: 135px;
     padding: 21px;
@@ -410,7 +540,7 @@
 }
 
 .period-picker {
-  height: 37px;
+  min-height: 40px;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -432,8 +562,8 @@
 .period-picker-nav {
   display: grid;
   place-items: center;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 36px;
+  min-height: 36px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -461,13 +591,19 @@
 
 @media (width <= 760px) {
   .period-picker {
-    height: 34px;
+    min-height: 44px;
     padding: 0 5px;
     gap: 3px;
   }
 
+  .period-picker-nav {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
   .period-picker input {
     width: 98px;
-    font-size: 9px;
+    min-height: 40px;
+    font-size: 14px;
   }
 }

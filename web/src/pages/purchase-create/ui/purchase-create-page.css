@@ -205,6 +205,31 @@
   margin: 0 10px 8px 42px;
 }
 
+.purchase-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.purchase-history-actions .text-button {
+  min-height: 36px;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f9f7;
+  padding: 6px 10px;
+  color: #43564a;
+  font-size: 12px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.purchase-history-actions .text-button:hover {
+  border-color: #bdcfc2;
+  background: var(--green-wash);
+}
+
 .item-index {
   color: #5f6d65;
   font-size: 12px;
@@ -271,8 +296,8 @@
 }
 
 .allocation-chip {
-  height: 27px;
-  padding: 0 7px;
+  min-height: 36px;
+  padding: 4px 8px;
   border: 0;
   border-radius: 7px;
   background: #f3f7f2;
@@ -282,7 +307,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  white-space: nowrap;
+  text-align: left;
   cursor: pointer;
 }
 
