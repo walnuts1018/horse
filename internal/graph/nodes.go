@@ -77,8 +77,13 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 	hasBatchLoadedNode := false
 	hasUnbatchedNode := false
 	hasLoadedHouseholdNode := false
+	hasUnmatchedObservationNode := false
 	for _, nodeID := range decoded {
-		if nodeID.kind == nodeTypeUnmatchedObservation || nodeID.kind == nodeTypeSettlement {
+		if nodeID.kind == nodeTypeUnmatchedObservation {
+			hasUnmatchedObservationNode = true
+			continue
+		}
+		if nodeID.kind == nodeTypeSettlement {
 			continue
 		}
 		if isBatchLoadedNodeKind(nodeID.kind) {
@@ -121,9 +126,18 @@ func (r *queryResolver) nodes(ctx context.Context, ids []string) ([]model.Node, 
 			result[index] = node
 		}
 	}
+	if hasUnmatchedObservationNode {
+		resolved, err := r.loadUnmatchedObservationNodes(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		for index, node := range resolved {
+			result[index] = node
+		}
+	}
 
 	for index, nodeID := range decoded {
-		if nodeID.kind != nodeTypeUnmatchedObservation && nodeID.kind != nodeTypeSettlement {
+		if nodeID.kind != nodeTypeSettlement {
 			continue
 		}
 		node, err := r.node(ctx, ids[index])
@@ -202,14 +216,26 @@ func decodeGlobalNodeID(globalID string) (string, string, error) {
 
 func decodeUnmatchedNodeID(payload string) (string, string, error) {
 	documentID, rest, ok := bytes.Cut([]byte(payload), []byte{0})
-	if !ok || len(documentID) != 16 {
+	if !ok {
+		return "", "", errors.New("invalid UnmatchedObservation node ID payload")
+	}
+	parsedDocumentID := ""
+	if len(documentID) == 16 {
+		parsedDocumentID = uuid.UUID(documentID).String()
+	} else if len(documentID) == 36 {
+		parsedID, err := uuid.FromString(string(documentID))
+		if err != nil {
+			return "", "", errors.New("invalid UnmatchedObservation node ID payload")
+		}
+		parsedDocumentID = parsedID.String()
+	} else {
 		return "", "", errors.New("invalid UnmatchedObservation node ID payload")
 	}
 	if len(rest) >= 8 && binary.BigEndian.Uint64(rest[:8]) == uint64(len(rest[8:])) {
-		return uuid.UUID(documentID).String(), string(rest[8:]), nil
+		return parsedDocumentID, string(rest[8:]), nil
 	}
 	if len(rest) >= 4 && uint64(binary.BigEndian.Uint32(rest[:4])) == uint64(len(rest[4:])) {
-		return uuid.UUID(documentID).String(), string(rest[4:]), nil
+		return parsedDocumentID, string(rest[4:]), nil
 	}
 	return "", "", errors.New("invalid UnmatchedObservation node ID payload")
 }

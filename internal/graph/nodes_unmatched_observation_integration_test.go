@@ -117,4 +117,36 @@ func TestFindUnmatchedObservationUsesPersistedRowsAndHouseholdAccess(t *testing.
 	if got, err := resolver.findUnmatchedObservation(outsiderContext, documentID.String(), "row:1"); err != nil || got != nil {
 		t.Fatalf("outsider lookup returned node=%#v error=%v, want nil", got, err)
 	}
+	unmatchedID, err := resolver.UnmatchedObservation().ID(ctx, &model.UnmatchedObservation{ObservationFields: &model.ObservationFields{DocumentID: documentID.String(), SourceReference: "row:1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmedID, err := resolver.ConfirmedObservation().ID(ctx, &model.ConfirmedObservation{ObservationFields: &model.ObservationFields{DocumentID: documentID.String(), SourceReference: "row:2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingID, err := resolver.UnmatchedObservation().ID(ctx, &model.UnmatchedObservation{ObservationFields: &model.ObservationFields{DocumentID: documentID.String(), SourceReference: "missing"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	batched, err := resolver.nodes(ownerContext, []string{confirmedID, unmatchedID, missingID, unmatchedID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if confirmed, ok := batched[0].(*model.ConfirmedObservation); !ok || confirmed.PurchaseID != purchaseID.String() {
+		t.Fatalf("batched[0] = %#v, want confirmed observation", batched[0])
+	}
+	if unmatched, ok := batched[1].(*model.UnmatchedObservation); !ok || unmatched.SourceReference != "row:1" {
+		t.Fatalf("batched[1] = %#v, want unmatched observation", batched[1])
+	}
+	if batched[2] != nil {
+		t.Fatalf("batched[2] = %#v, want nil for missing observation", batched[2])
+	}
+	if unmatched, ok := batched[3].(*model.UnmatchedObservation); !ok || unmatched.SourceReference != "row:1" {
+		t.Fatalf("batched[3] = %#v, want duplicate unmatched observation", batched[3])
+	}
+	foreign, err := resolver.nodes(outsiderContext, []string{unmatchedID})
+	if err != nil || foreign[0] != nil {
+		t.Fatalf("foreign node = %#v error=%v, want nil", foreign[0], err)
+	}
 }
