@@ -12,12 +12,11 @@ import (
 )
 
 type Worker struct {
-	DB                       *pgxpool.Pool
-	Store                    DocumentStore
-	Router                   GeminiRouter
-	OCR                      OCR
-	GeminiEnabled            bool
-	allowSyntheticEvaluation bool
+	DB            *pgxpool.Pool
+	Store         DocumentStore
+	Router        GeminiRouter
+	OCR           OCR
+	GeminiEnabled bool
 }
 
 type DocumentStore interface {

@@ -53,10 +53,10 @@ export type StatementEntry = {
 export type StatementSourceKind = "card" | "bank";
 export type UploadSourceKind = "receipt" | "order" | "email" | StatementSourceKind;
 export const importModels = [
-  { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
-  { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" },
-  { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite" },
-  { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro Preview" },
+  { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash", tier: "free" },
+  { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", tier: "free" },
+  { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", tier: "free" },
+  { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro Preview", tier: "paid" },
 ] as const;
 
 export type ImportModel = (typeof importModels)[number]["value"];
@@ -64,18 +64,25 @@ export type ImportModel = (typeof importModels)[number]["value"];
 export const defaultImportModel: ImportModel = "gemini-3.8-flash";
 
 const deferredExtractionMessages = new Map([
-  ["rate_limited", "有料モデルの利用上限に達したため、AI処理を保留しています。"],
-  ["quota_reservation_deferred", "有料モデルの利用上限に達したため、AI処理を保留しています。"],
-  ["spend_cap_reached", "月500円の利用上限に達したため、AI処理を保留しています。"],
-  ["paid_route_unavailable", "有料AI処理を利用できないため、AI処理を保留しています。"],
+  ["rate_limited", "モデルの利用上限に達しました。モデルを切り替えて再抽出できます。"],
   [
-    "developer_api_consumer_use_restricted",
-    "Gemini APIの利用条件を確認中のため、AI解析を一時停止しています。",
+    "quota_reservation_deferred",
+    "モデルの利用上限に達しました。モデルを切り替えて再抽出できます。",
   ],
+  ["spend_cap_reached", "有料モデルの月500円上限に達しました。無料モデルを選んで再抽出できます。"],
+  ["paid_route_unavailable", "有料モデルを利用できません。無料モデルを選んで再抽出できます。"],
 ]);
 
 export function isImportModel(value: string): value is ImportModel {
   return importModels.some((model) => model.value === value);
+}
+
+export function importModelTier(model: ImportModel): "free" | "paid" {
+  return importModels.find((entry) => entry.value === model)?.tier ?? "free";
+}
+
+export function importModelCostLabel(model: ImportModel): string {
+  return importModelTier(model) === "paid" ? "有料・従量課金" : "無料・利用上限あり";
 }
 
 export function receiptDateInputValue(purchasedAt?: string): string {
@@ -337,6 +344,10 @@ export function isExtractionDeferred(document: DocumentReview): boolean {
 
 export function deferredExtractionMessage(errorCode?: string): string | undefined {
   return errorCode ? deferredExtractionMessages.get(errorCode) : undefined;
+}
+
+export function canRetryExtraction(document: DocumentReview): boolean {
+  return document.status.toUpperCase() === "FAILED" || isExtractionDeferred(document);
 }
 
 export function purchaseDatePrecisionFor(document: DocumentReview): "DATE_TIME" | "DATE_ONLY" {

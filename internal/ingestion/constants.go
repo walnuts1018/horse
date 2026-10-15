@@ -8,11 +8,10 @@ const (
 	mimeTypeEmail     = "message/rfc822"
 	mimeTypeCSV       = "text/csv"
 
-	extractionStatusQueued              = "queued"
-	extractionStatusFailed              = "failed"
-	extractionStatusSucceeded           = "succeeded"
-	geminiFailureSpendCap               = "spend_cap_reached"
-	geminiFailureDeveloperAPIRestricted = "developer_api_consumer_use_restricted"
+	extractionStatusQueued    = "queued"
+	extractionStatusFailed    = "failed"
+	extractionStatusSucceeded = "succeeded"
+	geminiFailureSpendCap     = "spend_cap_reached"
 
 	geminiReasonInitialExtraction = "initial_extraction"
 	geminiServiceTierStandard     = "standard"

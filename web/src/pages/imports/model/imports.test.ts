@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   canDeleteDocument,
   canReclassifyAttachment,
+  canRetryExtraction,
   deferredExtractionMessage,
   defaultUploadSourceKind,
   isExtractionDeferred,
+  importModelCostLabel,
+  importModelTier,
+  importModels,
   parseDocumentFilters,
   serializeDocumentFilters,
   uploadSourceKinds,
@@ -13,6 +17,21 @@ import {
 } from "./imports";
 
 const file = (name: string, type = "") => new File([], name, { type });
+
+describe("取り込みAIモデル", () => {
+  it("Gemini Developer APIのモデルと無料・有料区分を示す", () => {
+    expect(importModels.map((model) => model.value)).toEqual([
+      "gemini-3.8-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemini-3.1-pro-preview",
+    ]);
+    expect(importModelTier("gemini-3.8-flash")).toBe("free");
+    expect(importModelTier("gemini-3.1-pro-preview")).toBe("paid");
+    expect(importModelCostLabel("gemini-3.8-flash")).toBe("無料・利用上限あり");
+    expect(importModelCostLabel("gemini-3.1-pro-preview")).toBe("有料・従量課金");
+  });
+});
 
 describe("アップロード時の原本種別", () => {
   it("CSVは従来どおりカード明細を初期値にしてカードか銀行を選べる", () => {
@@ -90,7 +109,7 @@ describe("保存済み原本の削除", () => {
 });
 
 describe("AIモデルの利用上限", () => {
-  it("有料Projectの上限や停止を保留として扱う", () => {
+  it("利用上限の案内からモデル変更で再抽出できる", () => {
     expect(
       isExtractionDeferred({
         id: "document-1",
@@ -105,6 +124,9 @@ describe("AIモデルの利用上限", () => {
         errorCode: "quota_reservation_deferred",
       }),
     ).toBe(true);
+    expect(deferredExtractionMessage("quota_reservation_deferred")).toContain(
+      "モデルを切り替えて再抽出",
+    );
     expect(
       isExtractionDeferred({
         id: "document-6",
@@ -119,18 +141,23 @@ describe("AIモデルの利用上限", () => {
         errorCode: "paid_route_unavailable",
       }),
     ).toBe(true);
+    expect(
+      canRetryExtraction({
+        id: "document-7",
+        status: "QUEUED",
+        errorCode: "paid_route_unavailable",
+      }),
+    ).toBe(true);
     expect(deferredExtractionMessage("spend_cap_reached")).toContain("500円");
-    expect(deferredExtractionMessage("paid_route_unavailable")).toContain("保留");
+    expect(deferredExtractionMessage("spend_cap_reached")).toContain("無料モデル");
+    expect(deferredExtractionMessage("paid_route_unavailable")).toContain("無料モデル");
     expect(
       isExtractionDeferred({
         id: "document-8",
         status: "FAILED",
         errorCode: "developer_api_consumer_use_restricted",
       }),
-    ).toBe(true);
-    expect(deferredExtractionMessage("developer_api_consumer_use_restricted")).toContain(
-      "一時停止",
-    );
+    ).toBe(false);
     expect(isExtractionDeferred({ id: "document-3", status: "FAILED" })).toBe(false);
     expect(
       isExtractionDeferred({
@@ -139,9 +166,25 @@ describe("AIモデルの利用上限", () => {
         errorCode: "rate_limited",
       }),
     ).toBe(false);
+    expect(isExtractionDeferred({ id: "document-5", status: "QUEUED", errorCode: "unknown" })).toBe(
+      false,
+    );
+  });
+});
+
+describe("抽出エラーの再試行", () => {
+  it("失敗した原本はエラー種別に関係なく再試行できる", () => {
+    expect(canRetryExtraction({ id: "normal-error", status: "FAILED" })).toBe(true);
     expect(
-      isExtractionDeferred({ id: "document-5", status: "QUEUED", errorCode: "unknown" }),
-    ).toBe(false);
+      canRetryExtraction({
+        id: "developer-api-paused",
+        status: "FAILED",
+        errorCode: "developer_api_consumer_use_restricted",
+      }),
+    ).toBe(true);
+    expect(
+      canRetryExtraction({ id: "spend-cap", status: "FAILED", errorCode: "spend_cap_reached" }),
+    ).toBe(true);
   });
 });
 

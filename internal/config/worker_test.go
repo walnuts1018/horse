@@ -67,6 +67,23 @@ func TestLoadWorkerResolvesDefaultsAndRateAliases(t *testing.T) {
 	}
 }
 
+func TestLoadWorkerAllowsGeminiWithoutAPIKey(t *testing.T) {
+	t.Parallel()
+
+	settings, err := loadWorker(map[string]string{
+		databaseURLEnvKey: testDatabaseURL,
+		s3EndpointEnvKey:  testS3Endpoint,
+		s3BucketEnvKey:    testS3Bucket,
+		geminiEnabledKey:  "true",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.GeminiEnabled || settings.GeminiFreeAPIKey != "" || settings.GeminiPaidAPIKey != "" {
+		t.Fatalf("unexpected Gemini worker settings: enabled=%t free key set=%t paid key set=%t", settings.GeminiEnabled, settings.GeminiFreeAPIKey != "", settings.GeminiPaidAPIKey != "")
+	}
+}
+
 func TestLoadWorkerRejectsInvalidConfiguration(t *testing.T) {
 	t.Parallel()
 
@@ -88,15 +105,6 @@ func TestLoadWorkerRejectsInvalidConfiguration(t *testing.T) {
 				s3EndpointEnvKey:   testS3Endpoint,
 				s3BucketEnvKey:     testS3Bucket,
 				"S3_ACCESS_KEY_ID": "key",
-			},
-		},
-		{
-			name: "enabled Gemini without an API key",
-			environment: map[string]string{
-				databaseURLEnvKey: testDatabaseURL,
-				s3EndpointEnvKey:  testS3Endpoint,
-				s3BucketEnvKey:    testS3Bucket,
-				geminiEnabledKey:  "true",
 			},
 		},
 		{

@@ -1814,12 +1814,14 @@ Planner:
 
 # 外部生成AIの利用方針
 
-2026-10-15に[Gemini API Additional Terms of Service](https://ai.google.dev/gemini-api/terms?hl=en)を確認しました。同規約は2026-03-23発効で、Gemini Developer APIをprofessional or business purposes向けとし、consumer useを認めていません。Unpaid Servicesでは入力と応答がGoogle製品の改善・開発に使われ、有人レビューされる場合があります。領収書、注文メール、カード明細などの家計文書をFree・PaidいずれのDeveloper API projectにも送信しません。
+2026-10-15に[Gemini API Additional Terms of Service](https://ai.google.dev/gemini-api/terms?hl=en)を確認しました。同規約は2026-03-23発効です。外部生成AIはGemini Developer APIのみを利用し、Free quotaと有効なCloud Billing accountに紐づくPaid quotaの両方を利用対象にします。Vertex AI、他社のAI API、その他の有料外部サービスは利用しません。
 
-Vertex AIについては、Google Cloud Service Specific Termsが18歳未満の利用者にアクセスされる可能性があるアプリでの生成AI利用を制限しています。Horseは現在、世帯への招待に年齢制限を設けていません。利用対象年齢と代替APIの選定が決まるまでVertex AIを本番で有効にしません。
+規約の原文では、Google AI StudioとGemini APIの利用は「for developers building with Google AI models for professional or business purposes, not for consumer use」とされています。規約はprofessional or business purposesとconsumer useの分類基準を定義していません。Horseは本人のみが使う非公開の家計簿アプリであり、この個人利用はconsumer useに該当する可能性がある、というのが規約文言に対する解釈です。規約上の適合性を断定せず、この解釈を理由に本番のGemini Developer APIを無効化したり、別サービスへ移行したりしません。規約の適用判断は別途行い、判断が済むまで現行のAPI利用を停止しません。
 
-本番WorkerはGemini Developer APIへの抽出・対話リクエストを送らず、停止理由を利用者に表示します。保留対象を再試行せず、CSV解析とOCR、手入力、保存済みデータの閲覧は継続します。Developer APIの利用再開時は、利用方針に基づき認証情報と外向き通信許可を再設定します。
+規約はAPI利用者を18歳以上とし、18歳未満の人を対象とする、または18歳未満の人が利用する可能性が高いAPI Clientの一部としてサービスを使うことも禁止しています。これはGemini Developer APIの条件です。Horseは本人のみの非公開利用で、未成年者向けのサービスではありません。アプリに年齢確認UIは設けません。API利用者本人の年齢条件は規約に定められた条件として扱います。
 
-AIモデルの選択肢は具体的なモデルIDとバージョンを表示し、利用先の規約、データ保持、モデル提供状況、認証方式、料金を確認してから再開します。オフライン評価器は架空の同梱fixtureだけを使い、外部APIを呼びません。正解ラベルのない試行は精度評価の根拠にしません。
+規約の「Unpaid Services」には、Gemini APIの無償枠が含まれます。Googleは送信されたcontentと生成応答をGoogle製品・サービスや機械学習技術の提供、改善、開発に使用でき、品質改善のため人手で読み、注釈し、処理する場合があります。規約は「Do not submit sensitive, confidential, or personal information to the Unpaid Services.」と定めています。この規定をHorseの実データにどう適用するかは、規約を確認する人が判断します。アプリでは情報分類によるFree quotaの制限や自動マスキングを行わず、実データを本番で送信するかどうかも仕様で確定しません。
 
-Google Cloudの¥500予算通知は請求アカウントに設定します。通知予算は費用を停止するhard limitではありません。Developer API向けSpend CapをVertex AIの上限として扱わず、Vertex AIを採用する場合はアプリ側の利用制御を含めて上限を設計します。
+規約の「Paid Services」では、Gemini APIは有効な請求先アカウントに関連づけられたCloud Project経由で利用する場合にPaid Serviceです。Googleはprompt、system instruction、cached content、画像・動画・文書などのfile、応答を製品改善に使用せず、GoogleがData Processorとなるサービス向けData Processing Addendumに従って処理します。規約はポリシー違反の検出・防止、安全性とセキュリティの維持、法令上必要な開示のため、promptと応答を限られた期間ログに記録すると説明し、そのデータがGoogleまたは委託先の設備がある国で一時保存またはキャッシュされる可能性も示しています。
+
+Gemini Developer APIのFree・Paid quotaは利用者が選択できます。どちらの利用枠でも、抽出結果は確認・修正後に帳簿へ反映します。規約の適用判断は人が行いますが、本番のDeveloper APIと現行のデータ送信動作は判断待ちを理由に停止しません。外部API呼び出しはAI Workerに限定し、モデルと利用枠を設定可能にします。オフライン評価器は架空の同梱fixtureだけを使い、Gemini APIを呼びません。正解ラベルのない試行は精度評価の根拠にしません。

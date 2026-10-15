@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { AlertCircle, Camera, FileImage, PenLine, ShieldCheck, Upload } from "lucide-react";
+import { Camera, FileImage, PenLine, ShieldCheck, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import "./imports-page.css";
@@ -17,6 +17,7 @@ import {
   withStableEvidenceKeys,
   type DocumentFilters,
   type DocumentReview,
+  type ImportModel,
   type PendingUpload,
   type StatementEntry,
   type StatementSourceKind,
@@ -301,6 +302,25 @@ export function ImportsPage({
       setPending(false);
     }
   };
+  const retryDocument = async (document: DocumentReview, model: ImportModel) => {
+    setPending(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/documents/${encodeURIComponent(document.id)}/retry`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model }),
+      });
+      if (!response.ok) throw new Error(`再抽出を開始できませんでした (${response.status})`);
+      editedReceiptDocuments.current.delete(document.id);
+      await refreshDocuments(true);
+    } catch (reason) {
+      setMessage(errorMessage(reason));
+    } finally {
+      setPending(false);
+    }
+  };
   const reclassifyAttachment = async (document: DocumentReview, kind: StatementSourceKind) => {
     setPending(true);
     setMessage("");
@@ -462,7 +482,6 @@ export function ImportsPage({
             status: "queued",
           };
           setFiles((current) => [...current, upload]);
-          void uploadFiles([upload]);
         }}
       />
       <div className="import-layout">
@@ -484,10 +503,6 @@ export function ImportsPage({
           </div>
           <h2>購入記録を追加</h2>
           <p>JPEG、PNG、WebP、PDF、CSV、EML</p>
-          <output className="import-processing-pause" aria-live="polite">
-            <AlertCircle size={16} aria-hidden="true" />
-            <span>Gemini APIの利用条件確認中。AI解析は一時停止中です。</span>
-          </output>
           <div className="import-actions dropzone-import-actions">
             <button
               type="button"
@@ -548,7 +563,14 @@ export function ImportsPage({
               markUnsaved();
               setFiles((current) => current.filter((entry) => entry.id !== id));
             }}
+            onModelChange={(id, model) => {
+              markUnsaved();
+              setFiles((current) =>
+                current.map((entry) => (entry.id === id ? { ...entry, model } : entry)),
+              );
+            }}
             onSelectDocument={handleSelectDocument}
+            onRetryDocument={(document, model) => void retryDocument(document, model)}
             onDeleteDocument={(document) => void removeDocument(document)}
             onReclassifyAttachment={(document, kind) => void reclassifyAttachment(document, kind)}
             nextCursor={nextDocumentCursor}

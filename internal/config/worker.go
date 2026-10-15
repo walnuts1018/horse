@@ -39,12 +39,6 @@ func LoadWorker() (Worker, error) {
 
 func (c Worker) Validate() error {
 	validate := validator.New(validator.WithRequiredStructEnabled())
-	validate.RegisterStructValidation(func(level validator.StructLevel) {
-		config := level.Current().Interface().(Worker)
-		if config.GeminiEnabled && config.GeminiFreeAPIKey == "" && config.GeminiPaidAPIKey == "" {
-			level.ReportError(config.GeminiEnabled, "GeminiEnabled", "GEMINI_ENABLED", "requires_api_key", "")
-		}
-	}, Worker{})
 	if err := validate.Struct(c); err != nil {
 		return fmt.Errorf("invalid worker configuration: %w", err)
 	}

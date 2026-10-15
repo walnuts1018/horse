@@ -1,4 +1,3 @@
-import { AlertCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -323,10 +322,6 @@ export function DocumentConversation({
           )}
         </ol>
       )}
-      <output className={styles.processingNotice} aria-live="polite">
-        <AlertCircle size={16} aria-hidden="true" /> Gemini
-        APIの利用条件確認中。AI解析は一時停止中です。
-      </output>
     </section>
   );
 }

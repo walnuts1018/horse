@@ -75,7 +75,7 @@ func provideRuntime(settings config.Worker, telemetry telemetryResult, database 
 	worker := ingestion.Worker{
 		DB:            database.database,
 		Store:         store.store,
-		GeminiEnabled: settings.GeminiEnabled && (settings.GeminiFreeAPIKey != "" || settings.GeminiPaidAPIKey != ""),
+		GeminiEnabled: settings.GeminiEnabled,
 		Router: ingestion.GeminiRouter{
 			Free:             ingestion.Gemini{APIKey: settings.GeminiFreeAPIKey, Project: settings.GeminiFreeProject},
 			Paid:             ingestion.Gemini{APIKey: settings.GeminiPaidAPIKey, Project: settings.GeminiPaidProject},

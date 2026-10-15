@@ -1,11 +1,16 @@
 package ingestion
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
-	"errors"
+	"fmt"
+	"image"
+	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -123,7 +128,7 @@ func TestWorkerExtractionVerifiesBankCSVMeaning(t *testing.T) {
 	}
 }
 
-func TestWorkerDefersGeminiDeveloperAPIAndRetainsLocalOCR(t *testing.T) {
+func TestWorkerExtractUsesGeminiDeveloperAPIAndLocalOCR(t *testing.T) {
 	t.Parallel()
 	ocrCalls, geminiCalls := 0, 0
 	ocr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -132,12 +137,15 @@ func TestWorkerDefersGeminiDeveloperAPIAndRetainsLocalOCR(t *testing.T) {
 			t.Errorf("unexpected OCR path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"pageCount":1,"lines":[{"text":"合計 980","confidence":0.99,"region":{"page":0,"top":0.1,"left":0.1,"bottom":0.2,"right":0.8}}]}`))
+		_, _ = w.Write([]byte(`{"pageCount":1,"lines":[]}`))
 	}))
 	defer ocr.Close()
-	gemini := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	gemini := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		geminiCalls++
-		w.WriteHeader(http.StatusInternalServerError)
+		if !strings.Contains(r.URL.Path, ":generateContent") {
+			t.Errorf("unexpected Gemini path: %s", r.URL.Path)
+		}
+		writeGeminiSuccess(w, `{"merchant":"Shop","currency":"JPY","items":[{"printedName":"Tea","name":"Tea","printedAmount":100,"discount":0,"priceBasis":"EXEMPT","confidence":1,"region":{"page":0,"top":0.1,"left":0.1,"bottom":0.2,"right":0.8}}],"taxGroups":[],"discount":0,"total":100,"payments":[],"warnings":[]}`)
 	}))
 	defer gemini.Close()
 
@@ -146,31 +154,90 @@ func TestWorkerDefersGeminiDeveloperAPIAndRetainsLocalOCR(t *testing.T) {
 		OCR:   OCR{Endpoint: ocr.URL, HTTPClient: ocr.Client()},
 		Router: GeminiRouter{
 			Free: Gemini{APIKey: "unpaid-key", Endpoint: gemini.URL + "/v1beta/", HTTPClient: gemini.Client()},
-			Paid: Gemini{APIKey: "paid-key", Endpoint: gemini.URL + "/v1beta/", HTTPClient: gemini.Client()},
 		},
 	}
 	result, err := worker.extract(t.Context(), job{
-		ObjectKey: "synthetic-fixture", MIMEType: mimeTypeJPEG, SourceKind: "receipt", Request: []byte("{}"),
+		ObjectKey: "synthetic-fixture", MIMEType: mimeTypeJPEG, SourceKind: "receipt", Request: []byte(`{"model":"gemini-3.8-flash"}`),
 	})
-	apiErr, ok := errors.AsType[*GeminiAPIError](err)
-	if !ok || apiErr.Kind != GeminiFailureDeferred || apiErr.Code != geminiFailureDeveloperAPIRestricted {
-		t.Fatalf("production worker must defer Developer API processing: error=%v", err)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if retryWorkerError(err) {
-		t.Fatal("production Developer API policy stop must not retry")
+	if ocrCalls != 1 || geminiCalls != 1 || len(result.Runs) != 1 {
+		t.Fatalf("worker did not run OCR and Gemini extraction: ocr=%d Gemini=%d result=%+v", ocrCalls, geminiCalls, result)
 	}
-	if ocrCalls != 1 || geminiCalls != 0 || len(result.OCRLines) != 1 || result.OCRLines[0].Text != "合計 980" {
-		t.Fatalf("local OCR must remain available without a Gemini request: ocr=%d Gemini=%d result=%+v", ocrCalls, geminiCalls, result)
-	}
-	_, err = worker.extract(t.Context(), job{
+
+	interactionCalls := 0
+	interaction := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		interactionCalls++
+		if !strings.HasSuffix(r.URL.Path, "/interactions") {
+			t.Errorf("unexpected interaction path: %s", r.URL.Path)
+		}
+		output := `{"reply":"確認しました。","receipt":{"merchant":"Shop","purchasedAt":"2026-10-01","datePrecision":"DATE_ONLY","currency":"JPY","items":[{"printedName":"Tea","name":"Tea","printedAmount":100,"discount":0,"priceBasis":"EXEMPT","confidence":1}],"taxGroups":[],"discount":0,"total":100,"payments":[],"warnings":[]}}`
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprintln(w, `data: {"event_type":"step.start","index":0,"step":{"type":"model_output","content":[]}}`)
+		_, _ = fmt.Fprintf(w, "\ndata: {\"event_type\":\"step.delta\",\"index\":0,\"delta\":{\"type\":\"text\",\"text\":%s}}\n", mustJSONText(output))
+		_, _ = io.WriteString(w, "\ndata: {\"event_type\":\"interaction.completed\",\"interaction\":{\"id\":\"worker-interaction\",\"status\":\"completed\",\"usage\":{\"total_input_tokens\":21,\"total_output_tokens\":34}}}\n\ndata: [DONE]\n\n")
+	}))
+	defer interaction.Close()
+	worker.Router.Free.Endpoint = interaction.URL + "/v1beta/"
+	conversation, err := worker.extract(t.Context(), job{
 		ObjectKey: "synthetic-fixture", MIMEType: mimeTypeJPEG, SourceKind: "receipt",
 		Request: []byte(`{"clarification":"confirm merchant","conversationId":"conversation","model":"gemini-3.8-flash","currentExtraction":{"receipt":{}}}`),
 	})
-	apiErr, ok = errors.AsType[*GeminiAPIError](err)
-	if !ok || apiErr.Kind != GeminiFailureDeferred || apiErr.Code != geminiFailureDeveloperAPIRestricted {
-		t.Fatalf("production worker must defer interaction requests: error=%v", err)
+	if err != nil || interactionCalls != 1 || conversation.ConversationID != "conversation" || len(conversation.Conversation) != 2 || len(conversation.Runs) != 1 {
+		t.Fatalf("worker did not resume conversation processing: calls=%d result=%+v error=%v", interactionCalls, conversation, err)
 	}
-	if geminiCalls != 0 {
-		t.Fatalf("production worker sent an interaction to Gemini Developer API: calls=%d", geminiCalls)
+}
+
+func TestWorkerCropContinuesThroughGeminiExtraction(t *testing.T) {
+	t.Parallel()
+	var cropped bytes.Buffer
+	if err := png.Encode(&cropped, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	cropCalls, extractCalls := 0, 0
+	ocr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/crop":
+			cropCalls++
+			w.Header().Set("Content-Type", mimeTypePNG)
+			w.Header().Set("X-Coordinate-Transform", `[0.5,0,0.25,0,0.5,0.25,0,0,1]`)
+			_, _ = w.Write(cropped.Bytes())
+		case "/extract":
+			extractCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"pageCount":1,"lines":[]}`)
+		default:
+			t.Errorf("unexpected OCR path: %s", r.URL.Path)
+		}
+	}))
+	defer ocr.Close()
+	gemini := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, ":generateContent") {
+			t.Errorf("unexpected Gemini path: %s", r.URL.Path)
+		}
+		writeGeminiSuccess(w, `{"merchant":"Shop","currency":"JPY","items":[{"printedName":"Tea","name":"Tea","printedAmount":100,"discount":0,"priceBasis":"EXEMPT","confidence":1,"region":{"page":0,"top":0.1,"left":0.1,"bottom":0.2,"right":0.8}}],"taxGroups":[],"discount":0,"total":100,"payments":[],"warnings":[]}`)
+	}))
+	defer gemini.Close()
+	worker := Worker{
+		Store:  attachmentOnlyStore{document: Document{MIMEType: mimeTypeJPEG, Data: []byte("synthetic original image")}},
+		OCR:    OCR{Endpoint: ocr.URL, HTTPClient: ocr.Client()},
+		Router: GeminiRouter{Free: Gemini{APIKey: "test-key", Endpoint: gemini.URL + "/v1beta/", HTTPClient: gemini.Client()}},
+	}
+	result, err := worker.extract(t.Context(), job{
+		ObjectKey: "synthetic-fixture", MIMEType: mimeTypeJPEG, SourceKind: "receipt",
+		Request: []byte(`{"model":"gemini-3.8-flash","crop":{"page":0,"top":0.1,"left":0.1,"bottom":0.9,"right":0.9}}`),
+	})
+	if err != nil || cropCalls != 1 || extractCalls != 1 || len(result.Runs) != 1 || result.Transform != [9]float64{0.5, 0, 0.25, 0, 0.5, 0.25, 0, 0, 1} {
+		t.Fatalf("cropped document did not complete Gemini extraction: crop=%d OCR=%d result=%+v error=%v", cropCalls, extractCalls, result, err)
+	}
+}
+
+func TestWorkerExtractionWithoutGeminiKeyReturnsConfigurationError(t *testing.T) {
+	t.Parallel()
+	worker := Worker{Store: attachmentOnlyStore{document: Document{MIMEType: mimeTypePDF, Data: []byte("synthetic PDF")}}}
+	_, err := worker.extract(t.Context(), job{ObjectKey: "synthetic-fixture", MIMEType: mimeTypePDF, SourceKind: "receipt", Request: []byte("{}")})
+	if err == nil || !strings.Contains(err.Error(), "Gemini API key is not configured") {
+		t.Fatalf("missing Gemini key error = %v, want ordinary configuration failure", err)
 	}
 }

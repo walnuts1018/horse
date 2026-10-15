@@ -35,7 +35,6 @@ func ValidModelSelection(selection string) bool {
 }
 
 var ErrGeminiSpendCap = errors.New("gemini spend cap reached")
-var ErrGeminiDeferred = errors.New("Gemini processing deferred")
 
 type GeminiFailureKind string
 
@@ -45,7 +44,6 @@ const (
 	GeminiFailureTemporary   GeminiFailureKind = "temporary"
 	GeminiFailureRejected    GeminiFailureKind = "rejected"
 	GeminiFailureBadResponse GeminiFailureKind = "bad_response"
-	GeminiFailureDeferred    GeminiFailureKind = "deferred"
 )
 
 type GeminiAPIError struct {
@@ -63,7 +61,7 @@ func (e *GeminiAPIError) Error() string {
 }
 
 func (e *GeminiAPIError) Is(target error) bool {
-	return target == ErrGeminiSpendCap && e.Kind == GeminiFailureSpendCap || target == ErrGeminiDeferred && e.Kind == GeminiFailureDeferred
+	return target == ErrGeminiSpendCap && e.Kind == GeminiFailureSpendCap
 }
 
 type GeminiRouter struct {

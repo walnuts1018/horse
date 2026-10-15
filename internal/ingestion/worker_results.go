@@ -31,9 +31,8 @@ func postgresInt32(value int, field string) (int32, error) {
 func (w *Worker) recordExtractionFailure(finishCtx context.Context, j job, result Verification, extractErr error) (bool, error) {
 
 	spendCap := errors.Is(extractErr, ErrGeminiSpendCap)
-	developerAPIRestricted := errors.Is(extractErr, ErrGeminiDeferred)
 	failureCount := j.FailureCount
-	if !spendCap && !developerAPIRestricted {
+	if !spendCap {
 		failureCount++
 	}
 	status := extractionStatusFailed

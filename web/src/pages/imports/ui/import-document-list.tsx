@@ -5,7 +5,12 @@ import { isOneOf } from "../../../shared/lib/guard";
 import {
   canReclassifyAttachment,
   canDeleteDocument,
+  canRetryExtraction,
+  defaultImportModel,
   deferredExtractionMessage,
+  importModelCostLabel,
+  importModels,
+  isImportModel,
   isCsvFile,
   isEmailFile,
   receiptDateInputValue,
@@ -15,6 +20,7 @@ import {
   yen,
   type DocumentFilters,
   type DocumentReview,
+  type ImportModel,
   type PendingUpload,
   type StatementSourceKind,
   type UploadSourceKind,
@@ -34,8 +40,10 @@ export function ImportDocumentList({
   onFiltersChange,
   onSearch,
   onSourceKindChange,
+  onModelChange,
   onRemoveFile,
   onSelectDocument,
+  onRetryDocument,
   onDeleteDocument,
   onReclassifyAttachment,
   nextCursor,
@@ -59,8 +67,10 @@ export function ImportDocumentList({
   onFiltersChange: (filters: DocumentFilters) => void;
   onSearch: () => void;
   onSourceKindChange: (id: string, kind: UploadSourceKind) => void;
+  onModelChange: (id: string, model: PendingUpload["model"]) => void;
   onRemoveFile: (id: string) => void;
   onSelectDocument: (id: string) => void;
+  onRetryDocument: (document: DocumentReview, model: ImportModel) => void;
   onDeleteDocument: (document: DocumentReview) => void;
   onReclassifyAttachment: (document: DocumentReview, sourceKind: StatementSourceKind) => void;
   nextCursor: string | null;
@@ -201,6 +211,38 @@ export function ImportDocumentList({
               )}
             </select>
           )}
+          <label className="select-filter">
+            AIモデル
+            <select
+              aria-label={`${upload.file.name}のAIモデル`}
+              value={upload.model}
+              disabled={upload.status === "uploading"}
+              onChange={(event) => {
+                const model = importModels.find((entry) => entry.value === event.target.value);
+                if (model) onModelChange(upload.id, model.value);
+              }}
+            >
+              <optgroup label="無料">
+                {importModels
+                  .filter((model) => model.tier === "free")
+                  .map((model) => (
+                    <option key={model.value} value={model.value}>
+                      {model.label}
+                    </option>
+                  ))}
+              </optgroup>
+              <optgroup label="有料">
+                {importModels
+                  .filter((model) => model.tier === "paid")
+                  .map((model) => (
+                    <option key={model.value} value={model.value}>
+                      {model.label}
+                    </option>
+                  ))}
+              </optgroup>
+            </select>
+            <small>{importModelCostLabel(upload.model)}</small>
+          </label>
           <button
             type="button"
             className="icon-button"
@@ -273,9 +315,7 @@ export function ImportDocumentList({
               <div>
                 <b>{title}</b>
                 <small>
-                  {document.errorCode === "developer_api_consumer_use_restricted"
-                    ? "AI解析一時停止中"
-                    : statusLabel(document.status)}
+                  {statusLabel(document.status)}
                   {document.duplicateOf ? " · 重複候補" : ""}
                 </small>
                 {deferredExtractionMessage(document.errorCode) && (
@@ -299,6 +339,13 @@ export function ImportDocumentList({
               </div>
               <ChevronRight size={15} />
             </button>
+            {canRetryExtraction(document) && (
+              <RetryExtractionAction
+                document={document}
+                pending={pending}
+                onRetry={onRetryDocument}
+              />
+            )}
             {canDeleteDocument(document) && (
               <button
                 type="button"
@@ -342,6 +389,65 @@ export function ImportDocumentList({
         </button>
       )}
     </>
+  );
+}
+
+function RetryExtractionAction({
+  document,
+  pending,
+  onRetry,
+}: {
+  document: DocumentReview;
+  pending: boolean;
+  onRetry: (document: DocumentReview, model: ImportModel) => void;
+}) {
+  const [model, setModel] = useState<ImportModel>(() => {
+    const candidate = document.model;
+    return candidate && isImportModel(candidate) ? candidate : defaultImportModel;
+  });
+
+  return (
+    <div className="attachment-reclassification">
+      <label className="select-filter">
+        AIモデル
+        <select
+          aria-label={`${document.name ?? "原本"}の再抽出AIモデル`}
+          value={model}
+          disabled={pending}
+          onChange={(event) => {
+            if (isImportModel(event.target.value)) setModel(event.target.value);
+          }}
+        >
+          <optgroup label="無料">
+            {importModels
+              .filter((entry) => entry.tier === "free")
+              .map((entry) => (
+                <option key={entry.value} value={entry.value}>
+                  {entry.label}
+                </option>
+              ))}
+          </optgroup>
+          <optgroup label="有料">
+            {importModels
+              .filter((entry) => entry.tier === "paid")
+              .map((entry) => (
+                <option key={entry.value} value={entry.value}>
+                  {entry.label}
+                </option>
+              ))}
+          </optgroup>
+        </select>
+        <small>{importModelCostLabel(model)}</small>
+      </label>
+      <button
+        type="button"
+        className="text-button"
+        disabled={pending}
+        onClick={() => onRetry(document, model)}
+      >
+        モデルを選んで再抽出
+      </button>
+    </div>
   );
 }
 

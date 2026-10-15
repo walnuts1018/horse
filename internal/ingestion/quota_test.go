@@ -155,11 +155,15 @@ func TestPostgresGeminiQuotaReservationsAreAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldReservationAt := time.Now().Add(-time.Hour).UTC()
+	dayStart, _, err := geminiQuotaDayBounds(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dailyReservationAt := dayStart.Add(time.Second)
 	oldTokens := int64(1)
 	if _, err := models.GeminiQuotaReservations.Insert(&models.GeminiQuotaReservationSetter{
 		ID: &oldReservationID, ProjectRoute: &route, Model: &modelDaily,
-		ReservedAt: &oldReservationAt, InputTokens: &oldTokens,
+		ReservedAt: &dailyReservationAt, InputTokens: &oldTokens,
 	}).Exec(ctx, bobpgx.NewPool(db)); err != nil {
 		t.Fatal(err)
 	}

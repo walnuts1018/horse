@@ -152,7 +152,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	spendCapJob := insertJob("receipt", mimeTypePDF, "spend-cap-document", 9, 4)
 	store["spend-cap-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("test source")}
 	worker := Worker{
-		DB: db, Store: store, GeminiEnabled: true, allowSyntheticEvaluation: true,
+		DB: db, Store: store, GeminiEnabled: true,
 		Router: GeminiRouter{
 			Free: Gemini{APIKey: "test-free", Endpoint: free.URL + "/v1beta/", HTTPClient: free.Client()},
 			Paid: Gemini{APIKey: "test-paid", Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
@@ -187,26 +187,23 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		t.Fatalf("exhaustion recovery must not fail a queued spend-cap job: status=%q error=%v", held.Status, err)
 	}
 
-	blockedJob := insertJob("receipt", mimeTypePDF, "blocked-developer-api-document", 3, 2)
-	store["blocked-developer-api-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("synthetic source")}
-	blockedWorker := Worker{DB: db, Store: store, GeminiEnabled: true, Router: GeminiRouter{
-		Free: Gemini{APIKey: "test-free", Endpoint: free.URL + "/v1beta/", HTTPClient: free.Client()},
-		Paid: Gemini{APIKey: "test-paid", Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
-	}}
+	unconfiguredJob := insertJob("receipt", mimeTypePDF, "unconfigured-gemini-document", 3, 2)
+	store["unconfigured-gemini-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("synthetic source")}
+	unconfiguredWorker := Worker{DB: db, Store: store, GeminiEnabled: true}
 	beforeFreeCalls, beforePaidCalls := freeCalls, paidCalls
-	processed, err := blockedWorker.RunOne(ctx, blockedJob)
+	processed, err := unconfiguredWorker.RunOne(ctx, unconfiguredJob)
 	if err != nil || !processed {
-		t.Fatalf("Developer API policy hold was not recorded: processed=%t error=%v", processed, err)
+		t.Fatalf("missing Gemini configuration was not handled as an ordinary extraction failure: processed=%t error=%v", processed, err)
 	}
-	blocked, err := loadTestJob(ctx, executor, blockedJob)
+	unconfigured, err := loadTestJob(ctx, executor, unconfiguredJob)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if blocked.Status != extractionStatusFailed || blocked.ErrorCode.V != geminiFailureDeveloperAPIRestricted || blocked.FailureCount != 2 {
-		t.Fatalf("Developer API policy stop must preserve the failure count and stop retrying: status=%q code=%q failures=%d", blocked.Status, blocked.ErrorCode.V, blocked.FailureCount)
+	if unconfigured.Status != extractionStatusQueued || unconfigured.ErrorCode.V != "extraction_failed" || unconfigured.FailureCount != 3 {
+		t.Fatalf("missing Gemini configuration must use ordinary retry handling: status=%q code=%q failures=%d", unconfigured.Status, unconfigured.ErrorCode.V, unconfigured.FailureCount)
 	}
 	if freeCalls != beforeFreeCalls || paidCalls != beforePaidCalls {
-		t.Fatalf("production worker sent a document to Gemini Developer API: free=%d paid=%d", freeCalls-beforeFreeCalls, paidCalls-beforePaidCalls)
+		t.Fatalf("unconfigured worker unexpectedly sent a document to Gemini Developer API: free=%d paid=%d", freeCalls-beforeFreeCalls, paidCalls-beforePaidCalls)
 	}
 
 	temporary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -216,7 +213,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	defer temporary.Close()
 	ordinaryFailureJob := insertJob("receipt", mimeTypePDF, "temporary-error-document", 0, 0)
 	store["temporary-error-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("test source")}
-	ordinaryFailureWorker := Worker{DB: db, Store: store, GeminiEnabled: true, allowSyntheticEvaluation: true, Router: GeminiRouter{
+	ordinaryFailureWorker := Worker{DB: db, Store: store, GeminiEnabled: true, Router: GeminiRouter{
 		Free: Gemini{APIKey: "test-free", Endpoint: temporary.URL + "/v1beta/", HTTPClient: temporary.Client()},
 		Paid: Gemini{APIKey: "test-paid", Endpoint: temporary.URL + "/v1beta/", HTTPClient: temporary.Client()},
 	}}

@@ -51,9 +51,6 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 		}
 	}
 	if request.Clarification != "" {
-		if !w.allowSyntheticEvaluation {
-			return Verification{}, deferredDeveloperAPIError()
-		}
 		return w.clarify(ctx, router, j, document, request)
 	}
 	if document.MIMEType == mimeTypeCSV && (j.SourceKind == statementSourceCard || j.SourceKind == statementSourceBank) {
@@ -83,16 +80,6 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	var ocrErr error
 	if requiresOCRCorroboration(document.MIMEType) {
 		lines, ocrErr = w.OCR.Extract(ctx, document)
-	}
-	if !w.allowSyntheticEvaluation {
-		verification := Verification{Transform: transform, TransformPage: transformPage, OCRLines: lines}
-		if ocrErr != nil {
-			verification.Issues = []string{"AI解析は一時停止中です。OCRで読み取れない項目は手入力してください。"}
-		} else {
-			verification.Issues = []string{"AI解析は一時停止中です。読み取った項目を手入力してください。"}
-		}
-
-		return verification, deferredDeveloperAPIError()
 	}
 	hints, err := w.historyHints(ctx, j.HouseholdID, lines)
 	if err != nil {
@@ -143,15 +130,14 @@ func (w *Worker) extract(ctx context.Context, j job) (Verification, error) {
 	return verified, nil
 }
 
-func deferredDeveloperAPIError() *GeminiAPIError {
-	return &GeminiAPIError{Kind: GeminiFailureDeferred, Code: geminiFailureDeveloperAPIRestricted}
-}
-
 func (w *Worker) clarify(ctx context.Context, router GeminiRouter, j job, document Document, request extractionRequest) (Verification, error) {
 	if request.ConversationID == "" || request.Model == "" || len(request.CurrentExtraction) == 0 || request.Clarification == "" {
 		return Verification{}, &GeminiAPIError{Kind: GeminiFailureRejected, Code: "invalid_interaction_input"}
 	}
 	receipt, reply, run, err := router.InteractStreaming(ctx, request.Model, j.SourceKind, document, request.CurrentExtraction, request.Conversation, request.Clarification, j.Attempt, func(preview string) error {
+		if w.DB == nil {
+			return nil
+		}
 		return w.saveInteractionReplyPreview(ctx, j, preview)
 	})
 	if err != nil {
