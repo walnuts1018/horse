@@ -263,6 +263,8 @@ pub mod public {
             name -> Text,
             created_at -> Timestamptz,
             updated_at -> Timestamptz,
+            revision -> Int8,
+            default_allocation_version -> Int8,
         }
     }
 
