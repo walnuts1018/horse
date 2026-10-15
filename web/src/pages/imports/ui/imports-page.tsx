@@ -4,7 +4,6 @@ import { AlertCircle, Camera, FileImage, PenLine, ShieldCheck, Upload } from "lu
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import "./imports-page.css";
-import "./import-model-selector.css";
 import { type Household } from "../../../shared/api";
 import { errorMessage } from "../../../shared/lib/errors";
 import { InlineError } from "../../../shared/ui";
@@ -12,17 +11,12 @@ import { deleteDocument, readDocument } from "../api/documents";
 import { useEvidencePreview } from "../model/evidence-preview";
 import {
   asRecord,
+  defaultImportModel,
   defaultUploadSourceKind,
-  isQuotaLimitedExtraction,
-  importModels,
-  importModelSelectionForQuota,
-  isImportModel,
   isSupportedFile,
-  proImportModel,
   withStableEvidenceKeys,
   type DocumentFilters,
   type DocumentReview,
-  type ImportModelChoice,
   type PendingUpload,
   type StatementEntry,
   type StatementSourceKind,
@@ -71,7 +65,6 @@ export function ImportsPage({
     return () => window.cancelAnimationFrame(frame);
   }, [captureRequested, onCaptureHandled]);
   const [files, setFiles] = useState<PendingUpload[]>([]);
-  const [importModelChoice, setImportModelChoice] = useState<ImportModelChoice>();
   // 親への未保存通知は effect で状態を push せず、変化したイベントから直接行う
   const onUnsavedChangesRef = useRef(onUnsavedChanges);
   const reportedUnsavedChanges = useRef(false);
@@ -124,15 +117,6 @@ export function ImportsPage({
     loadOlderDocuments,
   } = useImportDocuments(household.id, documentFilters, setMessage);
   const [pending, setPending] = useState(false);
-  const quotaLimitedDocuments = documents.filter(isQuotaLimitedExtraction);
-  const quotaModelSelection = importModelSelectionForQuota(
-    quotaLimitedDocuments.map((document) => document.id),
-    importModelChoice,
-  );
-  const importModelForUpload = quotaModelSelection.model;
-  const quotaLimitedDocumentIDs = quotaModelSelection.quotaDocumentScope;
-  const selectedImportModel = importModels.find((model) => model.value === importModelForUpload);
-  const importModelWasAutoSelectedForQuota = quotaModelSelection.autoSelectedForQuota;
   const selectedDocumentID = useRef(selected);
   useEffect(() => {
     selectedDocumentID.current = selected;
@@ -212,7 +196,7 @@ export function ImportsPage({
         id: crypto.randomUUID(),
         file,
         sourceKind: defaultUploadSourceKind(file),
-        model: importModelForUpload,
+        model: defaultImportModel,
         status: "queued" as const,
       })),
     ]);
@@ -292,28 +276,6 @@ export function ImportsPage({
         failedUploads.size > 0 || files.some((upload) => !queuedIds.has(upload.id)),
       );
       void refreshDocuments(true);
-    } finally {
-      setPending(false);
-    }
-  };
-  const retryDocument = async (document: DocumentReview) => {
-    if (isQuotaLimitedExtraction(document)) {
-      setImportModelChoice({ model: proImportModel, quotaDocumentScope: quotaLimitedDocumentIDs });
-    }
-    setPending(true);
-    setMessage("");
-    try {
-      const response = await fetch(`/documents/${encodeURIComponent(document.id)}/retry`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(isQuotaLimitedExtraction(document) ? { model: proImportModel } : {}),
-      });
-      if (!response.ok) throw new Error(`再抽出を開始できませんでした (${response.status})`);
-      editedReceiptDocuments.current.delete(document.id);
-      await refreshDocuments(true);
-    } catch (reason) {
-      setMessage(errorMessage(reason));
     } finally {
       setPending(false);
     }
@@ -496,7 +458,7 @@ export function ImportsPage({
             analysisFile,
             analysisTransform,
             sourceKind: defaultUploadSourceKind(originalFile),
-            model: importModelForUpload,
+            model: defaultImportModel,
             status: "queued",
           };
           setFiles((current) => [...current, upload]);
@@ -522,67 +484,10 @@ export function ImportsPage({
           </div>
           <h2>購入記録を追加</h2>
           <p>JPEG、PNG、WebP、PDF、CSV、EML</p>
-          <div className="import-model-selector">
-            <label htmlFor="import-model">AIモデル</label>
-            <select
-              id="import-model"
-              value={importModelForUpload}
-              onChange={(event) => {
-                if (isImportModel(event.target.value)) {
-                  setImportModelChoice({
-                    model: event.target.value,
-                    quotaDocumentScope: quotaLimitedDocumentIDs,
-                  });
-                }
-              }}
-            >
-              <optgroup label="無料枠">
-                {importModels
-                  .filter((model) => model.tier === "free")
-                  .map((model) => (
-                    <option key={model.value} value={model.value}>
-                      {model.label} · {model.value}
-                    </option>
-                  ))}
-              </optgroup>
-              <optgroup label="有料">
-                {importModels
-                  .filter((model) => model.tier === "paid")
-                  .map((model) => (
-                    <option key={model.value} value={model.value}>
-                      {model.label} · {model.value}
-                    </option>
-                  ))}
-              </optgroup>
-            </select>
-            <small aria-live="polite">
-              {selectedImportModel?.tier === "paid"
-                ? "有料枠では入力は製品改善に使われません。利用ごとに料金が発生します。"
-                : "無料枠では入力がGoogleの製品改善に使われる場合があります。"}
-            </small>
-            {files.length > 0 && (
-              <small aria-live="polite">
-                追加済み:{" "}
-                {importModels
-                  .map((model) => {
-                    const count = files.filter((file) => file.model === model.value).length;
-                    return count > 0 ? `${model.label} ${count}件` : null;
-                  })
-                  .filter((value) => value !== null)
-                  .join("・")}
-              </small>
-            )}
-          </div>
-          {quotaLimitedDocuments.length > 0 && (
-            <output className="import-quota-notice">
-              <AlertCircle size={16} aria-hidden="true" />
-              <span>
-                {importModelWasAutoSelectedForQuota
-                  ? "無料モデルの利用上限に達したためGemini 3.1 Pro Previewを選択しました。次の実行には料金が発生します。"
-                  : "利用上限に達した書類はGemini 3.1 Pro Previewで再抽出できます。料金が発生します。"}
-              </span>
-            </output>
-          )}
+          <output className="import-processing-pause" aria-live="polite">
+            <AlertCircle size={16} aria-hidden="true" />
+            <span>Gemini APIの利用条件確認中。AI解析は一時停止中です。</span>
+          </output>
           <div className="import-actions dropzone-import-actions">
             <button
               type="button"
@@ -644,7 +549,6 @@ export function ImportsPage({
               setFiles((current) => current.filter((entry) => entry.id !== id));
             }}
             onSelectDocument={handleSelectDocument}
-            onRetryDocument={(document) => void retryDocument(document)}
             onDeleteDocument={(document) => void removeDocument(document)}
             onReclassifyAttachment={(document, kind) => void reclassifyAttachment(document, kind)}
             nextCursor={nextDocumentCursor}

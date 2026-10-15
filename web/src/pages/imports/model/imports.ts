@@ -53,34 +53,26 @@ export type StatementEntry = {
 export type StatementSourceKind = "card" | "bank";
 export type UploadSourceKind = "receipt" | "order" | "email" | StatementSourceKind;
 export const importModels = [
-  { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash", tier: "free" },
-  { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", tier: "free" },
-  { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", tier: "free" },
-  { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro Preview", tier: "paid" },
+  { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
+  { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" },
+  { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite" },
+  { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro Preview" },
 ] as const;
 
 export type ImportModel = (typeof importModels)[number]["value"];
-export type ImportModelChoice = { model: ImportModel; quotaDocumentScope: string };
 
 export const defaultImportModel: ImportModel = "gemini-3.8-flash";
-export const proImportModel: ImportModel = "gemini-3.1-pro-preview";
 
-export function importModelSelectionForQuota(
-  quotaLimitedDocumentIDs: readonly string[],
-  choice?: ImportModelChoice,
-) {
-  const quotaDocumentScope = JSON.stringify(quotaLimitedDocumentIDs);
-  if (choice?.quotaDocumentScope === quotaDocumentScope) {
-    return { model: choice.model, quotaDocumentScope, autoSelectedForQuota: false };
-  }
-  return {
-    model: quotaLimitedDocumentIDs.length > 0 ? proImportModel : defaultImportModel,
-    quotaDocumentScope,
-    autoSelectedForQuota: quotaLimitedDocumentIDs.length > 0,
-  };
-}
-
-const quotaLimitedExtractionErrorCodes = new Set(["rate_limited", "quota_reservation_deferred"]);
+const deferredExtractionMessages = new Map([
+  ["rate_limited", "有料モデルの利用上限に達したため、AI処理を保留しています。"],
+  ["quota_reservation_deferred", "有料モデルの利用上限に達したため、AI処理を保留しています。"],
+  ["spend_cap_reached", "月500円の利用上限に達したため、AI処理を保留しています。"],
+  ["paid_route_unavailable", "有料AI処理を利用できないため、AI処理を保留しています。"],
+  [
+    "developer_api_consumer_use_restricted",
+    "Gemini APIの利用条件を確認中のため、AI解析を一時停止しています。",
+  ],
+]);
 
 export function isImportModel(value: string): value is ImportModel {
   return importModels.some((model) => model.value === value);
@@ -339,8 +331,12 @@ export function isQuotaLimitedExtraction(document: DocumentReview): boolean {
   return (
     (status === "QUEUED" || status === "FAILED") &&
     document.errorCode !== undefined &&
-    quotaLimitedExtractionErrorCodes.has(document.errorCode)
+    deferredExtractionMessages.has(document.errorCode)
   );
+}
+
+export function deferredExtractionMessage(errorCode?: string): string | undefined {
+  return errorCode ? deferredExtractionMessages.get(errorCode) : undefined;
 }
 
 export function purchaseDatePrecisionFor(document: DocumentReview): "DATE_TIME" | "DATE_ONLY" {

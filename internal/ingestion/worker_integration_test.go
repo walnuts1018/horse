@@ -134,12 +134,16 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		t.Fatalf("worker claim mixed or omitted original and analysis metadata: %+v", claimedJob)
 	}
 
+	freeCalls := 0
 	free := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		freeCalls++
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = io.WriteString(w, `{"error":{"status":"UNAVAILABLE","message":"temporarily unavailable"}}`)
 	}))
 	defer free.Close()
+	paidCalls := 0
 	paid := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		paidCalls++
 		w.WriteHeader(http.StatusTooManyRequests)
 		_, _ = io.WriteString(w, `{"error":{"status":"RESOURCE_EXHAUSTED","message":"project spend cap reached"}}`)
 	}))
@@ -148,7 +152,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	spendCapJob := insertJob("receipt", mimeTypePDF, "spend-cap-document", 9, 4)
 	store["spend-cap-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("test source")}
 	worker := Worker{
-		DB: db, Store: store, GeminiEnabled: true,
+		DB: db, Store: store, GeminiEnabled: true, allowSyntheticEvaluation: true,
 		Router: GeminiRouter{
 			Free: Gemini{APIKey: "test-free", Endpoint: free.URL + "/v1beta/", HTTPClient: free.Client()},
 			Paid: Gemini{APIKey: "test-paid", Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
@@ -183,6 +187,28 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 		t.Fatalf("exhaustion recovery must not fail a queued spend-cap job: status=%q error=%v", held.Status, err)
 	}
 
+	blockedJob := insertJob("receipt", mimeTypePDF, "blocked-developer-api-document", 3, 2)
+	store["blocked-developer-api-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("synthetic source")}
+	blockedWorker := Worker{DB: db, Store: store, GeminiEnabled: true, Router: GeminiRouter{
+		Free: Gemini{APIKey: "test-free", Endpoint: free.URL + "/v1beta/", HTTPClient: free.Client()},
+		Paid: Gemini{APIKey: "test-paid", Endpoint: paid.URL + "/v1beta/", HTTPClient: paid.Client()},
+	}}
+	beforeFreeCalls, beforePaidCalls := freeCalls, paidCalls
+	processed, err := blockedWorker.RunOne(ctx, blockedJob)
+	if err != nil || !processed {
+		t.Fatalf("Developer API policy hold was not recorded: processed=%t error=%v", processed, err)
+	}
+	blocked, err := loadTestJob(ctx, executor, blockedJob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blocked.Status != extractionStatusFailed || blocked.ErrorCode.V != geminiFailureDeveloperAPIRestricted || blocked.FailureCount != 2 {
+		t.Fatalf("Developer API policy stop must preserve the failure count and stop retrying: status=%q code=%q failures=%d", blocked.Status, blocked.ErrorCode.V, blocked.FailureCount)
+	}
+	if freeCalls != beforeFreeCalls || paidCalls != beforePaidCalls {
+		t.Fatalf("production worker sent a document to Gemini Developer API: free=%d paid=%d", freeCalls-beforeFreeCalls, paidCalls-beforePaidCalls)
+	}
+
 	temporary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = io.WriteString(w, `{"error":{"status":"UNAVAILABLE"}}`)
@@ -190,7 +216,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	defer temporary.Close()
 	ordinaryFailureJob := insertJob("receipt", mimeTypePDF, "temporary-error-document", 0, 0)
 	store["temporary-error-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("test source")}
-	ordinaryFailureWorker := Worker{DB: db, Store: store, GeminiEnabled: true, Router: GeminiRouter{
+	ordinaryFailureWorker := Worker{DB: db, Store: store, GeminiEnabled: true, allowSyntheticEvaluation: true, Router: GeminiRouter{
 		Free: Gemini{APIKey: "test-free", Endpoint: temporary.URL + "/v1beta/", HTTPClient: temporary.Client()},
 		Paid: Gemini{APIKey: "test-paid", Endpoint: temporary.URL + "/v1beta/", HTTPClient: temporary.Client()},
 	}}
@@ -231,7 +257,7 @@ func TestWorkerSpendCapDefersWithoutConsumingFailureBudgetAndDisabledWorkerKeeps
 	pausedJob := insertJob("receipt", mimeTypePDF, "paused-document", 0, 0)
 	store["paused-document"] = Document{MIMEType: mimeTypePDF, Data: []byte("test source")}
 	disabledWorker := Worker{DB: db, Store: store}
-	processed, err := disabledWorker.RunOne(ctx, "")
+	processed, err = disabledWorker.RunOne(ctx, "")
 	if err != nil || processed {
 		t.Fatalf("disabled worker must leave Gemini documents unclaimed: processed=%v error=%v", processed, err)
 	}

@@ -19,6 +19,7 @@ import {
 import { documentListURL } from "../api/documents";
 import {
   asRecord,
+  isQuotaLimitedExtraction,
   isProcessing,
   sourceKindLabel,
   withStableEvidenceKeys,
@@ -94,7 +95,9 @@ async function fetchDocumentPage(
 }
 
 function hasProcessingDocuments(data: InfiniteData<DocumentPage> | undefined) {
-  return flattenPages(data).some((document) => isProcessing(document.status));
+  return flattenPages(data).some(
+    (document) => isProcessing(document.status) && !isQuotaLimitedExtraction(document),
+  );
 }
 
 export function useImportDocuments(

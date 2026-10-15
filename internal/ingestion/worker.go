@@ -12,11 +12,12 @@ import (
 )
 
 type Worker struct {
-	DB            *pgxpool.Pool
-	Store         DocumentStore
-	Router        GeminiRouter
-	OCR           OCR
-	GeminiEnabled bool
+	DB                       *pgxpool.Pool
+	Store                    DocumentStore
+	Router                   GeminiRouter
+	OCR                      OCR
+	GeminiEnabled            bool
+	allowSyntheticEvaluation bool
 }
 
 type DocumentStore interface {
@@ -57,7 +58,7 @@ func (w *Worker) RunOne(ctx context.Context, jobID string) (bool, error) {
 	defer finishCancel()
 	if extractErr != nil {
 		span.SetStatus(codes.Error, "extraction_failed")
-		slog.Warn("Document extraction failed", "job_id", j.ID, "attempt", j.Attempt)
+		slog.Warn("Document extraction failed", "job_id", j.ID, "attempt", j.Attempt, "error", extractErr)
 		return w.recordExtractionFailure(finishCtx, j, result, extractErr)
 	}
 	saved, err := w.recordExtractionSuccess(finishCtx, j, result)

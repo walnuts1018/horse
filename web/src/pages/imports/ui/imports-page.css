@@ -45,6 +45,26 @@
   font-size: 13px;
 }
 
+.import-processing-pause {
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: min(calc(100% - 32px), 480px);
+  margin: 0 16px 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgb(164 60 50 / 0.08);
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.import-processing-pause svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
 .import-actions {
   display: flex;
   flex-wrap: wrap;

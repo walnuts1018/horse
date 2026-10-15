@@ -31,15 +31,16 @@ func postgresInt32(value int, field string) (int32, error) {
 func (w *Worker) recordExtractionFailure(finishCtx context.Context, j job, result Verification, extractErr error) (bool, error) {
 
 	spendCap := errors.Is(extractErr, ErrGeminiSpendCap)
+	developerAPIRestricted := errors.Is(extractErr, ErrGeminiDeferred)
 	failureCount := j.FailureCount
-	if !spendCap {
+	if !spendCap && !developerAPIRestricted {
 		failureCount++
 	}
 	status := extractionStatusFailed
 	if spendCap || retryWorkerError(extractErr) && failureCount < 5 {
 		status = extractionStatusQueued
 	}
-	payload, marshalErr := json.Marshal(result.Runs)
+	payload, marshalErr := stdjson.Marshal(result)
 	if marshalErr != nil {
 		return true, fmt.Errorf("encode failed extraction runs: %w", marshalErr)
 	}
@@ -64,11 +65,11 @@ func (w *Worker) recordExtractionFailure(finishCtx context.Context, j job, resul
 		Status: &updatedStatus, ErrorCode: &code, FailureCount: &failureCountValue,
 		AvailableAt: &availableAt, UpdatedAt: &updatedAt, InteractionReplyPreview: &emptyReplyPreview,
 	}
-	if len(result.Runs) > 0 {
+	if len(result.Runs) > 0 || len(result.OCRLines) > 0 || len(result.Issues) > 0 {
 		previous := make(map[string]stdjson.RawMessage)
-		var newRuns []stdjson.RawMessage
-		if err := stdjson.Unmarshal(payload, &newRuns); err != nil {
-			return true, fmt.Errorf("decode failed extraction runs: %w", err)
+		var currentResult map[string]stdjson.RawMessage
+		if err := stdjson.Unmarshal(payload, &currentResult); err != nil {
+			return true, fmt.Errorf("decode failed extraction result: %w", err)
 		}
 		if len(j.Previous) > 0 {
 			if err := stdjson.Unmarshal(j.Previous, &previous); err != nil {
@@ -77,6 +78,10 @@ func (w *Worker) recordExtractionFailure(finishCtx context.Context, j job, resul
 		}
 		var previousRuns []stdjson.RawMessage
 		_ = stdjson.Unmarshal(previous["runs"], &previousRuns)
+		var newRuns []stdjson.RawMessage
+		if err := stdjson.Unmarshal(currentResult["runs"], &newRuns); err != nil {
+			return true, fmt.Errorf("decode failed extraction runs: %w", err)
+		}
 		existingRuns := make([]stdjson.RawMessage, len(previousRuns), len(previousRuns)+len(newRuns))
 		copy(existingRuns, previousRuns)
 		existingRuns = append(existingRuns, newRuns...)
@@ -85,6 +90,11 @@ func (w *Worker) recordExtractionFailure(finishCtx context.Context, j job, resul
 			return true, fmt.Errorf("encode failed extraction runs: %w", err)
 		}
 		previous["runs"] = encodedRuns
+		for _, key := range []string{"issues", "ocrLines", "transform", "transformPage"} {
+			if value, exists := currentResult[key]; exists {
+				previous[key] = value
+			}
+		}
 		encodedResult, err := stdjson.Marshal(previous)
 		if err != nil {
 			return true, fmt.Errorf("encode failed extraction result: %w", err)

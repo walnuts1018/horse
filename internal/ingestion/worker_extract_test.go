@@ -3,6 +3,9 @@ package ingestion
 import (
 	"context"
 	"encoding/base64"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -117,5 +120,57 @@ func TestWorkerExtractionVerifiesBankCSVMeaning(t *testing.T) {
 				t.Fatalf("unclassified CSV issues = %v, want one review issue", result.Issues)
 			}
 		})
+	}
+}
+
+func TestWorkerDefersGeminiDeveloperAPIAndRetainsLocalOCR(t *testing.T) {
+	t.Parallel()
+	ocrCalls, geminiCalls := 0, 0
+	ocr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ocrCalls++
+		if r.URL.Path != "/extract" {
+			t.Errorf("unexpected OCR path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"pageCount":1,"lines":[{"text":"合計 980","confidence":0.99,"region":{"page":0,"top":0.1,"left":0.1,"bottom":0.2,"right":0.8}}]}`))
+	}))
+	defer ocr.Close()
+	gemini := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		geminiCalls++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer gemini.Close()
+
+	worker := Worker{
+		Store: attachmentOnlyStore{document: Document{MIMEType: mimeTypeJPEG, Data: []byte("synthetic image fixture")}},
+		OCR:   OCR{Endpoint: ocr.URL, HTTPClient: ocr.Client()},
+		Router: GeminiRouter{
+			Free: Gemini{APIKey: "unpaid-key", Endpoint: gemini.URL + "/v1beta/", HTTPClient: gemini.Client()},
+			Paid: Gemini{APIKey: "paid-key", Endpoint: gemini.URL + "/v1beta/", HTTPClient: gemini.Client()},
+		},
+	}
+	result, err := worker.extract(t.Context(), job{
+		ObjectKey: "synthetic-fixture", MIMEType: mimeTypeJPEG, SourceKind: "receipt", Request: []byte("{}"),
+	})
+	apiErr, ok := errors.AsType[*GeminiAPIError](err)
+	if !ok || apiErr.Kind != GeminiFailureDeferred || apiErr.Code != geminiFailureDeveloperAPIRestricted {
+		t.Fatalf("production worker must defer Developer API processing: error=%v", err)
+	}
+	if retryWorkerError(err) {
+		t.Fatal("production Developer API policy stop must not retry")
+	}
+	if ocrCalls != 1 || geminiCalls != 0 || len(result.OCRLines) != 1 || result.OCRLines[0].Text != "合計 980" {
+		t.Fatalf("local OCR must remain available without a Gemini request: ocr=%d Gemini=%d result=%+v", ocrCalls, geminiCalls, result)
+	}
+	_, err = worker.extract(t.Context(), job{
+		ObjectKey: "synthetic-fixture", MIMEType: mimeTypeJPEG, SourceKind: "receipt",
+		Request: []byte(`{"clarification":"confirm merchant","conversationId":"conversation","model":"gemini-3.8-flash","currentExtraction":{"receipt":{}}}`),
+	})
+	apiErr, ok = errors.AsType[*GeminiAPIError](err)
+	if !ok || apiErr.Kind != GeminiFailureDeferred || apiErr.Code != geminiFailureDeveloperAPIRestricted {
+		t.Fatalf("production worker must defer interaction requests: error=%v", err)
+	}
+	if geminiCalls != 0 {
+		t.Fatalf("production worker sent an interaction to Gemini Developer API: calls=%d", geminiCalls)
 	}
 }

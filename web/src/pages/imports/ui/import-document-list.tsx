@@ -5,7 +5,7 @@ import { isOneOf } from "../../../shared/lib/guard";
 import {
   canReclassifyAttachment,
   canDeleteDocument,
-  isQuotaLimitedExtraction,
+  deferredExtractionMessage,
   isCsvFile,
   isEmailFile,
   receiptDateInputValue,
@@ -36,7 +36,6 @@ export function ImportDocumentList({
   onSourceKindChange,
   onRemoveFile,
   onSelectDocument,
-  onRetryDocument,
   onDeleteDocument,
   onReclassifyAttachment,
   nextCursor,
@@ -62,7 +61,6 @@ export function ImportDocumentList({
   onSourceKindChange: (id: string, kind: UploadSourceKind) => void;
   onRemoveFile: (id: string) => void;
   onSelectDocument: (id: string) => void;
-  onRetryDocument: (document: DocumentReview) => void;
   onDeleteDocument: (document: DocumentReview) => void;
   onReclassifyAttachment: (document: DocumentReview, sourceKind: StatementSourceKind) => void;
   nextCursor: string | null;
@@ -275,9 +273,14 @@ export function ImportDocumentList({
               <div>
                 <b>{title}</b>
                 <small>
-                  {statusLabel(document.status)}
+                  {document.errorCode === "developer_api_consumer_use_restricted"
+                    ? "AI解析一時停止中"
+                    : statusLabel(document.status)}
                   {document.duplicateOf ? " · 重複候補" : ""}
                 </small>
+                {deferredExtractionMessage(document.errorCode) && (
+                  <small>{deferredExtractionMessage(document.errorCode)}</small>
+                )}
                 {receipt && (
                   <small>
                     {[
@@ -296,16 +299,6 @@ export function ImportDocumentList({
               </div>
               <ChevronRight size={15} />
             </button>
-            {(document.status.toUpperCase() === "FAILED" || isQuotaLimitedExtraction(document)) && (
-              <button
-                type="button"
-                className="text-button"
-                disabled={pending}
-                onClick={() => onRetryDocument(document)}
-              >
-                {isQuotaLimitedExtraction(document) ? "Pro Previewで再抽出・有料" : "再抽出"}
-              </button>
-            )}
             {canDeleteDocument(document) && (
               <button
                 type="button"

@@ -1265,7 +1265,7 @@ func isRateLimitedExtractionError(errorCode sql.Null[string]) bool {
 		return false
 	}
 	switch errorCode.V {
-	case "rate_limited", "quota_reservation_deferred":
+	case "rate_limited", "quota_reservation_deferred", "spend_cap_reached", "paid_route_unavailable":
 		return true
 	default:
 		return false
