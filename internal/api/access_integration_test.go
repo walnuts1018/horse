@@ -263,6 +263,20 @@ func TestHouseholdIsolationForGraphQLAndOriginalDocument(t *testing.T) {
 	if _, err := models.OidcSessions.Insert(&models.OidcSessionSetter{TokenHash: &ownerHashBytes, MemberID: &ownerUUID, Expiry: &ownerExpiry}).Exec(ctx, executor); err != nil {
 		t.Fatal(err)
 	}
+	pendingDocumentID := uuid.NewV7()
+	pendingDocumentUUID := mustIntegrationUUID(t, pendingDocumentID.String())
+	pendingDocumentHash := "pending-access-test:" + pendingDocumentID.String()
+	pendingObjectKey := householdID + "/originals/" + pendingDocumentID.String()
+	if _, err := models.SourceDocuments.Insert(&models.SourceDocumentSetter{ID: &pendingDocumentUUID, HouseholdID: &householdUUID, Sha256: &pendingDocumentHash, ObjectKey: &pendingObjectKey, MimeType: &mimeType, SourceKind: &sourceKind, CreatedBy: &ownerUUID}).Exec(ctx, executor); err != nil {
+		t.Fatal(err)
+	}
+	pendingMatchesRequest := httptest.NewRequest(http.MethodGet, "/documents/"+pendingDocumentID.String()+"/matches", nil)
+	pendingMatchesRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	pendingMatchesResponse := httptest.NewRecorder()
+	server.ServeHTTP(pendingMatchesResponse, pendingMatchesRequest)
+	if pendingMatchesResponse.Code != http.StatusOK || strings.TrimSpace(pendingMatchesResponse.Body.String()) != `{"observations":[],"truncated":false}` {
+		t.Fatalf("pending document matches did not return an empty result: status=%d body=%s", pendingMatchesResponse.Code, pendingMatchesResponse.Body.String())
+	}
 	evidenceRequest = httptest.NewRequest(http.MethodGet, "/purchases/"+purchaseNodeID+"/evidence", nil)
 	evidenceRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: ownerCookie, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	evidenceResponse = httptest.NewRecorder()

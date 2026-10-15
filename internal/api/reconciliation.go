@@ -56,21 +56,6 @@ func (s *Server) documentMatches(w http.ResponseWriter, r *http.Request) {
 		s.writeOperationalError(w, r, "reconciliation observations lookup failed", http.StatusInternalServerError, err)
 		return
 	}
-	if len(incoming) == 0 {
-		hasSuccessfulExtraction, err := models.ExtractionJobs.Query(sm.Where(psql.And(
-			models.ExtractionJobs.Columns.SourceDocumentID.EQ(psql.Arg(document.ID)),
-			models.ExtractionJobs.Columns.HouseholdID.EQ(psql.Arg(document.HouseholdID)),
-			models.ExtractionJobs.Columns.Status.EQ(psql.Arg("succeeded")),
-		))).Exists(r.Context(), executor)
-		if err != nil {
-			s.writeOperationalError(w, r, "reconciliation extraction status lookup failed", http.StatusInternalServerError, err)
-			return
-		}
-		if !hasSuccessfulExtraction {
-			http.NotFound(w, r)
-			return
-		}
-	}
 	truncated := len(incoming) > reconciliationObservationLimit
 	if truncated {
 		incoming = incoming[:reconciliationObservationLimit]
