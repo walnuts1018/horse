@@ -100,6 +100,10 @@ type CreateRecurringExpenseResult interface {
 	IsCreateRecurringExpenseResult()
 }
 
+type CreateSharedPurchaseDraftResult interface {
+	IsCreateSharedPurchaseDraftResult()
+}
+
 type CreateTagResult interface {
 	IsCreateTagResult()
 }
@@ -268,6 +272,10 @@ type UpdatePurchaseResult interface {
 
 type UpdateRecurringExpenseResult interface {
 	IsUpdateRecurringExpenseResult()
+}
+
+type UpdateSharedPurchaseDraftResult interface {
+	IsUpdateSharedPurchaseDraftResult()
 }
 
 type UpdateTagResult interface {
@@ -1014,6 +1022,17 @@ func (CreateRecurringExpenseUserError) IsMutationError()                {}
 func (this CreateRecurringExpenseUserError) GetCode() MutationErrorCode { return this.Code }
 func (this CreateRecurringExpenseUserError) GetMessage() string         { return this.Message }
 
+type CreateSharedPurchaseDraftInput struct {
+	HouseholdID string `json:"householdId"`
+	Payload     string `json:"payload"`
+}
+
+type CreateSharedPurchaseDraftSuccess struct {
+	Result *SharedPurchaseDraft `json:"result"`
+}
+
+func (CreateSharedPurchaseDraftSuccess) IsCreateSharedPurchaseDraftResult() {}
+
 type CreateTagInput struct {
 	HouseholdID string `json:"householdId"`
 	Name        string `json:"name"`
@@ -1184,9 +1203,9 @@ func (this HouseholdMailForwardingUserError) GetMessage() string         { retur
 
 func (HouseholdMailForwardingUserError) IsIssueHouseholdMailForwardingResult() {}
 
-func (HouseholdMailForwardingUserError) IsRotateHouseholdMailForwardingResult() {}
-
 func (HouseholdMailForwardingUserError) IsRevokeHouseholdMailForwardingResult() {}
+
+func (HouseholdMailForwardingUserError) IsRotateHouseholdMailForwardingResult() {}
 
 type IssueHouseholdMailForwardingSuccess struct {
 	Result *HouseholdMailForwardingAddress `json:"result"`
@@ -1598,6 +1617,7 @@ type PurchaseChange struct {
 	Revision      int                   `json:"revision"`
 	ChangedFields []PurchaseChangeField `json:"changedFields"`
 	OccurredAt    DateTime              `json:"occurredAt"`
+	Purchase      *Purchase             `json:"purchase"`
 }
 
 type PurchaseConnection struct {
@@ -2293,6 +2313,19 @@ type SharedPurchaseDraftChange struct {
 	Cursor string `json:"cursor"`
 }
 
+type SharedPurchaseDraftUserError struct {
+	Code    MutationErrorCode `json:"code"`
+	Message string            `json:"message"`
+}
+
+func (SharedPurchaseDraftUserError) IsCreateSharedPurchaseDraftResult() {}
+
+func (SharedPurchaseDraftUserError) IsMutationError()                {}
+func (this SharedPurchaseDraftUserError) GetCode() MutationErrorCode { return this.Code }
+func (this SharedPurchaseDraftUserError) GetMessage() string         { return this.Message }
+
+func (SharedPurchaseDraftUserError) IsUpdateSharedPurchaseDraftResult() {}
+
 type StatementRefundCorrection struct {
 	ID             string   `json:"id"`
 	AmountYen      Long     `json:"amountYen"`
@@ -2503,10 +2536,29 @@ func (UpdateRecurringExpenseUserError) IsMutationError()                {}
 func (this UpdateRecurringExpenseUserError) GetCode() MutationErrorCode { return this.Code }
 func (this UpdateRecurringExpenseUserError) GetMessage() string         { return this.Message }
 
-type UpdateSharedPurchaseDraftPayload struct {
-	Draft    *SharedPurchaseDraft `json:"draft"`
-	Conflict bool                 `json:"conflict"`
+type UpdateSharedPurchaseDraftConflict struct {
+	Code    MutationErrorCode    `json:"code"`
+	Message string               `json:"message"`
+	Draft   *SharedPurchaseDraft `json:"draft"`
 }
+
+func (UpdateSharedPurchaseDraftConflict) IsUpdateSharedPurchaseDraftResult() {}
+
+func (UpdateSharedPurchaseDraftConflict) IsMutationError()                {}
+func (this UpdateSharedPurchaseDraftConflict) GetCode() MutationErrorCode { return this.Code }
+func (this UpdateSharedPurchaseDraftConflict) GetMessage() string         { return this.Message }
+
+type UpdateSharedPurchaseDraftInput struct {
+	ID               string `json:"id"`
+	ExpectedRevision int    `json:"expectedRevision"`
+	Payload          string `json:"payload"`
+}
+
+type UpdateSharedPurchaseDraftSuccess struct {
+	Result *SharedPurchaseDraft `json:"result"`
+}
+
+func (UpdateSharedPurchaseDraftSuccess) IsUpdateSharedPurchaseDraftResult() {}
 
 type UpdateTagInput struct {
 	TagID        string `json:"tagId"`
@@ -3000,6 +3052,7 @@ const (
 	PurchaseChangeFieldProductVariantID   PurchaseChangeField = "PRODUCT_VARIANT_ID"
 	PurchaseChangeFieldAllocations        PurchaseChangeField = "ALLOCATIONS"
 	PurchaseChangeFieldTags               PurchaseChangeField = "TAGS"
+	PurchaseChangeFieldDeleted            PurchaseChangeField = "DELETED"
 )
 
 var AllPurchaseChangeField = []PurchaseChangeField{
@@ -3016,11 +3069,12 @@ var AllPurchaseChangeField = []PurchaseChangeField{
 	PurchaseChangeFieldProductVariantID,
 	PurchaseChangeFieldAllocations,
 	PurchaseChangeFieldTags,
+	PurchaseChangeFieldDeleted,
 }
 
 func (e PurchaseChangeField) IsValid() bool {
 	switch e {
-	case PurchaseChangeFieldOccurredAt, PurchaseChangeFieldMerchant, PurchaseChangeFieldPaymentAllocations, PurchaseChangeFieldStatus, PurchaseChangeFieldCorrection, PurchaseChangeFieldName, PurchaseChangeFieldAmountYen, PurchaseChangeFieldQuantity, PurchaseChangeFieldPrintedUnitPrice, PurchaseChangeFieldCategoryID, PurchaseChangeFieldProductVariantID, PurchaseChangeFieldAllocations, PurchaseChangeFieldTags:
+	case PurchaseChangeFieldOccurredAt, PurchaseChangeFieldMerchant, PurchaseChangeFieldPaymentAllocations, PurchaseChangeFieldStatus, PurchaseChangeFieldCorrection, PurchaseChangeFieldName, PurchaseChangeFieldAmountYen, PurchaseChangeFieldQuantity, PurchaseChangeFieldPrintedUnitPrice, PurchaseChangeFieldCategoryID, PurchaseChangeFieldProductVariantID, PurchaseChangeFieldAllocations, PurchaseChangeFieldTags, PurchaseChangeFieldDeleted:
 		return true
 	}
 	return false
@@ -3068,6 +3122,7 @@ const (
 	PurchaseChangeKindPosted      PurchaseChangeKind = "POSTED"
 	PurchaseChangeKindUpdated     PurchaseChangeKind = "UPDATED"
 	PurchaseChangeKindItemUpdated PurchaseChangeKind = "ITEM_UPDATED"
+	PurchaseChangeKindItemDeleted PurchaseChangeKind = "ITEM_DELETED"
 	PurchaseChangeKindCorrected   PurchaseChangeKind = "CORRECTED"
 )
 
@@ -3076,12 +3131,13 @@ var AllPurchaseChangeKind = []PurchaseChangeKind{
 	PurchaseChangeKindPosted,
 	PurchaseChangeKindUpdated,
 	PurchaseChangeKindItemUpdated,
+	PurchaseChangeKindItemDeleted,
 	PurchaseChangeKindCorrected,
 }
 
 func (e PurchaseChangeKind) IsValid() bool {
 	switch e {
-	case PurchaseChangeKindCreated, PurchaseChangeKindPosted, PurchaseChangeKindUpdated, PurchaseChangeKindItemUpdated, PurchaseChangeKindCorrected:
+	case PurchaseChangeKindCreated, PurchaseChangeKindPosted, PurchaseChangeKindUpdated, PurchaseChangeKindItemUpdated, PurchaseChangeKindItemDeleted, PurchaseChangeKindCorrected:
 		return true
 	}
 	return false

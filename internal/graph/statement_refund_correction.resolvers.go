@@ -11,18 +11,6 @@ import (
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
-// LinkStatementRefundCorrection is the resolver for the linkStatementRefundCorrection field.
-func (r *mutationResolver) LinkStatementRefundCorrection(ctx context.Context, input model.LinkStatementRefundCorrectionInput) (model.LinkStatementRefundCorrectionResult, error) {
-	result, err := r.linkStatementRefundCorrection(ctx, input)
-	if err != nil {
-		if result, ok := mutationErrorResult(err); ok {
-			return &model.LinkStatementRefundCorrectionUserError{Code: result.Code, Message: result.Message}, nil
-		}
-		return nil, err
-	}
-	return &model.LinkStatementRefundCorrectionSuccess{Result: result}, nil
-}
-
 // StatementRefundCorrections is the resolver for the statementRefundCorrections field.
 func (r *queryResolver) StatementRefundCorrections(ctx context.Context, householdID string, sourceDocumentID string, sourceReference string, first *int, after *string) (*model.StatementRefundCorrectionConnection, error) {
 	return r.statementRefundCorrections(ctx, householdID, sourceDocumentID, sourceReference, first, after)

@@ -12,11 +12,7 @@ import (
 	"time"
 
 	uuid "github.com/gofrs/uuid/v5"
-	"github.com/stephenafamo/bob/dialect/psql"
-	"github.com/stephenafamo/bob/dialect/psql/sm"
-	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/graph/model"
-	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
 // EntityID is the resolver for the entityId field.
@@ -47,42 +43,30 @@ func (r *subscriptionResolver) PurchaseChanges(ctx context.Context, householdID 
 		return nil, err
 	}
 
+	sharedChanges, stopWatching := r.getSubscriptionHub().watchPurchases(householdUUID, cursor)
 	changes := make(chan *model.PurchaseChange, 16)
 	go func() {
 		defer close(changes)
-		ticker := time.NewTicker(time.Second)
+		defer stopWatching()
+		ticker := time.NewTicker(subscriptionAuthorizationCheckInterval)
 		defer ticker.Stop()
 		for {
-			if _, err := requireMember(ctx, r.DB, householdID); err != nil {
+			select {
+			case <-ctx.Done():
 				return
-			}
-			events, err := models.HouseholdEvents.Query(
-				sm.Where(psql.And(
-					models.HouseholdEvents.Columns.HouseholdID.EQ(psql.Arg(householdUUID)),
-					models.HouseholdEvents.Columns.Cursor.GT(psql.Arg(cursor)),
-				)),
-				sm.OrderBy(models.HouseholdEvents.Columns.Cursor),
-				sm.Limit(100),
-			).All(ctx, bobpgx.NewPool(r.DB))
-			if err != nil {
-				return
-			}
-			for _, event := range events {
-				cursor = event.Cursor
-				change, ok := purchaseChange(event)
+			case <-ticker.C:
+				if _, err := requireMember(ctx, r.DB, householdID); err != nil {
+					return
+				}
+			case change, ok := <-sharedChanges:
 				if !ok {
-					continue
+					return
 				}
 				select {
 				case changes <- change:
 				case <-ctx.Done():
 					return
 				}
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
 			}
 		}
 	}()

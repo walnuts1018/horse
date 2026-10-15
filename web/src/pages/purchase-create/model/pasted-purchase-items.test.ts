@@ -32,4 +32,12 @@ describe("pasted purchase items", () => {
       invalidSyntax: true,
     });
   });
+
+  it("正常な品目を保ち、不正な行の内容と行番号を返す", () => {
+    expect(parsePastedPurchaseItems("牛乳,248\n卵,金額")).toMatchObject({
+      items: [{ name: "牛乳", amount: "248" }],
+      invalidRows: [{ rowNumber: 2, name: "卵", amount: "金額" }],
+      invalidRowCount: 1,
+    });
+  });
 });

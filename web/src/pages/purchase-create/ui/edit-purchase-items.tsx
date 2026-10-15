@@ -21,7 +21,10 @@ import {
   readPurchaseAllocationData,
   type PurchaseAllocationData,
 } from "../api/read-purchase-allocation-data";
-import { parsePastedPurchaseItems } from "../model/pasted-purchase-items";
+import {
+  parsePastedPurchaseItems,
+  type ParsedPurchaseItemPaste,
+} from "../model/pasted-purchase-items";
 import { purchaseEntrySuggestions, recentPurchasePrice } from "../model/product-suggestions";
 import { resolvePurchaseAllocationRule } from "../model/purchase-allocation-rules";
 import {
@@ -51,13 +54,15 @@ const purchaseItemSchema = z.object({
   name: z.string().trim().min(1),
   amount: z.string().regex(/^[1-9]\d*$/),
 });
+const normalizePastedAmount = (amount: string) => amount.replace(/[¥,]/g, "");
+const isValidPastedAmount = (amount: string) => /^[1-9]\d*$/.test(normalizePastedAmount(amount));
 
 export type EditPurchaseItemsCommands = {
   reset: () => void;
   undo: () => PurchaseEditSnapshot | null;
   redo: () => PurchaseEditSnapshot | null;
   invalidateRedo: () => void;
-  copy: (purchase: Purchase) => void;
+  copy: (purchase: Purchase, mode: "replace" | "append") => void;
   prepareForSubmit: () => PurchaseDraftItem[] | null;
 };
 
@@ -119,6 +124,10 @@ export function EditPurchaseItems({
   const selectionAnchorKey = useRef<string | null>(null);
   const [focused, setFocused] = useState<"name" | "amount" | null>(null);
   const [invalidEntryField, setInvalidEntryField] = useState<"name" | "amount" | null>(null);
+  const [pasteReview, setPasteReview] = useState<{
+    rawText: string;
+    parsed: ParsedPurchaseItemPaste;
+  } | null>(null);
   const [categoryManuallySelected, setCategoryManuallySelected] = useState(false);
   const [allocationDataState, setAllocationDataState] = useState<{
     householdId: string;
@@ -142,6 +151,25 @@ export function EditPurchaseItems({
           })),
     [household.defaultAllocation, household.pools],
   );
+  const defaultAllocationLabel = useMemo(() => {
+    const namedAllocations = defaultAllocations
+      .map((allocation) => ({
+        name: household.pools.find((pool) => pool.id === allocation.poolId)?.name,
+        weight: allocation.weight,
+      }))
+      .filter((allocation): allocation is { name: string; weight: number } =>
+        Boolean(allocation.name && allocation.weight > 0),
+      );
+    const totalWeight = namedAllocations.reduce((sum, allocation) => sum + allocation.weight, 0);
+    return totalWeight > 0
+      ? namedAllocations
+          .map(
+            (allocation) =>
+              `${allocation.name} ${new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 1 }).format((allocation.weight / totalWeight) * 100)}%`,
+          )
+          .join(" / ")
+      : "設定なし";
+  }, [defaultAllocations, household.pools]);
   useEffect(() => {
     let active = true;
     void readPurchaseAllocationData(householdId)
@@ -345,9 +373,9 @@ export function EditPurchaseItems({
     return transition.snapshot;
   }, [clearAllocationUndoGroup, markDirty, updateHistory, update, merchant, copiedPurchase]);
   const copy = useCallback(
-    (purchase: Purchase) => {
+    (purchase: Purchase, mode: "replace" | "append") => {
       markDirty();
-      const items = purchase.items.map((item) => ({
+      const copiedItems = purchase.items.map((item) => ({
         key: crypto.randomUUID(),
         name: item.name,
         amount: String(item.amountYen),
@@ -362,9 +390,14 @@ export function EditPurchaseItems({
           : {}),
       }));
       setCopiedPrices(
-        new Map(
-          items.map((item) => [item.key, { amount: item.amount, occurredAt: purchase.occurredAt }]),
-        ),
+        (current) =>
+          new Map([
+            ...(mode === "append" ? current : []),
+            ...copiedItems.map(
+              (item) =>
+                [item.key, { amount: item.amount, occurredAt: purchase.occurredAt }] as const,
+            ),
+          ]),
       );
       setCategoryManuallySelected(false);
       recordUndo({
@@ -373,7 +406,12 @@ export function EditPurchaseItems({
         merchant,
         copiedPurchase,
       });
-      update({ ...draftRef.current, items, categoryId: "" });
+      const current = draftRef.current;
+      update({
+        ...current,
+        items: mode === "append" ? [...current.items, ...copiedItems] : copiedItems,
+        categoryId: mode === "append" ? current.categoryId : "",
+      });
     },
     [markDirty, isEnabledCategory, recordUndo, update, merchant, copiedPurchase],
   );
@@ -594,20 +632,22 @@ export function EditPurchaseItems({
     const parsed = parsePastedPurchaseItems(text);
     if (!parsed.structured) return;
     event.preventDefault();
-    if (parsed.invalidSyntax) {
-      window.alert("貼り付けたCSVの引用符を解析できませんでした。内容を確認してください。");
-      return;
-    }
-    if (parsed.invalidRowCount > 0) {
-      const message = `${parsed.invalidRowCount}行を品目として解析できませんでした。解析できた行だけ追加しますか？`;
-      if (!parsed.items.length || !window.confirm(message)) return;
-    }
-    if (!parsed.items.length) return;
+    setPasteReview({ rawText: text, parsed });
+  };
+  const addPastedItems = () => {
+    if (!pasteReview || pasteReview.parsed.invalidSyntax) return;
+    const repairedItems = pasteReview.parsed.invalidRows.map(({ name, amount }) => ({
+      name: name.trim(),
+      amount: normalizePastedAmount(amount),
+    }));
+    if (repairedItems.some(({ name, amount }) => !name || !isValidPastedAmount(amount))) return;
+    const itemsToAdd = [...pasteReview.parsed.items, ...repairedItems];
+    if (!itemsToAdd.length) return;
     markDirty();
     recordUndo({ items: draft.items });
     replaceItems([
       ...draft.items,
-      ...parsed.items.map(({ name, amount }) => {
+      ...itemsToAdd.map(({ name, amount }) => {
         const categoryId =
           categoryManuallySelected || draft.categoryId
             ? effectiveCategoryId
@@ -621,6 +661,7 @@ export function EditPurchaseItems({
         };
       }),
     ]);
+    setPasteReview(null);
   };
   const patchItem = (key: string, patch: Partial<PurchaseDraftItem>) => {
     const currentItem = draft.items.find((item) => item.key === key);
@@ -726,6 +767,21 @@ export function EditPurchaseItems({
     replaceItems(draft.items.filter((item) => !selectedKeys.has(item.key)));
     clearSelection();
   };
+  const updatePasteInvalidRow = (index: number, field: "name" | "amount", nextValue: string) => {
+    setPasteReview((current) =>
+      current
+        ? {
+            ...current,
+            parsed: {
+              ...current.parsed,
+              invalidRows: current.parsed.invalidRows.map((item, itemIndex) =>
+                itemIndex === index ? { ...item, [field]: nextValue } : item,
+              ),
+            },
+          }
+        : current,
+    );
+  };
   return (
     <>
       <div className={`panel-heading entry-heading ${classNames.itemHeading}`}>
@@ -746,10 +802,93 @@ export function EditPurchaseItems({
             {mobileSelectionMode ? "選択を終了" : "選択"}
           </button>
           <span className="entry-default">
-            負担 <b>{household.pools.map((pool) => pool.name.slice(0, 1)).join(" / ") || "標準"}</b>
+            標準負担 <b>{defaultAllocationLabel}</b>
           </span>
         </div>
       </div>
+      {pasteReview && (
+        <section className={styles.pasteReview} aria-label="貼り付けた品目">
+          <div className={styles.pasteReviewHeading}>
+            <b>貼り付けた品目</b>
+            <button type="button" className="text-button" onClick={() => setPasteReview(null)}>
+              閉じる
+            </button>
+          </div>
+          {pasteReview.parsed.items.length > 0 && (
+            <ul className={styles.pasteValidItems}>
+              {pasteReview.parsed.items.map((item) => (
+                <li key={item.rowNumber}>
+                  <span>{item.name}</span>
+                  <span>¥{new Intl.NumberFormat("ja-JP").format(Number(item.amount))}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {pasteReview.parsed.invalidSyntax ? (
+            <div className={styles.pasteSyntaxError}>
+              <label>
+                <span>CSV</span>
+                <textarea
+                  value={pasteReview.rawText}
+                  onChange={(event) =>
+                    setPasteReview({
+                      rawText: event.target.value,
+                      parsed: parsePastedPurchaseItems(event.target.value),
+                    })
+                  }
+                  rows={4}
+                />
+              </label>
+              <span role="alert">引用符を確認してください</span>
+            </div>
+          ) : (
+            <>
+              {pasteReview.parsed.invalidRows.map((row, index) => (
+                <div className={styles.pasteInvalidRow} key={row.rowNumber}>
+                  <span>行{row.rowNumber}</span>
+                  <label>
+                    <span>品名</span>
+                    <input
+                      value={row.name}
+                      aria-label={`行${row.rowNumber}の品名`}
+                      aria-invalid={!row.name.trim()}
+                      onChange={(event) => updatePasteInvalidRow(index, "name", event.target.value)}
+                    />
+                    {!row.name.trim() && <small>品名を入力</small>}
+                  </label>
+                  <label>
+                    <span>金額</span>
+                    <input
+                      inputMode="numeric"
+                      value={row.amount}
+                      aria-label={`行${row.rowNumber}の金額`}
+                      aria-invalid={!isValidPastedAmount(row.amount)}
+                      onChange={(event) =>
+                        updatePasteInvalidRow(index, "amount", event.target.value)
+                      }
+                    />
+                    {!isValidPastedAmount(row.amount) && <small>正の金額を入力</small>}
+                  </label>
+                </div>
+              ))}
+            </>
+          )}
+          <button
+            type="button"
+            className="button button-primary"
+            disabled={
+              pasteReview.parsed.invalidSyntax ||
+              (!pasteReview.parsed.items.length && !pasteReview.parsed.invalidRows.length) ||
+              pasteReview.parsed.invalidRows.some(
+                ({ name, amount }) => !name.trim() || !isValidPastedAmount(amount),
+              )
+            }
+            onClick={addPastedItems}
+          >
+            品目に追加
+          </button>
+        </section>
+      )}
       {selectedItems.length > 0 && (
         <div className={styles.bulkActions} aria-label="選択した品目の一括操作">
           <span className={styles.selectionCount}>{selectedItems.length}品目を選択中</span>

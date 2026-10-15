@@ -1,0 +1,26 @@
+extend type Mutation {
+  linkStatementAccountMovement(
+    input: LinkStatementAccountMovementInput!
+  ): LinkStatementAccountMovementResult!
+}
+
+union LinkStatementAccountMovementResult =
+  | LinkStatementAccountMovementSuccess
+  | LinkStatementAccountMovementUserError
+
+type LinkStatementAccountMovementSuccess {
+  result: AccountMovement!
+}
+
+input LinkStatementAccountMovementInput {
+  householdId: ID! @nodeID(of: "Household")
+  accountMovementId: ID! @nodeID(of: "AccountMovement")
+  sourceDocumentId: ID!
+  sourceReference: String!
+  sourceAccountId: ID! @nodeID(of: "Account")
+}
+
+type LinkStatementAccountMovementUserError implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+}

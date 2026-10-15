@@ -3,6 +3,7 @@ package purchase
 import (
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"testing"
@@ -303,6 +304,20 @@ func TestServiceBulkDeleteItemsCommitsAuditAndRejectsLastItem(t *testing.T) {
 	}
 	if len(events) != 5 {
 		t.Fatalf("deletion events = %d; want 5", len(events))
+	}
+	for _, event := range events {
+		if event.EntityID != itemIDs[0] && event.EntityID != itemIDs[1] {
+			continue
+		}
+		var payload struct {
+			PurchaseID string `json:"purchaseId"`
+		}
+		if err := json.Unmarshal(event.Payload.Val, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.PurchaseID != purchaseID.String() {
+			t.Fatalf("deletion event purchase ID = %q, want %s", payload.PurchaseID, purchaseID)
+		}
 	}
 	_, err = service.BulkDeleteItems(ctx, BulkDeleteItemsCommand{
 		ActorID: memberID.String(), Targets: []BulkItemTarget{{ItemID: itemIDs[2].String(), BaseRevision: 1}},

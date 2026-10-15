@@ -1,15 +1,5 @@
 extend type Mutation {
   correctPurchase(input: CorrectPurchaseInput!): CorrectPurchaseResult!
-  correctPurchaseFromStatement(input: CorrectPurchaseFromStatementInput!): CorrectPurchaseResult!
-}
-
-input CorrectPurchaseFromStatementInput {
-  householdId: ID! @nodeID(of: "Household")
-  sourceDocumentId: ID!
-  sourceReference: String!
-  target: CorrectPurchaseTargetInput!
-  reason: String!
-  idempotencyKey: String!
 }
 
 union CorrectPurchaseResult = CorrectPurchaseSuccess | CorrectPurchaseUserError

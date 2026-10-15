@@ -154,11 +154,14 @@
 }
 
 .entry-default {
+  max-width: min(55vw, 440px);
   font-size: 12px;
   padding: 7px 10px;
   border-radius: 7px;
   background: #f4f7f3;
   color: #5f6d65;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .entry-default b {
@@ -228,6 +231,30 @@
 .purchase-history-actions .text-button:hover {
   border-color: #bdcfc2;
   background: var(--green-wash);
+}
+
+.purchase-copy-choice {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #f7f9f7;
+  color: #43564a;
+  font-size: 13px;
+}
+
+.purchase-copy-choice legend {
+  padding: 0;
+  font-weight: 600;
+}
+
+.purchase-copy-choice .button {
+  min-height: 40px;
 }
 
 .item-index {

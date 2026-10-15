@@ -1,0 +1,9 @@
+extend type Mutation {
+  revokeHouseholdMailForwarding(
+    input: HouseholdMailForwardingInput!
+  ): RevokeHouseholdMailForwardingResult!
+}
+
+union RevokeHouseholdMailForwardingResult =
+  | RevokeHouseholdMailForwardingSuccess
+  | HouseholdMailForwardingUserError

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	uuid "github.com/gofrs/uuid/v5"
 	purchaseapp "github.com/walnuts1018/horse/internal/application/purchase"
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
@@ -34,30 +35,34 @@ func (r *subscriptionResolver) SharedPurchaseDraftChanges(ctx context.Context, i
 		}
 	}
 
+	draftUUID, err := uuid.FromString(id)
+	if err != nil {
+		return nil, fmt.Errorf("parse shared purchase draft id: %w", err)
+	}
+	sharedChanges, stopWatching := r.getSubscriptionHub().watchDraft(draftUUID, cursor)
 	changes := make(chan *model.SharedPurchaseDraftChange, 1)
 	go func() {
 		defer close(changes)
-		ticker := time.NewTicker(time.Second)
+		defer stopWatching()
+		ticker := time.NewTicker(subscriptionAuthorizationCheckInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-			}
-
-			current, err := drafts.GetSharedPurchaseDraft(ctx, user.MemberID, id)
-			if err != nil {
-				return
-			}
-			if current.Revision <= cursor {
-				continue
-			}
-			cursor = current.Revision
-			select {
-			case changes <- sharedPurchaseDraftChange(cursor):
-			case <-ctx.Done():
-				return
+				if _, err := drafts.GetSharedPurchaseDraft(ctx, user.MemberID, id); err != nil {
+					return
+				}
+			case change, ok := <-sharedChanges:
+				if !ok {
+					return
+				}
+				select {
+				case changes <- change:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}()

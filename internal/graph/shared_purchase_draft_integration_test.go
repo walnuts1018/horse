@@ -14,6 +14,7 @@ import (
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/application/purchase"
 	"github.com/walnuts1018/horse/internal/auth"
+	"github.com/walnuts1018/horse/internal/graph/model"
 	"github.com/walnuts1018/horse/internal/postgres/generated/models"
 )
 
@@ -42,29 +43,47 @@ func TestSharedPurchaseDraftUsesMembershipAndRevisionCAS(t *testing.T) {
 
 	validPayload := `{"merchant":"Market","occurredAt":"2026-10-14T12:00:00+09:00","itemName":"","itemAmount":"","categoryId":"","items":[]}`
 	ownerContext := auth.WithPrincipal(ctx, auth.Principal{MemberID: owner.String()})
-	created, err := resolver.CreateSharedPurchaseDraft(ownerContext, householdID.String(), validPayload)
+	createdResult, err := resolver.CreateSharedPurchaseDraft(ownerContext, model.CreateSharedPurchaseDraftInput{
+		HouseholdID: householdID.String(), Payload: validPayload,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	createdSuccess, ok := createdResult.(*model.CreateSharedPurchaseDraftSuccess)
+	if !ok {
+		t.Fatalf("create result = %#v, want success", createdResult)
+	}
+	created := createdSuccess.Result
 	if created.Revision != 1 || created.HouseholdID != householdID.String() || created.Payload == "" {
 		t.Fatalf("created shared draft = %#v", created)
 	}
 
 	updatedPayload := `{"merchant":"Updated market","occurredAt":"2026-10-14T12:00:00+09:00","itemName":"","itemAmount":"","categoryId":"","items":[]}`
-	updated, err := resolver.UpdateSharedPurchaseDraft(ownerContext, created.ID, 1, updatedPayload)
+	updatedResult, err := resolver.UpdateSharedPurchaseDraft(ownerContext, model.UpdateSharedPurchaseDraftInput{
+		ID: created.ID, ExpectedRevision: 1, Payload: updatedPayload,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Conflict || updated.Draft.Revision != 2 || !strings.Contains(updated.Draft.Payload, "Updated market") {
-		t.Fatalf("revision 1 update result = %#v", updated)
+	updatedSuccess, ok := updatedResult.(*model.UpdateSharedPurchaseDraftSuccess)
+	if !ok {
+		t.Fatalf("revision 1 update result = %#v, want success", updatedResult)
 	}
-	stalePayload := `{`
-	stale, err := resolver.UpdateSharedPurchaseDraft(ownerContext, created.ID, 1, stalePayload)
+	if updatedSuccess.Result.Revision != 2 || !strings.Contains(updatedSuccess.Result.Payload, "Updated market") {
+		t.Fatalf("revision 1 update result = %#v", updatedSuccess)
+	}
+	staleResult, err := resolver.UpdateSharedPurchaseDraft(ownerContext, model.UpdateSharedPurchaseDraftInput{
+		ID: created.ID, ExpectedRevision: 1, Payload: `{`,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !stale.Conflict || stale.Draft.Revision != 2 || !strings.Contains(stale.Draft.Payload, "Updated market") {
-		t.Fatalf("stale revision result = %#v", stale)
+	staleConflict, ok := staleResult.(*model.UpdateSharedPurchaseDraftConflict)
+	if !ok {
+		t.Fatalf("stale revision result = %#v, want conflict", staleResult)
+	}
+	if staleConflict.Draft.Revision != 2 || !strings.Contains(staleConflict.Draft.Payload, "Updated market") {
+		t.Fatalf("stale revision result = %#v", staleConflict)
 	}
 
 	collaboratorContext := auth.WithPrincipal(ctx, auth.Principal{MemberID: collaborator.String()})
@@ -161,8 +180,15 @@ func TestSharedPurchaseDraftUsesMembershipAndRevisionCAS(t *testing.T) {
 			t.Errorf("foreign reference payload %d error = %v, want bad input", i, err)
 		}
 	}
-	if _, err := resolver.CreateSharedPurchaseDraft(outsiderContext, householdID.String(), validPayload); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("outsider create error = %v, want not found", err)
+	outsiderResult, err := resolver.CreateSharedPurchaseDraft(outsiderContext, model.CreateSharedPurchaseDraftInput{
+		HouseholdID: householdID.String(), Payload: validPayload,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outsiderError, ok := outsiderResult.(*model.SharedPurchaseDraftUserError)
+	if !ok || outsiderError.Code != model.MutationErrorCodeNotFound {
+		t.Fatalf("outsider create result = %#v, want not-found user error", outsiderResult)
 	}
 }
 

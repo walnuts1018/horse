@@ -11,18 +11,17 @@ import type {
   PurchaseCorrectionsPaginationQuery,
   PurchaseListFragment$key,
   PurchaseAmountTarget,
-  PurchaseItemChangeQuery,
   PurchasesQuery,
 } from "..";
 import type { Purchase, PurchaseCorrection, PurchaseOrigin } from "../../../shared/api";
 
 import { getRelayEnvironment } from "../../../shared/api";
 import { isOneOf } from "../../../shared/lib";
+import { purchaseChangeAffectsMembership } from "../model/purchase-subscription-refresh";
 import { mapPurchaseItem } from "./map-purchase-item";
 import {
   purchaseChangesSubscription,
   purchaseCorrectionsPaginationQuery,
-  purchaseItemChangeQuery,
   purchaseListFragment,
   purchasesQuery,
 } from "./operations";
@@ -112,6 +111,32 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
       options.minimumAmount,
       options.maximumAmount,
       options.amountTarget,
+    ],
+  );
+  const membershipFilters = useMemo(
+    () => ({
+      categoryId: options.categoryId,
+      from: options.from,
+      maximumAmount: options.maximumAmount,
+      minimumAmount: options.minimumAmount,
+      paymentAccountId: options.paymentAccountId,
+      poolId: options.poolId,
+      search: options.search,
+      tagId: options.tagId,
+      to: options.to,
+      uncategorized: options.uncategorized,
+    }),
+    [
+      options.categoryId,
+      options.from,
+      options.maximumAmount,
+      options.minimumAmount,
+      options.paymentAccountId,
+      options.poolId,
+      options.search,
+      options.tagId,
+      options.to,
+      options.uncategorized,
     ],
   );
   const query = useLazyLoadQuery<PurchasesQuery>(purchasesQuery, variables, {
@@ -263,23 +288,7 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
             return next;
           });
         }
-        if (
-          change.kind === "ITEM_UPDATED" &&
-          change.changedFields.length === 1 &&
-          change.changedFields[0] === "NAME" &&
-          !options.search?.trim()
-        ) {
-          void fetchQuery<PurchaseItemChangeQuery>(
-            getRelayEnvironment(),
-            purchaseItemChangeQuery,
-            { id: change.entityId },
-            { fetchPolicy: "network-only" },
-          )
-            .toPromise()
-            .catch(scheduleRefresh);
-          return;
-        }
-        scheduleRefresh();
+        if (purchaseChangeAffectsMembership(change, membershipFilters)) scheduleRefresh();
       },
     });
     return () => {
@@ -289,7 +298,7 @@ export function useHouseholdPurchases(householdId: string, first = 100, options:
         subscriptionRefreshTimer.current = null;
       }
     };
-  }, [data.purchases.syncCursor, householdId, options.search, scheduleRefresh]);
+  }, [data.purchases.syncCursor, householdId, membershipFilters, scheduleRefresh]);
 
   useEffect(() => {
     if (options.loadAll && hasNext && !isLoadingNext && !displayedMoreError) {

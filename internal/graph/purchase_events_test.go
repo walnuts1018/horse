@@ -37,3 +37,22 @@ func TestPurchaseChangeRejectsUnknownFieldKeys(t *testing.T) {
 		t.Fatal("purchase change with an unknown field was converted")
 	}
 }
+
+func TestPurchaseItemDeletionProducesChange(t *testing.T) {
+	t.Parallel()
+	event := &models.HouseholdEvent{
+		Cursor: 1, Type: "purchase.item.deleted", EntityID: uuid.Must(uuid.NewV7()), Revision: 3,
+		ChangedFields: types.JSON[json.RawMessage]{Val: json.RawMessage(`["deleted"]`)},
+		Payload:       types.JSON[json.RawMessage]{Val: json.RawMessage(`{"purchaseId":"0198a9f1-4f62-7d21-b2eb-57a5fa43892f"}`)},
+	}
+	change, ok := purchaseChange(event)
+	if !ok {
+		t.Fatal("purchase item deletion was not converted")
+	}
+	if change.Kind != model.PurchaseChangeKindItemDeleted || change.EntityKind != model.PurchaseChangeEntityPurchaseItem {
+		t.Fatalf("purchase item deletion kind = %s/%s", change.Kind, change.EntityKind)
+	}
+	if !reflect.DeepEqual(change.ChangedFields, []model.PurchaseChangeField{model.PurchaseChangeFieldDeleted}) {
+		t.Fatalf("changed fields = %v, want DELETED", change.ChangedFields)
+	}
+}

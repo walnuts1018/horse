@@ -22,15 +22,3 @@ func (r *mutationResolver) RecordExternalIncome(ctx context.Context, input model
 	}
 	return &model.RecordExternalIncomeSuccess{Result: result}, nil
 }
-
-// LinkStatementAccountIncome is the resolver for the linkStatementAccountIncome field.
-func (r *mutationResolver) LinkStatementAccountIncome(ctx context.Context, input model.LinkStatementAccountIncomeInput) (model.LinkStatementAccountIncomeResult, error) {
-	result, err := r.linkStatementAccountIncome(ctx, input)
-	if err != nil {
-		if result, ok := mutationErrorResult(err); ok {
-			return &model.LinkStatementAccountIncomeUserError{Code: result.Code, Message: result.Message}, nil
-		}
-		return nil, err
-	}
-	return &model.LinkStatementAccountIncomeSuccess{Result: result}, nil
-}

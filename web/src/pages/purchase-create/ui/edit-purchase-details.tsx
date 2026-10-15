@@ -1,5 +1,5 @@
 import { ChevronDown, Pencil } from "lucide-react";
-import { useMemo, useRef, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { Purchase } from "../../../shared/api";
 
@@ -24,6 +24,7 @@ export function EditPurchaseDetails({
   recentPurchases,
   copiedPurchase,
   copiedAt,
+  currentItemCount,
   occurredAtError,
   summary,
   detailsExpanded,
@@ -42,6 +43,7 @@ export function EditPurchaseDetails({
   recentPurchases: Purchase[];
   copiedPurchase: Purchase | null;
   copiedAt: number | null;
+  currentItemCount: number;
   occurredAtError: boolean;
   summary: ReactNode;
   detailsExpanded: boolean;
@@ -57,10 +59,11 @@ export function EditPurchaseDetails({
   onMerchantChange: (value: string) => void;
   onOccurredAtChange: (value: string) => void;
   onSelectMerchant: (value: string) => void;
-  onCopyPurchase: (purchase: Purchase) => void;
+  onCopyPurchase: (purchase: Purchase, mode: "replace" | "append") => void;
   children?: ReactNode;
 }) {
   const merchantInputRef = useRef<HTMLInputElement>(null);
+  const [pendingCopy, setPendingCopy] = useState<Purchase | null>(null);
   const recentPurchasesByMerchant = useMemo(
     () => indexRecentPurchasesByMerchant(recentPurchases),
     [recentPurchases],
@@ -77,6 +80,13 @@ export function EditPurchaseDetails({
     onOccurredAtChange(
       `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}T${time}`,
     );
+  };
+  const requestCopy = (purchase: Purchase) => {
+    if (currentItemCount > 0) setPendingCopy(purchase);
+    else {
+      setPendingCopy(null);
+      onCopyPurchase(purchase, "replace");
+    }
   };
   const editMerchant = () => {
     if (detailsExpanded) {
@@ -141,7 +151,7 @@ export function EditPurchaseDetails({
                 <button
                   className="text-button"
                   type="button"
-                  onClick={() => onCopyPurchase(merchantPurchase)}
+                  onClick={() => requestCopy(merchantPurchase)}
                 >
                   買い物をコピー ·{" "}
                   {new Date(merchantPurchase.occurredAt).toLocaleDateString("ja-JP")} ·{" "}
@@ -205,7 +215,7 @@ export function EditPurchaseDetails({
                     className="text-button"
                     type="button"
                     key={purchase.id}
-                    onClick={() => onCopyPurchase(purchase)}
+                    onClick={() => requestCopy(purchase)}
                   >
                     {purchase.merchant || "店名未入力"} ·{" "}
                     {new Date(purchase.occurredAt).toLocaleDateString("ja-JP")} ·{" "}
@@ -213,6 +223,38 @@ export function EditPurchaseDetails({
                   </button>
                 ))}
               </div>
+              {pendingCopy && (
+                <fieldset className="purchase-copy-choice">
+                  <legend>{currentItemCount}品目をどうしますか</legend>
+                  <button
+                    className="button button-soft"
+                    type="button"
+                    onClick={() => {
+                      onCopyPurchase(pendingCopy, "replace");
+                      setPendingCopy(null);
+                    }}
+                  >
+                    置き換える
+                  </button>
+                  <button
+                    className="button button-primary"
+                    type="button"
+                    onClick={() => {
+                      onCopyPurchase(pendingCopy, "append");
+                      setPendingCopy(null);
+                    }}
+                  >
+                    追加する
+                  </button>
+                  <button
+                    className="text-button"
+                    type="button"
+                    onClick={() => setPendingCopy(null)}
+                  >
+                    取消
+                  </button>
+                </fieldset>
+              )}
               {copiedPurchase && (
                 <output>
                   {copiedPurchase.merchant || "店名未入力"}

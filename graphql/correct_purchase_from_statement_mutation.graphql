@@ -1,0 +1,12 @@
+extend type Mutation {
+  correctPurchaseFromStatement(input: CorrectPurchaseFromStatementInput!): CorrectPurchaseResult!
+}
+
+input CorrectPurchaseFromStatementInput {
+  householdId: ID! @nodeID(of: "Household")
+  sourceDocumentId: ID!
+  sourceReference: String!
+  target: CorrectPurchaseTargetInput!
+  reason: String!
+  idempotencyKey: String!
+}

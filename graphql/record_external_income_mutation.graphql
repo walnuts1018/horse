@@ -1,29 +1,5 @@
 extend type Mutation {
   recordExternalIncome(input: RecordExternalIncomeInput!): RecordExternalIncomeResult!
-  linkStatementAccountIncome(
-    input: LinkStatementAccountIncomeInput!
-  ): LinkStatementAccountIncomeResult!
-}
-
-union LinkStatementAccountIncomeResult =
-  | LinkStatementAccountIncomeSuccess
-  | LinkStatementAccountIncomeUserError
-
-type LinkStatementAccountIncomeSuccess {
-  result: AccountIncome!
-}
-
-input LinkStatementAccountIncomeInput {
-  householdId: ID! @nodeID(of: "Household")
-  accountIncomeId: ID! @nodeID(of: "AccountIncome")
-  sourceDocumentId: ID!
-  sourceReference: String!
-  sourceAccountId: ID! @nodeID(of: "Account")
-}
-
-type LinkStatementAccountIncomeUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
 }
 
 union RecordExternalIncomeResult = RecordExternalIncomeSuccess | RecordExternalIncomeUserError

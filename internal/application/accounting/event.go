@@ -15,6 +15,10 @@ import (
 )
 
 func RecordEvent(ctx context.Context, executor bob.Executor, householdID, entityID gofrsuuid.UUID, eventType string, revision int64, fields []string, actorID gofrsuuid.UUID) error {
+	return RecordEventWithPayload(ctx, executor, householdID, entityID, eventType, revision, fields, actorID, nil)
+}
+
+func RecordEventWithPayload(ctx context.Context, executor bob.Executor, householdID, entityID gofrsuuid.UUID, eventType string, revision int64, fields []string, actorID gofrsuuid.UUID, payload any) error {
 	if err := LockHouseholdEventCursor(ctx, executor, householdID); err != nil {
 		return err
 	}
@@ -23,10 +27,18 @@ func RecordEvent(ctx context.Context, executor bob.Executor, householdID, entity
 		return err
 	}
 	changedFields := types.JSON[stdjson.RawMessage]{Val: encoded}
+	var eventPayload *types.JSON[stdjson.RawMessage]
+	if payload != nil {
+		encodedPayload, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		eventPayload = &types.JSON[stdjson.RawMessage]{Val: encodedPayload}
+	}
 	actor := sql.Null[gofrsuuid.UUID]{V: actorID, Valid: true}
 	_, err = models.HouseholdEvents.Insert(&models.HouseholdEventSetter{
 		HouseholdID: &householdID, Type: &eventType, EntityID: &entityID, Revision: &revision,
-		ChangedFields: &changedFields, ActorID: &actor,
+		ChangedFields: &changedFields, Payload: eventPayload, ActorID: &actor,
 	}).Exec(ctx, executor)
 
 	return err

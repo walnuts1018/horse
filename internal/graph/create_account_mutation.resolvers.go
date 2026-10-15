@@ -22,15 +22,3 @@ func (r *mutationResolver) CreateAccount(ctx context.Context, input model.Create
 	}
 	return &model.CreateAccountSuccess{Result: result}, nil
 }
-
-// SetAccountCardLast4 is the resolver for the setAccountCardLast4 field.
-func (r *mutationResolver) SetAccountCardLast4(ctx context.Context, input model.SetAccountCardLast4Input) (model.SetAccountCardLast4Result, error) {
-	result, err := r.setAccountCardLast4(ctx, input)
-	if err != nil {
-		if result, ok := mutationErrorResult(err); ok {
-			return &model.SetAccountCardLast4UserError{Code: result.Code, Message: result.Message}, nil
-		}
-		return nil, err
-	}
-	return &model.SetAccountCardLast4Success{Result: result}, nil
-}

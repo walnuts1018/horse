@@ -1,0 +1,9 @@
+extend type Mutation {
+  issueHouseholdMailForwarding(
+    input: HouseholdMailForwardingInput!
+  ): IssueHouseholdMailForwardingResult!
+}
+
+union IssueHouseholdMailForwardingResult =
+  | IssueHouseholdMailForwardingSuccess
+  | HouseholdMailForwardingUserError

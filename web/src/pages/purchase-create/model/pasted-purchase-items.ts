@@ -1,5 +1,6 @@
 export type ParsedPurchaseItemPaste = {
-  items: { name: string; amount: string }[];
+  items: { rowNumber: number; name: string; amount: string }[];
+  invalidRows: { rowNumber: number; name: string; amount: string }[];
   invalidRowCount: number;
   invalidSyntax: boolean;
   structured: boolean;
@@ -11,7 +12,13 @@ export function parsePastedPurchaseItems(text: string): ParsedPurchaseItemPaste 
   const delimiter = text.includes("\t") ? "\t" : ",";
   const hasRows = text.includes("\n") || text.includes("\r") || text.includes("\t");
   if (!hasRows && !text.includes(","))
-    return { items: [], invalidRowCount: 0, invalidSyntax: false, structured: false };
+    return {
+      items: [],
+      invalidRows: [],
+      invalidRowCount: 0,
+      invalidSyntax: false,
+      structured: false,
+    };
 
   const rows: string[][] = [];
   let row: string[] = [];
@@ -64,19 +71,27 @@ export function parsePastedPurchaseItems(text: string): ParsedPurchaseItemPaste 
   rows.push(row);
 
   const items: ParsedPurchaseItemPaste["items"] = [];
+  const invalidRows: ParsedPurchaseItemPaste["invalidRows"] = [];
   let invalidRowCount = 0;
   let hasValidCSVRow = false;
-  for (const cells of rows) {
+  for (const [index, cells] of rows.entries()) {
     if (cells.length === 1 && cells[0] === "") continue;
     const name = cells[0]?.trim() ?? "";
     const amount = cells[1]?.trim() ?? "";
     if (cells.length === 2 && name && amountPattern.test(amount)) hasValidCSVRow = true;
     if (cells.length !== 2 || !name || !amountPattern.test(amount)) {
       invalidRowCount += 1;
+      invalidRows.push({ rowNumber: index + 1, name, amount });
       continue;
     }
-    items.push({ name, amount: amount.replace(/[¥,]/g, "") });
+    items.push({ rowNumber: index + 1, name, amount: amount.replace(/[¥,]/g, "") });
   }
 
-  return { items, invalidRowCount, invalidSyntax, structured: hasRows || hasValidCSVRow };
+  return {
+    items,
+    invalidRows,
+    invalidRowCount,
+    invalidSyntax,
+    structured: hasRows || hasValidCSVRow,
+  };
 }

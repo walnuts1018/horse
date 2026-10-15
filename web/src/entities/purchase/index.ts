@@ -32,7 +32,6 @@ export type {
   BulkUpdatePurchasesMutation$variables,
 } from "../../shared/api/__generated__/BulkUpdatePurchasesMutation.graphql";
 export type { PurchaseChangesSubscription } from "../../shared/api/__generated__/PurchaseChangesSubscription.graphql";
-export type { PurchaseItemChangeQuery } from "../../shared/api/__generated__/PurchaseItemChangeQuery.graphql";
 export type { PurchaseCorrectionsPaginationQuery } from "../../shared/api/__generated__/PurchaseCorrectionsPaginationQuery.graphql";
 export type { PurchaseListFragment$key } from "../../shared/api/__generated__/PurchaseListFragment.graphql";
 export {

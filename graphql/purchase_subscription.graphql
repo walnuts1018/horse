@@ -6,6 +6,7 @@ type PurchaseChange {
   revision: Int!
   changedFields: [PurchaseChangeField!]!
   occurredAt: DateTime!
+  purchase: Purchase!
 }
 
 enum PurchaseChangeKind {
@@ -13,6 +14,7 @@ enum PurchaseChangeKind {
   POSTED
   UPDATED
   ITEM_UPDATED
+  ITEM_DELETED
   CORRECTED
 }
 
@@ -35,6 +37,7 @@ enum PurchaseChangeField {
   PRODUCT_VARIANT_ID
   ALLOCATIONS
   TAGS
+  DELETED
 }
 
 extend type Subscription {

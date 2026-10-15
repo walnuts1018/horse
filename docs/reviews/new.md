@@ -1,13 +1,7 @@
 # Horseの追加レビューで未解決の項目
 
-## 1. 購入Subscriptionの変更通知
-
-`web/src/entities/purchase/api/use-household-purchases.ts`は品名だけの変更を対象のRelay nodeへ反映し、訂正時は対象購入の訂正履歴だけを破棄する。その他の変更は100ms以内の通知をまとめて購入一覧全体を再取得するため、一覧全体の更新を避けられていない。
-
-変更イベントの内容だけで対象購入を更新できる種類を増やし、検索結果や並び順に影響する変更だけ一覧を再取得する。
-
 ## 2. SubscriptionごとのDBポーリング
 
-`internal/graph/purchase_subscription.resolvers.go`と`internal/graph/shared_purchase_draft_subscription.resolvers.go`は接続ごとに1秒間隔でDBを確認する。同時接続数に比例して所属確認とイベント検索が増える。
+購入Subscriptionと共有下書きSubscriptionは、接続ごとにDBを確認する構成からHousehold単位で購読をまとめる共有pollerへ変更した。購入イベントはHouseholdごとの最小cursorから1回のqueryで取得し、共有下書きもdraftごとの最小revisionから1回のqueryで取得する。同じHouseholdやdraftを購読する接続には、取得した変更を共有して配信する。RabbitMQにはGraphQL変更の通知経路がないため、既存の取り込みジョブqueueは使用していない。
 
-DB通知などの起床手段を使い、権限の再確認には上限付きの定期確認を残す。
+共有pollerは1秒間隔でDBを確認し、DB polling自体は残る。改善した点は接続数に比例していた所属確認とイベント検索である。各Subscriptionは30秒間隔で権限を再確認する。DB queryに失敗した場合は最大30秒まで間隔を広げて再試行し、連続した失敗は復旧時まで一度だけ記録する。PostgreSQL通知などDB pollingをなくす起床手段は未導入のため、この項目は部分解決として残す。

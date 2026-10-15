@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<12d2d8433362ad6e8dc0c511cd3ed621>>
+ * @generated SignedSource<<a6057e713ebb33e9bf3809c240434126>>
  * @lightSyntaxTransform
  */
 
@@ -8,6 +8,7 @@
 // @ts-nocheck
 
 import type { ConcreteRequest } from 'relay-runtime';
+export type MutationErrorCode = "BAD_INPUT" | "CONFLICT" | "MAIL_FORWARDING_DISABLED" | "NOT_FOUND" | "%future added value";
 export type UpdateSharedPurchaseDraftMutation$variables = {
   expectedRevision: number;
   id: string;
@@ -15,7 +16,12 @@ export type UpdateSharedPurchaseDraftMutation$variables = {
 };
 export type UpdateSharedPurchaseDraftMutation$data = {
   readonly updateSharedPurchaseDraft: {
-    readonly conflict: boolean;
+    readonly __typename: "SharedPurchaseDraftUserError";
+    readonly code: MutationErrorCode;
+    readonly message: string;
+  } | {
+    readonly __typename: "UpdateSharedPurchaseDraftConflict";
+    readonly code: MutationErrorCode;
     readonly draft: {
       readonly createdAt: string;
       readonly householdId: string;
@@ -24,6 +30,21 @@ export type UpdateSharedPurchaseDraftMutation$data = {
       readonly revision: number;
       readonly updatedAt: string;
     };
+    readonly message: string;
+  } | {
+    readonly __typename: "UpdateSharedPurchaseDraftSuccess";
+    readonly result: {
+      readonly createdAt: string;
+      readonly householdId: string;
+      readonly id: string;
+      readonly payload: string;
+      readonly revision: number;
+      readonly updatedAt: string;
+    };
+  } | {
+    // This will never be '%other', but we need some
+    // value in case none of the concrete values match.
+    readonly __typename: "%other";
   };
 };
 export type UpdateSharedPurchaseDraftMutation = {
@@ -50,24 +71,88 @@ v2 = {
 v3 = [
   {
     "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "id",
+    "storageKey": null
+  },
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "householdId",
+    "storageKey": null
+  },
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "revision",
+    "storageKey": null
+  },
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "payload",
+    "storageKey": null
+  },
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "createdAt",
+    "storageKey": null
+  },
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "updatedAt",
+    "storageKey": null
+  }
+],
+v4 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "code",
+  "storageKey": null
+},
+v5 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "message",
+  "storageKey": null
+},
+v6 = [
+  {
+    "alias": null,
     "args": [
       {
-        "kind": "Variable",
-        "name": "expectedRevision",
-        "variableName": "expectedRevision"
-      },
-      {
-        "kind": "Variable",
-        "name": "id",
-        "variableName": "id"
-      },
-      {
-        "kind": "Variable",
-        "name": "payload",
-        "variableName": "payload"
+        "fields": [
+          {
+            "kind": "Variable",
+            "name": "expectedRevision",
+            "variableName": "expectedRevision"
+          },
+          {
+            "kind": "Variable",
+            "name": "id",
+            "variableName": "id"
+          },
+          {
+            "kind": "Variable",
+            "name": "payload",
+            "variableName": "payload"
+          }
+        ],
+        "kind": "ObjectValue",
+        "name": "input"
       }
     ],
-    "concreteType": "UpdateSharedPurchaseDraftPayload",
+    "concreteType": null,
     "kind": "LinkedField",
     "name": "updateSharedPurchaseDraft",
     "plural": false,
@@ -76,61 +161,53 @@ v3 = [
         "alias": null,
         "args": null,
         "kind": "ScalarField",
-        "name": "conflict",
+        "name": "__typename",
         "storageKey": null
       },
       {
-        "alias": null,
-        "args": null,
-        "concreteType": "SharedPurchaseDraft",
-        "kind": "LinkedField",
-        "name": "draft",
-        "plural": false,
+        "kind": "InlineFragment",
         "selections": [
           {
             "alias": null,
             "args": null,
-            "kind": "ScalarField",
-            "name": "id",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "householdId",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "revision",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "payload",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "createdAt",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "updatedAt",
+            "concreteType": "SharedPurchaseDraft",
+            "kind": "LinkedField",
+            "name": "result",
+            "plural": false,
+            "selections": (v3/*:: as any*/),
             "storageKey": null
           }
         ],
-        "storageKey": null
+        "type": "UpdateSharedPurchaseDraftSuccess",
+        "abstractKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          (v4/*:: as any*/),
+          (v5/*:: as any*/),
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "SharedPurchaseDraft",
+            "kind": "LinkedField",
+            "name": "draft",
+            "plural": false,
+            "selections": (v3/*:: as any*/),
+            "storageKey": null
+          }
+        ],
+        "type": "UpdateSharedPurchaseDraftConflict",
+        "abstractKey": null
+      },
+      {
+        "kind": "InlineFragment",
+        "selections": [
+          (v4/*:: as any*/),
+          (v5/*:: as any*/)
+        ],
+        "type": "SharedPurchaseDraftUserError",
+        "abstractKey": null
       }
     ],
     "storageKey": null
@@ -146,7 +223,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "UpdateSharedPurchaseDraftMutation",
-    "selections": (v3/*:: as any*/),
+    "selections": (v6/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
@@ -159,19 +236,19 @@ return {
     ],
     "kind": "Operation",
     "name": "UpdateSharedPurchaseDraftMutation",
-    "selections": (v3/*:: as any*/)
+    "selections": (v6/*:: as any*/)
   },
   "params": {
-    "cacheID": "600e5df5c54fc44b1d653407c5edb616",
+    "cacheID": "3d2086612df72d12b8ea55726495ff32",
     "id": null,
     "metadata": {},
     "name": "UpdateSharedPurchaseDraftMutation",
     "operationKind": "mutation",
-    "text": "mutation UpdateSharedPurchaseDraftMutation(\n  $id: ID!\n  $expectedRevision: Int!\n  $payload: String!\n) {\n  updateSharedPurchaseDraft(id: $id, expectedRevision: $expectedRevision, payload: $payload) {\n    conflict\n    draft {\n      id\n      householdId\n      revision\n      payload\n      createdAt\n      updatedAt\n    }\n  }\n}\n"
+    "text": "mutation UpdateSharedPurchaseDraftMutation(\n  $id: ID!\n  $expectedRevision: Int!\n  $payload: String!\n) {\n  updateSharedPurchaseDraft(input: {id: $id, expectedRevision: $expectedRevision, payload: $payload}) {\n    __typename\n    ... on UpdateSharedPurchaseDraftSuccess {\n      result {\n        id\n        householdId\n        revision\n        payload\n        createdAt\n        updatedAt\n      }\n    }\n    ... on UpdateSharedPurchaseDraftConflict {\n      code\n      message\n      draft {\n        id\n        householdId\n        revision\n        payload\n        createdAt\n        updatedAt\n      }\n    }\n    ... on SharedPurchaseDraftUserError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "86a5a28fdc7748aaab2aff33e158623c";
+(node as any).hash = "a07694cceb03c72df6d72fa05e6cf765";
 
 export default node;

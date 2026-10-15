@@ -1,25 +1,5 @@
 extend type Mutation {
   recordTransfer(input: RecordTransferInput!): RecordTransferResult!
-  linkStatementTransfer(input: LinkStatementTransferInput!): LinkStatementTransferResult!
-}
-
-union LinkStatementTransferResult = LinkStatementTransferSuccess | LinkStatementTransferUserError
-
-type LinkStatementTransferSuccess {
-  result: LedgerEntry!
-}
-
-input LinkStatementTransferInput {
-  householdId: ID! @nodeID(of: "Household")
-  ledgerEntryId: ID! @nodeID(of: "LedgerEntry")
-  sourceDocumentId: ID!
-  sourceReference: String!
-  sourceAccountId: ID! @nodeID(of: "Account")
-}
-
-type LinkStatementTransferUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
 }
 
 union RecordTransferResult = RecordTransferSuccess | RecordTransferUserError

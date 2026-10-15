@@ -1,0 +1,26 @@
+extend type Mutation {
+  updateSharedPurchaseDraft(
+    input: UpdateSharedPurchaseDraftInput!
+  ): UpdateSharedPurchaseDraftResult!
+}
+
+input UpdateSharedPurchaseDraftInput {
+  id: ID!
+  expectedRevision: Int!
+  payload: String!
+}
+
+union UpdateSharedPurchaseDraftResult =
+  | UpdateSharedPurchaseDraftSuccess
+  | UpdateSharedPurchaseDraftConflict
+  | SharedPurchaseDraftUserError
+
+type UpdateSharedPurchaseDraftSuccess {
+  result: SharedPurchaseDraft!
+}
+
+type UpdateSharedPurchaseDraftConflict implements MutationError {
+  code: MutationErrorCode!
+  message: String!
+  draft: SharedPurchaseDraft!
+}

@@ -1,0 +1,9 @@
+extend type Mutation {
+  rotateHouseholdMailForwarding(
+    input: HouseholdMailForwardingInput!
+  ): RotateHouseholdMailForwardingResult!
+}
+
+union RotateHouseholdMailForwardingResult =
+  | RotateHouseholdMailForwardingSuccess
+  | HouseholdMailForwardingUserError

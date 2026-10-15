@@ -14,48 +14,6 @@ import (
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
-// IssueHouseholdMailForwarding is the resolver for the issueHouseholdMailForwarding field.
-func (r *mutationResolver) IssueHouseholdMailForwarding(ctx context.Context, input model.HouseholdMailForwardingInput) (model.IssueHouseholdMailForwardingResult, error) {
-	if !r.MailForwardingEnabled {
-		return &model.HouseholdMailForwardingUserError{Code: model.MutationErrorCodeMailForwardingDisabled, Message: "メール転送先の発行は現在利用できません。"}, nil
-	}
-	address, err := r.issueHouseholdMailForwarding(ctx, input)
-	if err != nil {
-		if result, ok := mutationErrorResult(err); ok {
-			return &model.HouseholdMailForwardingUserError{Code: result.Code, Message: result.Message}, nil
-		}
-		return nil, err
-	}
-	return &model.IssueHouseholdMailForwardingSuccess{Result: address}, nil
-}
-
-// RotateHouseholdMailForwarding is the resolver for the rotateHouseholdMailForwarding field.
-func (r *mutationResolver) RotateHouseholdMailForwarding(ctx context.Context, input model.HouseholdMailForwardingInput) (model.RotateHouseholdMailForwardingResult, error) {
-	if !r.MailForwardingEnabled {
-		return &model.HouseholdMailForwardingUserError{Code: model.MutationErrorCodeMailForwardingDisabled, Message: "メール転送先の交換は現在利用できません。"}, nil
-	}
-	address, err := r.rotateHouseholdMailForwarding(ctx, input)
-	if err != nil {
-		if result, ok := mutationErrorResult(err); ok {
-			return &model.HouseholdMailForwardingUserError{Code: result.Code, Message: result.Message}, nil
-		}
-		return nil, err
-	}
-	return &model.RotateHouseholdMailForwardingSuccess{Result: address}, nil
-}
-
-// RevokeHouseholdMailForwarding is the resolver for the revokeHouseholdMailForwarding field.
-func (r *mutationResolver) RevokeHouseholdMailForwarding(ctx context.Context, input model.HouseholdMailForwardingInput) (model.RevokeHouseholdMailForwardingResult, error) {
-	status, err := r.revokeHouseholdMailForwarding(ctx, input)
-	if err != nil {
-		if result, ok := mutationErrorResult(err); ok {
-			return &model.HouseholdMailForwardingUserError{Code: result.Code, Message: result.Message}, nil
-		}
-		return nil, err
-	}
-	return &model.RevokeHouseholdMailForwardingSuccess{Result: status}, nil
-}
-
 // HouseholdMailForwarding is the resolver for the householdMailForwarding field.
 func (r *queryResolver) HouseholdMailForwarding(ctx context.Context, householdID string) (*model.HouseholdMailForwardingStatus, error) {
 	user, err := principal(ctx)

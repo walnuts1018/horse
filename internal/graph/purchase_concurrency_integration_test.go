@@ -129,28 +129,6 @@ func TestPurchaseConcurrentUpdatesMergeDisjointFieldsAndConflictOnSameField(t *t
 	if successCount != 1 || conflictCount != 1 {
 		t.Fatalf("same-field updates returned %d successes and %d conflicts; want one of each", successCount, conflictCount)
 	}
-
-	subscriptionCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	t.Cleanup(cancel)
-	baseline := fmt.Sprint(baselineCursor)
-	changes, err := (&subscriptionResolver{Resolver: resolver}).PurchaseChanges(subscriptionCtx, household.ID, &baseline)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for range 3 {
-		select {
-		case change, ok := <-changes:
-			if !ok {
-				t.Fatal("purchaseChanges closed before all update events arrived")
-			}
-			if change.Kind != model.PurchaseChangeKindUpdated || change.EntityID != purchase.ID {
-				t.Fatalf("purchaseChanges returned an unexpected event: %#v", change)
-			}
-		case <-subscriptionCtx.Done():
-			t.Fatalf("timed out waiting for purchaseChanges events: %v", subscriptionCtx.Err())
-		}
-	}
-
 	loaded, err := loadPurchase(ctx, db, purchase.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -166,6 +144,50 @@ func TestPurchaseConcurrentUpdatesMergeDisjointFieldsAndConflictOnSameField(t *t
 	if loaded.Revision != sharedRevision+1 || loaded.Merchant != successfulMerchant || !gotOccurredAt.Equal(wantOccurredAt) {
 		t.Fatalf("reloaded purchase does not contain the concurrent updates: revision=%d merchant=%q occurredAt=%q", loaded.Revision, loaded.Merchant, loaded.OccurredAt)
 	}
+	updatedItemName := "updated purchase item"
+	updatedItem, err := mutation.updatePurchaseItem(ctx, model.UpdatePurchaseItemInput{
+		ItemID: purchase.Items[0].ID, BaseRevision: purchase.Items[0].Revision, Name: omittable(&updatedItemName),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscriptionCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	t.Cleanup(cancel)
+	baseline := fmt.Sprint(baselineCursor)
+	changes, err := (&subscriptionResolver{Resolver: resolver}).PurchaseChanges(subscriptionCtx, household.ID, &baseline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	itemChangeReceived := false
+	for range 4 {
+		select {
+		case change, ok := <-changes:
+			if !ok {
+				t.Fatal("purchaseChanges closed before all update events arrived")
+			}
+			if change.EntityKind == model.PurchaseChangeEntityPurchaseItem {
+				if change.Kind != model.PurchaseChangeKindItemUpdated || change.EntityID != updatedItem.ID {
+					t.Fatalf("purchaseChanges returned an unexpected item event: %#v", change)
+				}
+				itemChangeReceived = true
+			} else if change.Kind != model.PurchaseChangeKindUpdated || change.EntityID != purchase.ID {
+				t.Fatalf("purchaseChanges returned an unexpected event: %#v", change)
+			}
+			if change.Purchase == nil || change.Purchase.ID != purchase.ID {
+				t.Fatalf("purchaseChanges did not include the updated purchase node: %#v", change.Purchase)
+			}
+			if change.EntityKind == model.PurchaseChangeEntityPurchaseItem && (len(change.Purchase.Items) != 1 || change.Purchase.Items[0].Name != updatedItemName) {
+				t.Fatalf("purchaseChanges did not include the updated purchase item node: %#v", change.Purchase.Items)
+			}
+		case <-subscriptionCtx.Done():
+			t.Fatalf("timed out waiting for purchaseChanges events: %v", subscriptionCtx.Err())
+		}
+	}
+	if !itemChangeReceived {
+		t.Fatal("purchaseChanges did not publish the purchase item update")
+	}
+
 	purchaseUUID, err := gofrsuuid.FromString(purchase.ID)
 	if err != nil {
 		t.Fatal(err)

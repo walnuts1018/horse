@@ -22,15 +22,3 @@ func (r *mutationResolver) RecordAccountMovement(ctx context.Context, input mode
 	}
 	return &model.RecordAccountMovementSuccess{Result: result}, nil
 }
-
-// LinkStatementAccountMovement is the resolver for the linkStatementAccountMovement field.
-func (r *mutationResolver) LinkStatementAccountMovement(ctx context.Context, input model.LinkStatementAccountMovementInput) (model.LinkStatementAccountMovementResult, error) {
-	result, err := r.linkStatementAccountMovement(ctx, input)
-	if err != nil {
-		if result, ok := mutationErrorResult(err); ok {
-			return &model.LinkStatementAccountMovementUserError{Code: result.Code, Message: result.Message}, nil
-		}
-		return nil, err
-	}
-	return &model.LinkStatementAccountMovementSuccess{Result: result}, nil
-}

@@ -203,7 +203,7 @@ func (s *Service) BulkDeleteItems(ctx context.Context, command BulkDeleteItemsCo
 		if _, err := models.PurchaseItems.Delete(dm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(target.id)))).Exec(ctx, executor); err != nil {
 			return BulkDeleteItemsResult{}, err
 		}
-		if err := accounting.RecordEvent(ctx, executor, householdID, target.id, "purchase.item.deleted", target.item.Revision+1, []string{"deleted"}, actorID); err != nil {
+		if err := accounting.RecordEventWithPayload(ctx, executor, householdID, target.id, "purchase.item.deleted", target.item.Revision+1, []string{"deleted"}, actorID, map[string]string{"purchaseId": target.item.PurchaseID.String()}); err != nil {
 			return BulkDeleteItemsResult{}, err
 		}
 	}

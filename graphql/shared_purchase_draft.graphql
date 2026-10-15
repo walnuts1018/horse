@@ -2,15 +2,6 @@ extend type Query {
   sharedPurchaseDraft(id: ID!): SharedPurchaseDraft
 }
 
-extend type Mutation {
-  createSharedPurchaseDraft(householdId: ID!, payload: String!): SharedPurchaseDraft!
-  updateSharedPurchaseDraft(
-    id: ID!
-    expectedRevision: Int!
-    payload: String!
-  ): UpdateSharedPurchaseDraftPayload!
-}
-
 type SharedPurchaseDraft {
   id: ID!
   householdId: ID!
@@ -18,9 +9,4 @@ type SharedPurchaseDraft {
   payload: String!
   createdAt: DateTime!
   updatedAt: DateTime!
-}
-
-type UpdateSharedPurchaseDraftPayload {
-  draft: SharedPurchaseDraft!
-  conflict: Boolean!
 }

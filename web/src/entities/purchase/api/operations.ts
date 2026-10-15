@@ -148,16 +148,34 @@ export const purchaseChangesSubscription = graphql`
       entityKind
       kind
       changedFields
-    }
-  }
-`;
-
-export const purchaseItemChangeQuery = graphql`
-  query PurchaseItemChangeQuery($id: ID!) {
-    node(id: $id) {
-      __typename
-      ... on PurchaseItem {
-        ...PurchaseItemFields @alias(as: "purchaseItem")
+      purchase {
+        id
+        householdId
+        occurredAt
+        datePrecision
+        merchant
+        origin
+        hasEvidence
+        sourceKinds
+        paymentAllocations {
+          paymentAccountId
+          amountYen
+          account {
+            id
+            name
+          }
+        }
+        items {
+          ...PurchaseItemFields @relay(mask: false)
+        }
+        totalYen
+        correctionAmountYen
+        correctionCount
+        remainingRefundableAmountYen
+        revision
+        status
+        createdAt
+        updatedAt
       }
     }
   }

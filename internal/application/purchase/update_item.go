@@ -30,9 +30,6 @@ const (
 	itemFieldCategoryID       = "categoryId"
 	itemFieldProductVariantID = "productVariantId"
 	itemFieldAllocations      = "allocations"
-	itemLearningItemOnly      = "ITEM_ONLY"
-	itemLearningVariantName   = "VARIANT_NAME"
-	itemLearningMerchantAlias = "MERCHANT_ALIAS"
 )
 
 func (s *Service) UpdateItem(ctx context.Context, command UpdateItemCommand) (UpdateResult, error) {
@@ -158,15 +155,9 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	if command.ProductVariantIDSet {
 		variantID = command.ProductVariantID
 	}
-	if command.ProductLearningSet && command.ProductLearning == nil {
-		return UpdateResult{}, fmt.Errorf("%w: product learning configuration must select a scope", ErrBadInput)
-	}
-	learningScope, learningVariantName, err := updateItemLearning(command.ProductLearning)
+	productLearning, err := prepareItemProductLearning(command, variantID)
 	if err != nil {
 		return UpdateResult{}, err
-	}
-	if command.ProductLearning != nil && !slices.Contains(command.ChangedFields, itemFieldProductVariantID) {
-		return UpdateResult{}, fmt.Errorf("%w: product learning requires a product variant change", ErrBadInput)
 	}
 	if command.ProductVariantIDSet && variantID != nil {
 		variantUUID, parseErr := parseUUID(*variantID, "product variant")
@@ -194,9 +185,6 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 		if queryErr != nil {
 			return UpdateResult{}, queryErr
 		}
-	}
-	if learningScope != itemLearningItemOnly && variantID == nil {
-		return UpdateResult{}, fmt.Errorf("%w: product learning requires a linked variant", ErrBadInput)
 	}
 	measure, err := measureFromItemUpdate(command, item)
 	if err != nil {
@@ -238,30 +226,8 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	if accountingChanged != nil {
 		*accountingChanged = *accountingChanged || plan.allocationsChanged
 	}
-	if learningScope == itemLearningVariantName {
-		variantName := strings.TrimSpace(*learningVariantName)
-		variantKey := normalizeProductName(variantName)
-		if variantKey == "" || len(variantName) > 240 {
-			return UpdateResult{}, fmt.Errorf("%w: invalid normalized product name", ErrBadInput)
-		}
-		variantUUID, parseErr := parseUUID(*variantID, "product variant")
-		if parseErr != nil {
-			return UpdateResult{}, ErrNotFound
-		}
-		if _, err := models.ProductVariants.Update((&models.ProductVariantSetter{Name: &variantName, NormalizedName: &variantKey}).UpdateMod(),
-			um.Where(psql.And(models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)), models.ProductVariants.Columns.HouseholdID.EQ(psql.Arg(householdID)))),
-			um.SetCol("revision").To(models.ProductVariants.Columns.Revision.Plus(psql.Arg(int64(1)))),
-			um.SetCol("updated_at").To(psql.F("now")),
-		).Exec(ctx, executor); err != nil {
-			return UpdateResult{}, err
-		}
-		variant, err := models.ProductVariants.Query(sm.Where(models.ProductVariants.Columns.ID.EQ(psql.Arg(variantUUID)))).One(ctx, executor)
-		if err != nil {
-			return UpdateResult{}, err
-		}
-		if err := accounting.RecordEvent(ctx, executor, householdID, variant.ID, "product.variant.renamed", variant.Revision, []string{itemFieldName}, actorUUID); err != nil {
-			return UpdateResult{}, err
-		}
+	if err := applyItemVariantNameLearning(ctx, executor, householdID, actorUUID, variantID, productLearning); err != nil {
+		return UpdateResult{}, err
 	}
 	fieldRevisionValue := itemChangeFieldValue(plan)
 	if _, err := models.PurchaseItems.Update((&models.PurchaseItemSetter{
@@ -273,44 +239,8 @@ func (s *Service) updateItem(ctx context.Context, command UpdateItemCommand, sha
 	}).UpdateMod(), um.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemUUID))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
 		return UpdateResult{}, err
 	}
-	if command.ProductVariantIDSet && variantID != nil {
-		merchantKey := normalizeMerchant(purchase.Merchant)
-		if learningScope == itemLearningMerchantAlias {
-			if merchantKey == "" {
-				return UpdateResult{}, fmt.Errorf("%w: merchant-specific learning requires a merchant", ErrBadInput)
-			}
-			aliasID, err := upsertProductAlias(ctx, executor, householdID, variantID, merchantKey, item.Name, normalizeProductName(item.Name))
-			if err != nil {
-				return UpdateResult{}, err
-			}
-			aliasUUID, parseErr := parseUUID(aliasID, "product alias")
-			if parseErr != nil {
-				return UpdateResult{}, parseErr
-			}
-			alias, err := models.ProductAliases.Query(sm.Where(models.ProductAliases.Columns.ID.EQ(psql.Arg(aliasUUID)))).One(ctx, executor)
-			if err != nil {
-				return UpdateResult{}, err
-			}
-			if err := accounting.RecordEvent(ctx, executor, householdID, alias.ID, "product.alias.learned", alias.Revision, []string{"alias", "variantId", "merchant"}, actorUUID); err != nil {
-				return UpdateResult{}, err
-			}
-		}
-		variantUUID, parseErr := parseUUID(*variantID, "product variant")
-		if parseErr != nil {
-			return UpdateResult{}, ErrNotFound
-		}
-		previousVariant, parseErr := nullableUUID(variantIDValue(item.ProductVariantID))
-		if parseErr != nil {
-			return UpdateResult{}, ErrNotFound
-		}
-		correctionUUID := newUUID()
-		if _, err := models.ProductCorrections.Insert(&models.ProductCorrectionSetter{
-			ID: &correctionUUID, HouseholdID: &householdID, PurchaseID: &purchase.ID, ItemID: &itemUUID,
-			RawName: &item.Name, PreviousProductVariantID: &previousVariant, ProductVariantID: &variantUUID,
-			LearningScope: &learningScope, MerchantKey: &merchantKey, ActorID: &actorUUID,
-		}).Exec(ctx, executor); err != nil {
-			return UpdateResult{}, err
-		}
+	if err := recordItemProductVariantChange(ctx, executor, householdID, actorUUID, purchase, item, itemUUID, command, variantID, productLearning); err != nil {
+		return UpdateResult{}, err
 	}
 	if err := applyItemAllocationPlan(ctx, executor, item, plan); err != nil {
 		return UpdateResult{}, err
@@ -444,35 +374,6 @@ func updateRational(numerator, denominator *string) (sql.Null[int64], sql.Null[i
 		return sql.Null[int64]{}, sql.Null[int64]{}, err
 	}
 	return sql.Null[int64]{V: rational.Numerator, Valid: true}, sql.Null[int64]{V: rational.Denominator, Valid: true}, nil
-}
-
-func updateItemLearning(value *ProductLearning) (string, *string, error) {
-	if value == nil {
-		return itemLearningItemOnly, nil, nil
-	}
-	selected := 0
-	if value.ItemOnly != nil {
-		selected++
-	}
-	if value.VariantName != nil {
-		selected++
-	}
-	if value.MerchantAlias != nil {
-		selected++
-	}
-	if selected != 1 {
-		return "", nil, fmt.Errorf("%w: product learning configuration must select exactly one scope", ErrBadInput)
-	}
-	if value.ItemOnly != nil && *value.ItemOnly {
-		return itemLearningItemOnly, nil, nil
-	}
-	if value.VariantName != nil {
-		return itemLearningVariantName, value.VariantName, nil
-	}
-	if value.MerchantAlias != nil && *value.MerchantAlias {
-		return itemLearningMerchantAlias, nil, nil
-	}
-	return "", nil, fmt.Errorf("%w: product learning marker must be true", ErrBadInput)
 }
 
 func adjustedPurchasePayments(ctx context.Context, executor bob.Executor, purchase *models.Purchase, oldAmount, newAmount int64) ([]Payment, bool, error) {

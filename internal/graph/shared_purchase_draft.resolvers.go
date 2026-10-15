@@ -12,32 +12,6 @@ import (
 	"github.com/walnuts1018/horse/internal/graph/model"
 )
 
-// CreateSharedPurchaseDraft is the resolver for the createSharedPurchaseDraft field.
-func (r *mutationResolver) CreateSharedPurchaseDraft(ctx context.Context, householdID string, payload string) (*model.SharedPurchaseDraft, error) {
-	user, err := principal(ctx)
-	if err != nil {
-		return nil, err
-	}
-	draft, err := purchaseapp.NewService(r.DB).CreateSharedPurchaseDraft(ctx, user.MemberID, householdID, payload)
-	if err != nil {
-		return nil, err
-	}
-	return graphSharedPurchaseDraft(draft), nil
-}
-
-// UpdateSharedPurchaseDraft is the resolver for the updateSharedPurchaseDraft field.
-func (r *mutationResolver) UpdateSharedPurchaseDraft(ctx context.Context, id string, expectedRevision int, payload string) (*model.UpdateSharedPurchaseDraftPayload, error) {
-	user, err := principal(ctx)
-	if err != nil {
-		return nil, err
-	}
-	result, err := purchaseapp.NewService(r.DB).UpdateSharedPurchaseDraft(ctx, user.MemberID, id, int64(expectedRevision), payload)
-	if err != nil {
-		return nil, err
-	}
-	return &model.UpdateSharedPurchaseDraftPayload{Draft: graphSharedPurchaseDraft(result.Draft), Conflict: result.Conflict}, nil
-}
-
 // SharedPurchaseDraft is the resolver for the sharedPurchaseDraft field.
 func (r *queryResolver) SharedPurchaseDraft(ctx context.Context, id string) (*model.SharedPurchaseDraft, error) {
 	user, err := principal(ctx)
@@ -49,11 +23,4 @@ func (r *queryResolver) SharedPurchaseDraft(ctx context.Context, id string) (*mo
 		return nil, err
 	}
 	return graphSharedPurchaseDraft(draft), nil
-}
-
-func graphSharedPurchaseDraft(draft purchaseapp.SharedPurchaseDraft) *model.SharedPurchaseDraft {
-	return &model.SharedPurchaseDraft{
-		ID: draft.ID, HouseholdID: draft.HouseholdID, Revision: int(draft.Revision), Payload: draft.Payload,
-		CreatedAt: timeString(draft.CreatedAt), UpdatedAt: timeString(draft.UpdatedAt),
-	}
 }

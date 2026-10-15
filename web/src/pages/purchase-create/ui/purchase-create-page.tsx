@@ -416,11 +416,12 @@ function PurchaseCreatePageContent({
         ? "下書き保存済み"
         : "入力待ち";
 
-  const copyPurchaseItems = (purchase: Purchase) => {
-    itemsCommands.current?.copy(purchase);
+  const copyPurchaseItems = (purchase: Purchase, mode: "replace" | "append") => {
+    itemsCommands.current?.copy(purchase, mode);
+    const firstCopiedRow = mode === "append" ? items.length : 0;
     requestAnimationFrame(() => {
       const input = composerRef.current?.querySelector<HTMLInputElement>(
-        '[data-grid-row="0"][data-grid-column="name"]',
+        `[data-grid-row="${firstCopiedRow}"][data-grid-column="name"]`,
       );
       if (!input) return;
       input.focus({ preventScroll: true });
@@ -506,6 +507,7 @@ function PurchaseCreatePageContent({
         recentPurchases={recentPurchases}
         copiedPurchase={copiedPurchase}
         copiedAt={copiedAt}
+        currentItemCount={items.length}
         occurredAtError={fieldError?.field === "occurredAt"}
         summary={
           <span className={styles.summarySecondary}>

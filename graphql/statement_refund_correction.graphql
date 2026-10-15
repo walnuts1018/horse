@@ -25,29 +25,3 @@ type StatementRefundCorrectionConnection {
   edges: [StatementRefundCorrectionEdge!]!
   pageInfo: PageInfo!
 }
-
-extend type Mutation {
-  linkStatementRefundCorrection(
-    input: LinkStatementRefundCorrectionInput!
-  ): LinkStatementRefundCorrectionResult!
-}
-
-input LinkStatementRefundCorrectionInput {
-  householdId: ID! @nodeID(of: "Household")
-  correctionId: ID! @nodeID(of: "PurchaseCorrection")
-  sourceDocumentId: ID!
-  sourceReference: String!
-}
-
-union LinkStatementRefundCorrectionResult =
-  | LinkStatementRefundCorrectionSuccess
-  | LinkStatementRefundCorrectionUserError
-
-type LinkStatementRefundCorrectionSuccess {
-  result: Purchase!
-}
-
-type LinkStatementRefundCorrectionUserError implements MutationError {
-  code: MutationErrorCode!
-  message: String!
-}
