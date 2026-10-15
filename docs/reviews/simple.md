@@ -65,25 +65,11 @@ Member、Account、Category、Household、Pool Nodeの複数ID解決では、所
 - [purchase/bulk_update_items.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/bulk_update_items.go)
 - [purchase/save_item_edits.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/save_item_edits.go)
 
-明細更新では`updateItem()`と`updateBulkItem()`が`itemChangePlan`を共有し、リビジョンと配賦計算の一部を共通化しました。購入全体の通常更新と一括更新も`purchaseUpdatePlan`と`applyPurchaseUpdatePlan()`を共有し、フィールドリビジョンの競合判定と購入行・支払行の更新を共通化しました。購入更新後の台帳行同期も`updatePostedPurchaseLedgerEntries()`へ分離しました。入力フィールドと支払額の検証には共通ヘルパーを使いますが、対象の読み込み、ロック、一括更新の事前検証と適用順、仕訳同期、監査イベント記録は各ユースケースが調整します。
+明細更新では`updateItem()`と`updateBulkItem()`が`itemChangePlan`を共有し、リビジョンと配賦計算の一部を共通化しました。購入全体の通常更新と一括更新も`purchaseUpdatePlan`と`applyPurchaseUpdatePlan()`を共有し、フィールドリビジョンの競合判定と購入行・支払行の更新を共通化しました。購入更新後の台帳行同期も`updatePostedPurchaseLedgerEntries()`へ分離しました。入力フィールドと支払額の検証には共通ヘルパーを使い、仕訳同期と監査イベント記録は各ユースケースが調整します。
 
-`SaveItemEdits()`は購入と明細を一度取得し、ID順にロックした明細状態を各更新へ渡します。明細ごとの再取得と再ロックはなく、`planAndApplyPurchaseItemUpdate()`で計画構築と適用を共有します。購入全体の通常更新は`Update()`がtransactionを開始・commitし、transaction内の適用処理は`updateInTransaction()`が担います。`SaveItemEdits()`は自身のtransactionを所有し、明示した`purchaseUpdateOptions`で購入更新後の台帳同期を保留して明細更新と合わせて実行します。複数明細と購入更新を組み合わせるfocused integration testも追加されています。
+`SaveItemEdits()`は購入と明細を一度取得し、ID順にロックした明細状態を各更新へ渡します。明細ごとの再取得と再ロックはなく、`planAndApplyPurchaseItemUpdate()`で計画構築と適用を共有します。`BulkUpdateItems()`は対象明細と購入をBobの一括取得で読み込み、会計期間、購入、明細の順にロックします。複数の購入と明細はID昇順でロックし、ロック後にrevisionと所属を検証します。イベントと結果は入力順に保ちます。逆順の明細IDを渡したintegration testで、入力順の結果とrevision更新を確認しています。購入全体の通常更新は`Update()`がtransactionを開始・commitし、transaction内の適用処理は`updateInTransaction()`が担います。`SaveItemEdits()`は自身のtransactionを所有し、明示した`purchaseUpdateOptions`で購入更新後の台帳同期を保留して明細更新と合わせて実行します。
 
-残る設計課題は、Create、Update、BulkUpdate、BulkUpdateItems、SaveItemEditsのtransaction境界と適用順の横断的な整理です。通常のUpdateとSaveItemEditsではtransaction所有者とtransaction内の購入適用処理が分かれました。CreateとCreateAndPostは作成処理を共有し、BulkUpdateは全対象を一つのtransactionで更新しますが、BulkUpdateItemsは対象取得・ロックと検証を各対象について交互に行います。ユースケース固有の事前検証、ロック順序、仕訳同期、イベント記録が残るため、複数購入・複数明細の一括操作で一貫したロック順序とcommit単位を保てるかを引き続き整理する必要があります。単一更新と一括更新の流れは、例えば次の構造で整理できます。
-
-Create / Update / BulkUpdate / SaveItemEdits
-
-GraphQLなどの公開API
-
-共通の変更計画の構築
-
-差分判定・競合判定・配賦と支払の整合性検証
-
-トランザクション内で変更計画を適用
-
-ロック → DB更新 → 必要なら仕訳再構築 → イベント記録
-
-ただし、既存のロック順序と会計期間の整合性は慎重に維持する必要があります。
+残る設計課題は、Create、CreateAndPost、Update、BulkUpdate、BulkUpdateItems、SaveItemEditsのtransaction所有者とcommit単位をどう統一するかです。CreateとCreateAndPostは作成処理を共有しますが、別のtransactionを所有します。Updateは`Update()`がtransactionを所有し、`SaveItemEdits()`は購入・明細の更新をまとめるtransactionを所有します。BulkUpdateとBulkUpdateItemsも各操作の全対象を一つのtransactionで更新します。共通化するtransaction実行責務とユースケース固有の処理範囲を明確にし、すべての更新経路で原子性を保つ方法の整理が残っています。
 
 ## 5. 小さな自前ユーティリティも整理する
 
