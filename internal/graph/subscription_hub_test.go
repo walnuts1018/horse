@@ -45,7 +45,9 @@ func TestSubscriptionHubSharesMinimumCursorAndFansOutChanges(t *testing.T) {
 	}
 
 	change := &model.PurchaseChange{Cursor: "5"}
-	hub.publishPurchaseChange(householdID, 5, change, make(map[uint64]bool))
+	if !hub.publishPurchaseChange(householdID, 5, change, make(map[uint64]bool)) {
+		t.Fatal("change was not reported as delivered")
+	}
 	select {
 	case got := <-firstChanges:
 		if got != change {
@@ -82,6 +84,12 @@ func TestSubscriptionHubRetriesBackpressuredPurchaseChange(t *testing.T) {
 	if hub.hasAvailablePurchaseWatch(householdID, 5, blocked) {
 		t.Fatal("full watcher buffer was reported as available")
 	}
+	if hub.publishPurchaseChange(householdID, 5, new(model.PurchaseChange), blocked) {
+		t.Fatal("change to a full watcher was reported as delivered")
+	}
+	if got := nextSubscriptionPollInterval(subscriptionHubPollInterval, false); got != 2*time.Second {
+		t.Fatalf("poll interval after backpressure = %s; want %s", got, 2*time.Second)
+	}
 	hub.blockFullPurchaseWatches(householdID, 5, blocked)
 	hub.advancePurchaseCursors(householdID, 5, blocked)
 	if watch.cursor != 4 {
@@ -94,7 +102,9 @@ func TestSubscriptionHubRetriesBackpressuredPurchaseChange(t *testing.T) {
 	if !hub.hasAvailablePurchaseWatch(householdID, 5, retryBlocked) {
 		t.Fatal("watcher buffer did not become available after draining")
 	}
-	hub.publishPurchaseChange(householdID, 5, change, retryBlocked)
+	if !hub.publishPurchaseChange(householdID, 5, change, retryBlocked) {
+		t.Fatal("change was not reported as delivered after draining")
+	}
 	if watch.cursor != 5 {
 		t.Fatalf("cursor after retry = %d; want 5", watch.cursor)
 	}

@@ -22,6 +22,7 @@ const (
 	subscriptionHubMaxIdlePollInterval     = 5 * time.Second
 	subscriptionHubMaxRetryInterval        = 30 * time.Second
 	subscriptionAuthorizationCheckInterval = 30 * time.Second
+	subscriptionHubPurchaseEventBatchSize  = 100
 )
 
 type subscriptionHub struct {
@@ -238,12 +239,13 @@ func (h *subscriptionHub) pollPurchases(ctx context.Context, cursors []purchaseS
 	events, err := models.HouseholdEvents.Query(
 		sm.Where(psql.Or(conditions...)),
 		sm.OrderBy(models.HouseholdEvents.Columns.Cursor),
-		sm.Limit(100),
+		sm.Limit(subscriptionHubPurchaseEventBatchSize),
 	).All(ctx, bobpgx.NewPool(h.db))
 	if err != nil {
 		return false, err
 	}
 	blocked := make(map[uint64]bool)
+	delivered := false
 	for _, event := range events {
 		change, ok := purchaseChange(event)
 		if !ok {
@@ -262,9 +264,10 @@ func (h *subscriptionHub) pollPurchases(ctx context.Context, cursors []purchaseS
 		if err != nil {
 			return false, err
 		}
-		h.publishPurchaseChange(event.HouseholdID, event.Cursor, change, blocked)
+		delivered = h.publishPurchaseChange(event.HouseholdID, event.Cursor, change, blocked) || delivered
 	}
-	return len(events) > 0, nil
+
+	return delivered, nil
 }
 
 func (h *subscriptionHub) blockFullPurchaseWatches(householdID uuid.UUID, cursor int64, blocked map[uint64]bool) {
@@ -291,9 +294,10 @@ func (h *subscriptionHub) hasAvailablePurchaseWatch(householdID uuid.UUID, curso
 	return false
 }
 
-func (h *subscriptionHub) publishPurchaseChange(householdID uuid.UUID, cursor int64, change *model.PurchaseChange, blocked map[uint64]bool) {
+func (h *subscriptionHub) publishPurchaseChange(householdID uuid.UUID, cursor int64, change *model.PurchaseChange, blocked map[uint64]bool) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	delivered := false
 	for id, watch := range h.purchases {
 		if blocked[id] || watch.householdID != householdID || watch.cursor >= cursor {
 			continue
@@ -301,10 +305,13 @@ func (h *subscriptionHub) publishPurchaseChange(householdID uuid.UUID, cursor in
 		select {
 		case watch.changes <- change:
 			watch.cursor = cursor
+			delivered = true
 		default:
 			blocked[id] = true
 		}
 	}
+
+	return delivered
 }
 
 func (h *subscriptionHub) advancePurchaseCursors(householdID uuid.UUID, cursor int64, blocked map[uint64]bool) {
@@ -332,15 +339,18 @@ func (h *subscriptionHub) pollDrafts(ctx context.Context, cursors []sharedDraftS
 		return false, err
 	}
 	blocked := make(map[uint64]bool)
+	delivered := false
 	for _, draft := range drafts {
-		h.publishDraftChange(draft.ID, draft.Revision, blocked)
+		delivered = h.publishDraftChange(draft.ID, draft.Revision, blocked) || delivered
 	}
-	return len(drafts) > 0, nil
+
+	return delivered, nil
 }
 
-func (h *subscriptionHub) publishDraftChange(draftID uuid.UUID, revision int64, blocked map[uint64]bool) {
+func (h *subscriptionHub) publishDraftChange(draftID uuid.UUID, revision int64, blocked map[uint64]bool) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	delivered := false
 	for id, watch := range h.drafts {
 		if blocked[id] || watch.draftID != draftID || watch.cursor >= revision {
 			continue
@@ -348,8 +358,11 @@ func (h *subscriptionHub) publishDraftChange(draftID uuid.UUID, revision int64, 
 		select {
 		case watch.changes <- sharedPurchaseDraftChange(revision):
 			watch.cursor = revision
+			delivered = true
 		default:
 			blocked[id] = true
 		}
 	}
+
+	return delivered
 }
