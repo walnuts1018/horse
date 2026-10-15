@@ -1,4 +1,4 @@
-h1:Q4Ajsl/rzkgVlOnGnCbBOA9axPey0KwFUloFjvSaajo=
+h1:UAghLoUCwmjv1VHtqqo5CjHmGQPVNVH8ROZPswTraEk=
 20261015000000_postpurchase.sql h1:RgfuJe7XWes1UhAH9ehoGDdcEge9sTOBM1j6+7DzWUQ=
 20261015100000_purchase_contract.sql h1:MRdG/aYpeUwNT2VF7YK8P2C4hGtBXuma+GSYpk7DAhI=
 20261015120000_bookkeeping_workflows.sql h1:JL9Wv/ux5hnardeNlbgAxogK5JoPo4v2/Z6mhZFGG64=
@@ -16,3 +16,4 @@ h1:Q4Ajsl/rzkgVlOnGnCbBOA9axPey0KwFUloFjvSaajo=
 20261015240000_household_invitations.sql h1:dkFTntzZgGwb+zMWqpxZmjAONvEGL6pGpoN/rw7YbrQ=
 20261016000000_catalog_tags.sql h1:biOcMZ1Fnj1zuLsE6ejZo6J8xPMCJFYmFyRzUaKenZU=
 20261016100000_statement_income_confirmations.sql h1:DExs2XmX48fruXXBR67npz+ZsKoirill1i68v8vGKUk=
+20261016110000_statement_account_movement_confirmations.sql h1:v/qGZK903uX+IIzCRIzpSqQWClnxAsxkp7FbKAIrPvA=

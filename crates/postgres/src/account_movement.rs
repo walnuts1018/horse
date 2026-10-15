@@ -5,7 +5,16 @@ use diesel::{
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
-use bookkeeping_workflows::{Side, account_movement::RecordAccountMovementDecision};
+use bookkeeping_domain::PositiveYen;
+use bookkeeping_workflows::{
+    AccountId, MemberId, Side,
+    account_movement::{
+        AccountKind, AccountMovementKind, LinkStatementMovementCommand,
+        LinkStatementMovementDecision, RecordAccountMovementCommand,
+        RecordAccountMovementDecision, StatementMovementObservation, StatementMovementSource,
+        decide_link_statement_movement, decide_record_account_movement,
+    },
+};
 
 use crate::{PgPool, schema::public};
 
@@ -32,6 +41,14 @@ pub struct PersistedAccountMovement {
     pub description: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct PersistLinkStatementMovement {
+    pub household_id: String,
+    pub actor_id: String,
+    pub account_movement_id: String,
+    pub statement_account_id: String,
+}
+
 #[derive(Debug)]
 pub enum AccountMovementPersistenceError {
     Pool(String),
@@ -44,6 +61,12 @@ pub enum AccountMovementPersistenceError {
     MemberNotFound,
     AccountNotFound,
     AccountingPeriodClosed,
+    SourceDocumentNotFound,
+    StatementExtractionUnavailable,
+    StatementReferenceNotFound,
+    StatementAlreadyConfirmed,
+    StatementIsNotBankMovement,
+    StatementMovementMismatch,
 }
 
 impl From<DieselError> for AccountMovementPersistenceError {
@@ -159,6 +182,15 @@ pub async fn persist_record_account_movement(
                 {
                     return Err(AccountMovementPersistenceError::IdempotencyConflict);
                 }
+                if let Some(source) = &decision.statement_source {
+                    require_statement_movement_confirmation(
+                        &mut *conn,
+                        household_id,
+                        resource_id,
+                        source,
+                    )
+                    .await?;
+                }
                 return movements::account_movements
                     .filter(movements::household_id.eq(household_id))
                     .filter(movements::id.eq(resource_id))
@@ -185,6 +217,21 @@ pub async fn persist_record_account_movement(
             {
                 return Err(AccountMovementPersistenceError::InvalidDecision);
             }
+            let statement_document_id = if let Some(source) = &decision.statement_source {
+                Some(
+                    validate_record_statement_source(
+                        &mut *conn,
+                        household_id,
+                        &input.occurred_at,
+                        movement_id,
+                        source,
+                        &decision,
+                    )
+                    .await?,
+                )
+            } else {
+                None
+            };
 
             diesel::insert_into(journals::journals)
                 .values((
@@ -251,6 +298,19 @@ pub async fn persist_record_account_movement(
                 ))
                 .get_result::<(Uuid, Uuid, String, Uuid, Uuid, i64, String)>(&mut *conn)
                 .await?;
+            if let (Some(source), Some(document_id)) =
+                (&decision.statement_source, statement_document_id)
+            {
+                insert_statement_movement_confirmation(
+                    &mut *conn,
+                    household_id,
+                    document_id,
+                    &source.source_reference,
+                    movement_id,
+                    actor_id,
+                )
+                .await?;
+            }
             diesel::insert_into(public::household_events::table)
                 .values((
                     public::household_events::household_id.eq(household_id),
@@ -271,6 +331,391 @@ pub async fn persist_record_account_movement(
             account_movement_result(row)
         })
         .await
+}
+
+pub async fn persist_link_statement_movement(
+    pool: &PgPool,
+    input: PersistLinkStatementMovement,
+    decision: LinkStatementMovementDecision,
+) -> Result<PersistedAccountMovement, AccountMovementPersistenceError> {
+    let household_id = parse_uuid(&input.household_id, "household_id")?;
+    let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
+    let movement_id = parse_uuid(&input.account_movement_id, "account_movement_id")?;
+    let statement_account_id = parse_uuid(&input.statement_account_id, "statement_account_id")?;
+    let document_id = parse_uuid(&decision.source_document_id, "source_document_id")?;
+    if decision.movement_id != movement_id.to_string()
+        || decision.statement_account_id.as_str() != statement_account_id.to_string()
+        || decision.source_reference.is_empty()
+        || decision.source_reference.len() > 256
+    {
+        return Err(AccountMovementPersistenceError::InvalidDecision);
+    }
+    let mut pooled = pool
+        .get()
+        .await
+        .map_err(|error| AccountMovementPersistenceError::Pool(error.to_string()))?;
+    (&mut *pooled)
+        .transaction::<PersistedAccountMovement, AccountMovementPersistenceError, _>(async |conn| {
+            let household_exists = public::households::table
+                .filter(public::households::id.eq(household_id))
+                .for_update()
+                .select(public::households::id)
+                .first::<Uuid>(&mut *conn)
+                .await
+                .optional()?
+                .is_some();
+            if !household_exists {
+                return Err(AccountMovementPersistenceError::HouseholdNotFound);
+            }
+            let member_exists = public::household_members::table
+                .filter(public::household_members::household_id.eq(household_id))
+                .filter(public::household_members::member_id.eq(actor_id))
+                .filter(public::household_members::left_at.is_null())
+                .select(public::household_members::member_id)
+                .first::<Uuid>(&mut *conn)
+                .await
+                .optional()?
+                .is_some();
+            if !member_exists {
+                return Err(AccountMovementPersistenceError::MemberNotFound);
+            }
+            let source = StatementMovementSource {
+                source_document_id: decision.source_document_id.clone(),
+                source_reference: decision.source_reference.clone(),
+                statement_account_id: decision.statement_account_id.clone(),
+            };
+            let statement = load_statement_movement_entry(
+                &mut *conn,
+                household_id,
+                document_id,
+                &decision.source_reference,
+            )
+            .await?;
+            let statement_account_kind =
+                account_kind(&mut *conn, household_id, statement_account_id).await?;
+            let statement_account_kind = parse_account_kind(&statement_account_kind)
+                .ok_or(AccountMovementPersistenceError::InvalidDecision)?;
+            let movement = public::account_movements::table
+                .filter(public::account_movements::household_id.eq(household_id))
+                .filter(public::account_movements::id.eq(movement_id))
+                .for_update()
+                .select((
+                    public::account_movements::id,
+                    public::account_movements::journal_id,
+                    public::account_movements::kind,
+                    public::account_movements::from_account_id,
+                    public::account_movements::to_account_id,
+                    public::account_movements::amount_yen,
+                    public::account_movements::description,
+                    public::account_movements::occurred_at,
+                ))
+                .first::<(Uuid, Uuid, String, Uuid, Uuid, i64, String, DateTime<Utc>)>(&mut *conn)
+                .await
+                .optional()?
+                .ok_or(AccountMovementPersistenceError::AccountNotFound)?;
+            let kind = parse_movement_kind(&movement.2)
+                .ok_or(AccountMovementPersistenceError::InvalidDecision)?;
+            let amount = PositiveYen::new(movement.5)
+                .map_err(|_| AccountMovementPersistenceError::InvalidDecision)?;
+            let statement = statement.observation()?;
+            let expected = decide_link_statement_movement(LinkStatementMovementCommand {
+                source_document_id: source.source_document_id.clone(),
+                source_reference: source.source_reference.clone(),
+                statement_account_id: source.statement_account_id.clone(),
+                statement_account_kind,
+                movement_id: movement.0.to_string(),
+                from_account_id: AccountId::new(movement.3.to_string())
+                    .map_err(|_| AccountMovementPersistenceError::InvalidDecision)?,
+                to_account_id: AccountId::new(movement.4.to_string())
+                    .map_err(|_| AccountMovementPersistenceError::InvalidDecision)?,
+                kind,
+                amount,
+                occurred_at_unix_micros: movement.7.timestamp_micros(),
+                statement,
+            })
+            .map_err(map_statement_workflow_error)?;
+            if expected != decision {
+                return Err(AccountMovementPersistenceError::InvalidDecision);
+            }
+            insert_statement_movement_confirmation(
+                &mut *conn,
+                household_id,
+                document_id,
+                &decision.source_reference,
+                movement_id,
+                actor_id,
+            )
+            .await?;
+            Ok(account_movement_result((
+                movement.0,
+                movement.1,
+                movement.2,
+                movement.3,
+                movement.4,
+                movement.5,
+                movement.6,
+            )))
+        })
+        .await
+}
+
+#[derive(Debug)]
+struct StatementMovementEntry {
+    kind: String,
+    occurred_at: String,
+    amount_yen: i64,
+    has_region: bool,
+}
+
+impl StatementMovementEntry {
+    fn observation(&self) -> Result<StatementMovementObservation, AccountMovementPersistenceError> {
+        let occurred_at = DateTime::parse_from_rfc3339(&self.occurred_at)
+            .map_err(|_| AccountMovementPersistenceError::StatementMovementMismatch)?
+            .with_timezone(&Utc);
+        Ok(StatementMovementObservation {
+            bank_statement: true,
+            has_region: self.has_region,
+            kind: self.kind.clone(),
+            amount_yen: self.amount_yen,
+            occurred_at_unix_micros: occurred_at.timestamp_micros(),
+        })
+    }
+}
+
+async fn validate_record_statement_source(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    occurred_at: &DateTime<Utc>,
+    movement_id: Uuid,
+    source: &StatementMovementSource,
+    decision: &RecordAccountMovementDecision,
+) -> Result<Uuid, AccountMovementPersistenceError> {
+    let document_id = parse_uuid(&source.source_document_id, "source_document_id")?;
+    let entry = load_statement_movement_entry(
+        conn,
+        household_id,
+        document_id,
+        &source.source_reference,
+    )
+    .await?;
+    let statement = entry.observation()?;
+    let amount = PositiveYen::new(decision.amount.value())
+        .map_err(|_| AccountMovementPersistenceError::InvalidDecision)?;
+    let recalculated = decide_record_account_movement(RecordAccountMovementCommand {
+        actor_id: MemberId::new(decision.actor_id.as_str())
+            .map_err(|_| AccountMovementPersistenceError::InvalidDecision)?,
+        from_account_id: AccountId::new(decision.from_account_id.as_str())
+            .map_err(|_| AccountMovementPersistenceError::InvalidDecision)?,
+        from_account_kind: decision.from_account_kind,
+        to_account_id: AccountId::new(decision.to_account_id.as_str())
+            .map_err(|_| AccountMovementPersistenceError::InvalidDecision)?,
+        to_account_kind: decision.to_account_kind,
+        kind: decision.kind,
+        occurred_at_unix_micros: occurred_at.timestamp_micros(),
+        amount,
+        description: decision.description.clone(),
+        accounting_period_open: true,
+        statement_source: Some(source.clone()),
+    })
+    .map_err(map_statement_workflow_error)?;
+    if &recalculated != decision {
+        return Err(AccountMovementPersistenceError::InvalidDecision);
+    }
+    let statement_account_id = parse_uuid(source.statement_account_id.as_str(), "statement_account_id")?;
+    let statement_account_kind = parse_account_kind(
+        &account_kind(conn, household_id, statement_account_id).await?,
+    )
+    .ok_or(AccountMovementPersistenceError::InvalidDecision)?;
+    decide_link_statement_movement(LinkStatementMovementCommand {
+        source_document_id: source.source_document_id.clone(),
+        source_reference: source.source_reference.clone(),
+        statement_account_id: source.statement_account_id.clone(),
+        statement_account_kind,
+        movement_id: movement_id.to_string(),
+        from_account_id: decision.from_account_id.clone(),
+        to_account_id: decision.to_account_id.clone(),
+        kind: decision.kind,
+        amount: decision.amount,
+        occurred_at_unix_micros: decision.occurred_at_unix_micros,
+        statement,
+    })
+    .map_err(map_statement_workflow_error)?;
+    Ok(document_id)
+}
+
+async fn load_statement_movement_entry(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    document_id: Uuid,
+    source_reference: &str,
+) -> Result<StatementMovementEntry, AccountMovementPersistenceError> {
+    use public::extraction_jobs::dsl as jobs;
+    use public::source_confirmations::dsl as confirmations;
+    use public::source_documents::dsl as documents;
+
+    if source_reference.is_empty() || source_reference.len() > 256 {
+        return Err(AccountMovementPersistenceError::InvalidDecision);
+    }
+    let source_kind = documents::source_documents
+        .filter(documents::household_id.eq(household_id))
+        .filter(documents::id.eq(document_id))
+        .for_update()
+        .select(documents::source_kind)
+        .first::<String>(conn)
+        .await
+        .optional()?
+        .ok_or(AccountMovementPersistenceError::SourceDocumentNotFound)?;
+    if source_kind != "bank" {
+        return Err(AccountMovementPersistenceError::StatementIsNotBankMovement);
+    }
+    let has_confirmation = confirmations::source_confirmations
+        .filter(confirmations::household_id.eq(household_id))
+        .filter(confirmations::source_document_id.eq(document_id))
+        .filter(confirmations::source_reference.eq(source_reference))
+        .order_by(confirmations::changed_at.desc())
+        .select(confirmations::status)
+        .first::<String>(conn)
+        .await
+        .optional()?;
+    if has_confirmation.as_deref() == Some("confirmed") {
+        return Err(AccountMovementPersistenceError::StatementAlreadyConfirmed);
+    }
+    let result = jobs::extraction_jobs
+        .filter(jobs::household_id.eq(household_id))
+        .filter(jobs::source_document_id.eq(document_id))
+        .filter(jobs::status.eq("succeeded"))
+        .order_by(jobs::version.desc())
+        .select(jobs::result)
+        .first::<Option<serde_json::Value>>(conn)
+        .await
+        .optional()?
+        .flatten()
+        .ok_or(AccountMovementPersistenceError::StatementExtractionUnavailable)?;
+    let statements = result
+        .get("statements")
+        .and_then(serde_json::Value::as_array)
+        .ok_or(AccountMovementPersistenceError::StatementExtractionUnavailable)?;
+    for statement in statements {
+        let row = statement.get("row").and_then(serde_json::Value::as_i64);
+        let reference = statement
+            .get("sourceReference")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .or_else(|| row.map(|row| format!("row:{row}")));
+        if reference.as_deref() != Some(source_reference) {
+            continue;
+        }
+        return Ok(StatementMovementEntry {
+            kind: statement
+                .get("kind")
+                .and_then(serde_json::Value::as_str)
+                .ok_or(AccountMovementPersistenceError::StatementExtractionUnavailable)?
+                .to_owned(),
+            occurred_at: statement
+                .get("occurredAt")
+                .and_then(serde_json::Value::as_str)
+                .ok_or(AccountMovementPersistenceError::StatementExtractionUnavailable)?
+                .to_owned(),
+            amount_yen: statement
+                .get("amount")
+                .and_then(serde_json::Value::as_i64)
+                .ok_or(AccountMovementPersistenceError::StatementExtractionUnavailable)?,
+            has_region: statement
+                .get("region")
+                .is_some_and(|region| !region.is_null()),
+        });
+    }
+    Err(AccountMovementPersistenceError::StatementReferenceNotFound)
+}
+
+async fn require_statement_movement_confirmation(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    movement_id: Uuid,
+    source: &StatementMovementSource,
+) -> Result<(), AccountMovementPersistenceError> {
+    use public::source_confirmations::dsl as confirmations;
+
+    let document_id = parse_uuid(&source.source_document_id, "source_document_id")?;
+    let confirmation = confirmations::source_confirmations
+        .filter(confirmations::household_id.eq(household_id))
+        .filter(confirmations::source_document_id.eq(document_id))
+        .filter(confirmations::source_reference.eq(&source.source_reference))
+        .order_by(confirmations::changed_at.desc())
+        .select((confirmations::entity_kind, confirmations::entity_id, confirmations::status))
+        .first::<(String, Uuid, String)>(conn)
+        .await
+        .optional()?;
+    if confirmation.is_some_and(|(kind, id, status)| {
+        kind == "account_movement" && id == movement_id && status == "confirmed"
+    }) {
+        Ok(())
+    } else {
+        Err(AccountMovementPersistenceError::StatementAlreadyConfirmed)
+    }
+}
+
+async fn insert_statement_movement_confirmation(
+    conn: &mut diesel_async::AsyncPgConnection,
+    household_id: Uuid,
+    document_id: Uuid,
+    source_reference: &str,
+    movement_id: Uuid,
+    actor_id: Uuid,
+) -> Result<(), AccountMovementPersistenceError> {
+    diesel::insert_into(public::source_confirmations::table)
+        .values((
+            public::source_confirmations::id.eq(Uuid::now_v7()),
+            public::source_confirmations::household_id.eq(household_id),
+            public::source_confirmations::source_document_id.eq(document_id),
+            public::source_confirmations::observation_id.eq(None::<Uuid>),
+            public::source_confirmations::source_reference.eq(source_reference),
+            public::source_confirmations::entity_kind.eq("account_movement"),
+            public::source_confirmations::entity_id.eq(movement_id),
+            public::source_confirmations::status.eq("confirmed"),
+            public::source_confirmations::idempotency_key
+                .eq(format!("account-movement-confirmation:{}", Uuid::now_v7())),
+            public::source_confirmations::changed_by.eq(actor_id),
+            public::source_confirmations::changed_at.eq(now),
+        ))
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+fn parse_movement_kind(value: &str) -> Option<AccountMovementKind> {
+    match value {
+        "TRANSFER" => Some(AccountMovementKind::Transfer),
+        "CARD_BILL_PAYMENT" => Some(AccountMovementKind::CardBillPayment),
+        _ => None,
+    }
+}
+
+fn parse_account_kind(value: &str) -> Option<AccountKind> {
+    match value {
+        "BANK" => Some(AccountKind::Bank),
+        "CASH" => Some(AccountKind::Cash),
+        "CARD" => Some(AccountKind::Card),
+        "OTHER" => Some(AccountKind::Other),
+        _ => None,
+    }
+}
+
+fn map_statement_workflow_error(
+    error: bookkeeping_workflows::account_movement::AccountMovementError,
+) -> AccountMovementPersistenceError {
+    use bookkeeping_workflows::account_movement::AccountMovementError as WorkflowError;
+
+    match error {
+        WorkflowError::StatementNotBankMovement => {
+            AccountMovementPersistenceError::StatementIsNotBankMovement
+        }
+        WorkflowError::StatementMovementMismatch | WorkflowError::StatementAccountMismatch => {
+            AccountMovementPersistenceError::StatementMovementMismatch
+        }
+        _ => AccountMovementPersistenceError::InvalidDecision,
+    }
 }
 
 async fn ensure_open_period(

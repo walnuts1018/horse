@@ -745,6 +745,7 @@ pub mod public {
             correction_id -> Nullable<Uuid>,
             transfer_id -> Nullable<Uuid>,
             account_income_id -> Nullable<Uuid>,
+            account_movement_id -> Nullable<Uuid>,
         }
     }
 
