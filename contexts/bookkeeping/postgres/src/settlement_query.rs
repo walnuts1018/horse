@@ -513,7 +513,7 @@ async fn load_evidence(
     }
     let purchase_rows = purchases::purchases
         .filter(purchases::household_id.eq_any(households))
-        .filter(purchases::status.eq_any(vec!["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .filter(purchases::occurred_at.ge(utc_start(min_start)?))
         .filter(purchases::occurred_at.lt(utc_start(max_end)?))
         .select((

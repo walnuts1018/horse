@@ -179,7 +179,7 @@ async fn earliest_period(
         .await?;
     let purchase_start = purchases::purchases
         .filter(purchases::household_id.eq(household_id))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .select(diesel::dsl::min(purchases::occurred_at))
         .first::<Option<DateTime<Utc>>>(conn)
         .await?
@@ -354,7 +354,7 @@ async fn load_purchase_expenses(
     let (from, until) = timestamp_bounds(start, end);
     let purchase_rows = purchases::purchases
         .filter(purchases::household_id.eq(household_id))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .filter(purchases::occurred_at.ge(from))
         .filter(purchases::occurred_at.lt(until))
         .order(purchases::id)

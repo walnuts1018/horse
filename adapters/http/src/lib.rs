@@ -45,7 +45,10 @@ pub fn router(pool: PgPool, config: Config, graphql_schema: GraphqlSchema) -> Ro
         .route("/auth/callback", get(callback))
         .route("/auth/me", get(me))
         .route("/auth/logout", axum::routing::post(logout))
-        .route("/documents", post(upload_document))
+        .route(
+            "/documents",
+            post(upload_document).layer(axum::extract::DefaultBodyLimit::max(22 << 20)),
+        )
         .route("/documents/{id}/content", get(document_content))
         .route("/documents/{id}/retry", post(retry_document))
         .route("/events", get(events))
@@ -693,15 +696,21 @@ async fn events(
             return Err(StatusCode::SERVICE_UNAVAILABLE.into_response());
         }
     }
-    let mut cursor = query
-        .get("after")
-        .and_then(|value| value.parse::<i64>().ok())
-        .unwrap_or(0);
+    let mut cursor = match query.get("after") {
+        Some(value) if !value.is_empty() => match value.parse::<i64>() {
+            Ok(cursor) => cursor,
+            Err(_) => return Err((StatusCode::BAD_REQUEST, "invalid event cursor").into_response()),
+        },
+        _ => 0,
+    };
     if let Some(last_event_id) = headers
         .get("last-event-id")
         .and_then(|value| value.to_str().ok())
     {
-        cursor = last_event_id.parse::<i64>().unwrap_or(cursor);
+        cursor = match last_event_id.parse::<i64>() {
+            Ok(cursor) => cursor,
+            Err(_) => return Err((StatusCode::BAD_REQUEST, "invalid event cursor").into_response()),
+        };
     }
     if cursor < 0 {
         return Err((StatusCode::BAD_REQUEST, "invalid event cursor").into_response());

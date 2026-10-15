@@ -67,7 +67,7 @@ pub async fn monthly_category_spending(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .select((
             purchases::occurred_at,
             purchase_items::category_id,
@@ -80,7 +80,7 @@ pub async fn monthly_category_spending(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .select((
             purchases::occurred_at,
             purchase_corrections::item_id,
@@ -172,7 +172,7 @@ pub async fn monthly_member_spending(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .filter(purchase_member_burdens::household_id.eq(household_id))
         .select((
             purchases::occurred_at,
@@ -190,7 +190,7 @@ pub async fn monthly_member_spending(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .filter(correction_member_burdens::household_id.eq(household_id))
         .select((
             purchases::occurred_at,
@@ -260,7 +260,7 @@ async fn unattributed_purchases(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .select((
             purchase_allocations::purchase_id,
             purchase_allocations::item_id,
@@ -274,7 +274,7 @@ async fn unattributed_purchases(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .filter(purchase_member_burdens::household_id.eq(household_id))
         .select((
             purchase_member_burdens::purchase_id,
@@ -303,7 +303,7 @@ async fn unattributed_purchases(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .select((
             purchase_corrections::id,
             purchase_corrections::amount_delta_yen,

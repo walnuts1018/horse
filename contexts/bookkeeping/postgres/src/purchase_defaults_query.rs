@@ -46,7 +46,7 @@ pub async fn purchase_defaults(
     let payments = purchase_payments::table
         .inner_join(purchases::table.on(purchases::id.eq(purchase_payments::purchase_id)))
         .filter(purchases::household_id.eq(household_id))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .select((
             purchases::id,
             purchases::merchant,

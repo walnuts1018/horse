@@ -128,7 +128,7 @@ impl ObjectStore {
             .await;
         if result.is_err() {
             let existing = self.get(&object_key, mime_type).await;
-            if !existing.is_ok_and(|document| document.data == data) {
+            if !existing.is_ok_and(|document| document.data.as_slice() == data) {
                 return Err(StoreError("store original document failed"));
             }
         }

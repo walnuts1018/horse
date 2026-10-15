@@ -82,7 +82,7 @@ pub async fn home_summary(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .select((purchases::occurred_at, purchase_items::amount_yen))
         .load::<(DateTime<Utc>, i64)>(&mut conn)
         .await?;
@@ -91,7 +91,7 @@ pub async fn home_summary(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .select((
             purchases::occurred_at,
             purchase_corrections::amount_delta_yen,
@@ -120,7 +120,7 @@ pub async fn home_summary(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(month_start))
         .filter(purchases::occurred_at.lt(month_end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .select(count(purchase_items::id))
         .first::<i64>(&mut conn)
         .await?;

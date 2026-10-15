@@ -70,7 +70,7 @@ pub async fn purchase_analytics(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .select((
             purchases::id,
             purchases::occurred_at,
@@ -374,7 +374,7 @@ pub async fn purchase_price_observations(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::occurred_at.ge(start))
         .filter(purchases::occurred_at.lt(end))
-        .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+        .filter(purchases::status.eq("POSTED"))
         .select((
             purchase_items::id,
             purchase_items::purchase_id,
@@ -423,7 +423,7 @@ pub async fn purchase_price_observations(
             .filter(purchases::household_id.eq(household_id))
             .filter(purchases::occurred_at.ge(start))
             .filter(purchases::occurred_at.lt(end))
-            .filter(purchases::status.eq_any(["POSTED", "CLOSED"]))
+            .filter(purchases::status.eq("POSTED"))
             .filter(purchase_corrections::item_id.eq_any(matched_ids))
             .select((
                 purchase_corrections::item_id,
