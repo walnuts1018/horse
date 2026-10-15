@@ -1,6 +1,6 @@
 # Horse コード品質レビュー
 
-対象：[walnuts1018/horse](https://github.com/walnuts1018/horse) の `main` ブランチ（2026年10月15日確認、`37bbda8`）
+対象：[walnuts1018/horse](https://github.com/walnuts1018/horse) の `main` ブランチ（2026年10月15日確認、`393b218`）
 
 ## 総評
 
@@ -24,14 +24,14 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 該当コード：
 
 - [purchase/update_item.go — updateItem()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/update_item.go)
-- [purchase/service.go — create()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/service.go#L189-L453)
+- [purchase/service.go — create()](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/service.go#L174)
 - [purchase/update_operations.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/update_operations.go)
 
 `f106383`では`updateItem()`の入力検証、更新対象の取得とロック、計画構築をそれぞれヘルパーへ分離しました。今回、トランザクション内の明細・配賦・支払・購入revisionの更新、履歴と監査イベントの記録、仕訳同期を`applyPurchaseItemUpdatePlan()`へまとめました。適用順序は従来どおりで、既存Integration Testで明細revision、監査イベント、購入revisionを確認します。商品学習の設定解釈や履歴記録も`item_product_learning.go`にあります。
 
 `Correct()`は入力検証、購入の認可・ロック、冪等性再生、訂正計画の構築、永続化に分かれました。明細更新計画では入力値と計算値の準備をDBアクセスから分離しましたが、配賦計画や支払情報の構築にはDBアクセスが残ります。
 
-購入の`create()`、通常更新、一括更新、複数明細保存は引き続き責務の整理が必要です。共通化済みの計画・適用処理と各ユースケース固有の入力検証、読み込み、ロック、仕訳同期、監査イベントの境界を見直します。変更時は競合検出とロック順序を維持する必要があります。
+`create()`では入力値の正規化と購入明細の作成・配賦を専用関数へ分けました。トランザクション内の認可、冪等性確認、購入本体・支払・証憑・仕訳・イベントの処理順序は`create()`に残ります。通常更新、一括更新、複数明細保存も引き続き責務の整理が必要です。共通化済みの計画・適用処理と各ユースケース固有の入力検証、読み込み、ロック、仕訳同期、監査イベントの境界を見直します。変更時は競合検出とロック順序を維持する必要があります。
 
 ### 2. GraphQLの巨大な一括組み立て処理を見直す
 
@@ -65,7 +65,7 @@ Member、Account、Category、Household、Pool Nodeの複数ID解決では、所
 - [purchase/bulk_update_items.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/bulk_update_items.go)
 - [purchase/save_item_edits.go](https://github.com/walnuts1018/horse/blob/main/internal/application/purchase/save_item_edits.go)
 
-明細更新では`updateItem()`と`updateBulkItem()`が`itemChangePlan`を共有し、リビジョンと配賦計算の一部を共通化しました。購入全体の通常更新と一括更新も`purchaseUpdatePlan`と`applyPurchaseUpdatePlan()`を共有し、フィールドリビジョンの競合判定と購入行・支払行の更新を共通化しました。入力フィールドと支払額の検証には共通ヘルパーを使いますが、対象の読み込み、ロック、一括更新の事前検証と適用順、仕訳同期、監査イベント記録は各ユースケースが調整します。
+明細更新では`updateItem()`と`updateBulkItem()`が`itemChangePlan`を共有し、リビジョンと配賦計算の一部を共通化しました。購入全体の通常更新と一括更新も`purchaseUpdatePlan`と`applyPurchaseUpdatePlan()`を共有し、フィールドリビジョンの競合判定と購入行・支払行の更新を共通化しました。購入更新後の台帳行同期も`updatePostedPurchaseLedgerEntries()`へ分離しました。入力フィールドと支払額の検証には共通ヘルパーを使いますが、対象の読み込み、ロック、一括更新の事前検証と適用順、仕訳同期、監査イベント記録は各ユースケースが調整します。
 
 さらに`SaveItemEdits()`では、各明細について`updateItem()`を呼び、その後に購入全体の`update()`を呼んでいます。
 
@@ -87,13 +87,7 @@ GraphQLなどの公開API
 
 ただし、既存のロック順序と会計期間の整合性は慎重に維持する必要があります。
 
-## 5. その他の重要な改善点
-
-| 対象 | 確認した問題 | 推奨する改善 |
-| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
-| [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離され、冪等性再生の検索・検証と口座・プール所有者の読込・検証も専用関数へ集約済み。`Do()`には権限確認、ロック、返済情報の読込、記帳処理が残る | 返済情報の読込と記帳順序をさらに整理する |
-
-### 小さな自前ユーティリティも整理する
+## 5. 小さな自前ユーティリティも整理する
 
 同様に、ID生成、UUID変換、世帯メンバー確認、入力値の検証が複数パッケージに存在しています。こうした小さな重複も、適切な共通責務に集約したいところです。
 
@@ -146,10 +140,9 @@ Horseで重要なのは、ビジネスルールを読もうとしたときにSQL
 
 | 順位 | 作業 | 期待できる効果 |
 | -- | ------------------------------------------ | -------------------- |
-| P0 | Purchaseの購入全体と明細の通常・一括・複数明細更新を共通の変更処理へ統合 | 残る重複した業務ロジックを削減 |
-| P0 | Purchaseの`create()`・通常更新・一括更新・複数明細保存の責務整理 | 残る重複した業務ロジックを削減 |
+| P0 | Purchaseの明細・購入全体の通常更新、一括更新、複数明細保存の責務整理 | 残る重複した業務ロジックを削減 |
+| P0 | Purchaseの`create()`に残るトランザクション調整の責務整理 | 購入作成処理の理解と保守を容易にする |
 | P1 | GraphQLの巨大ローダー、残るNode解決の最適化 | 可読性だけでなくDBアクセスも改善 |
-| P2 | Transferの残る記帳処理を整理する | 複雑な会計処理の理解と拡張が容易になる |
 
 ### リファクタリング時に絶対に守りたいこと
 
