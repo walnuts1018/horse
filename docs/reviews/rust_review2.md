@@ -68,52 +68,6 @@
 
 ここで重要なのは、単純に型を別ファイルへ移動することではありません。`BalancedJournal` と、実際の記帳 Workflow が返す `Vec<JournalLine>` を、同じ不変条件に基づくモデルとして再構成する必要があります。
 
-### P0-2. `PostPurchaseDecision` が不正な仕訳を表現できる
-
-[bookkeeping-workflows/src/lib.rs L251–275](https://github.com/walnuts1018/horse/blob/a3603e2/crates/bookkeeping-workflows/src/lib.rs#L251-L275) に次の構造があります。
-
-```
-pub struct JournalLine {
-    pub line_no: u32,
-    pub side: Side,
-    pub account_id: Option<AccountId>,
-    pub pool_id: Option<PoolId>,
-    pub amount: PositiveYen,
-    pub memo: &'static str,
-}
-```
-
-この型では、口座も Pool も指定されない明細や、両方が指定される明細を作れてしまいます。
-
-実際に [postgres/src/post_purchase.rs L357–406](https://github.com/walnuts1018/horse/blob/a3603e2/crates/postgres/src/post_purchase.rs#L357-L406) では、その不正な組み合わせを永続化時に再検査しています。
-
-このように、型で排除できる不正状態を、後から `if` で検査する構造は減らしたいです。
-
-購入記帳専用の表現なら、例えば次のようにできます。
-
-```
-pub enum PurchasePosting {
-    AllocatedToPool {
-        pool_id: PoolId,
-        amount: PositiveYen,
-    },
-    PaidFromAccount {
-        account_id: AccountId,
-        amount: PositiveYen,
-    },
-}
-```
-
-この型を組み立て、貸借一致を検証して `BalancedJournal` に変換すれば、後段には正しい仕訳だけが渡ります。
-
-さらに `PostPurchaseDecision` のフィールドがすべて `pub` なので、呼び出し側は `decide_post_purchase` を経由せず、任意の `journal_lines`、`new_status`、`events` を持つ値を構築できます。
-
-`PostPurchaseDecision` 自体にも private field を採用し、正規のドメイン関数からしか生成できないようにするべきです。
-
-これは DMMF 第6章 §6.1、第6章 §6.4、第9章 §9.2 の中心的な考え方に対応します。
-
-ただし、永続化時の revision、外部参照、競合制御まで消してはいけません。型に移すのは型で保証できる不変条件であり、DB 上の現在の事実に依存する検査は引き続き必要です。
-
 ### P0-3. 永続化状態を bool と汎用 enum の組み合わせで表現している
 
 [bookkeeping-workflows/src/lib.rs L91–105, L240–249](https://github.com/walnuts1018/horse/blob/a3603e2/crates/bookkeeping-workflows/src/lib.rs#L91-L105) の構造では、
@@ -278,18 +232,6 @@ pub struct RunningJob {
 ただし、Lease がまだ有効であることや、別 Worker に奪われていないことは時間・DB 状態に依存するため、永続化時の条件付き更新も必要です。
 
 この点は DMMF 第7章 §7.3 の永続状態遷移と §7.9 の長時間処理の考え方に直接対応します。
-
-### P1-7. RecordTransfer に無効な組み合わせが多い
-
-該当：[bookkeeping-workflows/src/record_transfer.rs](https://github.com/walnuts1018/horse/blob/a3603e2/crates/bookkeeping-workflows/src/record_transfer.rs)
-
-`TransferKind` は `Advance`、`Loan`、`Repayment`、`Gift` ですが、Command には共通して `loan: Option<LoanBasis>` が存在します。
-
-結果として、Loan 情報のない Repayment や、Repayment 以外なのに Loan 情報がある Command が表現できます。
-
-これは DMMF の AND/OR モデリングによってかなり改善できる部分です。
-
-`TransferCommand` 自体を enum にし、Repayment にだけ `LoanBasis` を持たせるなど、操作の種類ごとに必要な入力を区別すると、後段の条件分岐とエラーケースを減らせます。
 
 ## 4. ディレクトリ・crate 構成も再設計したい
 

@@ -220,31 +220,26 @@ pub fn recover_expired_extraction_job(
 mod tests {
     use super::*;
 
-    fn running_state() -> ExtractionJobState {
-        ExtractionJobState {
+    fn running_job() -> RunningJob {
+        RunningJob {
             id: "job".to_owned(),
-            status: ExtractionJobStatus::Running,
             attempt_count: 2,
             max_attempts: 5,
             failure_count: 1,
             available_at_ms: 0,
-            lease_token: Some("active-token".to_owned()),
-            lease_expires_at_ms: Some(10_000),
+            lease: ValidLease {
+                token: "active-token".to_owned(),
+                expires_at_ms: 10_000,
+            },
         }
     }
 
     #[test]
     fn spend_cap_requeues_without_consuming_failure_budget() {
-        let state = running_state();
-        let transition = finish_extraction_failure(
-            &state,
-            "active-token",
-            9_000,
-            30_000,
-            ExtractionFailureKind::SpendCap,
-            5,
-        )
-        .expect("current lease can be retried");
+        let job = running_job();
+        let transition =
+            finish_extraction_failure(&job, 9_000, 30_000, ExtractionFailureKind::SpendCap, 5)
+                .expect("current lease can be retried");
 
         assert_eq!(transition.status, ExtractionJobStatus::Queued);
         assert_eq!(transition.failure_count, 1);
@@ -254,17 +249,17 @@ mod tests {
 
     #[test]
     fn expired_lease_cannot_finish_after_reclaim_window() {
-        let state = running_state();
-        let result = finish_extraction_success(&state, "active-token", 10_000);
+        let job = running_job();
+        let result = finish_extraction_success(&job, 10_000);
 
         assert_eq!(result, Err(FinishExtractionJobError::StaleLease));
     }
 
     #[test]
     fn expired_attempts_consume_failure_budget_and_eventually_fail() {
-        let mut state = running_state();
-        state.failure_count = 4;
-        let transition = recover_expired_extraction_job(&state, 10_000, 5)
+        let mut job = running_job();
+        job.failure_count = 4;
+        let transition = recover_expired_extraction_job(&job, 10_000, 5)
             .expect("expired lease can be recovered");
 
         assert_eq!(transition.status, ExtractionJobStatus::Failed);

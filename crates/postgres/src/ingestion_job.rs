@@ -5,9 +5,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use bookkeeping_workflows::ingestion_job::{
-    ExtractionFailureKind, ExtractionJobState, ExtractionJobStatus, FinishExtractionJobError,
-    claim_extraction_job, finish_extraction_failure, finish_extraction_success,
-    recover_expired_extraction_job,
+    ExtractionFailureKind, ExtractionJob, ExtractionJobStatus, FinishExtractionJobError,
+    FinishedJob, QueuedJob, RunningJob, ValidLease, claim_extraction_job,
+    finish_extraction_failure, finish_extraction_success, recover_expired_extraction_job,
 };
 
 use crate::{PgPool, schema::public};
@@ -115,10 +115,13 @@ pub async fn claim_next_extraction_job(
                 ))
                 .first::<SourceDocumentRow>(&mut *conn)
                 .await?;
-            let state = row.state();
+            let job = row.job()?;
+            let ExtractionJob::Queued(queued) = job else {
+                return Ok(None);
+            };
             let token = Uuid::now_v7();
             let transition =
-                claim_extraction_job(&state, now_ms, token.to_string(), LEASE_DURATION_MS)
+                claim_extraction_job(&queued, now_ms, token.to_string(), LEASE_DURATION_MS)
                     .map_err(|_| IngestionJobError::InvalidTransition)?;
             let changed = diesel::update(
                 jobs::extraction_jobs
@@ -206,7 +209,7 @@ pub async fn record_extraction_success(
         job.attempt_no,
         &job.lease_token,
         now,
-        |state, token, now_ms| finish_extraction_success(state, token, now_ms),
+        |job, now_ms| finish_extraction_success(job, now_ms),
         Some(result),
         None,
         Some(success),
@@ -232,15 +235,8 @@ pub async fn record_extraction_failure(
         attempt_no,
         lease_token,
         now,
-        |state, token, now_ms| {
-            finish_extraction_failure(
-                state,
-                token,
-                now_ms,
-                retry_delay_ms,
-                failure_kind,
-                state.max_attempts,
-            )
+        |job, now_ms| {
+            finish_extraction_failure(job, now_ms, retry_delay_ms, failure_kind, job.max_attempts)
         },
         partial_result,
         Some((error_code.to_owned(), error_message.to_owned())),
@@ -295,8 +291,7 @@ async fn finish_job<F>(
 ) -> Result<bool, IngestionJobError>
 where
     F: FnOnce(
-            &ExtractionJobState,
-            &str,
+            &RunningJob,
             i64,
         ) -> Result<
             bookkeeping_workflows::ingestion_job::FinishExtractionJob,
@@ -339,10 +334,13 @@ where
             let Some(row) = row else {
                 return Ok(false);
             };
-            let state = row.state();
-            let transition = decide(&state, &lease_token.to_string(), now_ms)
+            let job = row.job()?;
+            let ExtractionJob::Running(job) = job else {
+                return Ok(false);
+            };
+            let transition = decide(&job, now_ms)
                 .map_err(|_| IngestionJobError::InvalidTransition)?;
-            if state.attempt_count != attempt_no {
+            if job.attempt_count != attempt_no {
                 return Ok(false);
             }
             let error_code = failure.as_ref().map(|value| value.0.as_str());
@@ -634,11 +632,14 @@ pub async fn recover_expired_extraction_jobs(
                 .await?;
             let mut recovered = 0;
             for row in rows {
-                let state = row.state();
-                let transition = recover_expired_extraction_job(&state, now_ms, state.max_attempts)
+                let job = row.job()?;
+                let ExtractionJob::Running(job) = job else {
+                    return Err(IngestionJobError::InvalidTransition);
+                };
+                let transition = recover_expired_extraction_job(&job, now_ms, job.max_attempts)
                     .map_err(|_| IngestionJobError::InvalidTransition)?;
                 let job_id = row.id;
-                let attempt_no = state.attempt_count;
+                let attempt_no = job.attempt_count;
                 let error_code = if transition.status == ExtractionJobStatus::Failed {
                     "retry_exhausted"
                 } else {
@@ -713,19 +714,19 @@ struct JobRow {
 }
 
 impl JobRow {
-    fn state(&self) -> ExtractionJobState {
-        ExtractionJobState {
-            id: self.id.to_string(),
-            status: parse_status(&self.status),
-            attempt_count: self.attempt_count,
-            max_attempts: self.max_attempts,
-            failure_count: self.failure_count,
-            available_at_ms: self.available_at.timestamp_millis(),
-            lease_token: self.lease_token.map(|token| token.to_string()),
-            lease_expires_at_ms: self
-                .lease_expires_at
+    fn job(&self) -> Result<ExtractionJob, IngestionJobError> {
+        job_from_parts(
+            &self.id.to_string(),
+            &self.status,
+            self.attempt_count,
+            self.max_attempts,
+            self.failure_count,
+            self.available_at.timestamp_millis(),
+            self.lease_token.map(|token| token.to_string()),
+            self.lease_expires_at
                 .map(|expires_at| expires_at.timestamp_millis()),
-        }
+            None,
+        )
     }
 }
 
@@ -743,19 +744,71 @@ struct StateRow {
 }
 
 impl StateRow {
-    fn state(&self) -> ExtractionJobState {
-        ExtractionJobState {
-            id: self.id.to_string(),
-            status: parse_status(&self.status),
-            attempt_count: self.attempt_count,
-            max_attempts: self.max_attempts,
-            failure_count: self.failure_count,
-            available_at_ms: self.available_at.timestamp_millis(),
-            lease_token: self.lease_token.map(|token| token.to_string()),
-            lease_expires_at_ms: self
-                .lease_expires_at
+    fn job(&self) -> Result<ExtractionJob, IngestionJobError> {
+        job_from_parts(
+            &self.id.to_string(),
+            &self.status,
+            self.attempt_count,
+            self.max_attempts,
+            self.failure_count,
+            self.available_at.timestamp_millis(),
+            self.lease_token.map(|token| token.to_string()),
+            self.lease_expires_at
                 .map(|expires_at| expires_at.timestamp_millis()),
+            None,
+        )
+    }
+}
+
+// DB行を状態別のジョブ型に復元する。実行中なのにリースがない行はデータ不整合として扱う。
+#[allow(clippy::too_many_arguments)]
+fn job_from_parts(
+    id: &str,
+    status: &str,
+    attempt_count: i32,
+    max_attempts: i32,
+    failure_count: i32,
+    available_at_ms: i64,
+    lease_token: Option<String>,
+    lease_expires_at_ms: Option<i64>,
+    finished_at_ms: Option<i64>,
+) -> Result<ExtractionJob, IngestionJobError> {
+    match parse_status(status) {
+        ExtractionJobStatus::Queued => Ok(ExtractionJob::Queued(QueuedJob {
+            id: id.to_owned(),
+            attempt_count,
+            max_attempts,
+            failure_count,
+            available_at_ms,
+        })),
+        ExtractionJobStatus::Running => {
+            let (Some(token), Some(expires_at_ms)) = (lease_token, lease_expires_at_ms) else {
+                return Err(IngestionJobError::InvalidState);
+            };
+            Ok(ExtractionJob::Running(RunningJob {
+                id: id.to_owned(),
+                attempt_count,
+                max_attempts,
+                failure_count,
+                available_at_ms,
+                lease: ValidLease {
+                    token,
+                    expires_at_ms,
+                },
+            }))
         }
+        ExtractionJobStatus::Succeeded => Ok(ExtractionJob::Succeeded(FinishedJob {
+            id: id.to_owned(),
+            finished_at_ms,
+        })),
+        ExtractionJobStatus::Failed => Ok(ExtractionJob::Failed(FinishedJob {
+            id: id.to_owned(),
+            finished_at_ms,
+        })),
+        ExtractionJobStatus::Cancelled => Ok(ExtractionJob::Cancelled(FinishedJob {
+            id: id.to_owned(),
+            finished_at_ms,
+        })),
     }
 }
 
