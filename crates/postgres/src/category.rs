@@ -11,6 +11,27 @@ use uuid::Uuid;
 use crate::{PgPool, schema::public};
 
 #[derive(Debug)]
+struct PersistedCategory {
+    id: Uuid,
+    household_id: Uuid,
+    parent_id: Option<Uuid>,
+    name: String,
+    archived: bool,
+}
+
+impl From<PersistedCategory> for Category {
+    fn from(category: PersistedCategory) -> Self {
+        Self {
+            id: category.id.to_string(),
+            household_id: category.household_id.to_string(),
+            parent_id: category.parent_id.map(|id| id.to_string()),
+            name: category.name,
+            archived: category.archived,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum CategoryPersistenceError {
     Pool(String),
     Database(DieselError),
@@ -96,13 +117,13 @@ pub async fn persist_create_category(
                 .execute(&mut *conn)
                 .await?;
 
-            Ok(Category {
-                id: category_id.to_string(),
-                household_id: household_id.to_string(),
-                parent_id: parent_id.map(|id| id.to_string()),
+            Ok(PersistedCategory {
+                id: category_id,
+                household_id,
+                parent_id,
                 name: decision.name.as_str().to_owned(),
                 archived: false,
-            })
+            }.into())
         })
         .await
 }
@@ -164,13 +185,13 @@ pub async fn persist_update_category_name(
                     .await?;
             }
 
-            Ok(Category {
-                id: category_id.to_string(),
-                household_id: row.0.to_string(),
-                parent_id: row.1.map(|id| id.to_string()),
+            Ok(PersistedCategory {
+                id: category_id,
+                household_id: row.0,
+                parent_id: row.1,
                 name: decision.name.as_str().to_owned(),
                 archived: row.3,
-            })
+            }.into())
         })
         .await
 }
@@ -236,13 +257,13 @@ pub async fn persist_set_category_archived(
                     .await?;
             }
 
-            Ok(Category {
-                id: category_id.to_string(),
-                household_id: row.0.to_string(),
-                parent_id: row.1.map(|id| id.to_string()),
+            Ok(PersistedCategory {
+                id: category_id,
+                household_id: row.0,
+                parent_id: row.1,
                 name: row.2,
                 archived: decision.archived,
-            })
+            }.into())
         })
         .await
 }
