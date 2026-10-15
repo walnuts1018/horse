@@ -71,7 +71,10 @@ export function ImportsPage({
     return () => window.cancelAnimationFrame(frame);
   }, [captureRequested, onCaptureHandled]);
   const [files, setFiles] = useState<PendingUpload[]>([]);
-  const [importModel, setImportModel] = useState<ImportModel>(defaultImportModel);
+  const [importModelChoice, setImportModelChoice] = useState<{
+    model: ImportModel;
+    quotaDocumentScope: string;
+  }>();
   // 親への未保存通知は effect で状態を push せず、変化したイベントから直接行う
   const onUnsavedChangesRef = useRef(onUnsavedChanges);
   const reportedUnsavedChanges = useRef(false);
@@ -125,8 +128,19 @@ export function ImportsPage({
   } = useImportDocuments(household.id, documentFilters, setMessage);
   const [pending, setPending] = useState(false);
   const quotaLimitedDocuments = documents.filter(isQuotaLimitedExtraction);
-  const importModelForUpload = importModel;
+  const quotaLimitedDocumentIDs = JSON.stringify(
+    quotaLimitedDocuments.map((document) => document.id),
+  );
+  const importModelForUpload =
+    importModelChoice?.quotaDocumentScope === quotaLimitedDocumentIDs
+      ? importModelChoice.model
+      : quotaLimitedDocuments.length > 0
+        ? proImportModel
+        : defaultImportModel;
   const selectedImportModel = importModels.find((model) => model.value === importModelForUpload);
+  const importModelWasAutoSelectedForQuota =
+    quotaLimitedDocuments.length > 0 &&
+    importModelChoice?.quotaDocumentScope !== quotaLimitedDocumentIDs;
   const selectedDocumentID = useRef(selected);
   useEffect(() => {
     selectedDocumentID.current = selected;
@@ -291,6 +305,9 @@ export function ImportsPage({
     }
   };
   const retryDocument = async (document: DocumentReview) => {
+    if (isQuotaLimitedExtraction(document)) {
+      setImportModelChoice({ model: proImportModel, quotaDocumentScope: quotaLimitedDocumentIDs });
+    }
     setPending(true);
     setMessage("");
     try {
@@ -519,7 +536,12 @@ export function ImportsPage({
               id="import-model"
               value={importModelForUpload}
               onChange={(event) => {
-                if (isImportModel(event.target.value)) setImportModel(event.target.value);
+                if (isImportModel(event.target.value)) {
+                  setImportModelChoice({
+                    model: event.target.value,
+                    quotaDocumentScope: quotaLimitedDocumentIDs,
+                  });
+                }
               }}
             >
               <optgroup label="無料枠">
@@ -563,8 +585,9 @@ export function ImportsPage({
             <output className="import-quota-notice">
               <AlertCircle size={16} aria-hidden="true" />
               <span>
-                モデルの利用上限に達した書類はGemini 3.1 Pro
-                Previewで再抽出できます。料金が発生します。
+                {importModelWasAutoSelectedForQuota
+                  ? "無料モデルの利用上限に達したためGemini 3.1 Pro Previewを選択しました。次の実行には料金が発生します。"
+                  : "利用上限に達した書類はGemini 3.1 Pro Previewで再抽出できます。料金が発生します。"}
               </span>
             </output>
           )}
