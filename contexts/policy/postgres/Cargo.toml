@@ -1,0 +1,12 @@
+[package]
+name = "policy-postgres"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = { workspace = true }
+diesel = { workspace = true, features = ["32-column-tables"] }
+diesel-async = { workspace = true }
+horse-postgres-common = { path = "../../../platform/postgres-common" }
+policy-application = { path = "../application" }
+uuid = { workspace = true }

@@ -5,9 +5,9 @@ edition = "2024"
 
 [dependencies]
 axum = "0.8.9"
-horse-auth = { path = "../../crates/auth" }
-horse-graphql-api = { path = "../../crates/graphql-api" }
-horse-http-api = { path = "../../crates/http-api" }
-horse-postgres = { path = "../../crates/postgres" }
+horse-auth = { path = "../../adapters/identity" }
+horse-graphql-api = { path = "../../adapters/graphql" }
+horse-http-api = { path = "../../adapters/http" }
+horse-postgres-common = { path = "../../platform/postgres-common" }
 tokio = { version = "1.53.3", features = ["macros", "net", "rt-multi-thread", "signal"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

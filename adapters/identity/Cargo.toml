@@ -1,0 +1,15 @@
+[package]
+name = "horse-auth"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = { workspace = true }
+diesel = { workspace = true, features = ["32-column-tables"] }
+diesel-async = { workspace = true }
+horse-postgres-common = { path = "../../platform/postgres-common" }
+openidconnect = "4.0.1"
+sha2 = "0.11"
+subtle = "2"
+url = "2"
+uuid = { workspace = true }

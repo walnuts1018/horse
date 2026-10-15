@@ -1,9 +1,0 @@
-[package]
-name = "bookkeeping-workflows"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-bookkeeping-domain = { path = "../bookkeeping-domain" }
-chrono = { workspace = true }
-uuid = { workspace = true }

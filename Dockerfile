@@ -51,7 +51,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev && rm
 
 COPY Cargo.toml Cargo.lock ./
 COPY apps/ apps/
-COPY crates/ crates/
+COPY adapters/ adapters/
+COPY contexts/ contexts/
+COPY platform/ platform/
 COPY rust-migrations/ rust-migrations/
 COPY atlas-rust.hcl ./
 

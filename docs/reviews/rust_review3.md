@@ -39,12 +39,12 @@ Rust workspace の構造、主要な Domain/Workflow、GraphQL、PostgreSQL、Wo
 
 次の設計は維持したいです。
 
-- [`Yen`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-domain/src/money.rs)[/](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-domain/src/money.rs)[`PositiveYen`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-domain/src/money.rs) の非公開フィールドと Smart Constructor。
-- [`AllocationShares`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-domain/src/allocation.rs) の非空・重複なしという不変条件。
-- [`BalancedJournal`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-domain/src/journal.rs) の貸借一致という保証。
+- [`Yen`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/money.rs)[/](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/money.rs)[`PositiveYen`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/money.rs) の非公開フィールドと Smart Constructor。
+- [`AllocationShares`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/allocation.rs) の非空・重複なしという不変条件。
+- [`BalancedJournal`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/journal.rs) の貸借一致という保証。
 - `decide_*` によって業務判断を I/O から切り離そうとしている点。
-- [`RecordTransferCommand`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/record_transfer.rs#L84-L89) が、操作種別ごとに異なるペイロードを持つ `enum` になっている点。
-- [`PostingTarget`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/lib.rs#L296-L309) によって、購入記帳の対象が Pool または Account のどちらかであることを型で保証している点。
+- [`RecordTransferCommand`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/record_transfer.rs#L84-L89) が、操作種別ごとに異なるペイロードを持つ `enum` になっている点。
+- [`PostingTarget`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/lib.rs#L296-L309) によって、購入記帳の対象が Pool または Account のどちらかであることを型で保証している点。
 
 特に最後の二つは、確認 HEAD と現行コードの両方で確認できます。
 
@@ -56,8 +56,8 @@ Rust workspace の構造、主要な Domain/Workflow、GraphQL、PostgreSQL、Wo
 
 該当箇所：
 
-- [`bookkeeping-domain/src/purchase.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-domain/src/purchase.rs)
-- [`bookkeeping-workflows/src/lib.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/lib.rs)
+- [`contexts/bookkeeping/domain/src/purchase.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/domain/src/purchase.rs)
+- [`contexts/bookkeeping/application/src/lib.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/lib.rs)
 
 確認 HEAD 時点では、両方の crate に `PurchaseId` と `decide_post_purchase` が存在していました。現行コードでもこの二重化は残っています。
 
@@ -93,7 +93,7 @@ pub enum Purchase {
 
 重要度：最優先
 
-非常にわかりやすい例が [`policy-workflows/src/budget.rs`](https://github.com/walnuts1018/horse/blob/main/crates/policy-workflows/src/budget.rs#L53-L65) です。
+非常にわかりやすい例が [`contexts/policy/application/src/budget.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/policy/application/src/budget.rs#L53-L65) です。
 
 ```
 pub struct BudgetDecision {
@@ -116,7 +116,7 @@ pub struct BudgetDecision {
 
 第二に、この Decision は有効な業務結果というより、SQL に渡す変更項目の集合になっています。
 
-実際に [`postgres/src/policy.rs`](https://github.com/walnuts1018/horse/blob/main/crates/postgres/src/policy.rs#L29-L71) では、作成時に必ず必要なはずの `name`、`amount_yen`、`starts_on` を `Option` から取り出し、存在しなければ `InvalidWorkflow` にしています。
+実際に [`contexts/policy/postgres/src/policy.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/policy/postgres/src/policy.rs#L29-L71) では、作成時に必ず必要なはずの `name`、`amount_yen`、`starts_on` を `Option` から取り出し、存在しなければ `InvalidWorkflow` にしています。
 
 これは Decision が型によって正しさを保証できていない証拠です。
 
@@ -134,7 +134,7 @@ pub enum BudgetChange {
 
 重要なのは、存在して当然のフィールドを `Option` にして、後で存在確認する必要がないモデルにすることです。
 
-同様の問題は [`update_purchase_item.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/update_purchase_item.rs#L9-L29) にもあります。
+同様の問題は [`update_purchase_item.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/update_purchase_item.rs#L9-L29) にもあります。
 
 `quantity_set: bool` と `quantity: Option<Measure>` の組み合わせや、`changed_fields: Vec<String>` による変更指定は、GraphQL の入力 DTO としては理解できます。しかし、業務操作の中心にもそのまま残すより、型付きの変更コマンドへ変換したいです。
 
@@ -148,8 +148,8 @@ pub enum BudgetChange {
 
 該当箇所：
 
-- [`purchase_command_context.rs`](https://github.com/walnuts1018/horse/blob/main/crates/postgres/src/purchase_command_context.rs#L100-L185)
-- [`create_purchase.rs`](https://github.com/walnuts1018/horse/blob/main/crates/postgres/src/create_purchase.rs#L389-L645)
+- [`contexts/bookkeeping/postgres/src/purchase_command_context.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/postgres/src/purchase_command_context.rs#L100-L185)
+- [`contexts/bookkeeping/postgres/src/create_purchase.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/postgres/src/create_purchase.rs#L389-L645)
 
 確認 HEAD 時点では、配賦ルールの選択をおおむね Product Variant → Product Concept → Category → Merchant という優先順位で DB を検索して決めていました。現行コードにも`purchase_command_context.rs`の候補選択処理と`create_purchase.rs`のCatalog参照解決が残っています。
 
@@ -166,7 +166,7 @@ pub fn select_allocation_rule(
 ) -> Result<SelectedAllocationRule, AllocationError>
 ```
 
-さらに重要なのが、[`validate_catalog_references`](https://github.com/walnuts1018/horse/blob/main/crates/postgres/src/create_purchase.rs#L389-L576) です。
+さらに重要なのが、[`validate_catalog_references`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/postgres/src/create_purchase.rs#L389-L576) です。
 
 この関数は `&mut CreatePurchaseDecision` を受け取り、Catalog の問い合わせ結果に応じて Decision 内の `category_id` を変更しています。
 
@@ -198,9 +198,9 @@ Pure Decision
 
 たとえば：
 
-- [`graphql-api/src/purchase_mutations.rs`](https://github.com/walnuts1018/horse/blob/main/crates/graphql-api/src/purchase_mutations.rs#L619-L720) は transaction を開始し、load → decide → persist を実行します。
-- [`postgres/src/close_period.rs`](https://github.com/walnuts1018/horse/blob/main/crates/postgres/src/close_period.rs#L85-L243) は DB アダプター内で業務操作全体を実行します。
-- [`postgres/src/policy.rs`](https://github.com/walnuts1018/horse/blob/main/crates/postgres/src/policy.rs#L29-L141) は Decision の呼び出しと永続化を一緒に行います。
+- [`adapters/graphql/src/purchase_mutations.rs`](https://github.com/walnuts1018/horse/blob/main/adapters/graphql/src/purchase_mutations.rs#L619-L720) は transaction を開始し、load → decide → persist を実行します。
+- [`contexts/bookkeeping/postgres/src/close_period.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/postgres/src/close_period.rs#L85-L243) は DB アダプター内で業務操作全体を実行します。
+- [`contexts/policy/postgres/src/policy.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/policy/postgres/src/policy.rs#L29-L141) は Decision の呼び出しと永続化を一緒に行います。
 
 結果として、業務操作の全体像が GraphQL と PostgreSQL に分散しています。
 
@@ -228,7 +228,7 @@ GraphQL DTO
 
 購入記帳の`PostingTarget`は現行コードで維持されていますが、同じ原則が他のWorkflowにまだ波及していません。
 
-[`record_transfer.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/record_transfer.rs#L123-L132) では次のようになっています。
+[`record_transfer.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/record_transfer.rs#L123-L132) では次のようになっています。
 
 ```
 pub struct JournalLine {
@@ -248,7 +248,7 @@ pub struct JournalLine {
 
 しかし、それが正当な会計上の概念なら、対象IDなしというデータ表現ではなく、その意味を持つバリアントにするほうが DMMF 的です。
 
-同様に現行の[`correct_purchase.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/correct_purchase.rs)にも`pool_id`と`account_id`を個別に持つ表現が残っています。
+同様に現行の[`correct_purchase.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/correct_purchase.rs)にも`pool_id`と`account_id`を個別に持つ表現が残っています。
 
 また、Journal の各 Workflow がそれぞれ異なる明細型を持っている一方で、既存の `BalancedJournal` に統一されていません。
 
@@ -258,7 +258,7 @@ pub struct JournalLine {
 
 ### P1-1. `PurchaseDraft` がまだ無効な状態を表現できる
 
-[`bookkeeping-workflows/src/lib.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/lib.rs#L93-L106) では：
+[`contexts/bookkeeping/application/src/lib.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/lib.rs#L93-L106) では：
 
 ```
 pub struct PurchaseDraft {
@@ -290,7 +290,7 @@ pub struct DraftPurchase {
 
 ### P1-2. MemberId を PoolId として使っている
 
-[`bookkeeping-workflows/src/lib.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/lib.rs#L626-L658) では、Member ID をいったん `PoolId` として生成し、`AllocationShares` のアルゴリズムに渡しています。
+[`contexts/bookkeeping/application/src/lib.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/lib.rs#L626-L658) では、Member ID をいったん `PoolId` として生成し、`AllocationShares` のアルゴリズムに渡しています。
 
 計算上の都合は理解できます。しかし、DMMF の Value Object の目的は、意味の違う値を型で区別することです。
 
@@ -308,7 +308,7 @@ pub struct WeightedShares<K> {
 
 ### P1-3. Workflow の入力に DTO 的なプリミティブが残りすぎている
 
-[`create_purchase.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/create_purchase.rs#L6-L60) の入力は、`String`、`i64`、`Option<String>` などが中心です。
+[`create_purchase.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/create_purchase.rs#L6-L60) の入力は、`String`、`i64`、`Option<String>` などが中心です。
 
 `Measure` も分子・分母・単位を公開しており、検証は Workflow 内の関数で行われます。
 
@@ -334,7 +334,7 @@ CreatePurchaseDecision
 
 ### P1-4. Event が業務上の事実ではなく、変更通知の形式に寄っている
 
-[`DomainEvent`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/lib.rs#L394-L400) は次のような構造です。
+[`DomainEvent`](https://github.com/walnuts1018/horse/blob/main/contexts/bookkeeping/application/src/lib.rs#L394-L400) は次のような構造です。
 
 ```
 pub struct DomainEvent {
@@ -361,7 +361,7 @@ DMMF 第3章 §3.4、第13章 §13.3.6 が重視するのは、公開する契�
 
 ### P1-5. ExtractionJob の状態型がまだ完全ではない
 
-[`ingestion_job.rs`](https://github.com/walnuts1018/horse/blob/main/crates/bookkeeping-workflows/src/ingestion_job.rs) では、`QueuedJob`、`RunningJob`、`FinishedJob` を区別するようになっています。
+[`ingestion_job.rs`](https://github.com/walnuts1018/horse/blob/main/contexts/evidence/application/src/ingestion_job.rs) では、`QueuedJob`、`RunningJob`、`FinishedJob` を区別するようになっています。
 
 これは良い改善です。
 
@@ -377,7 +377,7 @@ DMMF 第3章 §3.4、第13章 §13.3.6 が重視するのは、公開する契�
 
 ### P1-6. Workflow Error が境界で過度に集約されている
 
-[`purchase_mutations.rs`](https://github.com/walnuts1018/horse/blob/main/crates/graphql-api/src/purchase_mutations.rs#L1336-L1341) では、PostPurchase の Workflow 失敗をペイロードのない `PostMutationError::Workflow` に変換しています。
+[`purchase_mutations.rs`](https://github.com/walnuts1018/horse/blob/main/adapters/graphql/src/purchase_mutations.rs#L1336-L1341) では、PostPurchase の Workflow 失敗をペイロードのない `PostMutationError::Workflow` に変換しています。
 
 その後、すべて Conflict 相当として返しています。
 

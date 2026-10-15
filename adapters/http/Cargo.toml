@@ -1,0 +1,18 @@
+[package]
+name = "horse-http-api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8.9"
+async-graphql = { version = "7", features = ["chrono"] }
+async-graphql-axum = "7"
+chrono = { workspace = true }
+diesel = { workspace = true, features = ["32-column-tables"] }
+diesel-async = { workspace = true }
+horse-auth = { path = "../identity" }
+horse-graphql-api = { path = "../graphql" }
+horse-postgres-common = { path = "../../platform/postgres-common" }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+url = "2"

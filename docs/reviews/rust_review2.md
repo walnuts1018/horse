@@ -116,6 +116,8 @@ pub struct PurchaseDraft {
 
 これらは直ちに不正な実装ではありません。特に `persist_create_and_post_purchase()` は同一トランザクション内で処理しており、以前のレビューで懸念されていた別接続間のロック問題を回避しています。
 
+カテゴリ作成については、業務操作の定義を`catalog-workflows`へ移しました。Postgres Adapterはプール接続上でトランザクションを開始し、Workflowが要求する読み書きを実装します。購入作成・記帳とカテゴリ更新・アーカイブはまだ同じ構造へ移行していません。
+
 しかし、設計上は業務操作全体の定義が Infrastructure に存在しています。
 
 DMMF により近づけるなら、PostgreSQL Adapter の公開責務は「DB 操作を提供すること」に寄せ、Application Workflow が業務操作の手順を明示し、その実行境界がトランザクションを所有する構造にしたいです。
@@ -144,72 +146,38 @@ DMMF\_%E6%9B%B8%E7%B1%8D%E5%85%A8%E7%AB%A0%E5%88%86%E6%9E%90\_%E8%A8%AD%E8%A8%88
 
 `1 kg`と`1000 g`のような異なる単位の換算や同値判定は実装していません。必要な場合は業務要件を定めたうえで追加してください。
 
-## 4. ディレクトリ・crate 構成も再設計したい
+## 4. BC-first Workspaceの再編
 
-現在の Workspace は `bookkeeping-domain` と各 `*-workflows` が業務別になっている一方で、`postgres` と `graphql-api` が技術別の大きな共有モジュールになっています。
+Rust Workspaceを技術別の大きなcrateからBounded Contextごとのcrateへ再編しました。`bookkeeping-domain`と`bookkeeping-workflows`は`contexts/bookkeeping/domain`と`contexts/bookkeeping/application`へ移動し、Applicationの正本を`bookkeeping-application`に統一しました。Catalog、Household、Policy、EvidenceのApplicationとPostgreSQL Adapterも、それぞれのContextの下に配置しました。
 
-ここは、以前作成した設計方針にある「BC を第一の分割単位にする」を徹底したいです。
-
-以下は書籍が指定する唯一の構成ではなく、Horse 向けの推奨構成です。
-
-推奨する Rust Workspace
-
-```
-horse/
-├── apps/
-│   ├── api/                  # Composition Root
-│   └── worker/               # Composition Root
-│
-├── contexts/
-│   ├── bookkeeping/
-│   │   ├── domain/
-│   │   │   └── src/
-│   │   │       ├── purchase/
-│   │   │       ├── journal/
-│   │   │       ├── allocation/
-│   │   │       ├── funding/
-│   │   │       ├── settlement/
-│   │   │       └── period/
-│   │   ├── application/
-│   │   │   └── src/
-│   │   │       ├── post_purchase/
-│   │   │       ├── correct_purchase/
-│   │   │       └── close_period/
-│   │   ├── postgres/
-│   │   │   └── src/
-│   │   │       ├── write/
-│   │   │       ├── read/
-│   │   │       └── mapping/
-│   │   └── contracts/
-│   │
-│   ├── household/
-│   ├── catalog/
-│   └── evidence/
-│       ├── domain/
-│       ├── application/
-│       ├── postgres/
-│       └── contracts/
-│
-├── adapters/
-│   ├── graphql/
-│   ├── identity/
-│   ├── messaging/
-│   ├── object-storage/
-│   └── ai/
-│
-└── platform/
-    └── postgres-common/      # Pool / TX 基盤のみ
+```text
+apps/
+  api/
+  worker/
+contexts/
+  bookkeeping/{domain,application,postgres}/
+  catalog/{application,postgres}/
+  household/{application,postgres}/
+  policy/{application,postgres}/
+  evidence/{application,postgres}/
+  cross-context/postgres/
+adapters/
+  ai/
+  graphql/
+  http/
+  identity/
+  worker-runtime/
+platform/
+  postgres-common/
 ```
 
-重要なのは crate の数ではなく、依存方向です。
+`horse-postgres`にあった実装は所有ContextのPostgreSQL crateへ移しました。接続Pool、`AsyncPgConnection`、生成されたDiesel Schemaだけを`platform/postgres-common`に配置しています。`adapters/postgres`に互換re-export crateは残していません。GraphQL AdapterとWorker Runtimeは使用するApplication、PostgreSQL Adapter、Platform crateへ直接依存します。
 
-概念的な依存関係。Adapter は Domain・Application が定義する契約を実装し、Composition Root が組み立てます。
+複数のContextのデータを組み合わせるread modelと操作は`contexts/cross-context/postgres`に配置しました。該当する処理は、Home Summary、月次支出、Ledger、Node query、Pool mutation、購入訂正に紐づく証拠照会、未照合Observation照会です。購入AnalyticsはBookkeeping単独のqueryとして`contexts/bookkeeping/postgres`に置きました。Evidenceの抽出Job型とWorkflowは`contexts/evidence/application`へ移し、PostgreSQL実装は同じContextのAdapterに置きました。
 
-この構造なら、将来 PostgreSQL の実装を変更してもドメイン側の型・Workflow を変える必要がありません。また、Bookkeeping と Evidence が互いの内部構造を直接共有しないよう、crate 依存で制御できます。
+この再編で、技術別の`crates/postgres`と複数Contextを含むGraphQL crateのような旧配置は解消しました。各PostgreSQL crateはPlatformの共通SchemaとPoolを利用し、Context間のqueryは専用のcross-context adapterに集約しています。
 
-`postgres-common` にドメイン固有の SQL を置かず、共通の接続管理・トランザクション基盤だけを置くことがポイントです。
-
-なお、BC ごとに4つの crate を必ず作る必要もありません。意味のある公開境界を作れれば、単一 crate の非公開 module でもよく、過剰な crate 分割は避けるべきです。
+未解決の点として、購入作成・記帳、購入訂正、月次締め、資金設定などのApplication Workflowは、まだ一部がPostgreSQL Adapterの内部に置かれています。カテゴリ作成だけがApplication Workflowから操作契約を通じてLoad・Decision・Persistを順序付ける形へ移行済みです。次に、トランザクション境界とロックを保ちながら、残りの業務操作を同じ責務分離へ移す必要があります。cross-context queryも、Context固有の認可・読取モデルの責務を整理し、専用Adapterに残す範囲を確定する必要があります。
 
 ## 5. 理想的な Workflow の組み立て方
 
@@ -242,6 +210,10 @@ Commit 後にレスポンス・非同期配送
 このような構造が望ましいと考えます。
 
 Application Workflow はビジネス的な処理順序を明示し、純粋な Domain Decision は DB を認識しません。
+
+カテゴリ作成でこの構造を実装しました。`catalog_workflows::category::create_category`がCommandをDecisionへ変換し、`CreateCategoryOperations`の小さな操作契約を通じて世帯、メンバー、親カテゴリを読み込んだ後、保存を指示します。Postgres AdapterはDieselトランザクションを開始し、トランザクション内のI/O操作とカテゴリ・イベントの原子的な保存を担当します。認可・親カテゴリ検証・処理順序はアプリケーションWorkflowに置いています。
+
+この実装はカテゴリ作成の例であり、同じ分離を購入作成・記帳Workflowへ広げる作業は未完了です。購入処理では同一トランザクション内のロックとOutbox保存を維持しながら、広いRepositoryを作らずにWorkflowが処理順序を所有する形へ移行してください。
 
 Rust では、Dependency Injection を必ずしも大きな trait で実装する必要はありません。ローカルな能力を関数やクロージャで渡す設計を優先し、トランザクション境界や非同期ライフタイムの表現が必要な部分に限って小さな trait を利用するとよいです。
 

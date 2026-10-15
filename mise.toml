@@ -28,11 +28,11 @@ run = "cargo test --workspace"
 
 [tasks."rust:db:schema"]
 description = "Atlas schemaからDiesel schemaを生成"
-run = "diesel print-schema --database-url \"$RUST_DATABASE_URL\" --schema public > crates/postgres/src/schema.rs"
+run = "diesel print-schema --database-url \"$RUST_DATABASE_URL\" --schema public > platform/postgres-common/src/schema.rs"
 
 [tasks."rust:db:schema:check"]
 description = "生成済みDiesel schemaとDBスキーマの差分確認"
-run = "diesel print-schema --database-url \"$RUST_DATABASE_URL\" --schema public | diff -u crates/postgres/src/schema.rs -"
+run = "diesel print-schema --database-url \"$RUST_DATABASE_URL\" --schema public | diff -u platform/postgres-common/src/schema.rs -"
 
 [tasks."rust:db:migrate"]
 description = "Rust用Atlasマイグレーション"

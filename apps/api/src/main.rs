@@ -3,7 +3,7 @@ use std::{env, error::Error, net::SocketAddr};
 use horse_auth::{AuthConfig, AuthService};
 use horse_graphql_api::{Config as GraphqlConfig, schema};
 use horse_http_api::{Config, router};
-use horse_postgres::connect;
+use horse_postgres_common::connect;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 

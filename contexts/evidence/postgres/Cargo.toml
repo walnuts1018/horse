@@ -1,0 +1,13 @@
+[package]
+name = "evidence-postgres"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = { workspace = true }
+evidence-application = { path = "../application" }
+diesel = { workspace = true, features = ["32-column-tables"] }
+diesel-async = { workspace = true }
+horse-postgres-common = { path = "../../../platform/postgres-common" }
+serde_json = { workspace = true }
+uuid = { workspace = true }

@@ -1,0 +1,12 @@
+[package]
+name = "horse-gemini-developer-api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base64 = { workspace = true }
+eventsource-stream = "0.2.3"
+futures-util = { workspace = true }
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "rustls", "stream"] }
+serde = { workspace = true }
+serde_json = { workspace = true }

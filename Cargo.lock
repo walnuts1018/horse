@@ -832,15 +832,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "bookkeeping-domain"
-version = "0.1.0"
-
-[[package]]
-name = "bookkeeping-workflows"
+name = "bookkeeping-application"
 version = "0.1.0"
 dependencies = [
  "bookkeeping-domain",
  "chrono",
+ "uuid",
+]
+
+[[package]]
+name = "bookkeeping-domain"
+version = "0.1.0"
+
+[[package]]
+name = "bookkeeping-postgres"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "bookkeeping-application",
+ "bookkeeping-domain",
+ "chrono",
+ "diesel",
+ "diesel-async",
+ "horse-postgres-common",
+ "serde_json",
+ "sha2 0.11.1",
  "uuid",
 ]
 
@@ -885,9 +901,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "catalog-workflows"
+name = "catalog-application"
 version = "0.1.0"
 dependencies = [
+ "uuid",
+]
+
+[[package]]
+name = "catalog-postgres"
+version = "0.1.0"
+dependencies = [
+ "catalog-application",
+ "chrono",
+ "diesel",
+ "diesel-async",
+ "horse-postgres-common",
+ "serde_json",
+ "sha2 0.11.1",
  "uuid",
 ]
 
@@ -1060,6 +1090,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01a7799fd6b852db0e61728dde9a204c423b44d689dbd432522543614b490e78"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "cross-context-postgres"
+version = "0.1.0"
+dependencies = [
+ "bookkeeping-application",
+ "bookkeeping-postgres",
+ "chrono",
+ "diesel",
+ "diesel-async",
+ "horse-postgres-common",
+ "household-postgres",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -1620,6 +1665,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "evidence-application"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "uuid",
+]
+
+[[package]]
+name = "evidence-postgres"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "diesel",
+ "diesel-async",
+ "evidence-application",
+ "horse-postgres-common",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "fallible-iterator"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1964,7 +2030,7 @@ dependencies = [
  "horse-auth",
  "horse-graphql-api",
  "horse-http-api",
- "horse-postgres",
+ "horse-postgres-common",
  "tokio",
  "tracing-subscriber",
 ]
@@ -1976,7 +2042,7 @@ dependencies = [
  "chrono",
  "diesel",
  "diesel-async",
- "horse-postgres",
+ "horse-postgres-common",
  "openidconnect",
  "sha2 0.11.1",
  "subtle",
@@ -2002,17 +2068,22 @@ version = "0.1.0"
 dependencies = [
  "async-graphql",
  "base64 0.23.1",
+ "bookkeeping-application",
  "bookkeeping-domain",
- "bookkeeping-workflows",
- "catalog-workflows",
+ "bookkeeping-postgres",
+ "catalog-application",
+ "catalog-postgres",
  "chrono",
+ "cross-context-postgres",
  "diesel",
  "diesel-async",
  "futures-channel",
  "futures-util",
- "horse-postgres",
- "household-workflows",
- "policy-workflows",
+ "horse-postgres-common",
+ "household-application",
+ "household-postgres",
+ "policy-application",
+ "policy-postgres",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -2033,28 +2104,18 @@ dependencies = [
  "diesel-async",
  "horse-auth",
  "horse-graphql-api",
- "horse-postgres",
+ "horse-postgres-common",
  "serde_json",
  "tracing",
  "url",
 ]
 
 [[package]]
-name = "horse-postgres"
+name = "horse-postgres-common"
 version = "0.1.0"
 dependencies = [
- "base64 0.23.1",
- "bookkeeping-domain",
- "bookkeeping-workflows",
- "catalog-workflows",
- "chrono",
  "diesel",
  "diesel-async",
- "household-workflows",
- "policy-workflows",
- "serde_json",
- "sha2 0.11.1",
- "uuid",
 ]
 
 [[package]]
@@ -2076,14 +2137,15 @@ dependencies = [
  "aws-credential-types",
  "aws-sdk-s3",
  "base64 0.23.1",
- "bookkeeping-workflows",
  "chrono",
  "csv",
+ "evidence-application",
+ "evidence-postgres",
  "futures-util",
  "hex",
  "hmac 0.13.0",
  "horse-gemini-developer-api",
- "horse-postgres",
+ "horse-postgres-common",
  "mail-parser",
  "reqwest 0.13.5",
  "serde",
@@ -2094,10 +2156,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "household-workflows"
+name = "household-application"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "uuid",
+]
+
+[[package]]
+name = "household-postgres"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "diesel",
+ "diesel-async",
+ "horse-postgres-common",
+ "household-application",
  "uuid",
 ]
 
@@ -3111,10 +3185,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
-name = "policy-workflows"
+name = "policy-application"
 version = "0.1.0"
 dependencies = [
  "chrono",
+]
+
+[[package]]
+name = "policy-postgres"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "diesel",
+ "diesel-async",
+ "horse-postgres-common",
+ "policy-application",
+ "uuid",
 ]
 
 [[package]]

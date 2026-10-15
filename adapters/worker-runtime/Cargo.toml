@@ -1,0 +1,27 @@
+[package]
+name = "horse-worker-runtime"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aes-gcm = { workspace = true }
+aws-config = { workspace = true }
+aws-credential-types = { workspace = true }
+aws-sdk-s3 = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true, features = ["clock"] }
+csv = { workspace = true }
+hex = { workspace = true }
+horse-gemini-developer-api = { path = "../ai" }
+horse-postgres-common = { path = "../../platform/postgres-common" }
+evidence-application = { path = "../../contexts/evidence/application" }
+evidence-postgres = { path = "../../contexts/evidence/postgres" }
+futures-util = { workspace = true }
+hmac = { workspace = true }
+mail-parser = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

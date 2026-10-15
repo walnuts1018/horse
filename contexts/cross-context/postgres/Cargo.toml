@@ -1,0 +1,15 @@
+[package]
+name = "cross-context-postgres"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bookkeeping-application = { path = "../../bookkeeping/application" }
+bookkeeping-postgres = { path = "../../bookkeeping/postgres" }
+chrono = { workspace = true }
+diesel = { workspace = true, features = ["32-column-tables"] }
+diesel-async = { workspace = true }
+horse-postgres-common = { path = "../../../platform/postgres-common" }
+household-postgres = { path = "../../household/postgres" }
+serde_json = { workspace = true }
+uuid = { workspace = true }

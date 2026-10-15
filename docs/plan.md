@@ -796,6 +796,25 @@ GraphQL API、Worker、バッチをRustで実装します。
 
 会計処理をUIから完全に切り離し、金額・負担配分・精算・締めの不変条件をサーバー側ドメインとして扱います。PostgreSQLへのアクセスはDieselの型付きDSLに統一し、DBスキーマの変更はAtlas migrationで管理します。
 
+Rust WorkspaceはBounded Contextを第一の境界にします。各ContextのDomain、Application、PostgreSQL Adapterを`contexts/`以下へ置き、GraphQL、Identity、HTTP、AIなどの外部接続を`adapters/`、共有接続と生成済みDiesel Schemaを`platform/postgres-common`、Composition Rootを`apps/`に置きます。複数Contextのデータを必要とするQueryは、特定Contextへ所有権を押し込まず`contexts/cross-context/postgres`に置きます。
+
+```text
+apps/
+  api/
+  worker/
+contexts/
+  bookkeeping/{domain,application,postgres}/
+  catalog/{application,postgres}/
+  household/{application,postgres}/
+  policy/{application,postgres}/
+  evidence/{application,postgres}/
+  cross-context/postgres/
+adapters/{ai,graphql,http,identity,worker-runtime}/
+platform/postgres-common/
+```
+
+Application Workflowは認証済みActorを受け取り、Load・Domain Decision・Persistの業務順序を定義します。PostgreSQL Adapterはトランザクション境界、ロック、型付きDSLによる入出力を実装します。Workflowに必要なI/O能力は小さな操作契約で表し、広いRepositoryへまとめません。
+
 GraphQLは、購入単位で必要な品目・負担情報をまとめて取得できること、型生成とフロントの連携がしやすいことから適しています。
 
 フロントのAPIキャッシュにはRelayを採用できます。すでにリアクティブなクライアントキャッシュを持てるので、別の同期データベースまで重ねる必要はありません。

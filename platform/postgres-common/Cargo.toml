@@ -1,0 +1,8 @@
+[package]
+name = "horse-postgres-common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+diesel = { workspace = true, features = ["32-column-tables"] }
+diesel-async = { workspace = true }

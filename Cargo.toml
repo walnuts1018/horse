@@ -1,5 +1,26 @@
 [workspace]
-members = ["apps/api", "apps/worker", "crates/auth", "crates/bookkeeping-domain", "crates/bookkeeping-workflows", "crates/catalog-workflows", "crates/gemini-developer-api", "crates/graphql-api", "crates/worker-runtime", "crates/policy-workflows", "crates/household-workflows", "crates/http-api", "crates/postgres"]
+members = [
+    "apps/api",
+    "apps/worker",
+    "contexts/bookkeeping/domain",
+    "contexts/bookkeeping/application",
+    "contexts/bookkeeping/postgres",
+    "contexts/catalog/application",
+    "contexts/catalog/postgres",
+    "contexts/household/application",
+    "contexts/household/postgres",
+    "contexts/policy/application",
+    "contexts/policy/postgres",
+    "contexts/evidence/application",
+    "contexts/evidence/postgres",
+    "contexts/cross-context/postgres",
+    "platform/postgres-common",
+    "adapters/ai",
+    "adapters/graphql",
+    "adapters/http",
+    "adapters/identity",
+    "adapters/worker-runtime",
+]
 resolver = "3"
 
 [workspace.dependencies]
