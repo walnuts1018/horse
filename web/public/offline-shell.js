@@ -154,6 +154,9 @@ async function start() {
 
     let currentDraft = structuredClone(draft);
     let hasUnsavedChanges = false;
+    let editVersion = 0;
+    let saveTimer;
+    let writeQueue = Promise.resolve();
     const itemList = document.querySelector("#draft-items");
     const status = document.querySelector("#offline-status");
     const readEditedItems = () =>
@@ -190,37 +193,19 @@ async function start() {
     openDraft.hidden = true;
     document.querySelector("#offline-message").textContent = "";
 
-    document.querySelector("#add-item").addEventListener("click", () => {
-      hasUnsavedChanges = true;
-      currentDraft.items = readEditedItems();
-      currentDraft.items.push({
-        key: crypto.randomUUID(),
-        name: "",
-        amount: "",
-        categoryId: "",
-        allocations: [],
-      });
-      renderItems();
+    const readCurrentDraft = () => ({
+      ...currentDraft,
+      merchant: form.elements.namedItem("merchant").value,
+      occurredAt: form.elements.namedItem("occurredAt").value,
+      itemName: form.elements.namedItem("itemName").value,
+      itemAmount: form.elements.namedItem("itemAmount").value,
+      items: readEditedItems(),
     });
-    itemList.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-remove-item]");
-      if (!button) return;
-      hasUnsavedChanges = true;
-      currentDraft.items = readEditedItems();
-      currentDraft.items.splice(Number(button.dataset.removeItem), 1);
-      renderItems();
-    });
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const nextDraft = {
-        ...currentDraft,
-        merchant: form.elements.namedItem("merchant").value,
-        occurredAt: form.elements.namedItem("occurredAt").value,
-        itemName: form.elements.namedItem("itemName").value,
-        itemAmount: form.elements.namedItem("itemAmount").value,
-        items: readEditedItems(),
-      };
-      try {
+    const persistCurrentDraft = () => {
+      const nextDraft = readCurrentDraft();
+      const version = editVersion;
+      status.textContent = "保存中";
+      const write = writeQueue.then(async () => {
         const writeDatabase = await openExistingDatabase();
         if (!writeDatabase) throw new Error("The local draft database is unavailable");
         try {
@@ -234,19 +219,56 @@ async function start() {
         } finally {
           writeDatabase.close();
         }
+      });
+      writeQueue = write.catch(() => {});
+      return write.then(() => {
+        if (editVersion !== version) return;
         currentDraft = nextDraft;
         hasUnsavedChanges = false;
         status.textContent = "保存しました";
-      } catch {
-        status.textContent = "保存できませんでした";
-      }
-    });
-    form.addEventListener("input", () => {
+      }).catch(() => {
+        if (editVersion === version) status.textContent = "保存できませんでした";
+      });
+    };
+    const scheduleSave = () => {
       hasUnsavedChanges = true;
+      editVersion += 1;
+      status.textContent = "未保存の変更があります";
+      if (saveTimer !== undefined) window.clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(() => {
+        saveTimer = undefined;
+        void persistCurrentDraft();
+      }, 450);
+    };
+
+    document.querySelector("#add-item").addEventListener("click", () => {
+      currentDraft.items = readEditedItems();
+      currentDraft.items.push({
+        key: crypto.randomUUID(),
+        name: "",
+        amount: "",
+        categoryId: "",
+        allocations: [],
+      });
+      renderItems();
+      scheduleSave();
     });
-    form.addEventListener("change", () => {
-      hasUnsavedChanges = true;
+    itemList.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-remove-item]");
+      if (!button) return;
+      currentDraft.items = readEditedItems();
+      currentDraft.items.splice(Number(button.dataset.removeItem), 1);
+      renderItems();
+      scheduleSave();
     });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (saveTimer !== undefined) window.clearTimeout(saveTimer);
+      saveTimer = undefined;
+      await persistCurrentDraft();
+    });
+    form.addEventListener("input", scheduleSave);
+    form.addEventListener("change", scheduleSave);
     window.addEventListener("beforeunload", (event) => {
       if (!hasUnsavedChanges) return;
       event.preventDefault();

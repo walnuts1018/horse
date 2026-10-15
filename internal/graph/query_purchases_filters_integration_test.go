@@ -6,6 +6,7 @@ import (
 	"os"
 	"slices"
 	"testing"
+	"time"
 
 	"uuid"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stephenafamo/bob/dialect/psql"
 	"github.com/stephenafamo/bob/dialect/psql/dm"
+	"github.com/stephenafamo/bob/dialect/psql/sm"
 	bobpgx "github.com/stephenafamo/bob/drivers/pgx"
 	"github.com/walnuts1018/horse/internal/auth"
 	"github.com/walnuts1018/horse/internal/graph/model"
@@ -263,5 +265,33 @@ func TestPurchasesApplyFiltersBeforePagination(t *testing.T) {
 	}
 	if _, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID, CategoryID: &category.ID, Uncategorized: new(true)}, nil, new(10)); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("simultaneous category and uncategorized filters returned %v; want bad input", err)
+	}
+	oldest := makePurchase("Cursor oldest", "Cursor item", "2026-06-01T12:00:00Z", nil, nil, nil)
+	middle := makePurchase("Cursor middle", "Cursor item", "2026-06-02T12:00:00Z", nil, nil, nil)
+	newest := makePurchase("Cursor newest", "Cursor item", "2026-06-03T12:00:00Z", nil, nil, nil)
+	cursorPage, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID}, nil, new(1))
+	if err != nil || len(cursorPage.Edges) != 1 || cursorPage.Edges[0].Node.ID != newest.ID {
+		t.Fatalf("cursor page returned %#v, error %v", cursorPage, err)
+	}
+	newestUUID, err := gofrsuuid.FromString(newest.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newOccurredAt := time.Date(2026, time.May, 31, 12, 0, 0, 0, time.UTC)
+	newestRow, err := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(newestUUID)))).One(ctx, executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := newestRow.Update(ctx, executor, &models.PurchaseSetter{OccurredAt: &newOccurredAt}); err != nil {
+		t.Fatal(err)
+	}
+	nextCursorPage, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID}, cursorPage.PageInfo.EndCursor, new(1))
+	if err != nil || len(nextCursorPage.Edges) != 1 || nextCursorPage.Edges[0].Node.ID != middle.ID {
+		t.Fatalf("page after edited cursor returned %#v, error %v; want middle purchase %s", nextCursorPage, err, middle.ID)
+	}
+	legacyCursor := encodeCursor(nodeTypePurchase, middle.ID)
+	legacyPage, err := queryPurchases(model.PurchaseFilter{HouseholdID: household.ID}, &legacyCursor, new(1))
+	if err != nil || len(legacyPage.Edges) != 1 || legacyPage.Edges[0].Node.ID != oldest.ID {
+		t.Fatalf("page after legacy cursor returned %#v, error %v; want oldest purchase %s", legacyPage, err, oldest.ID)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/stephenafamo/bob"
@@ -22,6 +23,40 @@ type purchasePagination struct {
 	before *string
 	first  *int
 	last   *int
+}
+
+type purchaseCursor struct {
+	ID         gofrsuuid.UUID
+	OccurredAt *time.Time
+}
+
+func decodePurchaseCursor(value string) (purchaseCursor, error) {
+	decoded, err := decodeCursor(value, nodeTypePurchase)
+	if err != nil {
+		return purchaseCursor{}, err
+	}
+	position, id, hasPosition := strings.Cut(decoded, "|")
+	if !hasPosition {
+		id = decoded
+	}
+	parsedID, err := gofrsuuid.FromString(id)
+	if err != nil {
+		return purchaseCursor{}, fmt.Errorf("%w: invalid purchase cursor", ErrBadInput)
+	}
+	cursor := purchaseCursor{ID: parsedID}
+	if hasPosition {
+		occurredAt, err := time.Parse(time.RFC3339Nano, position)
+		if err != nil {
+			return purchaseCursor{}, fmt.Errorf("%w: invalid purchase cursor", ErrBadInput)
+		}
+		cursor.OccurredAt = &occurredAt
+	}
+	return cursor, nil
+}
+
+func encodePurchaseCursor(purchase *models.Purchase) string {
+	value := purchase.OccurredAt.Format(time.RFC3339Nano) + "|" + purchase.ID.String()
+	return encodeCursor(nodeTypePurchase, value)
 }
 
 func (r *queryResolver) purchases(ctx context.Context, filter model.PurchaseFilter, page purchasePagination) (*model.PurchaseConnection, error) {
@@ -174,37 +209,38 @@ func (r *queryResolver) purchases(ctx context.Context, filter model.PurchaseFilt
 	if err != nil {
 		return nil, err
 	}
-	if cursorID, err := cursorID(page.after, nodeTypePurchase); err != nil {
-		return nil, err
-	} else if cursorID != nil {
-		parsedCursorID, err := gofrsuuid.FromString(*cursorID)
-		if err != nil {
-			return nil, fmt.Errorf("parse purchase cursor: %w", err)
+	for _, boundary := range []struct {
+		value   *string
+		isAfter bool
+	}{{value: page.after, isAfter: true}, {value: page.before}} {
+		if boundary.value == nil || *boundary.value == "" {
+			continue
 		}
-		cursor, err := models.Purchases.Query(sm.Where(psql.And(models.Purchases.Columns.ID.EQ(psql.Arg(parsedCursorID)), models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID))))).One(ctx, executor)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
+		cursor, err := decodePurchaseCursor(*boundary.value)
 		if err != nil {
 			return nil, err
 		}
-		filters = append(filters, psql.Or(models.Purchases.Columns.OccurredAt.LT(psql.Arg(cursor.OccurredAt)), psql.And(models.Purchases.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.Purchases.Columns.ID.LT(psql.Arg(cursor.ID)))))
-	}
-	if cursorID, err := cursorID(page.before, nodeTypePurchase); err != nil {
-		return nil, err
-	} else if cursorID != nil {
-		parsedCursorID, err := gofrsuuid.FromString(*cursorID)
-		if err != nil {
-			return nil, fmt.Errorf("parse purchase cursor: %w", err)
+		occurredAt := cursor.OccurredAt
+		if occurredAt == nil {
+			legacyRow, err := models.Purchases.Query(sm.Where(psql.And(
+				models.Purchases.Columns.ID.EQ(psql.Arg(cursor.ID)),
+				models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID)),
+			))).One(ctx, executor)
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrNotFound
+			}
+			if err != nil {
+				return nil, err
+			}
+			occurredAt = &legacyRow.OccurredAt
 		}
-		cursor, err := models.Purchases.Query(sm.Where(psql.And(models.Purchases.Columns.ID.EQ(psql.Arg(parsedCursorID)), models.Purchases.Columns.HouseholdID.EQ(psql.Arg(hhID))))).One(ctx, executor)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
+		comparison := models.Purchases.Columns.OccurredAt.LT(psql.Arg(*occurredAt))
+		idComparison := models.Purchases.Columns.ID.LT(psql.Arg(cursor.ID))
+		if !boundary.isAfter {
+			comparison = models.Purchases.Columns.OccurredAt.GT(psql.Arg(*occurredAt))
+			idComparison = models.Purchases.Columns.ID.GT(psql.Arg(cursor.ID))
 		}
-		if err != nil {
-			return nil, err
-		}
-		filters = append(filters, psql.Or(models.Purchases.Columns.OccurredAt.GT(psql.Arg(cursor.OccurredAt)), psql.And(models.Purchases.Columns.OccurredAt.EQ(psql.Arg(cursor.OccurredAt)), models.Purchases.Columns.ID.GT(psql.Arg(cursor.ID)))))
+		filters = append(filters, psql.Or(comparison, psql.And(models.Purchases.Columns.OccurredAt.EQ(psql.Arg(*occurredAt)), idComparison)))
 	}
 	occurredAtOrder := sm.OrderBy(models.Purchases.Columns.OccurredAt).Desc()
 	IDOrder := sm.OrderBy(models.Purchases.Columns.ID).Desc()
@@ -273,11 +309,11 @@ func (r *queryResolver) purchases(ctx context.Context, filter model.PurchaseFilt
 			purchase.Items = items
 		}
 		row := purchases[index]
-		connection.Edges = append(connection.Edges, &model.PurchaseEdge{Cursor: encodeCursor(nodeTypePurchase, row.ID.String()), Node: purchase})
+		connection.Edges = append(connection.Edges, &model.PurchaseEdge{Cursor: encodePurchaseCursor(row), Node: purchase})
 	}
 	if len(purchases) > 0 {
-		start := encodeCursor(nodeTypePurchase, purchases[0].ID.String())
-		end := encodeCursor(nodeTypePurchase, purchases[len(purchases)-1].ID.String())
+		start := encodePurchaseCursor(purchases[0])
+		end := encodePurchaseCursor(purchases[len(purchases)-1])
 		connection.PageInfo.StartCursor = &start
 		connection.PageInfo.EndCursor = &end
 	}
