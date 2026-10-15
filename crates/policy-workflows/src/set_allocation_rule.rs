@@ -1,7 +1,5 @@
 use std::collections::BTreeSet;
 
-use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId};
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AllocationRuleWeight {
     pub pool_id: String,
@@ -101,7 +99,6 @@ pub fn validate_set_allocation_rule(
     }
 
     let mut pool_ids = BTreeSet::new();
-    let mut shares = Vec::with_capacity(command.weights.len());
     for weight in &command.weights {
         if weight.pool_id.is_empty() {
             return Err(SetAllocationRuleError::InvalidPoolId);
@@ -112,16 +109,7 @@ pub fn validate_set_allocation_rule(
         if !pool_ids.insert(weight.pool_id.as_str()) {
             return Err(SetAllocationRuleError::DuplicatePoolId);
         }
-        let pool_id = PoolId::new(weight.pool_id.clone())
-            .map_err(|_| SetAllocationRuleError::InvalidPoolId)?;
-        let value =
-            u64::try_from(weight.weight).map_err(|_| SetAllocationRuleError::NonPositiveWeight)?;
-        shares.push(
-            AllocationWeight::new(pool_id, value)
-                .map_err(|_| SetAllocationRuleError::NonPositiveWeight)?,
-        );
     }
-    AllocationShares::new(shares).map_err(|_| SetAllocationRuleError::DuplicatePoolId)?;
 
     let mut target = command.target;
     if let Some(merchant) = target.merchant.take() {

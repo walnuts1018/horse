@@ -1,11 +1,11 @@
-use bookkeeping_workflows::set_default_allocation::{
-    DefaultAllocationState, SetDefaultAllocationCommand, SetDefaultAllocationDecision,
-    SetDefaultAllocationError, decide_set_default_allocation, validate_default_allocation,
-};
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use policy_workflows::set_default_allocation::{
+    DefaultAllocationState, SetDefaultAllocationCommand, SetDefaultAllocationDecision,
+    SetDefaultAllocationError, decide_set_default_allocation, validate_default_allocation,
+};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 

@@ -1,13 +1,13 @@
 use std::collections::BTreeSet;
 
-use bookkeeping_workflows::set_allocation_rule::{
-    AllocationRuleTarget, SetAllocationRuleCommand, SetAllocationRuleDecision,
-    SetAllocationRuleError, decide_set_allocation_rule, validate_set_allocation_rule,
-};
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use policy_workflows::set_allocation_rule::{
+    AllocationRuleTarget, SetAllocationRuleCommand, SetAllocationRuleDecision,
+    SetAllocationRuleError, decide_set_allocation_rule, validate_set_allocation_rule,
+};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};

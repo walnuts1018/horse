@@ -1,7 +1,5 @@
 use std::collections::BTreeSet;
 
-use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId};
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DefaultAllocationWeight {
     pub pool_id: String,
@@ -64,7 +62,6 @@ pub fn validate_default_allocation(
     }
 
     let mut pool_ids = BTreeSet::new();
-    let mut domain_weights = Vec::with_capacity(command.weights.len());
     for weight in &command.weights {
         if weight.pool_id.is_empty() {
             return Err(SetDefaultAllocationError::InvalidPoolId);
@@ -75,17 +72,7 @@ pub fn validate_default_allocation(
         if !pool_ids.insert(weight.pool_id.as_str()) {
             return Err(SetDefaultAllocationError::DuplicatePoolId);
         }
-        let pool_id = PoolId::new(weight.pool_id.clone())
-            .map_err(|_| SetDefaultAllocationError::InvalidPoolId)?;
-        let domain_weight = u64::try_from(weight.weight)
-            .map_err(|_| SetDefaultAllocationError::NonPositiveWeight)?;
-        domain_weights.push(
-            AllocationWeight::new(pool_id, domain_weight)
-                .map_err(|_| SetDefaultAllocationError::NonPositiveWeight)?,
-        );
     }
-    AllocationShares::new(domain_weights)
-        .map_err(|_| SetDefaultAllocationError::DuplicatePoolId)?;
 
     Ok(ValidatedDefaultAllocation {
         actor_id: command.actor_id,
