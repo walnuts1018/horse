@@ -353,8 +353,9 @@ func aggregateFundingSchedules(start, end time.Time, schedules models.FundingSch
 }
 
 func scheduleIsNewer(candidate, current *models.FundingSchedule) bool {
-	if !candidate.StartsOn.Equal(current.StartsOn) {
-		return candidate.StartsOn.After(current.StartsOn)
+	candidateStartsOn, currentStartsOn := dateOnly(candidate.StartsOn), dateOnly(current.StartsOn)
+	if !candidateStartsOn.Equal(currentStartsOn) {
+		return candidateStartsOn.After(currentStartsOn)
 	}
 	if !candidate.CreatedAt.Equal(current.CreatedAt) {
 		return candidate.CreatedAt.After(current.CreatedAt)

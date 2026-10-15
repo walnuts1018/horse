@@ -199,8 +199,8 @@ func TestIrregularFundingOverpaymentCarriesAcrossClosedPeriod(t *testing.T) {
 	for _, line := range august {
 		augustScheduled[line.MemberID] = line.ScheduledYen
 	}
-	if augustScheduled[memberA.String()] != 12000 || augustScheduled[memberB.String()] != 4500 {
-		t.Fatalf("weekly occurrences and custom date should be included in August: %#v", augustScheduled)
+	if augustScheduled[memberA.String()] != 6000 || augustScheduled[memberB.String()] != 500 {
+		t.Fatalf("August obligations should use only the schedules active at month end: %#v", augustScheduled)
 	}
 	closedAugust, err := settlements.Close(ctx, CloseCommand{ActorID: memberA.String(), HouseholdID: householdID.String(), Period: "2026-08"})
 	if err != nil {
@@ -210,8 +210,8 @@ func TestIrregularFundingOverpaymentCarriesAcrossClosedPeriod(t *testing.T) {
 	for _, line := range closedAugust.Lines {
 		closedScheduled[line.MemberID] = line.ScheduledYen
 	}
-	if closedScheduled[memberA.String()] != 12000 || closedScheduled[memberB.String()] != 4500 {
-		t.Fatalf("materialized weekly and custom obligations should match preview: %#v", closedScheduled)
+	if closedScheduled[memberA.String()] != 6000 || closedScheduled[memberB.String()] != 500 {
+		t.Fatalf("materialized obligations should match the month-end schedules: %#v", closedScheduled)
 	}
 
 	newStartsOn := time.Date(2026, time.September, 15, 0, 0, 0, 0, time.FixedZone("JST", 9*60*60))
@@ -228,6 +228,13 @@ func TestIrregularFundingOverpaymentCarriesAcrossClosedPeriod(t *testing.T) {
 		AmountYen: 10000, Cadence: "MONTHLY", StartsOn: latestStartsOn,
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	octoberStartsOn := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.FixedZone("JST", 9*60*60))
+	if _, err := scheduleService.Set(ctx, funding_schedule.SetCommand{
+		ActorID: memberA.String(), HouseholdID: householdID.String(), MemberID: memberA.String(), PoolID: poolID.String(),
+		AmountYen: 12000, Cadence: "MONTHLY", StartsOn: octoberStartsOn,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	september, err := settlements.Preview(ctx, householdID.String(), "2026-09")
