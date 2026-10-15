@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	gofrsuuid "github.com/gofrs/uuid/v5"
 	"github.com/jackc/pgx/v5"
@@ -105,67 +107,112 @@ func (s *Service) BulkUpdateItems(ctx context.Context, command BulkUpdateItemsCo
 	}
 	defer txcleanup.Rollback(ctx, tx)
 	executor := bobpgx.NewTx(tx, nil)
-	first, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(targetIDs[0])))).One(ctx, executor)
-	if errors.Is(err, sql.ErrNoRows) {
-		return BulkUpdateItemsResult{}, ErrNotFound
-	}
+	observedItems, err := models.PurchaseItems.Query(
+		sm.Where(models.PurchaseItems.Columns.ID.In(jsonUUIDArgs(targetIDs)...)),
+		sm.OrderBy(models.PurchaseItems.Columns.ID),
+	).All(ctx, executor)
 	if err != nil {
 		return BulkUpdateItemsResult{}, err
 	}
-	householdID := first.HouseholdID
+	if len(observedItems) != len(targetIDs) {
+		return BulkUpdateItemsResult{}, ErrNotFound
+	}
+	householdID := observedItems[0].HouseholdID
+	purchaseIDs := make([]gofrsuuid.UUID, 0, len(targetIDs))
+	purchaseIDSet := make(map[gofrsuuid.UUID]struct{}, len(targetIDs))
+	observedByID := make(map[gofrsuuid.UUID]*models.PurchaseItem, len(observedItems))
+	for _, item := range observedItems {
+		if item.HouseholdID != householdID {
+			return BulkUpdateItemsResult{}, fmt.Errorf("%w: all items must belong to one household", ErrBadInput)
+		}
+		observedByID[item.ID] = item
+		if _, exists := purchaseIDSet[item.PurchaseID]; !exists {
+			purchaseIDSet[item.PurchaseID] = struct{}{}
+			purchaseIDs = append(purchaseIDs, item.PurchaseID)
+		}
+	}
+	slices.SortFunc(purchaseIDs, func(left, right gofrsuuid.UUID) int {
+		return strings.Compare(left.String(), right.String())
+	})
 	if err := requirePurchaseMember(ctx, executor, householdID, actorID); err != nil {
 		return BulkUpdateItemsResult{}, err
 	}
-	household, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForUpdate()).One(ctx, executor)
+	observedPurchases, err := models.Purchases.Query(
+		sm.Where(models.Purchases.Columns.ID.In(jsonUUIDArgs(purchaseIDs)...)),
+		sm.OrderBy(models.Purchases.Columns.ID),
+	).All(ctx, executor)
+	if err != nil {
+		return BulkUpdateItemsResult{}, err
+	}
+	if len(observedPurchases) != len(purchaseIDs) {
+		return BulkUpdateItemsResult{}, ErrNotFound
+	}
+	observedPurchaseByID := make(map[gofrsuuid.UUID]*models.Purchase, len(observedPurchases))
+	periods := make([]string, 0, len(observedPurchases))
+	for _, purchase := range observedPurchases {
+		observedPurchaseByID[purchase.ID] = purchase
+		periods = append(periods, accounting.PeriodFor(purchase.OccurredAt))
+	}
+	if err := lockPurchaseAccountingPeriods(ctx, executor, householdID, periods...); err != nil {
+		return BulkUpdateItemsResult{}, err
+	}
+	household, err := models.Households.Query(sm.Where(models.Households.Columns.ID.EQ(psql.Arg(householdID))), sm.ForShare()).One(ctx, executor)
 	if errors.Is(err, sql.ErrNoRows) {
 		return BulkUpdateItemsResult{}, ErrNotFound
 	}
 	if err != nil {
 		return BulkUpdateItemsResult{}, err
 	}
-	items := make([]*models.PurchaseItem, 0, len(command.Targets))
-	purchases := make(map[gofrsuuid.UUID]*models.Purchase)
-	for index, target := range command.Targets {
-		observed, queryErr := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(targetIDs[index])))).One(ctx, executor)
-		if errors.Is(queryErr, sql.ErrNoRows) {
-			return BulkUpdateItemsResult{}, ErrNotFound
-		}
-		if queryErr != nil {
-			return BulkUpdateItemsResult{}, queryErr
-		}
-		if observed.HouseholdID != householdID {
-			return BulkUpdateItemsResult{}, fmt.Errorf("%w: all items must belong to one household", ErrBadInput)
-		}
-		_, ok := purchases[observed.PurchaseID]
-		if !ok {
-			purchase, queryErr := models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(observed.PurchaseID))), sm.ForUpdate()).One(ctx, executor)
-			if queryErr != nil {
-				if errors.Is(queryErr, sql.ErrNoRows) {
-					return BulkUpdateItemsResult{}, ErrNotFound
-				}
-				return BulkUpdateItemsResult{}, queryErr
-			}
-			if purchase.Status == correctionStatusClosed {
-				return BulkUpdateItemsResult{}, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
-			}
-			if err := lockPurchaseAccountingPeriods(ctx, executor, householdID, accounting.PeriodFor(purchase.OccurredAt)); err != nil {
-				return BulkUpdateItemsResult{}, err
-			}
-			purchases[observed.PurchaseID] = purchase
-		}
-		item, queryErr := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(targetIDs[index]))), sm.ForUpdate()).One(ctx, executor)
-		if errors.Is(queryErr, sql.ErrNoRows) {
-			return BulkUpdateItemsResult{}, ErrNotFound
-		}
-		if queryErr != nil {
-			return BulkUpdateItemsResult{}, queryErr
-		}
-		if int(item.Revision) != target.BaseRevision {
+	lockedPurchases, err := models.Purchases.Query(
+		sm.Where(models.Purchases.Columns.ID.In(jsonUUIDArgs(purchaseIDs)...)),
+		sm.OrderBy(models.Purchases.Columns.ID),
+		sm.ForUpdate(),
+	).All(ctx, executor)
+	if err != nil {
+		return BulkUpdateItemsResult{}, err
+	}
+	if len(lockedPurchases) != len(purchaseIDs) {
+		return BulkUpdateItemsResult{}, ErrNotFound
+	}
+	purchases := make(map[gofrsuuid.UUID]*models.Purchase, len(lockedPurchases))
+	for _, purchase := range lockedPurchases {
+		observed := observedPurchaseByID[purchase.ID]
+		if purchase.HouseholdID != householdID || !purchase.OccurredAt.Equal(observed.OccurredAt) {
 			return BulkUpdateItemsResult{}, ErrConflict
 		}
-		items = append(items, item)
+		if purchase.Status != draftStatus && purchase.Status != postedStatus {
+			return BulkUpdateItemsResult{}, fmt.Errorf("%w: closed purchases require a correction", ErrConflict)
+		}
+		purchases[purchase.ID] = purchase
 	}
+	items, err := models.PurchaseItems.Query(
+		sm.Where(models.PurchaseItems.Columns.ID.In(jsonUUIDArgs(targetIDs)...)),
+		sm.OrderBy(models.PurchaseItems.Columns.ID),
+		sm.ForUpdate(),
+	).All(ctx, executor)
+	if err != nil {
+		return BulkUpdateItemsResult{}, err
+	}
+	if len(items) != len(targetIDs) {
+		return BulkUpdateItemsResult{}, ErrNotFound
+	}
+	lockedItems := make(map[gofrsuuid.UUID]*models.PurchaseItem, len(items))
 	for _, item := range items {
+		observed := observedByID[item.ID]
+		if item.HouseholdID != householdID || item.PurchaseID != observed.PurchaseID {
+			return BulkUpdateItemsResult{}, ErrConflict
+		}
+		lockedItems[item.ID] = item
+	}
+	itemsInCommandOrder := make([]*models.PurchaseItem, len(targetIDs))
+	for index, targetID := range targetIDs {
+		item := lockedItems[targetID]
+		if int(item.Revision) != command.Targets[index].BaseRevision {
+			return BulkUpdateItemsResult{}, ErrConflict
+		}
+		itemsInCommandOrder[index] = item
+	}
+	for _, item := range itemsInCommandOrder {
 		if err := s.updateBulkItem(ctx, tx, executor, item, purchases[item.PurchaseID], command.Patch, fields, household.DefaultAllocationVersion); err != nil {
 			return BulkUpdateItemsResult{}, err
 		}
@@ -173,7 +220,8 @@ func (s *Service) BulkUpdateItems(ctx context.Context, command BulkUpdateItemsCo
 			return BulkUpdateItemsResult{}, err
 		}
 	}
-	for _, purchase := range purchases {
+	for _, purchaseID := range purchaseIDs {
+		purchase := purchases[purchaseID]
 		if _, err := models.Purchases.Update(um.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchase.ID))), um.SetCol("revision").To(models.Purchases.Columns.Revision.Plus(psql.Arg(int64(1)))), um.SetCol("updated_at").To(psql.F("now"))).Exec(ctx, executor); err != nil {
 			return BulkUpdateItemsResult{}, err
 		}
@@ -186,8 +234,8 @@ func (s *Service) BulkUpdateItems(ctx context.Context, command BulkUpdateItemsCo
 	if err := tx.Commit(ctx); err != nil {
 		return BulkUpdateItemsResult{}, err
 	}
-	result := BulkUpdateItemsResult{Items: make([]BulkUpdatedItem, 0, len(items))}
-	for _, item := range items {
+	result := BulkUpdateItemsResult{Items: make([]BulkUpdatedItem, 0, len(itemsInCommandOrder))}
+	for _, item := range itemsInCommandOrder {
 		result.Items = append(result.Items, BulkUpdatedItem{ID: item.ID.String(), PurchaseID: item.PurchaseID.String()})
 	}
 	return result, nil

@@ -320,4 +320,35 @@ func TestServiceSaveItemEditsUpdatesMultipleItemsAndPurchase(t *testing.T) {
 	if purchase.Merchant != updatedMerchant || purchase.Revision != 4 {
 		t.Fatalf("purchase after save has merchant %q and revision %d; want %q and 4", purchase.Merchant, purchase.Revision, updatedMerchant)
 	}
+
+	bulkResult, err := NewService(db).BulkUpdateItems(ctx, BulkUpdateItemsCommand{
+		ActorID: memberID.String(),
+		Targets: []BulkItemTarget{
+			{ItemID: secondItemID.String(), BaseRevision: 2},
+			{ItemID: firstItemID.String(), BaseRevision: 2},
+		},
+		Patch: BulkItemPatch{TagIDsSet: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bulkResult.Items) != 2 || bulkResult.Items[0].ID != secondItemID.String() || bulkResult.Items[1].ID != firstItemID.String() {
+		t.Fatalf("BulkUpdateItems returned items %#v; want command order [%s, %s]", bulkResult.Items, secondItemID, firstItemID)
+	}
+	for _, itemID := range []gofrsuuid.UUID{firstItemID, secondItemID} {
+		item, err := models.PurchaseItems.Query(sm.Where(models.PurchaseItems.Columns.ID.EQ(psql.Arg(itemID)))).One(ctx, bobpgx.NewPool(db))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if item.Revision != 3 {
+			t.Fatalf("item %s after bulk update has revision %d; want 3", itemID, item.Revision)
+		}
+	}
+	purchase, err = models.Purchases.Query(sm.Where(models.Purchases.Columns.ID.EQ(psql.Arg(purchaseID)))).One(ctx, bobpgx.NewPool(db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if purchase.Revision != 5 {
+		t.Fatalf("purchase after bulk item update has revision %d; want 5", purchase.Revision)
+	}
 }
