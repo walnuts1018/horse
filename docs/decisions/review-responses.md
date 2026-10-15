@@ -4,6 +4,18 @@
 
 ## 2026年10月15日
 
+### Gemini APIのquota取得
+
+Gemini APIの公式rate limits資料は、projectごとに変動する有効quotaをAI Studioで確認するよう案内し、quota取得用の公開APIを記載していません。Horseは画面を解析してquotaを取得せず、運用者が確認した値を`GEMINI_QUOTA_LIMITS`へ設定します。共有RPM・TPM・RPD予約と429後のcooldownはPostgreSQLで制御します。この項目は、公式に利用できる取得APIがないため対応対象から外します。[Gemini APIのrate limits](https://ai.google.dev/gemini-api/docs/rate-limits)
+
+## 2026年10月15日
+
+### ホーム撮影、履歴コピー、購入入力
+
+購入履歴のコピー先に品目がある場合は、置換・追加・取消を選べる操作を表示します。品目がない場合は従来どおりそのままコピーします。ホームの「撮影する」は取り込み画面へ移動するとカメラを開き、既存の確認・アップロード処理を使います。購入入力では標準負担のプール名と比率を表示します。CSV貼り付けでは正常行をプレビューし、不正行を同じ画面で修正してから追加できます。引用符の解析に失敗した場合は入力内容を編集して再解析できます。
+
+レビューの4項目を実装済みとして削除しました。CSV parserのfocused test 4件、Frontend型検査、対象lint、整形検査が成功しました。
+
 ### レシート確認、details、家計フォームのスタイル
 
 画面全体のCSSクラスを照合し、レシート品目の`details`、帳簿原本の画像領域、返済フォーム、成功通知、合計表示に専用スタイルがない箇所を追加しました。共通の`summary`に開閉矢印とfocus-visible表示を付け、開閉表示を画面内で統一しました。レシート品目には確認状態、金額、入力欄、開いた状態の境界を追加し、`--surface`など未定義だった色トークンも定義しました。native controlsとレシート品目のStoryを追加し、閉じた状態・開いた状態・確認状態を個別に調整できます。Storybook build、Stylelint、型検査、Markuplint、focused Vitestを確認しました。
@@ -123,6 +135,8 @@ CSV明細の永続参照は取引番号から行番号へ変更しました。Tr
 ### GraphQL Schema
 
 Mutation単位とドメイン型単位でSDLを分割し、gqlgenは`follow-schema`を使います。各Mutationは`Success | UserError`のResult unionを返し、共通`MutationError` interfaceを使います。Mutation Successにentity IDを含める場合は`@goField(forceResolver: true)`と`encodeNodeID`でRelay Global IDを返します。Ledger、Settlement、Pool、Observation、PurchaseCorrection、AccountBalanceSourceも型の違いをinterface/unionで表しています。この構成はpiccaのADR 0002とSDL分割に沿うため、該当するレビュー指摘は解決済みとして`docs/reviews/graphql.md`から削除しました。根拠は`gqlgen.yml`、`graphql/*_mutation.graphql`、各domain SDLです。
+
+2026年10月15日の再監査で、Account、Transfer、Statement、Household mail forwardingの複数mutationが一つのSDLへ混在していた箇所と、共有購入下書きmutationにResult unionがない箇所を修正しました。各mutationを専用SDLへ分け、共有下書きの競合を最新draft付きの`UpdateSharedPurchaseDraftConflict` variantとして表します。共有下書きの入力検証・参照拒否も共通`MutationError`を実装するuser error variantで返します。変更後は全MutationがResult unionを返し、各mutation SDLにはMutation fieldを一つだけ定義します。`mise run generate:graphql`、`go test ./internal/graph`、Relay整合性検証、Frontend型検査、GraphQL整形検査が成功しました。
 
 nullable outputの静的監査では、明白にnon-nullへ変更できるfieldは見つかりませんでした。任意の関連ID・終了日・商品数量・OCRの観測日時など、nullableが値の欠損条件を表す箇所は維持します。default付きの`includeArchived`と`productSuggestions.first`はSDLでnon-nullに変更し、Relay operation variablesとResolver引数も更新しました。`ProductVariant.brand`と`packageSize`は未設定値をnullへ統一しました。`Budget`、`Tag`、`RecurringExpense`、`ProductCatalog`の一覧はConnection化し、Frontend read関数で全ページを取得します。これらのレビュー項目は解決済みです。
 
