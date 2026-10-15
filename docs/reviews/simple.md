@@ -47,7 +47,7 @@ BEはかなり大きく整理し直す価値があります。 問題は単に�
 
 一方、`households()`と`viewer()`は所属情報を取得した後、`loadHouseholds()`でHouseholdの基本情報と要求された詳細をまとめて取得し、所属情報の順序に合わせて結果を組み立てます。resolverの選択fieldに応じた専用loaderを各フィールドに用意しておらず、Household以外の親子関係を含む要求を汎用的にbatchする仕組みもありません。特にNode解決や複数親から同じ関連データを参照するクエリについて、クエリ数と取得範囲を確認し、必要ならBobの一括取得を使うbatch loaderを追加する余地があります。
 
-Member、Account、Category、Household、Pool Nodeの複数ID解決では、所属確認と対象データ取得をBobで一括取得するよう変更しました。重複IDを含む順序維持、家庭所属の認可、CategoryのParentID mappingをfocused integration testで確認しています。単一LedgerEntry Nodeもbatch loaderへ通し、既存テストでLoanBalanceを含む型を解決できることを確認しました。`nodes(ids:)`で複数のUnmatchedObservation Nodeを取得する経路も、所属家庭、SourceObservation、DocumentConfirmation、必要なCorrectionをまとめて取得するよう変更しました。複合Node IDの重複、順序、未存在行、家庭所属の認可をfocused integration testで確認しました。Settlement Nodeのclosed run取得を一括化しました。未確定periodのpreview計算はSettlement Serviceを個別に呼び出します。
+Member、Account、Category、Household、Pool Nodeの複数ID解決では、所属確認と対象データ取得をBobで一括取得するよう変更しました。重複IDを含む順序維持、家庭所属の認可、CategoryのParentID mappingをfocused integration testで確認しています。単一LedgerEntry Nodeもbatch loaderへ通し、既存テストでLoanBalanceを含む型を解決できることを確認しました。`nodes(ids:)`で複数のUnmatchedObservation Nodeを取得する経路も、所属家庭、SourceObservation、DocumentConfirmation、必要なCorrectionをまとめて取得するよう変更しました。複合Node IDの重複、順序、未存在行、家庭所属の認可をfocused integration testで確認しました。複数Nodeの解決では、UnmatchedObservationとSettlementが認可用Household一覧を共有します。Settlement Nodeのclosed run取得を一括化しました。未確定periodのpreview計算はSettlement Serviceを個別に呼び出します。
 
 `loadPurchases()`のGraphQL表示モデル組み立ては`purchase_graph.go`の`mapPurchases()`へ分離しました。DBから関連データをbatch取得する処理と、GraphQLモデルへの変換を個別に追えます。関連データの取得範囲をGraphQL選択fieldに応じて絞る改善と、`loadHousehold()`の表示モデル組み立ての分離は引き続き見直し対象です。
 
@@ -68,7 +68,7 @@ Member、Account、Category、Household、Pool Nodeの複数ID解決では、所
 
 さらに`SaveItemEdits()`では、各明細について`updateItem()`を呼び、その後に購入全体の`update()`を呼んでいます。
 
-`SaveItemEdits()`は`planSaveItemEdits()`でIDとコマンドを正規化し、明細のlock順序を決めた後、`applySaveItemEdits()`で既存のtransactionフローを実行するよう分けました。個別明細と購入の業務変更計画は引き続き`updateItem()`と`update()`がそれぞれ構築するため、計画構築と適用の完全な共通化は未完了です。既存の複数明細を一括保存するDB統合テストは通過しています。
+`SaveItemEdits()`は`planSaveItemEdits()`でIDとコマンドを正規化し、`lockSaveItemEditsTargets()`で認可確認、会計期間ロック、購入と明細のロック取得を行った後、`applySaveItemEdits()`で既存のtransactionフローを実行します。個別明細と購入の業務変更計画は引き続き`updateItem()`と`update()`がそれぞれ構築するため、計画構築と適用の完全な共通化は未完了です。複数明細を一括保存する既存DB統合テストは通過しています。
 
 残る設計課題は、共有済みの計画・適用処理と各ユースケースに残る事前検証、ロック、イベント、仕訳同期の責務境界です。通常更新と一括更新では対象件数や適用順、仕訳同期の条件が異なるため、共通化する業務ルールとユースケース固有の調整を明確にした上で、重複や意図しない差異を見直す必要があります。単一更新と一括更新の流れは、例えば次の構造で整理できます。
 
@@ -90,7 +90,7 @@ GraphQLなどの公開API
 
 | 対象 | 確認した問題 | 推奨する改善 |
 | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
-| [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離され、`Do()`にはDB操作、権限確認、ロック、記帳処理が残る。冪等性再生の検索・検証は専用関数へ集約済み | 口座・明細・返済情報の読み込みと記帳順序をさらに整理する |
+| [振替・貸付処理](https://github.com/walnuts1018/horse/blob/main/internal/application/transfer/record.go#L70-L489) | 入力ルール、仕訳明細、精算調整の計算は純粋な関数へ分離され、冪等性再生の検索・検証と口座・プール所有者の読込・検証も専用関数へ集約済み。`Do()`には権限確認、ロック、返済情報の読込、記帳処理が残る | 返済情報の読込と記帳順序をさらに整理する |
 | [Geminiクライアント](https://github.com/walnuts1018/horse/blob/main/internal/ingestion/gemini.go#L74-L313) | JSON応答の復号とusage抽出は純粋なdecoderへ分離されたが、HTTPクライアント設定、Prompt、API呼び出し、Quota処理は`ExtractRun()`に残る | Provider、Prompt、Quota処理の責務を整理する |
 
 ### 小さな自前ユーティリティも整理する
