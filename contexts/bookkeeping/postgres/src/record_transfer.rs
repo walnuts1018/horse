@@ -3,7 +3,6 @@ use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
-use std::collections::BTreeSet;
 use uuid::Uuid;
 
 use bookkeeping_application::{
@@ -122,7 +121,7 @@ pub async fn persist_record_transfer(
         || decision.from_member_id == decision.to_member_id
         || (decision.kind == TransferKind::Repayment) != loan_id.is_some()
         || decision.event.revision != 1
-        || decision.journal_lines.is_empty()
+        || decision.journal.entries().is_empty()
     {
         return Err(RecordTransferPersistenceError::InvalidDecision);
     }
@@ -281,7 +280,7 @@ pub async fn persist_record_transfer(
                 ))
                 .execute(&mut *conn)
                 .await?;
-            for line in &decision.journal_lines {
+            for line in decision.journal.entries() {
                 let line_no = i32::try_from(line.line_no).map_err(|_| {
                     RecordTransferPersistenceError::NumericOutOfRange("journal line_no")
                 })?;
@@ -773,7 +772,7 @@ async fn validate_members_and_references(
             .optional()?
             .ok_or(RecordTransferPersistenceError::MemberNotFound)?;
     }
-    for line in &decision.journal_lines {
+    for line in decision.journal.entries() {
         match &line.target {
             JournalTarget::Member(id) => {
                 members::household_members
@@ -994,46 +993,30 @@ async fn validate_repayment(
 fn validate_decision(
     decision: &RecordTransferDecision,
 ) -> Result<(), RecordTransferPersistenceError> {
-    if decision.journal_lines.len() < 2
+    let lines = decision.journal.entries();
+    if lines.len() < 2
         || (decision.kind == TransferKind::Gift && !decision.settlement_adjustments.is_empty())
         || (decision.kind != TransferKind::Gift && decision.settlement_adjustments.is_empty())
     {
         return Err(RecordTransferPersistenceError::InvalidDecision);
     }
-    let mut line_numbers = BTreeSet::new();
-    let mut debits = 0_i64;
-    let mut credits = 0_i64;
-    for line in &decision.journal_lines {
+    for line in lines {
         let line_no = i32::try_from(line.line_no)
             .map_err(|_| RecordTransferPersistenceError::NumericOutOfRange("journal line_no"))?;
         let amount = line.amount.value();
-        if line_no <= 0
-            || !line_numbers.insert(line_no)
-            || amount <= 0
-            || amount > 1_000_000_000_000
-        {
+        if line_no <= 0 || amount > 1_000_000_000_000 {
             return Err(RecordTransferPersistenceError::InvalidDecision);
         }
-        let total = match line.side {
-            PostingSide::Debit => &mut debits,
-            PostingSide::Credit => &mut credits,
-        };
-        *total = total
-            .checked_add(amount)
-            .ok_or(RecordTransferPersistenceError::InvalidDecision)?;
     }
-    if debits != credits
-        || decision.journal_lines[0].line_no != 1
-        || decision.journal_lines[1].line_no != 2
-        || decision.journal_lines[0].amount != decision.amount
-        || decision.journal_lines[1].amount != decision.amount
-        || decision.journal_lines[0].target != JournalTarget::Member(decision.to_member_id.clone())
-        || decision.journal_lines[1].target
-            != JournalTarget::Member(decision.from_member_id.clone())
-        || decision
-            .journal_lines
-            .iter()
-            .any(|line| line.memo.is_empty())
+    if lines[0].line_no != 1
+        || lines[0].side != PostingSide::Debit
+        || lines[1].line_no != 2
+        || lines[1].side != PostingSide::Credit
+        || lines[0].amount != decision.amount
+        || lines[1].amount != decision.amount
+        || lines[0].target != JournalTarget::Member(decision.to_member_id.clone())
+        || lines[1].target != JournalTarget::Member(decision.from_member_id.clone())
+        || lines.iter().any(|line| line.memo.is_empty())
         || decision.settlement_adjustments.iter().any(|adjustment| {
             adjustment.amount_yen == 0 || adjustment.amount_yen.unsigned_abs() > 1_000_000_000_000
         })
@@ -1045,8 +1028,7 @@ fn validate_decision(
         (decision.destination_account_id.as_ref(), PostingSide::Debit),
     ] {
         if let Some(account_id) = account_id {
-            let matching_lines = decision
-                .journal_lines
+            let matching_lines = lines
                 .iter()
                 .filter(|line| line.target == JournalTarget::Account((*account_id).clone()))
                 .collect::<Vec<_>>();
@@ -1058,17 +1040,13 @@ fn validate_decision(
             }
         }
     }
-    if decision
-        .journal_lines
-        .iter()
-        .any(|line| match &line.target {
-            JournalTarget::Account(account_id) => {
-                decision.payment_account_id.as_ref() != Some(account_id)
-                    && decision.destination_account_id.as_ref() != Some(account_id)
-            }
-            JournalTarget::Pool(_) | JournalTarget::Member(_) | JournalTarget::Clearing => false,
-        })
-    {
+    if lines.iter().any(|line| match &line.target {
+        JournalTarget::Account(account_id) => {
+            decision.payment_account_id.as_ref() != Some(account_id)
+                && decision.destination_account_id.as_ref() != Some(account_id)
+        }
+        JournalTarget::Pool(_) | JournalTarget::Member(_) | JournalTarget::Clearing => false,
+    }) {
         return Err(RecordTransferPersistenceError::InvalidDecision);
     }
     Ok(())

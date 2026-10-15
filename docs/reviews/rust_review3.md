@@ -6,10 +6,6 @@
 
 ## 継続して検討したい項目
 
-### 仕訳モデルの共有範囲
-
-[`journal.rs`](../../contexts/bookkeeping/domain/src/journal.rs)の`BalancedJournal`は貸借一致を保証しますが、各Workflowは個別の仕訳明細型も保持しています。共通の会計不変条件とWorkflow固有の表現をどの範囲で共有するかは未決です。
-
 ### Event永続化とWorkflowの境界
 
 複数のPostgreSQL実装が`household_events`向けのイベント項目を組み立てています。イベント内容を誰が決定し、各配送形式へ誰が変換するかを整理する余地があります。

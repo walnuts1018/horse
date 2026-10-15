@@ -1,6 +1,26 @@
 use std::collections::BTreeSet;
 
-use crate::{JournalLine, Side};
+use crate::{JournalLine, PositiveYen, Side};
+
+pub trait JournalEntry {
+    fn line_no(&self) -> u32;
+    fn side(&self) -> Side;
+    fn amount(&self) -> PositiveYen;
+}
+
+impl JournalEntry for JournalLine {
+    fn line_no(&self) -> u32 {
+        self.line_no()
+    }
+
+    fn side(&self) -> Side {
+        self.side()
+    }
+
+    fn amount(&self) -> PositiveYen {
+        self.amount()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JournalError {
@@ -11,13 +31,13 @@ pub enum JournalError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BalancedJournal {
-    entries: Vec<JournalLine>,
+pub struct BalancedJournal<T = JournalLine> {
+    entries: Vec<T>,
     debit_total: i64,
 }
 
-impl BalancedJournal {
-    pub fn new(entries: Vec<JournalLine>) -> Result<Self, JournalError> {
+impl<T: JournalEntry> BalancedJournal<T> {
+    pub fn new(entries: Vec<T>) -> Result<Self, JournalError> {
         if entries.is_empty() {
             return Err(JournalError::Empty);
         }
@@ -47,7 +67,7 @@ impl BalancedJournal {
         })
     }
 
-    pub fn entries(&self) -> &[JournalLine] {
+    pub fn entries(&self) -> &[T] {
         &self.entries
     }
 

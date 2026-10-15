@@ -1,4 +1,7 @@
-use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, PoolId, PositiveYen, Yen};
+use bookkeeping_domain::{
+    AccountingPeriod, AccountingPeriodStatus, BalancedJournal, JournalEntry, JournalError, PoolId,
+    PositiveYen, Side, Yen,
+};
 
 use crate::{AccountId, MemberId};
 
@@ -107,11 +110,7 @@ impl RecordTransferCommand {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PostingSide {
-    Debit,
-    Credit,
-}
+pub use bookkeeping_domain::Side as PostingSide;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JournalTarget {
@@ -128,6 +127,23 @@ pub struct JournalLine {
     pub target: JournalTarget,
     pub amount: PositiveYen,
     pub memo: &'static str,
+}
+
+impl JournalEntry for JournalLine {
+    fn line_no(&self) -> u32 {
+        self.line_no
+    }
+
+    fn side(&self) -> Side {
+        match self.side {
+            PostingSide::Debit => Side::Debit,
+            PostingSide::Credit => Side::Credit,
+        }
+    }
+
+    fn amount(&self) -> PositiveYen {
+        self.amount
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,7 +170,7 @@ pub struct RecordTransferDecision {
     pub payment_account_id: Option<AccountId>,
     pub destination_account_id: Option<AccountId>,
     pub loan_id: Option<LoanId>,
-    pub journal_lines: Vec<JournalLine>,
+    pub journal: BalancedJournal<JournalLine>,
     pub settlement_adjustments: Vec<SettlementAdjustment>,
     pub event: TransferRecordedEvent,
 }
@@ -169,6 +185,7 @@ pub enum RecordTransferError {
     EmptyLoanId,
     AmountOverflow,
     JournalLineCountOverflow,
+    UnbalancedJournal,
 }
 
 pub fn decide_record_transfer(
@@ -204,7 +221,7 @@ pub fn decide_record_transfer(
         }
     }
 
-    let journal_lines = build_journal_lines(&command)?;
+    let journal = build_journal_lines(&command)?;
     let settlement_adjustments = settlement_adjustments(&command);
     let kind = command.kind();
     let description = normalized_description(&command.base().description, kind);
@@ -230,7 +247,7 @@ pub fn decide_record_transfer(
         payment_account_id,
         destination_account_id,
         loan_id,
-        journal_lines,
+        journal,
         settlement_adjustments,
         event: TransferRecordedEvent {
             actor_id: command.base().actor_id.clone(),
@@ -242,7 +259,7 @@ pub fn decide_record_transfer(
 
 fn build_journal_lines(
     command: &RecordTransferCommand,
-) -> Result<Vec<JournalLine>, RecordTransferError> {
+) -> Result<BalancedJournal<JournalLine>, RecordTransferError> {
     let base = command.base();
     let kind = command.kind();
     let mut lines = vec![
@@ -309,7 +326,12 @@ fn build_journal_lines(
             memo: "Transfer destination account offset",
         });
     }
-    Ok(lines)
+    BalancedJournal::new(lines).map_err(|error| match error {
+        JournalError::AmountOverflow => RecordTransferError::AmountOverflow,
+        JournalError::Empty | JournalError::InvalidLineNumber | JournalError::Unbalanced => {
+            RecordTransferError::UnbalancedJournal
+        }
+    })
 }
 
 fn next_line_no(lines: &[JournalLine]) -> Result<u32, RecordTransferError> {
@@ -407,24 +429,27 @@ mod tests {
         let decision = decide_record_transfer(RecordTransferCommand::Gift(base)).unwrap();
 
         assert_eq!(decision.description, "GIFT");
-        assert_eq!(decision.journal_lines.len(), 8);
+        assert_eq!(decision.journal.entries().len(), 8);
         assert_eq!(decision.settlement_adjustments, []);
         assert_eq!(
             decision
-                .journal_lines
+                .journal
+                .entries()
                 .iter()
                 .map(|line| line.line_no)
                 .collect::<Vec<_>>(),
             (1..=8).collect::<Vec<_>>()
         );
         let debits = decision
-            .journal_lines
+            .journal
+            .entries()
             .iter()
             .filter(|line| line.side == PostingSide::Debit)
             .map(|line| line.amount.value())
             .sum::<i64>();
         let credits = decision
-            .journal_lines
+            .journal
+            .entries()
             .iter()
             .filter(|line| line.side == PostingSide::Credit)
             .map(|line| line.amount.value())

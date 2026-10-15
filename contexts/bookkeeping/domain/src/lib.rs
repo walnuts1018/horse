@@ -8,7 +8,7 @@ mod settlement;
 pub use allocation::{
     Allocation, AllocationError, AllocationShares, AllocationWeight, PoolId, PoolIdError, allocate,
 };
-pub use journal::{BalancedJournal, JournalError};
+pub use journal::{BalancedJournal, JournalEntry, JournalError};
 pub use money::{MAX_YEN, MoneyError, PositiveYen, Yen};
 pub use period::{
     AccountingPeriod, AccountingPeriodError, AccountingPeriodStatus,
