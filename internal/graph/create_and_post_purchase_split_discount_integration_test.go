@@ -92,7 +92,7 @@ func TestCreateAndPostPurchaseConfirmsDiscountedReceiptAcrossPaymentsAndPools(t 
 			{PrintedName: "Printed rice", Name: "Rice", PrintedAmount: 100, Discount: -10, PriceBasis: "EXEMPT", Confidence: 1},
 			{PrintedName: "Printed tea", Name: "Tea", PrintedAmount: 200, PriceBasis: "EXEMPT", Confidence: 1},
 		},
-		Payments: []ingestion.Payment{{Method: "card", Amount: 141}, {Method: "card", Amount: 140}},
+		Payments: []ingestion.Payment{{Method: testCardSourceKind, Amount: 141}, {Method: testCardSourceKind, Amount: 140}},
 	})
 	if err != nil {
 		t.Fatal(err)
