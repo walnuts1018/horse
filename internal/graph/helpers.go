@@ -324,9 +324,6 @@ func loadHouseholdDetails(ctx context.Context, db *pgxpool.Pool, households map[
 		for _, stored := range pools {
 			pool := &model.Pool{ID: stored.ID.String(), Name: stored.Name, Kind: model.PoolKind(stored.Kind), FundingRuleVersion: int(stored.FundingRuleVersion), FundingShares: make([]*model.PoolFundingShare, 0)}
 			poolByID[stored.ID] = pool
-			if fields.pools {
-				households[stored.HouseholdID].PoolVariants = append(households[stored.HouseholdID].PoolVariants, poolVariant(pool))
-			}
 		}
 		defaults, err := models.AllocationDefaults.Query(sm.Where(models.AllocationDefaults.Columns.HouseholdID.In(args...))).All(ctx, executor)
 		if err != nil {
@@ -379,6 +376,9 @@ func loadHouseholdDetails(ctx context.Context, db *pgxpool.Pool, households map[
 				if rule != nil && pool != nil && share.Version == rule.Version {
 					pool.FundingShares = append(pool.FundingShares, &model.PoolFundingShare{MemberID: share.MemberID.String(), MemberName: memberNames[share.MemberID], Weight: graphLong(share.Weight)})
 				}
+			}
+			for _, stored := range pools {
+				households[stored.HouseholdID].PoolVariants = append(households[stored.HouseholdID].PoolVariants, poolVariant(poolByID[stored.ID]))
 			}
 		}
 		if fields.defaultAllocation {

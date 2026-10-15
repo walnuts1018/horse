@@ -61,6 +61,30 @@ func TestHouseholdLoaderLoadsOnlyRequestedFieldsAcrossHouseholds(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	personalPool, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: first.ID, Name: "configured personal", Kind: model.PoolKindPersonal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{HouseholdID: first.ID, PoolID: personalPool.ID, Configuration: personalPoolFundingConfiguration(memberID), ExpectedVersion: 1}); err != nil {
+		t.Fatal(err)
+	}
+	sharedPool, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: first.ID, Name: "configured shared", Kind: model.PoolKindShared})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mutation.setPoolFundingRule(ctx, model.SetPoolFundingRuleInput{
+		HouseholdID: first.ID, PoolID: sharedPool.ID,
+		Configuration:   sharedPoolFundingConfiguration([]*model.PoolFundingShareInput{{MemberID: memberID, Weight: 100}}, model.SharedPoolSettlementPolicyBalanceToStandard),
+		ExpectedVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: first.ID, Name: "unconfigured personal", Kind: model.PoolKindPersonal}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mutation.createPool(ctx, model.CreatePoolInput{HouseholdID: first.ID, Name: "unconfigured shared", Kind: model.PoolKindShared}); err != nil {
+		t.Fatal(err)
+	}
 	ids := []gofrsuuid.UUID{generatedUUID(first.ID), generatedUUID(second.ID)}
 	selected, err := loadHouseholds(ctx, db, ids, householdFields{})
 	if err != nil {
@@ -88,5 +112,25 @@ func TestHouseholdLoaderLoadsOnlyRequestedFieldsAcrossHouseholds(t *testing.T) {
 		if household.PoolVariants != nil || household.Categories != nil || household.DefaultAllocation != nil {
 			t.Fatalf("unrequested household fields were loaded: %#v", household)
 		}
+	}
+	selected, err = loadHouseholds(ctx, db, ids, householdFields{pools: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pools := selected[generatedUUID(first.ID)].PoolVariants
+	if len(pools) != 4 {
+		t.Fatalf("household pool count = %d, want 4", len(pools))
+	}
+	if pool, ok := pools[0].(*model.PersonalPool); !ok || pool.ID != personalPool.ID || pool.OwnerMemberID == nil || *pool.OwnerMemberID != memberID || pool.FundingRuleVersion != 2 {
+		t.Fatalf("pools[0] = %#v, want configured personal pool", pools[0])
+	}
+	if pool, ok := pools[1].(*model.SharedPool); !ok || pool.ID != sharedPool.ID || pool.SettlementPolicy == nil || *pool.SettlementPolicy != model.SharedPoolSettlementPolicyBalanceToStandard || pool.FundingRuleVersion != 2 || len(pool.FundingShares) != 1 || pool.FundingShares[0].MemberID != memberID || pool.FundingShares[0].MemberName != memberName || pool.FundingShares[0].Weight != 100 {
+		t.Fatalf("pools[1] = %#v, want configured shared pool", pools[1])
+	}
+	if _, ok := pools[2].(*model.UnconfiguredPersonalPool); !ok {
+		t.Fatalf("pools[2] = %#v, want unconfigured personal pool", pools[2])
+	}
+	if _, ok := pools[3].(*model.UnconfiguredSharedPool); !ok {
+		t.Fatalf("pools[3] = %#v, want unconfigured shared pool", pools[3])
 	}
 }
