@@ -125,6 +125,9 @@ pub fn decide_funding_obligations(
     if period_start_day >= period_end_day {
         return Err(ClosePeriodError::InvalidPeriod);
     }
+    let month_end_day = period_end_day
+        .checked_sub(1)
+        .ok_or(ClosePeriodError::InvalidPeriod)?;
 
     let mut newest_by_member_pool = BTreeMap::<(MemberId, String), FundingScheduleInput>::new();
     for schedule in schedules {
@@ -140,7 +143,9 @@ pub fn decide_funding_obligations(
         }
         if (!schedule.active && schedule.ends_on_day.is_none())
             || schedule.starts_on_day >= period_end_day
-            || schedule.ends_on_day.is_some_and(|ends_on| ends_on < period_start_day)
+            || schedule
+                .ends_on_day
+                .is_some_and(|ends_on| ends_on < month_end_day)
         {
             continue;
         }
@@ -471,5 +476,43 @@ mod tests {
         assert_eq!(decisions.len(), 1);
         assert_eq!(decisions[0].schedule_id, "new");
         assert_eq!(decisions[0].amount_yen, 50);
+    }
+
+    #[test]
+    fn funding_obligations_ignore_schedules_ending_before_month_end() {
+        let member_id = member("11111111-1111-4111-8111-111111111111");
+        let decisions = decide_funding_obligations(
+            100,
+            131,
+            vec![
+                FundingScheduleInput {
+                    id: "month-end".into(),
+                    member_id: member_id.clone(),
+                    pool_id: "pool".into(),
+                    amount_yen: 30,
+                    cadence: FundingCadence::Monthly,
+                    starts_on_day: 90,
+                    ends_on_day: Some(130),
+                    active: false,
+                    created_at_micros: 1,
+                },
+                FundingScheduleInput {
+                    id: "ended-mid-month".into(),
+                    member_id,
+                    pool_id: "pool".into(),
+                    amount_yen: 100,
+                    cadence: FundingCadence::Monthly,
+                    starts_on_day: 120,
+                    ends_on_day: Some(125),
+                    active: false,
+                    created_at_micros: 2,
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(decisions.len(), 1);
+        assert_eq!(decisions[0].schedule_id, "month-end");
+        assert_eq!(decisions[0].amount_yen, 30);
     }
 }

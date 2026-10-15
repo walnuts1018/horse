@@ -194,11 +194,36 @@ pub async fn persist_close_period(
             schedule_inputs,
         )
         .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?;
+        let existing_obligations = public::funding_obligations::table
+            .filter(public::funding_obligations::household_id.eq(household_id))
+            .filter(public::funding_obligations::period_start.eq(period_start))
+            .for_update()
+            .order_by((
+                public::funding_obligations::member_id.asc(),
+                public::funding_obligations::pool_id.asc(),
+            ))
+            .select((
+                public::funding_obligations::member_id,
+                public::funding_obligations::pool_id,
+                public::funding_obligations::amount_yen,
+            ))
+            .load::<(Uuid, Uuid, i64)>(&mut *conn)
+            .await?;
+        let existing_amount_by_member_pool = existing_obligations
+            .into_iter()
+            .map(|(member_id, pool_id, amount_yen)| ((member_id, pool_id), amount_yen))
+            .collect::<BTreeMap<_, _>>();
         for obligation in obligation_decisions {
             let id = Uuid::now_v7();
             let schedule_id = parse_uuid(&obligation.schedule_id, "schedule_id")?;
             let member_id = parse_uuid(obligation.member_id.as_str(), "member_id")?;
             let pool_id = parse_uuid(&obligation.pool_id, "pool_id")?;
+            let amount_yen = obligation.amount_yen.max(
+                existing_amount_by_member_pool
+                    .get(&(member_id, pool_id))
+                    .copied()
+                    .unwrap_or_default(),
+            );
             diesel::insert_into(public::funding_obligations::table)
                 .values((
                     public::funding_obligations::id.eq(id),
@@ -207,7 +232,7 @@ pub async fn persist_close_period(
                     public::funding_obligations::member_id.eq(member_id),
                     public::funding_obligations::pool_id.eq(pool_id),
                     public::funding_obligations::period_start.eq(period_start),
-                    public::funding_obligations::amount_yen.eq(obligation.amount_yen),
+                    public::funding_obligations::amount_yen.eq(amount_yen),
                 ))
                 .on_conflict((
                     public::funding_obligations::household_id,
@@ -219,7 +244,7 @@ pub async fn persist_close_period(
                 .set((
                     public::funding_obligations::schedule_id
                         .eq(Some(schedule_id)),
-                    public::funding_obligations::amount_yen.eq(obligation.amount_yen),
+                    public::funding_obligations::amount_yen.eq(amount_yen),
                 ))
                 .execute(&mut *conn)
                 .await?;
