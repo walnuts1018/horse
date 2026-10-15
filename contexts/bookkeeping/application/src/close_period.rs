@@ -3,6 +3,7 @@ use bookkeeping_domain::{
     SettlementInput as DomainSettlementInput, YearMonth,
     calculate_settlement as calculate_domain_settlement,
 };
+use chrono::Datelike;
 
 use crate::{MemberId, PurchaseId};
 use std::collections::BTreeMap;
@@ -60,6 +61,7 @@ pub struct ClosePeriodCommand {
     pub actor_id: MemberId,
     pub settlements: Vec<SettlementInput>,
     pub purchases: Vec<PurchaseSnapshot>,
+    pub funding_schedules: Vec<FundingScheduleInput>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +89,7 @@ pub struct ClosePeriodDecision {
     pub period: AccountingPeriod,
     pub settlements: Vec<SettlementLine>,
     pub purchases: Vec<PurchaseSnapshot>,
+    pub funding_obligations: Vec<FundingObligationDecision>,
     pub event: PeriodClosedEvent,
 }
 
@@ -257,6 +260,25 @@ pub fn decide_close_period(
             AccountingPeriodTransitionError::RevisionOverflow => ClosePeriodError::RevisionOverflow,
         })?;
     let revision = period.revision();
+    let year = i32::from(period.year_month().year());
+    let month = u32::from(period.year_month().month());
+    let period_start =
+        chrono::NaiveDate::from_ymd_opt(year, month, 1).ok_or(ClosePeriodError::InvalidPeriod)?;
+    let (next_year, next_month) = if month == 12 {
+        (
+            year.checked_add(1).ok_or(ClosePeriodError::InvalidPeriod)?,
+            1,
+        )
+    } else {
+        (year, month + 1)
+    };
+    let period_end = chrono::NaiveDate::from_ymd_opt(next_year, next_month, 1)
+        .ok_or(ClosePeriodError::InvalidPeriod)?;
+    let funding_obligations = decide_funding_obligations(
+        period_start.num_days_from_ce(),
+        period_end.num_days_from_ce(),
+        command.funding_schedules,
+    )?;
 
     let mut settlements = command
         .settlements
@@ -288,6 +310,7 @@ pub fn decide_close_period(
         period: period.clone(),
         settlements,
         purchases,
+        funding_obligations,
         event: PeriodClosedEvent {
             actor_id: command.actor_id,
             period: period.year_month(),
@@ -380,16 +403,32 @@ mod tests {
                 id: purchase("purchase-1"),
                 revision: 8,
             }],
+            funding_schedules: Vec::new(),
         }
     }
 
     #[test]
     fn closing_preserves_purchase_revision_in_the_period_snapshot() {
-        let decision = decide_close_period(command()).unwrap();
+        let mut command = command();
+        command.funding_schedules.push(FundingScheduleInput {
+            id: "schedule-1".into(),
+            member_id: member("member-b"),
+            pool_id: "pool-1".into(),
+            amount_yen: 10_000,
+            cadence: FundingCadence::Monthly,
+            starts_on_day: 0,
+            ends_on_day: None,
+            active: true,
+            created_at_micros: 1,
+        });
+        let decision = decide_close_period(command).unwrap();
 
         assert_eq!(decision.period.revision(), 4);
         assert_eq!(decision.settlements[0].amount_due_yen, 1_700);
         assert_eq!(decision.purchases[0].revision, 8);
+        assert_eq!(decision.funding_obligations.len(), 1);
+        assert_eq!(decision.funding_obligations[0].schedule_id, "schedule-1");
+        assert_eq!(decision.funding_obligations[0].amount_yen, 10_000);
         assert_eq!(decision.event.actor_id.as_str(), "actor");
         assert_eq!(decision.event.changed_fields, &["status"]);
     }

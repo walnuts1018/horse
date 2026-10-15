@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use bookkeeping_application::close_period::{
     ClosePeriodCommand, ClosePeriodDecision, ClosePeriodWorkflowError, FundingCadence,
     FundingScheduleInput, PurchaseSnapshot, SettlementInput, close_period as close_period_workflow,
-    decide_funding_obligations,
 };
 use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, YearMonth};
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
@@ -202,6 +201,77 @@ impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePer
                 })
             })
             .collect::<Result<Vec<_>, ClosePeriodPersistenceError>>()?;
+        let schedules = public::funding_schedules::table
+            .filter(public::funding_schedules::household_id.eq(self.household_id))
+            .filter(public::funding_schedules::starts_on.lt(self.period_end))
+            .filter(
+                public::funding_schedules::ends_on
+                    .is_null()
+                    .or(public::funding_schedules::ends_on.ge(self.period_start)),
+            )
+            .filter(
+                public::funding_schedules::active
+                    .eq(true)
+                    .or(public::funding_schedules::ends_on.is_not_null()),
+            )
+            .select((
+                public::funding_schedules::id,
+                public::funding_schedules::member_id,
+                public::funding_schedules::pool_id,
+                public::funding_schedules::amount_yen,
+                public::funding_schedules::cadence,
+                public::funding_schedules::starts_on,
+                public::funding_schedules::ends_on,
+                public::funding_schedules::active,
+                public::funding_schedules::created_at,
+            ))
+            .load::<(
+                Uuid,
+                Uuid,
+                Uuid,
+                i64,
+                String,
+                NaiveDate,
+                Option<NaiveDate>,
+                bool,
+                DateTime<Utc>,
+            )>(&mut *self.conn)
+            .await?;
+        let funding_schedules = schedules
+            .into_iter()
+            .map(
+                |(
+                    id,
+                    member_id,
+                    pool_id,
+                    amount_yen,
+                    cadence,
+                    starts_on,
+                    ends_on,
+                    active,
+                    created_at,
+                )| {
+                    let cadence = match cadence.as_str() {
+                        "MONTHLY" => FundingCadence::Monthly,
+                        "WEEKLY" => FundingCadence::Weekly,
+                        "CUSTOM" => FundingCadence::Custom,
+                        _ => return Err(ClosePeriodPersistenceError::InvalidDecision),
+                    };
+                    Ok(FundingScheduleInput {
+                        id: id.to_string(),
+                        member_id: bookkeeping_application::MemberId::new(member_id.to_string())
+                            .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
+                        pool_id: pool_id.to_string(),
+                        amount_yen,
+                        cadence,
+                        starts_on_day: starts_on.num_days_from_ce(),
+                        ends_on_day: ends_on.map(|day| day.num_days_from_ce()),
+                        active,
+                        created_at_micros: created_at.timestamp_micros(),
+                    })
+                },
+            )
+            .collect::<Result<Vec<_>, ClosePeriodPersistenceError>>()?;
         Ok(ClosePeriodCommand {
             period: period_model(self.period_start, &status, revision)?,
             expected_revision: self.expected_revision,
@@ -216,6 +286,7 @@ impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePer
                 .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
             settlements,
             purchases: posted_purchases,
+            funding_schedules,
         })
     }
 
@@ -330,83 +401,6 @@ async fn persist_close_period_in_transaction(
         return Err(ClosePeriodPersistenceError::DraftPurchasesExist);
     }
 
-    let schedules = public::funding_schedules::table
-        .filter(public::funding_schedules::household_id.eq(household_id))
-        .filter(public::funding_schedules::starts_on.lt(period_end))
-        .filter(
-            public::funding_schedules::ends_on
-                .is_null()
-                .or(public::funding_schedules::ends_on.ge(period_start)),
-        )
-        .filter(
-            public::funding_schedules::active
-                .eq(true)
-                .or(public::funding_schedules::ends_on.is_not_null()),
-        )
-        .select((
-            public::funding_schedules::id,
-            public::funding_schedules::member_id,
-            public::funding_schedules::pool_id,
-            public::funding_schedules::amount_yen,
-            public::funding_schedules::cadence,
-            public::funding_schedules::starts_on,
-            public::funding_schedules::ends_on,
-            public::funding_schedules::active,
-            public::funding_schedules::created_at,
-        ))
-        .load::<(
-            Uuid,
-            Uuid,
-            Uuid,
-            i64,
-            String,
-            NaiveDate,
-            Option<NaiveDate>,
-            bool,
-            DateTime<Utc>,
-        )>(&mut *conn)
-        .await?;
-    let schedule_inputs = schedules
-        .into_iter()
-        .map(
-            |(
-                id,
-                member_id,
-                pool_id,
-                amount_yen,
-                cadence,
-                starts_on,
-                ends_on,
-                active,
-                created_at,
-            )| {
-                let cadence = match cadence.as_str() {
-                    "MONTHLY" => FundingCadence::Monthly,
-                    "WEEKLY" => FundingCadence::Weekly,
-                    "CUSTOM" => FundingCadence::Custom,
-                    _ => return Err(ClosePeriodPersistenceError::InvalidDecision),
-                };
-                Ok(FundingScheduleInput {
-                    id: id.to_string(),
-                    member_id: bookkeeping_application::MemberId::new(member_id.to_string())
-                        .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
-                    pool_id: pool_id.to_string(),
-                    amount_yen,
-                    cadence,
-                    starts_on_day: starts_on.num_days_from_ce(),
-                    ends_on_day: ends_on.map(|day| day.num_days_from_ce()),
-                    active,
-                    created_at_micros: created_at.timestamp_micros(),
-                })
-            },
-        )
-        .collect::<Result<Vec<_>, ClosePeriodPersistenceError>>()?;
-    let obligation_decisions = decide_funding_obligations(
-        period_start.num_days_from_ce(),
-        period_end.num_days_from_ce(),
-        schedule_inputs,
-    )
-    .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?;
     let existing_obligations = public::funding_obligations::table
         .filter(public::funding_obligations::household_id.eq(household_id))
         .filter(public::funding_obligations::period_start.eq(period_start))
@@ -426,7 +420,7 @@ async fn persist_close_period_in_transaction(
         .into_iter()
         .map(|(member_id, pool_id, amount_yen)| ((member_id, pool_id), amount_yen))
         .collect::<BTreeMap<_, _>>();
-    for obligation in obligation_decisions {
+    for obligation in &decision.funding_obligations {
         let id = Uuid::now_v7();
         let schedule_id = parse_uuid(&obligation.schedule_id, "schedule_id")?;
         let member_id = parse_uuid(obligation.member_id.as_str(), "member_id")?;

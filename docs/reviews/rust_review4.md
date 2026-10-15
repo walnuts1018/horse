@@ -4,10 +4,6 @@
 
 2026年10月16日時点の作業ツリーを確認しました。以下は改善案であり、現行コードが不正または故障しているという主張ではありません。業務要件に照らして、採用する範囲を決める必要があります。
 
-## Workflowの集約
-
-Workflow構成は複数の層にあります。[`close_period.rs`](../../contexts/bookkeeping/postgres/src/close_period.rs)ではPostgreSQL実装がロード、判断、永続化を含む操作全体を担っています。Application Workflowから順序を読める形に揃えることは、引き続き検討事項です。
-
 ## 仕訳モデル
 
 [`journal.rs`](../../contexts/bookkeeping/domain/src/journal.rs)の`BalancedJournal`と、各Workflowの明細モデルが併存しています。全Workflowで共有する会計不変条件と、操作ごとに残すべき差異を整理する余地があります。

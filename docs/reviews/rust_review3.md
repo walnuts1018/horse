@@ -6,10 +6,6 @@
 
 ## 継続して検討したい項目
 
-### Workflowの構成場所
-
-Workflowの実行責務はApplication、GraphQL、PostgreSQLに分かれています。たとえば[`close_period.rs`](../../contexts/bookkeeping/postgres/src/close_period.rs)ではPostgreSQL側が操作全体を構成します。ユースケースの順序をApplicationから一貫して追えるようにする案があります。
-
 ### 仕訳モデルの共有範囲
 
 [`journal.rs`](../../contexts/bookkeeping/domain/src/journal.rs)の`BalancedJournal`は貸借一致を保証しますが、各Workflowは個別の仕訳明細型も保持しています。共通の会計不変条件とWorkflow固有の表現をどの範囲で共有するかは未決です。
