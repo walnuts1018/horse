@@ -229,6 +229,7 @@ pub async fn persist_record_repayment(
                     journals::household_id.eq(household_id),
                     journals::source_kind.eq("transfer"),
                     journals::source_id.eq(transfer_id),
+                    journals::idempotency_key.eq(&input.idempotency_key),
                     journals::occurred_at.eq(input.occurred_at),
                     journals::created_by.eq(actor_id),
                     journals::created_at.eq(now),
