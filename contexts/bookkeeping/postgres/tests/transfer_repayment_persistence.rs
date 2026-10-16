@@ -317,3 +317,120 @@ async fn transfer_and_repayment_persist_journals_and_idempotency_keys() {
         .unwrap();
     assert_eq!(repayment_journal_key, repayment_key);
 }
+
+#[tokio::test]
+async fn gift_persists_balanced_journal_without_settlement_adjustments() {
+    let postgres = TestPostgres::start().await.unwrap();
+    apply_migrations(postgres.connection_url()).unwrap();
+    let pool = connect(postgres.connection_url()).await.unwrap();
+    let household_id = Uuid::now_v7();
+    let actor_id = Uuid::now_v7();
+    let recipient_id = Uuid::now_v7();
+    {
+        let mut conn = pool.get().await.unwrap();
+        use public::{household_members, households, members};
+        insert_into(households::table)
+            .values((
+                households::id.eq(household_id),
+                households::name.eq("Gift persistence"),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        for (member_id, subject) in [(actor_id, "actor"), (recipient_id, "recipient")] {
+            insert_into(members::table)
+                .values((
+                    members::id.eq(member_id),
+                    members::oidc_subject.eq(format!("gift-persistence-{subject}-{member_id}")),
+                    members::display_name.eq(subject),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+            insert_into(household_members::table)
+                .values((
+                    household_members::household_id.eq(household_id),
+                    household_members::member_id.eq(member_id),
+                    household_members::role.eq("OWNER"),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+        }
+    }
+
+    let period = AccountingPeriod::open(YearMonth::new(2026, 10).unwrap(), 1)
+        .unwrap()
+        .into_open()
+        .unwrap();
+    let decision = decide_record_transfer(RecordTransferCommand::Gift(TransferBase {
+        actor_id: MemberId::new(actor_id.to_string()).unwrap(),
+        from_member_id: MemberId::new(actor_id.to_string()).unwrap(),
+        to_member_id: MemberId::new(recipient_id.to_string()).unwrap(),
+        amount: PositiveYen::new(3_500).unwrap(),
+        description: "Gift".to_owned(),
+        accounting_period: period,
+        payment_account: None,
+        destination_account: None,
+    }))
+    .unwrap();
+    assert!(decision.settlement_adjustments.is_empty());
+    let persisted = persist_record_transfer(
+        &pool,
+        PersistRecordTransfer {
+            household_id: household_id.to_string(),
+            actor_id: actor_id.to_string(),
+            occurred_at: Utc.with_ymd_and_hms(2026, 10, 16, 3, 0, 0).unwrap(),
+            idempotency_key: "gift-persistence".to_owned(),
+            request_fingerprint: [3; 32],
+            source_document_id: None,
+            source_reference: None,
+            source_account_id: None,
+        },
+        decision,
+        &EmptyEvidence,
+        &mut EmptyPolicy,
+    )
+    .await
+    .unwrap();
+
+    let mut conn = pool.get().await.unwrap();
+    let transfer_kind = public::transfers::table
+        .filter(public::transfers::household_id.eq(household_id))
+        .filter(public::transfers::id.eq(Uuid::parse_str(&persisted.transfer_id).unwrap()))
+        .select(public::transfers::kind)
+        .first::<String>(&mut *conn)
+        .await
+        .unwrap();
+    assert_eq!(transfer_kind, "GIFT");
+
+    let postings = public::journal_entries::table
+        .filter(public::journal_entries::household_id.eq(household_id))
+        .filter(
+            public::journal_entries::journal_id.eq(Uuid::parse_str(&persisted.journal_id).unwrap()),
+        )
+        .select((
+            public::journal_entries::debit_yen,
+            public::journal_entries::credit_yen,
+        ))
+        .load::<(i64, i64)>(&mut *conn)
+        .await
+        .unwrap();
+    let debits = postings.iter().map(|(debit, _)| debit).sum::<i64>();
+    let credits = postings.iter().map(|(_, credit)| credit).sum::<i64>();
+    assert_eq!(postings.len(), 2);
+    assert_eq!(debits, 3_500);
+    assert_eq!(credits, 3_500);
+
+    let adjustment_count = public::settlement_adjustments::table
+        .filter(public::settlement_adjustments::household_id.eq(household_id))
+        .filter(
+            public::settlement_adjustments::source_id
+                .eq(Uuid::parse_str(&persisted.transfer_id).unwrap()),
+        )
+        .select(diesel::dsl::count_star())
+        .first::<i64>(&mut *conn)
+        .await
+        .unwrap();
+    assert_eq!(adjustment_count, 0);
+}
