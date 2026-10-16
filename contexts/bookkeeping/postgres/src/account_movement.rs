@@ -16,11 +16,10 @@ use bookkeeping_application::{
 };
 use bookkeeping_domain::PositiveYen;
 
+use crate::evidence_port::EvidenceOperations;
 use crate::{PgPool, schema::public};
 
 const OPERATION: &str = "recordAccountMovement";
-const EVENT_TYPE: &str = "account.movement.recorded";
-
 #[derive(Debug, Clone)]
 pub struct PersistRecordAccountMovement {
     pub household_id: String,
@@ -79,6 +78,7 @@ pub async fn persist_record_account_movement(
     pool: &PgPool,
     input: PersistRecordAccountMovement,
     decision: RecordAccountMovementDecision,
+    evidence: &impl EvidenceOperations,
 ) -> Result<PersistedAccountMovement, AccountMovementPersistenceError> {
     if input.idempotency_key.trim().is_empty() || input.idempotency_key.len() > 200 {
         return Err(AccountMovementPersistenceError::InvalidIdempotencyKey);
@@ -137,18 +137,20 @@ pub async fn persist_record_account_movement(
             if !exists {
                 return Err(AccountMovementPersistenceError::HouseholdNotFound);
             }
-            let member = public::household_members::table
+            let role = public::household_members::table
                 .filter(public::household_members::household_id.eq(household_id))
                 .filter(public::household_members::member_id.eq(actor_id))
                 .filter(public::household_members::left_at.is_null())
-                .select(public::household_members::member_id)
-                .first::<Uuid>(&mut *conn)
+                .select(public::household_members::role)
+                .first::<String>(&mut *conn)
                 .await
                 .optional()?
-                .is_some();
-            if !member {
-                return Err(AccountMovementPersistenceError::MemberNotFound);
-            }
+                .ok_or(AccountMovementPersistenceError::MemberNotFound)?;
+            horse_authorization::authorize(
+                Some(&role),
+                horse_authorization::Operation::FinancialData,
+            )
+            .map_err(|_| AccountMovementPersistenceError::MemberNotFound)?;
 
             let inserted = diesel::insert_into(idem::idempotency_records)
                 .values((
@@ -184,6 +186,7 @@ pub async fn persist_record_account_movement(
                 }
                 if let Some(source) = &decision.statement_source {
                     require_statement_movement_confirmation(
+                        evidence,
                         &mut *conn,
                         household_id,
                         resource_id,
@@ -220,6 +223,7 @@ pub async fn persist_record_account_movement(
             let statement_document_id = if let Some(source) = &decision.statement_source {
                 Some(
                     validate_record_statement_source(
+                        evidence,
                         &mut *conn,
                         household_id,
                         &input.occurred_at,
@@ -302,6 +306,7 @@ pub async fn persist_record_account_movement(
                 (&decision.statement_source, statement_document_id)
             {
                 insert_statement_movement_confirmation(
+                    evidence,
                     &mut *conn,
                     household_id,
                     document_id,
@@ -311,23 +316,18 @@ pub async fn persist_record_account_movement(
                 )
                 .await?;
             }
-            diesel::insert_into(public::household_events::table)
-                .values((
-                    public::household_events::household_id.eq(household_id),
-                    public::household_events::event_type.eq(EVENT_TYPE),
-                    public::household_events::entity_kind.eq("account_movement"),
-                    public::household_events::entity_id.eq(movement_id),
-                    public::household_events::revision.eq(1_i64),
-                    public::household_events::changed_fields.eq(decision
-                        .changed_fields
-                        .iter()
-                        .map(|field| Some((*field).to_owned()))
-                        .collect::<Vec<_>>()),
-                    public::household_events::actor_id.eq(actor_id),
-                    public::household_events::created_at.eq(now),
-                ))
-                .execute(&mut *conn)
-                .await?;
+            horse_postgres_common::insert_ui_change(
+                &mut *conn,
+                household_id,
+                movement_id,
+                1,
+                actor_id,
+                Utc::now(),
+                bookkeeping_application::ui_changes::account_movement_recorded(
+                    decision.changed_fields.iter().copied(),
+                ),
+            )
+            .await?;
             Ok(account_movement_result(row))
         })
         .await
@@ -337,6 +337,7 @@ pub async fn persist_link_statement_movement(
     pool: &PgPool,
     input: PersistLinkStatementMovement,
     decision: LinkStatementMovementDecision,
+    evidence: &impl EvidenceOperations,
 ) -> Result<PersistedAccountMovement, AccountMovementPersistenceError> {
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
@@ -367,24 +368,27 @@ pub async fn persist_link_statement_movement(
             if !household_exists {
                 return Err(AccountMovementPersistenceError::HouseholdNotFound);
             }
-            let member_exists = public::household_members::table
+            let role = public::household_members::table
                 .filter(public::household_members::household_id.eq(household_id))
                 .filter(public::household_members::member_id.eq(actor_id))
                 .filter(public::household_members::left_at.is_null())
-                .select(public::household_members::member_id)
-                .first::<Uuid>(&mut *conn)
+                .select(public::household_members::role)
+                .first::<String>(&mut *conn)
                 .await
                 .optional()?
-                .is_some();
-            if !member_exists {
-                return Err(AccountMovementPersistenceError::MemberNotFound);
-            }
+                .ok_or(AccountMovementPersistenceError::MemberNotFound)?;
+            horse_authorization::authorize(
+                Some(&role),
+                horse_authorization::Operation::FinancialData,
+            )
+            .map_err(|_| AccountMovementPersistenceError::MemberNotFound)?;
             let source = StatementMovementSource {
                 source_document_id: decision.source_document_id.clone(),
                 source_reference: decision.source_reference.clone(),
                 statement_account_id: decision.statement_account_id.clone(),
             };
             let statement = load_statement_movement_entry(
+                evidence,
                 &mut *conn,
                 household_id,
                 document_id,
@@ -438,6 +442,7 @@ pub async fn persist_link_statement_movement(
                 return Err(AccountMovementPersistenceError::InvalidDecision);
             }
             insert_statement_movement_confirmation(
+                evidence,
                 &mut *conn,
                 household_id,
                 document_id,
@@ -476,7 +481,8 @@ impl StatementMovementEntry {
     }
 }
 
-async fn validate_record_statement_source(
+async fn validate_record_statement_source<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     occurred_at: &DateTime<Utc>,
@@ -485,9 +491,14 @@ async fn validate_record_statement_source(
     decision: &RecordAccountMovementDecision,
 ) -> Result<Uuid, AccountMovementPersistenceError> {
     let document_id = parse_uuid(&source.source_document_id, "source_document_id")?;
-    let entry =
-        load_statement_movement_entry(conn, household_id, document_id, &source.source_reference)
-            .await?;
+    let entry = load_statement_movement_entry(
+        evidence,
+        conn,
+        household_id,
+        document_id,
+        &source.source_reference,
+    )
+    .await?;
     let statement = entry.observation()?;
     let amount = PositiveYen::new(decision.amount.value())
         .map_err(|_| AccountMovementPersistenceError::InvalidDecision)?;
@@ -533,53 +544,32 @@ async fn validate_record_statement_source(
     Ok(document_id)
 }
 
-async fn load_statement_movement_entry(
+async fn load_statement_movement_entry<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     document_id: Uuid,
     source_reference: &str,
 ) -> Result<StatementMovementEntry, AccountMovementPersistenceError> {
-    use public::extraction_jobs::dsl as jobs;
-    use public::source_confirmations::dsl as confirmations;
-    use public::source_documents::dsl as documents;
-
     if source_reference.is_empty() || source_reference.len() > 256 {
         return Err(AccountMovementPersistenceError::InvalidDecision);
     }
-    let source_kind = documents::source_documents
-        .filter(documents::household_id.eq(household_id))
-        .filter(documents::id.eq(document_id))
-        .for_update()
-        .select(documents::source_kind)
-        .first::<String>(conn)
-        .await
-        .optional()?
+    let source_kind = evidence
+        .source_kind(conn, household_id, document_id, true)
+        .await?
         .ok_or(AccountMovementPersistenceError::SourceDocumentNotFound)?;
     if source_kind != "bank" {
         return Err(AccountMovementPersistenceError::StatementIsNotBankMovement);
     }
-    let has_confirmation = confirmations::source_confirmations
-        .filter(confirmations::household_id.eq(household_id))
-        .filter(confirmations::source_document_id.eq(document_id))
-        .filter(confirmations::source_reference.eq(source_reference))
-        .order_by(confirmations::changed_at.desc())
-        .select(confirmations::status)
-        .first::<String>(conn)
-        .await
-        .optional()?;
+    let has_confirmation = evidence
+        .latest_confirmation_status(conn, household_id, document_id, source_reference)
+        .await?;
     if has_confirmation.as_deref() == Some("confirmed") {
         return Err(AccountMovementPersistenceError::StatementAlreadyConfirmed);
     }
-    let result = jobs::extraction_jobs
-        .filter(jobs::household_id.eq(household_id))
-        .filter(jobs::source_document_id.eq(document_id))
-        .filter(jobs::status.eq("succeeded"))
-        .order_by(jobs::version.desc())
-        .select(jobs::result)
-        .first::<Option<serde_json::Value>>(conn)
-        .await
-        .optional()?
-        .flatten()
+    let result = evidence
+        .latest_extraction(conn, household_id, document_id)
+        .await?
         .ok_or(AccountMovementPersistenceError::StatementExtractionUnavailable)?;
     let statements = result
         .get("statements")
@@ -619,30 +609,21 @@ async fn load_statement_movement_entry(
     Err(AccountMovementPersistenceError::StatementReferenceNotFound)
 }
 
-async fn require_statement_movement_confirmation(
+async fn require_statement_movement_confirmation<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     movement_id: Uuid,
     source: &StatementMovementSource,
 ) -> Result<(), AccountMovementPersistenceError> {
-    use public::source_confirmations::dsl as confirmations;
-
     let document_id = parse_uuid(&source.source_document_id, "source_document_id")?;
-    let confirmation = confirmations::source_confirmations
-        .filter(confirmations::household_id.eq(household_id))
-        .filter(confirmations::source_document_id.eq(document_id))
-        .filter(confirmations::source_reference.eq(&source.source_reference))
-        .order_by(confirmations::changed_at.desc())
-        .select((
-            confirmations::entity_kind,
-            confirmations::entity_id,
-            confirmations::status,
-        ))
-        .first::<(String, Uuid, String)>(conn)
-        .await
-        .optional()?;
-    if confirmation.is_some_and(|(kind, id, status)| {
-        kind == "account_movement" && id == movement_id && status == "confirmed"
+    let confirmation = evidence
+        .latest_confirmation(conn, household_id, document_id, &source.source_reference)
+        .await?;
+    if confirmation.is_some_and(|confirmation| {
+        confirmation.entity_kind == "account_movement"
+            && confirmation.entity_id == movement_id
+            && confirmation.status == "confirmed"
     }) {
         Ok(())
     } else {
@@ -650,7 +631,8 @@ async fn require_statement_movement_confirmation(
     }
 }
 
-async fn insert_statement_movement_confirmation(
+async fn insert_statement_movement_confirmation<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     document_id: Uuid,
@@ -658,24 +640,20 @@ async fn insert_statement_movement_confirmation(
     movement_id: Uuid,
     actor_id: Uuid,
 ) -> Result<(), AccountMovementPersistenceError> {
-    diesel::insert_into(public::source_confirmations::table)
-        .values((
-            public::source_confirmations::id.eq(Uuid::now_v7()),
-            public::source_confirmations::household_id.eq(household_id),
-            public::source_confirmations::source_document_id.eq(document_id),
-            public::source_confirmations::observation_id.eq(None::<Uuid>),
-            public::source_confirmations::source_reference.eq(source_reference),
-            public::source_confirmations::entity_kind.eq("account_movement"),
-            public::source_confirmations::entity_id.eq(movement_id),
-            public::source_confirmations::status.eq("confirmed"),
-            public::source_confirmations::idempotency_key
-                .eq(format!("account-movement-confirmation:{}", Uuid::now_v7())),
-            public::source_confirmations::changed_by.eq(actor_id),
-            public::source_confirmations::changed_at.eq(now),
-        ))
-        .execute(conn)
-        .await?;
-    Ok(())
+    evidence
+        .insert_confirmation(
+            conn,
+            household_id,
+            document_id,
+            source_reference,
+            "account_movement",
+            movement_id,
+            actor_id,
+            format!("account-movement-confirmation:{}", Uuid::now_v7()),
+            None,
+        )
+        .await
+        .map_err(AccountMovementPersistenceError::from)
 }
 
 fn parse_movement_kind(value: &str) -> Option<AccountMovementKind> {

@@ -1225,6 +1225,8 @@ version = "0.1.0"
 dependencies = [
  "bookkeeping-domain",
  "chrono",
+ "horse-household-change",
+ "serde_json",
  "uuid",
 ]
 
@@ -1236,12 +1238,16 @@ version = "0.1.0"
 name = "bookkeeping-postgres"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "base64 0.23.1",
  "bookkeeping-application",
  "bookkeeping-domain",
  "chrono",
  "diesel",
  "diesel-async",
+ "evidence-application",
+ "horse-authorization",
+ "horse-household-change",
  "horse-postgres-common",
  "serde_json",
  "sha2 0.11.1",
@@ -1292,6 +1298,7 @@ dependencies = [
 name = "catalog-application"
 version = "0.1.0"
 dependencies = [
+ "horse-household-change",
  "uuid",
 ]
 
@@ -1303,6 +1310,8 @@ dependencies = [
  "chrono",
  "diesel",
  "diesel-async",
+ "horse-authorization",
+ "horse-household-change",
  "horse-postgres-common",
  "serde_json",
  "sha2 0.11.1",
@@ -1565,11 +1574,15 @@ checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
 name = "cross-context-postgres"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bookkeeping-application",
+ "bookkeeping-domain",
  "bookkeeping-postgres",
  "chrono",
  "diesel",
  "diesel-async",
+ "evidence-application",
+ "horse-household-change",
  "horse-postgres-common",
  "household-postgres",
  "serde_json",
@@ -2239,6 +2252,7 @@ name = "evidence-application"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "horse-household-change",
  "serde_json",
  "uuid",
 ]
@@ -2251,6 +2265,7 @@ dependencies = [
  "diesel",
  "diesel-async",
  "evidence-application",
+ "horse-household-change",
  "horse-postgres-common",
  "serde_json",
  "uuid",
@@ -2785,6 +2800,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "horse-authorization"
+version = "0.1.0"
+
+[[package]]
 name = "horse-extraction-queue"
 version = "0.1.0"
 dependencies = [
@@ -2834,6 +2853,13 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "horse-household-change"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]
@@ -2903,8 +2929,12 @@ dependencies = [
 name = "horse-postgres-common"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "diesel",
  "diesel-async",
+ "evidence-application",
+ "horse-household-change",
+ "uuid",
 ]
 
 [[package]]
@@ -2935,6 +2965,7 @@ dependencies = [
  "async-imap",
  "bookkeeping-postgres",
  "chrono",
+ "cross-context-postgres",
  "csv",
  "diesel",
  "diesel-async",
@@ -2962,6 +2993,8 @@ name = "household-application"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "horse-authorization",
+ "horse-household-change",
  "uuid",
 ]
 
@@ -2972,6 +3005,7 @@ dependencies = [
  "chrono",
  "diesel",
  "diesel-async",
+ "horse-household-change",
  "horse-postgres-common",
  "household-application",
  "sha2 0.11.1",
@@ -4421,17 +4455,19 @@ name = "policy-application"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "horse-household-change",
 ]
 
 [[package]]
 name = "policy-postgres"
 version = "0.1.0"
 dependencies = [
- "bookkeeping-application",
  "chrono",
  "cross-context-postgres",
  "diesel",
  "diesel-async",
+ "horse-authorization",
+ "horse-household-change",
  "horse-postgres-common",
  "policy-application",
  "uuid",

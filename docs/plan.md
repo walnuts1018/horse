@@ -883,6 +883,18 @@ PostgreSQLを唯一の会計上の正本にします。
 | AI      | `extraction_jobs`, `extraction_results`, `corrections` |
 | 監査      | `audit_events`, `accounting_periods`                   |
 
+テーブルの所有Contextは次のとおりです。cross-context Adapterは複数Contextの処理を一つのPostgreSQL transactionで調整し、各Contextのテーブル所有権は変更しません。
+
+| Context | 所有するテーブル |
+| --- | --- |
+| Household | `households`, `household_members`, `household_invitations`, `household_mail_forwardings`, `household_events`, `household_event_stream_cursors` |
+| Identity | `members`, `oidc_sessions`, `oidc_states` |
+| Catalog | `categories`, `product_concepts`, `product_variants`, `product_aliases`, `product_corrections`, `tags` |
+| Policy | `budgets`, `allocation_defaults`, `allocation_rules`, `allocation_rule_weights`, `funding_schedules`, `pool_funding_rules`, `pool_funding_shares`, `recurring_expenses`, `recurring_expense_matches` |
+| Bookkeeping | `account_incomes`, `account_movements`, `accounting_periods`, `accounts`, `correction_member_burdens`, `funding_obligations`, `journal_entries`, `journals`, `ledger_entries`, `pools`, `purchase_allocations`, `purchase_correction_allocations`, `purchase_correction_payments`, `purchase_corrections`, `purchase_item_tags`, `purchase_items`, `purchase_member_burdens`, `purchase_payment_funding_snapshots`, `purchase_payments`, `purchases`, `settlement_adjustments`, `settlement_run_adjustments`, `settlement_run_lines`, `settlement_run_purchase_snapshots`, `settlement_runs`, `shared_purchase_drafts`, `transfers` |
+| Evidence | `bank_statement_import_attempts`, `gemini_quota_cooldowns`, `gemini_quota_reservation_locks`, `gemini_quota_reservations`, `bank_statement_imports`, `bank_statement_rows`, `evidence_links`, `extraction_job_attempts`, `extraction_jobs`, `mailbox_cursors`, `source_confirmations`, `source_document_attachments`, `source_documents`, `source_observations`, `statement_reconciliation_candidates` |
+| Platform | `idempotency_records` |
+
 重要な設計ポイントを挙げます。
 
 金額は整数の最小通貨単位で保持し、Floatを使いません。円なら1円単位です。負担割合は有理数または精度が決まったDecimalで保持し、最終配賦金額は整数として確定させます。

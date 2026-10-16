@@ -1,3 +1,4 @@
+use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,6 +18,16 @@ pub struct SetProductAliasDecision {
     pub merchant_key: String,
     pub alias_text: String,
     pub normalized_alias: String,
+}
+
+impl SetProductAliasDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        UiChangeDescriptor::new(
+            "product.alias.learned",
+            "product_alias",
+            ["alias", "variantId", "merchant"],
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -82,7 +82,7 @@ pub(crate) async fn load(
     let funding_by_id = if funding_ids.is_empty() {
         HashMap::new()
     } else {
-        bookkeeping_postgres::funding_command_result::load_funding_ledger_entry_results(
+        cross_context_postgres::funding_command_result::load_funding_ledger_entry_results(
             pool,
             household_ids,
             &funding_ids,

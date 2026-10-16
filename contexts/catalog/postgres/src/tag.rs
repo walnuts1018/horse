@@ -2,9 +2,11 @@ use catalog_application::tag::{
     CreateTagCommand, SetTagArchivedCommand, Tag, TagError, UpdateTagCommand, decide_create_tag,
     decide_set_tag_archived, decide_update_tag, validate_tag_name,
 };
-use chrono::Utc;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
+use horse_household_change::UiChangeDescriptor;
+use horse_postgres_common::insert_ui_change;
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -64,7 +66,6 @@ pub async fn persist_create_tag(
         .map_err(|error| TagPersistenceError::Pool(error.to_string()))?;
     (*pooled)
         .transaction::<Tag, TagPersistenceError, _>(async move |conn| {
-            use public::household_events::dsl as events;
             use public::households::dsl as households;
             use public::tags::dsl as tags;
 
@@ -76,6 +77,7 @@ pub async fn persist_create_tag(
                 .await
                 .optional()?
                 .ok_or(TagPersistenceError::HouseholdNotFound)?;
+            require_member(conn, household_id, actor_id).await?;
 
             diesel::insert_into(tags::tags)
                 .values((
@@ -87,23 +89,16 @@ pub async fn persist_create_tag(
                 .execute(&mut *conn)
                 .await?;
 
-            diesel::insert_into(events::household_events)
-                .values((
-                    events::household_id.eq(household_id),
-                    events::event_type.eq(decision.event_type),
-                    events::entity_kind.eq("tag"),
-                    events::entity_id.eq(tag_id),
-                    events::revision.eq(decision.revision),
-                    events::changed_fields.eq(decision
-                        .changed_fields
-                        .into_iter()
-                        .map(Some)
-                        .collect::<Vec<_>>()),
-                    events::actor_id.eq(actor_id),
-                    events::created_at.eq(Utc::now()),
-                ))
-                .execute(&mut *conn)
-                .await?;
+            insert_ui_change(
+                conn,
+                household_id,
+                tag_id,
+                decision.revision,
+                actor_id,
+                chrono::Utc::now(),
+                decision.ui_change(),
+            )
+            .await?;
 
             Ok(PersistedTag {
                 id: tag_id,
@@ -159,6 +154,7 @@ pub async fn persist_update_tag(
             .into();
             let decision = decide_update_tag(command, current).map_err(map_workflow_error)?;
             let new_revision = decision.tag.revision;
+            let change = decision.ui_change();
 
             let updated = diesel::update(tags::tags.filter(tags::id.eq(tag_id)))
                 .set((
@@ -175,16 +171,7 @@ pub async fn persist_update_tag(
                 .get_result::<(Uuid, Uuid, String, bool, i64)>(&mut *conn)
                 .await?;
 
-            record_event(
-                conn,
-                updated.1,
-                updated.0,
-                actor_id,
-                new_revision,
-                decision.event_type,
-                decision.changed_fields,
-            )
-            .await?;
+            record_event(conn, updated.1, updated.0, actor_id, new_revision, change).await?;
 
             Ok(PersistedTag {
                 id: updated.0,
@@ -239,6 +226,7 @@ pub async fn persist_set_tag_archived(
             .into();
             let decision = decide_set_tag_archived(command, current).map_err(map_workflow_error)?;
             let new_revision = decision.tag.revision;
+            let change = decision.ui_change();
 
             let updated = diesel::update(tags::tags.filter(tags::id.eq(tag_id)))
                 .set((
@@ -255,16 +243,7 @@ pub async fn persist_set_tag_archived(
                 .get_result::<(Uuid, Uuid, String, bool, i64)>(&mut *conn)
                 .await?;
 
-            record_event(
-                conn,
-                updated.1,
-                updated.0,
-                actor_id,
-                new_revision,
-                decision.event_type,
-                decision.changed_fields,
-            )
-            .await?;
+            record_event(conn, updated.1, updated.0, actor_id, new_revision, change).await?;
 
             Ok(PersistedTag {
                 id: updated.0,
@@ -285,15 +264,15 @@ async fn require_member(
 ) -> Result<(), TagPersistenceError> {
     use public::household_members::dsl as members;
 
-    let is_member = diesel::select(diesel::dsl::exists(
-        members::household_members
-            .filter(members::household_id.eq(household_id))
-            .filter(members::member_id.eq(actor_id))
-            .filter(members::left_at.is_null()),
-    ))
-    .first::<bool>(conn)
-    .await?;
-    if !is_member {
+    let role = members::household_members
+        .filter(members::household_id.eq(household_id))
+        .filter(members::member_id.eq(actor_id))
+        .filter(members::left_at.is_null())
+        .select(members::role)
+        .first::<String>(conn)
+        .await
+        .optional()?;
+    if authorize(role.as_deref(), Operation::FinancialData).is_err() {
         return Err(TagPersistenceError::TagNotFound);
     }
     Ok(())
@@ -305,24 +284,18 @@ async fn record_event(
     tag_id: Uuid,
     actor_id: Uuid,
     revision: i64,
-    event_type: &'static str,
-    changed_fields: Vec<String>,
+    change: UiChangeDescriptor,
 ) -> Result<(), DieselError> {
-    use public::household_events::dsl as events;
-
-    diesel::insert_into(events::household_events)
-        .values((
-            events::household_id.eq(household_id),
-            events::event_type.eq(event_type),
-            events::entity_kind.eq("tag"),
-            events::entity_id.eq(tag_id),
-            events::revision.eq(revision),
-            events::changed_fields.eq(changed_fields.into_iter().map(Some).collect::<Vec<_>>()),
-            events::actor_id.eq(actor_id),
-            events::created_at.eq(Utc::now()),
-        ))
-        .execute(&mut *conn)
-        .await?;
+    insert_ui_change(
+        conn,
+        household_id,
+        tag_id,
+        revision,
+        actor_id,
+        chrono::Utc::now(),
+        change,
+    )
+    .await?;
     Ok(())
 }
 

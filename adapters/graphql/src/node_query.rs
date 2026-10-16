@@ -830,7 +830,7 @@ pub(crate) async fn resolve_graphql_node(
                 }
                 "FUNDING" | "funding" => {
                     let projection =
-                        bookkeeping_postgres::funding_command_result::load_funding_ledger_entry_result(
+                        cross_context_postgres::funding_command_result::load_funding_ledger_entry_result(
                             pool,
                             household_id,
                             metadata.id,

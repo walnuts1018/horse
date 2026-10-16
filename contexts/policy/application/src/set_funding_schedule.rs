@@ -40,6 +40,16 @@ pub struct SetFundingScheduleDecision {
     pub changed_fields: Vec<String>,
 }
 
+impl SetFundingScheduleDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        UiChangeDescriptor::new(
+            "funding.schedule.updated",
+            "fundingSchedule",
+            self.changed_fields.clone(),
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetFundingScheduleError {
     InvalidActorId,
@@ -273,3 +283,5 @@ mod tests {
         );
     }
 }
+
+use horse_household_change::UiChangeDescriptor;

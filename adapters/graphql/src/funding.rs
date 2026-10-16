@@ -5,9 +5,9 @@ use bookkeeping_application::funding_record::{
 };
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
 use bookkeeping_postgres::{
-    funding_command_context as postgres_funding_context,
-    funding_command_result as postgres_funding_result, funding_record as postgres_funding,
+    funding_command_context as postgres_funding_context, funding_record as postgres_funding,
 };
+use cross_context_postgres::funding_command_result as postgres_funding_result;
 use chrono::{Datelike, FixedOffset};
 use horse_postgres_common::PgPool;
 use serde::Serialize;
@@ -237,15 +237,17 @@ fn persistence_error(
         E::InvalidUuid(_)
         | E::InvalidIdempotencyKey
         | E::InvalidOccurredAt
-        | E::InvalidDecision
         | E::InvalidAccountKind
-        | E::AccountOwnershipMismatch
-        | E::NumericOutOfRange(_) => Some(bad_input_error()),
+        | E::AccountOwnershipMismatch => Some(bad_input_error()),
         E::IdempotencyConflict | E::AccountingPeriodClosed => Some(conflict_error()),
         E::HouseholdNotFound | E::MemberNotFound | E::PoolNotFound | E::AccountNotFound => {
             Some(not_found_error())
         }
-        E::Pool(_) | E::Database(_) => None,
+        E::Pool(_)
+        | E::Database(_)
+        | E::InvalidDecision
+        | E::CorruptPersistedData(_)
+        | E::NumericOutOfRange(_) => None,
     }
 }
 

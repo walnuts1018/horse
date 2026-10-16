@@ -1,6 +1,6 @@
 use std::{collections::HashMap, env, time::Instant};
 
-use bookkeeping_postgres::purchase_history::{self, PurchaseHistoryItem};
+use cross_context_postgres::purchase_history::{self, PurchaseHistoryItem};
 use chrono::{DateTime, Datelike, Duration as ChronoDuration, NaiveDate, Utc};
 use evidence_application::ingestion_job::ExtractionFailureKind;
 use evidence_postgres::gemini_quota::{self, QuotaLimit};

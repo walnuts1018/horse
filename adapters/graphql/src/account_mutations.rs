@@ -13,15 +13,11 @@ use bookkeeping_application::{
 use bookkeeping_domain::PositiveYen;
 use bookkeeping_postgres::{
     account_command_context, account_command_result,
-    account_income::{
-        AccountIncomePersistenceError, PersistRecordAccountIncome, persist_record_account_income,
-    },
-    account_movement::{
-        AccountMovementPersistenceError, PersistRecordAccountMovement,
-        persist_record_account_movement,
-    },
+    account_income::{AccountIncomePersistenceError, PersistRecordAccountIncome},
+    account_movement::{AccountMovementPersistenceError, PersistRecordAccountMovement},
 };
 use chrono::{DateTime as ChronoDateTime, Utc};
+use cross_context_postgres::evidence_workflows;
 use horse_postgres_common::PgPool;
 use household_postgres::household_access;
 use sha2::{Digest, Sha256};
@@ -488,7 +484,7 @@ pub async fn record_account_movement(
         }
     };
     let fingerprint = movement_fingerprint(&input);
-    match persist_record_account_movement(
+    match evidence_workflows::persist_record_account_movement(
         pool,
         PersistRecordAccountMovement {
             household_id: household_id.clone(),
@@ -653,7 +649,7 @@ pub async fn record_external_income(
         }
     };
     let request_fingerprint = income_fingerprint(&input);
-    match persist_record_account_income(
+    match evidence_workflows::persist_record_account_income(
         pool,
         PersistRecordAccountIncome {
             household_id: household_id.clone(),

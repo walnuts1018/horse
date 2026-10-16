@@ -4,13 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+async-trait = "0.1"
 base64 = { workspace = true }
 bookkeeping-application = { path = "../application" }
 bookkeeping-domain = { path = "../domain" }
 chrono = { workspace = true }
 diesel = { workspace = true, features = ["32-column-tables"] }
 diesel-async = { workspace = true }
+evidence-application = { path = "../../evidence/application" }
 horse-postgres-common = { path = "../../../platform/postgres-common" }
+horse-household-change = { path = "../../../platform/household-change" }
+horse-authorization = { path = "../../../platform/authorization" }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 uuid = { workspace = true }

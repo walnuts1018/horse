@@ -1,3 +1,4 @@
+use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,6 +174,14 @@ impl CategoryEvent {
             Self::NameUpdated { .. } => &["name"],
             Self::Archived { .. } | Self::Unarchived { .. } => &["archived"],
         }
+    }
+
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        UiChangeDescriptor::new(
+            self.event_type(),
+            "category",
+            self.changed_fields().iter().copied(),
+        )
     }
 }
 

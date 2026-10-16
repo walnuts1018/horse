@@ -4,6 +4,8 @@ use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
+use horse_postgres_common::insert_ui_change;
 use policy_application::set_allocation_rule::{
     AllocationRuleTarget, SetAllocationRuleCommand, SetAllocationRuleDecision,
     SetAllocationRuleError, SetAllocationRuleOperations, SetAllocationRuleResult,
@@ -98,7 +100,6 @@ async fn persist_validated(
             async move |conn| {
                 use public::allocation_rule_weights::dsl as weights;
                 use public::allocation_rules::dsl as rules;
-                use public::household_events::dsl as events;
                 use public::household_members::dsl as members;
                 use public::households::dsl as households;
                 use public::pools::dsl as pools;
@@ -112,16 +113,15 @@ async fn persist_validated(
                     .optional()?
                     .ok_or(SetAllocationRulePersistenceError::HouseholdNotFound)?;
 
-                let actor_is_active = members::household_members
+                let actor_role = members::household_members
                     .filter(members::household_id.eq(household_id))
                     .filter(members::member_id.eq(actor_id))
                     .filter(members::left_at.is_null())
-                    .select(members::member_id)
-                    .first::<Uuid>(conn)
+                    .select(members::role)
+                    .first::<String>(conn)
                     .await
-                    .optional()?
-                    .is_some();
-                if !actor_is_active {
+                    .optional()?;
+                if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                     return Err(SetAllocationRulePersistenceError::ActorNotFound);
                 }
 
@@ -218,23 +218,16 @@ async fn persist_validated(
                         .await?;
                 }
 
-                diesel::insert_into(events::household_events)
-                    .values((
-                        events::household_id.eq(household_id),
-                        events::event_type.eq("allocation.rule.updated"),
-                        events::entity_kind.eq("allocation_rule"),
-                        events::entity_id.eq(rule_id),
-                        events::revision.eq(revision),
-                        events::changed_fields.eq(decision
-                            .changed_fields
-                            .iter()
-                            .cloned()
-                            .map(Some)
-                            .collect::<Vec<_>>()),
-                        events::actor_id.eq(actor_id),
-                    ))
-                    .execute(conn)
-                    .await?;
+                insert_ui_change(
+                    conn,
+                    household_id,
+                    rule_id,
+                    revision,
+                    actor_id,
+                    chrono::Utc::now(),
+                    decision.ui_change(),
+                )
+                .await?;
 
                 Ok(PersistedAllocationRule {
                     id: rule_id.to_string(),

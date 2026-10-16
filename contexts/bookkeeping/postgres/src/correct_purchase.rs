@@ -24,6 +24,7 @@ use diesel::{
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
+use crate::evidence_port::EvidenceOperations;
 use crate::{PgPool, schema::public};
 
 const SOURCE_KIND: &str = "CORRECTION";
@@ -111,6 +112,7 @@ impl From<DieselError> for CorrectPurchasePersistenceError {
 pub async fn correct_purchase(
     pool: &PgPool,
     request: CorrectPurchaseRequest,
+    evidence: &impl EvidenceOperations,
 ) -> Result<PersistedCorrectPurchase, CorrectPurchasePersistenceError> {
     let household_id = parse_uuid(&request.household_id, "household_id")?;
     let purchase_id = parse_uuid(&request.purchase_id, "purchase_id")?;
@@ -142,6 +144,7 @@ pub async fn correct_purchase(
         .transaction::<PersistedCorrectPurchase, CorrectPurchasePersistenceError, _>(async |conn| {
             let mut operations = PgCorrectPurchaseOperations {
                 conn,
+                evidence,
                 request,
                 household_id,
                 purchase_id,
@@ -170,8 +173,9 @@ pub async fn correct_purchase(
         .await
 }
 
-struct PgCorrectPurchaseOperations<'a> {
+struct PgCorrectPurchaseOperations<'a, E: EvidenceOperations> {
     conn: &'a mut diesel_async::AsyncPgConnection,
+    evidence: &'a E,
     request: CorrectPurchaseRequest,
     household_id: Uuid,
     purchase_id: Uuid,
@@ -181,8 +185,9 @@ struct PgCorrectPurchaseOperations<'a> {
     source_observation: Option<LoadedStatementRefund>,
 }
 
-impl bookkeeping_application::correct_purchase_workflow::CorrectPurchaseOperations
-    for PgCorrectPurchaseOperations<'_>
+impl<E: EvidenceOperations>
+    bookkeeping_application::correct_purchase_workflow::CorrectPurchaseOperations
+    for PgCorrectPurchaseOperations<'_, E>
 {
     type Error = CorrectPurchasePersistenceError;
 
@@ -467,8 +472,14 @@ impl bookkeeping_application::correct_purchase_workflow::CorrectPurchaseOperatio
         let source_observation = if let Some(document_id) = &request.source_document_id {
             let document_id = parse_uuid(document_id, "source_document_id")?;
             let reference = request.source_reference.as_deref().unwrap_or_default();
-            let statement =
-                load_statement_refund_entry(conn, household_id, document_id, reference).await?;
+            let statement = load_statement_refund_entry(
+                self.evidence,
+                conn,
+                household_id,
+                document_id,
+                reference,
+            )
+            .await?;
             if statement.observation.kind != "REFUND" || statement.observation.amount_yen >= 0 {
                 return Err(CorrectPurchasePersistenceError::StatementNotRefundable);
             }
@@ -617,6 +628,7 @@ impl bookkeeping_application::correct_purchase_workflow::CorrectPurchaseOperatio
             &self.request.source_reference,
         ) {
             persist_statement_refund_confirmation(
+                self.evidence,
                 &mut *self.conn,
                 self.household_id,
                 self.actor_id,
@@ -645,6 +657,7 @@ impl bookkeeping_application::correct_purchase_workflow::CorrectPurchaseOperatio
 pub async fn link_statement_refund_correction(
     pool: &PgPool,
     input: LinkStatementRefundCorrection,
+    evidence: &impl EvidenceOperations,
 ) -> Result<String, CorrectPurchasePersistenceError> {
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
@@ -660,25 +673,26 @@ pub async fn link_statement_refund_correction(
 
     (*pooled)
         .transaction::<String, CorrectPurchasePersistenceError, _>(async |conn| {
-            use public::evidence_links::dsl as evidence;
             use public::household_members::dsl as members;
             use public::purchase_corrections::dsl as corrections;
-            use public::source_confirmations::dsl as confirmations;
 
-            let is_member = members::household_members
+            let role = members::household_members
                 .filter(members::household_id.eq(household_id))
                 .filter(members::member_id.eq(actor_id))
                 .filter(members::left_at.is_null())
-                .select(members::member_id)
-                .first::<Uuid>(&mut *conn)
+                .select(members::role)
+                .first::<String>(&mut *conn)
                 .await
                 .optional()?
-                .is_some();
-            if !is_member {
-                return Err(CorrectPurchasePersistenceError::MemberNotFound);
-            }
+                .ok_or(CorrectPurchasePersistenceError::MemberNotFound)?;
+            horse_authorization::authorize(
+                Some(&role),
+                horse_authorization::Operation::FinancialData,
+            )
+            .map_err(|_| CorrectPurchasePersistenceError::MemberNotFound)?;
 
             let current_statement = load_statement_refund_entry(
+                evidence,
                 &mut *conn,
                 household_id,
                 source_document_id,
@@ -695,45 +709,43 @@ pub async fn link_statement_refund_correction(
                 .await
                 .optional()?
                 .ok_or(CorrectPurchasePersistenceError::CorrectionNotFound)?;
-            let linked = evidence::evidence_links
-                .filter(evidence::household_id.eq(household_id))
-                .filter(evidence::correction_id.eq(Some(correction_id)))
-                .for_update()
-                .select((
-                    evidence::source_document_id,
-                    evidence::source_reference,
-                    evidence::observation,
-                ))
-                .first::<(Uuid, String, serde_json::Value)>(&mut *conn)
-                .await
-                .optional()?
+            let linked = evidence
+                .evidence_link(
+                    &mut *conn,
+                    household_id,
+                    "purchase_correction",
+                    correction_id,
+                    true,
+                )
+                .await?
                 .ok_or(CorrectPurchasePersistenceError::RefundDoesNotMatchCorrection)?;
-            let linked_document_exists = public::source_documents::table
-                .filter(public::source_documents::household_id.eq(household_id))
-                .filter(public::source_documents::id.eq(linked.0))
-                .select(public::source_documents::id)
-                .first::<Uuid>(&mut *conn)
-                .await
-                .optional()?
+            let linked_document_exists = evidence
+                .source_document_metadata(
+                    &mut *conn,
+                    household_id,
+                    linked.source_document_id,
+                    false,
+                )
+                .await?
                 .is_some();
             if !linked_document_exists {
                 return Err(CorrectPurchasePersistenceError::RefundDoesNotMatchCorrection);
             }
-            let linked_confirmation = confirmations::source_confirmations
-                .filter(confirmations::household_id.eq(household_id))
-                .filter(confirmations::source_document_id.eq(linked.0))
-                .filter(confirmations::source_reference.eq(&linked.1))
-                .order_by(confirmations::changed_at.desc())
-                .select((confirmations::correction_id, confirmations::status))
-                .first::<(Option<Uuid>, String)>(&mut *conn)
-                .await
-                .optional()?;
-            if !linked_confirmation.is_some_and(|(linked_id, status)| {
-                linked_id == Some(correction_id) && status == "confirmed"
+            let linked_confirmation = evidence
+                .latest_confirmation(
+                    &mut *conn,
+                    household_id,
+                    linked.source_document_id,
+                    &linked.source_reference,
+                )
+                .await?;
+            if !linked_confirmation.is_some_and(|confirmation| {
+                confirmation.entity_id == correction_id && confirmation.status == "confirmed"
             }) {
                 return Err(CorrectPurchasePersistenceError::RefundDoesNotMatchCorrection);
             }
-            let linked_statement = parse_linked_refund_observation(&linked.2, &linked.1)?;
+            let linked_statement =
+                parse_linked_refund_observation(&linked.observation, &linked.source_reference)?;
             let decision =
                 decide_link_statement_refund_correction(LinkStatementRefundCorrectionCommand {
                     source_document_id: source_document_id.to_string(),
@@ -741,43 +753,36 @@ pub async fn link_statement_refund_correction(
                     current_statement,
                     correction_id: correction_id.to_string(),
                     correction_amount_delta_yen: correction.1,
-                    linked_source_document_id: linked.0.to_string(),
-                    linked_source_reference: linked.1,
+                    linked_source_document_id: linked.source_document_id.to_string(),
+                    linked_source_reference: linked.source_reference,
                     linked_statement,
                 })
                 .map_err(map_link_refund_error)?;
 
-            let already_confirmed = confirmations::source_confirmations
-                .filter(confirmations::household_id.eq(household_id))
-                .filter(confirmations::source_document_id.eq(source_document_id))
-                .filter(confirmations::source_reference.eq(&decision.source_reference))
-                .filter(confirmations::status.eq("confirmed"))
-                .select(confirmations::id)
-                .first::<Uuid>(&mut *conn)
-                .await
-                .optional()?
-                .is_some();
+            let already_confirmed = evidence
+                .has_confirmation_status(
+                    &mut *conn,
+                    household_id,
+                    source_document_id,
+                    &decision.source_reference,
+                    "confirmed",
+                )
+                .await?;
             if already_confirmed {
                 return Err(CorrectPurchasePersistenceError::StatementAlreadyConfirmed);
             }
-            diesel::insert_into(public::source_confirmations::table)
-                .values((
-                    public::source_confirmations::id.eq(Uuid::now_v7()),
-                    public::source_confirmations::household_id.eq(household_id),
-                    public::source_confirmations::source_document_id.eq(source_document_id),
-                    public::source_confirmations::observation_id.eq(None::<Uuid>),
-                    public::source_confirmations::source_reference.eq(&decision.source_reference),
-                    public::source_confirmations::entity_kind.eq("purchase_correction"),
-                    public::source_confirmations::entity_id.eq(correction_id),
-                    public::source_confirmations::status.eq("confirmed"),
-                    public::source_confirmations::idempotency_key.eq(format!(
-                        "purchase-correction-confirmation:{}",
-                        Uuid::now_v7()
-                    )),
-                    public::source_confirmations::changed_by.eq(actor_id),
-                    public::source_confirmations::changed_at.eq(recorded_at),
-                ))
-                .execute(&mut *conn)
+            evidence
+                .insert_confirmation(
+                    &mut *conn,
+                    household_id,
+                    source_document_id,
+                    &decision.source_reference,
+                    "purchase_correction",
+                    correction_id,
+                    actor_id,
+                    format!("purchase-correction-confirmation:{}", Uuid::now_v7()),
+                    None,
+                )
                 .await
                 .map_err(map_confirmation_insert_error)?;
             Ok(correction.0.to_string())
@@ -829,7 +834,8 @@ async fn find_correct_purchase_replay(
     }))
 }
 
-async fn persist_statement_refund_confirmation(
+async fn persist_statement_refund_confirmation<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     actor_id: Uuid,
@@ -838,53 +844,45 @@ async fn persist_statement_refund_confirmation(
     correction_id: Uuid,
     observation: &serde_json::Value,
 ) -> Result<(), CorrectPurchasePersistenceError> {
-    use public::{evidence_links, source_confirmations};
-
     let region = observation
         .get("statement")
         .and_then(|statement| statement.get("region"))
         .cloned();
-    diesel::insert_into(source_confirmations::table)
-        .values((
-            source_confirmations::id.eq(Uuid::now_v7()),
-            source_confirmations::household_id.eq(household_id),
-            source_confirmations::source_document_id.eq(source_document_id),
-            source_confirmations::observation_id.eq(None::<Uuid>),
-            source_confirmations::source_reference.eq(source_reference),
-            source_confirmations::entity_kind.eq("purchase_correction"),
-            source_confirmations::entity_id.eq(correction_id),
-            source_confirmations::status.eq("confirmed"),
-            source_confirmations::idempotency_key.eq(format!(
-                "purchase-correction-confirmation:{}",
-                Uuid::now_v7()
-            )),
-            source_confirmations::changed_by.eq(actor_id),
-            source_confirmations::changed_at.eq(recorded_at),
-        ))
-        .execute(&mut *conn)
+    evidence
+        .insert_confirmation(
+            &mut *conn,
+            household_id,
+            source_document_id,
+            source_reference,
+            "purchase_correction",
+            correction_id,
+            actor_id,
+            format!("purchase-correction-confirmation:{}", Uuid::now_v7()),
+            None,
+        )
         .await
         .map_err(map_confirmation_insert_error)?;
-    diesel::insert_into(evidence_links::table)
-        .values((
-            evidence_links::id.eq(Uuid::now_v7()),
-            evidence_links::household_id.eq(household_id),
-            evidence_links::source_document_id.eq(source_document_id),
-            evidence_links::observation_id.eq(None::<Uuid>),
-            evidence_links::source_reference.eq(source_reference),
-            evidence_links::entity_kind.eq("purchase_correction"),
-            evidence_links::entity_id.eq(correction_id),
-            evidence_links::item_id.eq(None::<Uuid>),
-            evidence_links::evidence_region.eq(region),
-            evidence_links::observation.eq(observation.clone()),
-            evidence_links::created_by.eq(actor_id),
-            evidence_links::created_at.eq(recorded_at),
-            evidence_links::purchase_id.eq(None::<Uuid>),
-            evidence_links::correction_id.eq(Some(correction_id)),
-            evidence_links::transfer_id.eq(None::<Uuid>),
-        ))
-        .execute(&mut *conn)
-        .await
-        .map_err(map_confirmation_insert_error)?;
+    horse_postgres_common::insert_evidence_link(
+        conn,
+        evidence_application::EvidenceLink {
+            created_at: Utc::now(),
+            household_id,
+            source_document_id,
+            entity_kind: "purchase_correction",
+            entity_id: correction_id,
+            item_id: None,
+            purchase_id: None,
+            correction_id: Some(correction_id),
+            transfer_id: None,
+            evidence_region: region,
+            observation: observation.clone(),
+            actor_id,
+            source_reference: source_reference.to_owned(),
+            ignore_duplicate: false,
+        },
+    )
+    .await
+    .map_err(map_confirmation_insert_error)?;
     Ok(())
 }
 
@@ -907,7 +905,6 @@ async fn persist_correct_purchase_in_transaction(
     let journal_id = Uuid::new_v4();
     let ledger_entry_id = Uuid::new_v4();
     use public::accounting_periods::dsl as periods;
-    use public::household_events::dsl as events;
     use public::idempotency_records::dsl as idem;
     use public::journals::dsl as journals;
     use public::ledger_entries::dsl as ledger;
@@ -1208,24 +1205,19 @@ async fn persist_correct_purchase_in_transaction(
         .select(households::id)
         .first::<Uuid>(&mut *conn)
         .await?;
-    diesel::insert_into(events::household_events)
-        .values((
-            events::household_id.eq(household_id),
-            events::event_type.eq(decision.event.event_type),
-            events::entity_kind.eq("purchase"),
-            events::entity_id.eq(purchase_id),
-            events::revision.eq(next_purchase_revision),
-            events::changed_fields.eq(decision
-                .event
-                .changed_fields
-                .iter()
-                .map(|field| Some((*field).to_owned()))
-                .collect::<Vec<_>>()),
-            events::actor_id.eq(actor_id),
-            events::created_at.eq(recorded_at),
-        ))
-        .execute(&mut *conn)
-        .await?;
+    horse_postgres_common::insert_ui_change(
+        &mut *conn,
+        household_id,
+        purchase_id,
+        next_purchase_revision,
+        actor_id,
+        Utc::now(),
+        bookkeeping_application::ui_changes::purchase_corrected(
+            decision.event.event_type,
+            decision.event.changed_fields.iter().copied(),
+        ),
+    )
+    .await?;
 
     Ok(PersistedCorrectPurchase {
         correction_id: correction_id.to_string(),
@@ -1238,51 +1230,35 @@ fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, CorrectPurchaseP
     Uuid::parse_str(value).map_err(|_| CorrectPurchasePersistenceError::InvalidUuid(field))
 }
 
-async fn load_statement_refund_entry(
+async fn load_statement_refund_entry<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     document_id: Uuid,
     source_reference: &str,
 ) -> Result<LoadedStatementRefund, CorrectPurchasePersistenceError> {
-    use public::extraction_jobs::dsl as jobs;
-    use public::source_confirmations::dsl as confirmations;
-    use public::source_documents::dsl as documents;
-
-    let source_kind = documents::source_documents
-        .filter(documents::household_id.eq(household_id))
-        .filter(documents::id.eq(document_id))
-        .for_update()
-        .select((documents::source_kind, documents::sha256))
-        .first::<(String, String)>(conn)
-        .await
-        .optional()?
+    let source_kind = evidence
+        .source_document_metadata(conn, household_id, document_id, true)
+        .await?
         .ok_or(CorrectPurchasePersistenceError::SourceDocumentNotFound)?;
-    if source_kind.0 != "bank" && source_kind.0 != "card" {
+    if source_kind.source_kind != "bank" && source_kind.source_kind != "card" {
         return Err(CorrectPurchasePersistenceError::StatementReferenceNotFound);
     }
-    let confirmed = confirmations::source_confirmations
-        .filter(confirmations::household_id.eq(household_id))
-        .filter(confirmations::source_document_id.eq(document_id))
-        .filter(confirmations::source_reference.eq(source_reference))
-        .filter(confirmations::status.eq("confirmed"))
-        .select(confirmations::id)
-        .first::<Uuid>(conn)
-        .await
-        .optional()?
-        .is_some();
+    let confirmed = evidence
+        .has_confirmation_status(
+            conn,
+            household_id,
+            document_id,
+            source_reference,
+            "confirmed",
+        )
+        .await?;
     if confirmed {
         return Err(CorrectPurchasePersistenceError::StatementAlreadyConfirmed);
     }
-    let (job_id, result) = jobs::extraction_jobs
-        .filter(jobs::household_id.eq(household_id))
-        .filter(jobs::source_document_id.eq(document_id))
-        .filter(jobs::status.eq("succeeded"))
-        .order_by(jobs::version.desc())
-        .select((jobs::id, jobs::result))
-        .first::<(Uuid, Option<serde_json::Value>)>(conn)
-        .await
-        .optional()?
-        .and_then(|(job_id, result)| result.map(|result| (job_id, result)))
+    let (job_id, result) = evidence
+        .latest_extraction_with_id(conn, household_id, document_id)
+        .await?
         .ok_or(CorrectPurchasePersistenceError::StatementExtractionUnavailable)?;
     let statements = result
         .get("statements")
@@ -1310,7 +1286,7 @@ async fn load_statement_refund_entry(
             evidence: serde_json::json!({
                 "jobId": job_id.to_string(),
                 "statement": statement,
-                "sourceHash": source_kind.1,
+                "sourceHash": source_kind.sha256,
             }),
         });
     }
@@ -1461,17 +1437,17 @@ async fn validate_actor_membership(
 ) -> Result<(), CorrectPurchasePersistenceError> {
     use public::household_members::dsl as members;
 
-    let member = members::household_members
+    let role = members::household_members
         .filter(members::household_id.eq(household_id))
         .filter(members::member_id.eq(actor_id))
         .filter(members::left_at.is_null())
-        .select(members::member_id)
-        .first::<Uuid>(conn)
+        .select(members::role)
+        .first::<String>(conn)
         .await
-        .optional()?;
-    if member.is_none() {
-        return Err(CorrectPurchasePersistenceError::HouseholdMismatch);
-    }
+        .optional()?
+        .ok_or(CorrectPurchasePersistenceError::HouseholdMismatch)?;
+    horse_authorization::authorize(Some(&role), horse_authorization::Operation::FinancialData)
+        .map_err(|_| CorrectPurchasePersistenceError::HouseholdMismatch)?;
     Ok(())
 }
 

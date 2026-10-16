@@ -3,9 +3,8 @@ use crate::{
     purchase_mutations::{self, PurchaseCorrectionConnection},
 };
 use async_graphql::{Context, Error, ID, Result};
-use bookkeeping_postgres::{
-    purchase_command_result, purchase_command_result::PurchaseCommandResultError,
-};
+use cross_context_postgres::purchase_command_result;
+use cross_context_postgres::purchase_command_result::PurchaseCommandResultError;
 use horse_postgres_common::PgPool;
 use household_postgres::household_access;
 

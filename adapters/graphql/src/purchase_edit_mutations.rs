@@ -15,11 +15,11 @@ use bookkeeping_application::{
 use bookkeeping_postgres::{
     bulk_delete_purchase_items::{self, PersistBulkDeletePurchaseItems},
     bulk_update_purchase_items::{self, PersistBulkUpdatePurchaseItems},
-    purchase_command_result,
     update_purchase::{self, PersistUpdatePurchase},
     update_purchase_item::{self, PersistUpdatePurchaseItem},
 };
 use chrono::Datelike;
+use cross_context_postgres::purchase_command_result;
 use horse_postgres_common::PgPool;
 use household_postgres::household_access;
 use std::collections::{BTreeMap, BTreeSet};
@@ -230,7 +230,7 @@ pub async fn update_purchase(
         Ok(value) => value,
         Err(error) => return Ok(update_error(update_error_code(error)).into()),
     };
-    let persisted = update_purchase::persist_update_purchase(
+    let persisted = cross_context_postgres::reference_data::persist_update_purchase(
         pool,
         PersistUpdatePurchase {
             household_id: household_id.to_string(),
@@ -280,7 +280,7 @@ pub async fn update_purchase_item(
         Ok(command) => command,
         Err(()) => return Ok(update_item_error(MutationErrorCode::BadInput).into()),
     };
-    match update_purchase_item::persist_update_purchase_item(
+    match cross_context_postgres::reference_data::persist_update_purchase_item(
         pool,
         PersistUpdatePurchaseItem {
             household_id: household_id.to_string(),
@@ -395,7 +395,7 @@ pub async fn bulk_delete_purchase_items(
     if !active_member(pool, household_id, actor.0).await? {
         return Ok(bulk_delete_error(MutationErrorCode::NotFound).into());
     }
-    match bulk_delete_purchase_items::persist_bulk_delete_purchase_items(
+    match cross_context_postgres::reference_data::persist_bulk_delete_purchase_items(
         pool,
         PersistBulkDeletePurchaseItems {
             household_id: household_id.to_string(),

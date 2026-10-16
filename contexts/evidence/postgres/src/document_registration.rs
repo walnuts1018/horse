@@ -42,7 +42,7 @@ pub async fn register_document_in_transaction(
 ) -> Result<RegisteredDocument, RegisterDocumentError> {
     validate(&command)?;
     use horse_postgres_common::schema::public::{
-        extraction_jobs, household_events, source_document_attachments, source_documents,
+        extraction_jobs, source_document_attachments, source_documents,
     };
     let now = Utc::now();
     let candidate_id = Uuid::now_v7();
@@ -130,20 +130,16 @@ pub async fn register_document_in_transaction(
             ))
             .execute(conn)
             .await?;
-        diesel::insert_into(household_events::table)
-            .values((
-                household_events::household_id.eq(command.household_id),
-                household_events::event_type.eq("receipt.document.registered"),
-                household_events::entity_kind.eq("source_document"),
-                household_events::entity_id.eq(document_id),
-                household_events::revision.eq(1_i64),
-                household_events::changed_fields.eq(vec![Some("status".to_owned())]),
-                household_events::payload.eq(serde_json::json!({"jobId": id.to_string()})),
-                household_events::actor_id.eq(command.created_by),
-                household_events::created_at.eq(now),
-            ))
-            .execute(conn)
-            .await?;
+        horse_postgres_common::insert_ui_change(
+            conn,
+            command.household_id,
+            document_id,
+            1_i64,
+            command.created_by,
+            now,
+            evidence_application::document_registered(id),
+        )
+        .await?;
         Some(id)
     };
     let mut attachment_ids = Vec::with_capacity(command.attachments.len());
@@ -297,9 +293,7 @@ pub async fn enqueue_extraction_job(
         .map_err(|error| RegisterDocumentError::Pool(error.to_string()))?;
     (*pooled)
         .transaction::<Uuid, RegisterDocumentError, _>(async move |conn| {
-            use horse_postgres_common::schema::public::{
-                extraction_jobs, household_events, source_documents,
-            };
+            use horse_postgres_common::schema::public::{extraction_jobs, source_documents};
             let now = Utc::now();
             let document_exists = source_documents::table
                 .filter(source_documents::household_id.eq(household_id))
@@ -351,20 +345,16 @@ pub async fn enqueue_extraction_job(
                 ))
                 .execute(conn)
                 .await?;
-            diesel::insert_into(household_events::table)
-                .values((
-                    household_events::household_id.eq(household_id),
-                    household_events::event_type.eq("receipt.extraction.started"),
-                    household_events::entity_kind.eq("source_document"),
-                    household_events::entity_id.eq(document_id),
-                    household_events::revision.eq(i64::from(version)),
-                    household_events::changed_fields.eq(vec![Some("status".to_owned())]),
-                    household_events::payload.eq(serde_json::json!({"jobId": id.to_string()})),
-                    household_events::actor_id.eq(actor_id),
-                    household_events::created_at.eq(now),
-                ))
-                .execute(conn)
-                .await?;
+            horse_postgres_common::insert_ui_change(
+                conn,
+                household_id,
+                document_id,
+                i64::from(version),
+                actor_id,
+                now,
+                evidence_application::extraction_started(id),
+            )
+            .await?;
             Ok(id)
         })
         .await

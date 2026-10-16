@@ -676,20 +676,16 @@ async fn persist_success_effects(
         }
     }
 
-    diesel::insert_into(public::household_events::table)
-        .values((
-            public::household_events::household_id.eq(household_id),
-            public::household_events::event_type.eq("receipt.extraction.updated"),
-            public::household_events::entity_kind.eq("source_document"),
-            public::household_events::entity_id.eq(source_document_id),
-            public::household_events::revision.eq(metadata.version),
-            public::household_events::changed_fields
-                .eq(vec![Some("status".to_owned()), Some("result".to_owned())]),
-            public::household_events::actor_id.eq(created_by),
-            public::household_events::created_at.eq(now),
-        ))
-        .execute(conn)
-        .await?;
+    horse_postgres_common::insert_ui_change(
+        conn,
+        household_id,
+        source_document_id,
+        metadata.version,
+        created_by,
+        now,
+        evidence_application::extraction_updated(),
+    )
+    .await?;
 
     Ok(())
 }

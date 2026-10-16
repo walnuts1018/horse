@@ -13,6 +13,7 @@ use bookkeeping_postgres::{
     record_repayment as postgres_repayment, record_transfer as postgres_transfer,
 };
 use chrono::{DateTime as ChronoDateTime, Utc};
+use cross_context_postgres::evidence_workflows;
 use horse_postgres_common::PgPool;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -169,7 +170,7 @@ pub async fn record_transfer(
         source_account_id: parsed.source_account_id.map(|id| id.to_string()),
     };
     let replay =
-        match postgres_transfer::find_record_transfer_replay(ctx.data::<PgPool>()?, &replay_input)
+        match evidence_workflows::find_record_transfer_replay(ctx.data::<PgPool>()?, &replay_input)
             .await
         {
             Ok(value) => value,
@@ -218,7 +219,7 @@ pub async fn record_transfer(
         Ok(value) => value,
         Err(error) => return Ok(transfer_workflow_error(error).into()),
     };
-    let result = match postgres_transfer::persist_record_transfer(
+    let result = match evidence_workflows::persist_record_transfer(
         ctx.data::<PgPool>()?,
         postgres_transfer::PersistRecordTransfer {
             household_id: parsed.household_id.to_string(),
@@ -273,7 +274,7 @@ pub async fn record_repayment(
         source_reference: parsed.source_reference.clone(),
         source_account_id: parsed.source_account_id.map(|id| id.to_string()),
     };
-    let replay = match postgres_repayment::find_record_repayment_replay(
+    let replay = match evidence_workflows::find_record_repayment_replay(
         ctx.data::<PgPool>()?,
         &replay_input,
     )
@@ -322,7 +323,7 @@ pub async fn record_repayment(
         Ok(value) => value,
         Err(error) => return Ok(repayment_workflow_error(error).into()),
     };
-    let result = match postgres_repayment::persist_record_repayment(
+    let result = match evidence_workflows::persist_record_repayment(
         ctx.data::<PgPool>()?,
         postgres_repayment::PersistRecordRepayment {
             household_id: parsed.household_id.to_string(),

@@ -1,14 +1,14 @@
 use catalog_application::category::{
-    ActorId, CategoryError, CategoryEvent, CategoryId, CategoryName, CategoryView,
-    CreateCategoryDecision, CreateCategoryOperations, HouseholdId, LoadedCategory,
-    SetCategoryArchivedDecision, SetCategoryArchivedOperations, UpdateCategoryNameDecision,
-    UpdateCategoryNameOperations,
+    ActorId, CategoryError, CategoryId, CategoryName, CategoryView, CreateCategoryDecision,
+    CreateCategoryOperations, HouseholdId, LoadedCategory, SetCategoryArchivedDecision,
+    SetCategoryArchivedOperations, UpdateCategoryNameDecision, UpdateCategoryNameOperations,
 };
-use chrono::Utc;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{
     AsyncConnection, RunQueryDsl, pooled_connection::bb8::RunError as PoolRunError,
 };
+use horse_authorization::{Operation, authorize};
+use horse_postgres_common::insert_ui_change;
 use std::{future::Future, pin::Pin};
 use uuid::Uuid;
 
@@ -168,7 +168,6 @@ impl CreateCategoryOperations for PostgresCreateCategoryOperations<'_> {
         decision: CreateCategoryDecision,
     ) -> Result<CategoryView, Self::Error> {
         use public::categories::dsl as categories;
-        use public::household_events::dsl as events;
 
         let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
         let household_id = parse_uuid(decision.household_id.as_str(), "household_id")?;
@@ -189,22 +188,16 @@ impl CreateCategoryOperations for PostgresCreateCategoryOperations<'_> {
             .execute(self.conn)
             .await?;
 
-        diesel::insert_into(events::household_events)
-            .values((
-                events::household_id.eq(household_id),
-                events::event_type.eq(decision.event.event_type()),
-                events::entity_kind.eq("category"),
-                events::entity_id.eq(parse_uuid(
-                    decision.event.category_id().as_str(),
-                    "category_id",
-                )?),
-                events::revision.eq(1_i64),
-                events::changed_fields.eq(event_fields(&decision.event)),
-                events::actor_id.eq(actor_id),
-                events::created_at.eq(Utc::now()),
-            ))
-            .execute(self.conn)
-            .await?;
+        insert_ui_change(
+            self.conn,
+            household_id,
+            parse_uuid(decision.event.category_id().as_str(), "category_id")?,
+            1_i64,
+            actor_id,
+            chrono::Utc::now(),
+            decision.event.ui_change(),
+        )
+        .await?;
 
         CategoryView::try_from(PersistedCategory {
             id: category_id,
@@ -272,7 +265,6 @@ impl UpdateCategoryNameOperations for PostgresUpdateCategoryNameOperations<'_> {
         decision: UpdateCategoryNameDecision,
     ) -> Result<CategoryView, Self::Error> {
         use public::categories::dsl as categories;
-        use public::household_events::dsl as events;
 
         let category_id = parse_uuid(category.id.as_str(), "category_id")?;
         let household_id = parse_uuid(category.household_id.as_str(), "household_id")?;
@@ -286,22 +278,16 @@ impl UpdateCategoryNameOperations for PostgresUpdateCategoryNameOperations<'_> {
         .execute(self.conn)
         .await?;
         let event_revision = next_event_revision(self.conn, category_id).await?;
-        diesel::insert_into(events::household_events)
-            .values((
-                events::household_id.eq(household_id),
-                events::event_type.eq(decision.event.event_type()),
-                events::entity_kind.eq("category"),
-                events::entity_id.eq(parse_uuid(
-                    decision.event.category_id().as_str(),
-                    "category_id",
-                )?),
-                events::revision.eq(event_revision),
-                events::changed_fields.eq(event_fields(&decision.event)),
-                events::actor_id.eq(actor_id),
-                events::created_at.eq(Utc::now()),
-            ))
-            .execute(self.conn)
-            .await?;
+        insert_ui_change(
+            self.conn,
+            household_id,
+            parse_uuid(decision.event.category_id().as_str(), "category_id")?,
+            event_revision,
+            actor_id,
+            chrono::Utc::now(),
+            decision.event.ui_change(),
+        )
+        .await?;
 
         CategoryView::new(
             category.id.as_str(),
@@ -370,7 +356,6 @@ impl SetCategoryArchivedOperations for PostgresSetCategoryArchivedOperations<'_>
         decision: SetCategoryArchivedDecision,
     ) -> Result<CategoryView, Self::Error> {
         use public::categories::dsl as categories;
-        use public::household_events::dsl as events;
 
         let category_id = parse_uuid(category.id.as_str(), "category_id")?;
         let household_id = parse_uuid(category.household_id.as_str(), "household_id")?;
@@ -384,22 +369,16 @@ impl SetCategoryArchivedOperations for PostgresSetCategoryArchivedOperations<'_>
         .execute(self.conn)
         .await?;
         let event_revision = next_event_revision(self.conn, category_id).await?;
-        diesel::insert_into(events::household_events)
-            .values((
-                events::household_id.eq(household_id),
-                events::event_type.eq(decision.event.event_type()),
-                events::entity_kind.eq("category"),
-                events::entity_id.eq(parse_uuid(
-                    decision.event.category_id().as_str(),
-                    "category_id",
-                )?),
-                events::revision.eq(event_revision),
-                events::changed_fields.eq(event_fields(&decision.event)),
-                events::actor_id.eq(actor_id),
-                events::created_at.eq(Utc::now()),
-            ))
-            .execute(self.conn)
-            .await?;
+        insert_ui_change(
+            self.conn,
+            household_id,
+            parse_uuid(decision.event.category_id().as_str(), "category_id")?,
+            event_revision,
+            actor_id,
+            chrono::Utc::now(),
+            decision.event.ui_change(),
+        )
+        .await?;
 
         CategoryView::new(
             category.id.as_str(),
@@ -457,15 +436,15 @@ async fn require_member(
 ) -> Result<(), CategoryWorkflowError> {
     use public::household_members::dsl as members;
 
-    let is_member = diesel::select(diesel::dsl::exists(
-        members::household_members
-            .filter(members::household_id.eq(household_id))
-            .filter(members::member_id.eq(actor_id))
-            .filter(members::left_at.is_null()),
-    ))
-    .first::<bool>(conn)
-    .await?;
-    if !is_member {
+    let role = members::household_members
+        .filter(members::household_id.eq(household_id))
+        .filter(members::member_id.eq(actor_id))
+        .filter(members::left_at.is_null())
+        .select(members::role)
+        .first::<String>(conn)
+        .await
+        .optional()?;
+    if authorize(role.as_deref(), Operation::FinancialData).is_err() {
         return Err(CategoryWorkflowError::NotAMember);
     }
     Ok(())
@@ -473,12 +452,4 @@ async fn require_member(
 
 fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, CategoryWorkflowError> {
     Uuid::parse_str(value).map_err(|_| CategoryWorkflowError::InvariantViolation(field))
-}
-
-fn event_fields(event: &CategoryEvent) -> Vec<Option<String>> {
-    event
-        .changed_fields()
-        .iter()
-        .map(|field| Some((*field).to_owned()))
-        .collect()
 }

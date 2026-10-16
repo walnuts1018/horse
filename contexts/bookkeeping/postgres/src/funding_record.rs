@@ -4,6 +4,7 @@ use diesel::{
     upsert::excluded,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use bookkeeping_application::funding_record as application;
@@ -13,7 +14,6 @@ use bookkeeping_domain::AccountingPeriodStatus;
 use crate::{PgPool, schema::public};
 
 const OPERATION: &str = "recordFunding";
-const EVENT_TYPE: &str = "funding.recorded";
 const GO_ZERO_TIME_UNIX_SECONDS: i64 = -62_135_596_800;
 
 #[derive(Debug, Clone)]
@@ -60,17 +60,26 @@ async fn replay_record_funding_in_transaction(
     lock_accounting_period(conn, household_id, period_start).await?;
     use public::idempotency_records::dsl as idem;
 
-    for id in [actor_id, member_id] {
-        public::household_members::table
-            .filter(public::household_members::household_id.eq(household_id))
-            .filter(public::household_members::member_id.eq(id))
-            .filter(public::household_members::left_at.is_null())
-            .select(public::household_members::member_id)
-            .first::<Uuid>(&mut *conn)
-            .await
-            .optional()?
-            .ok_or(RecordFundingPersistenceError::MemberNotFound)?;
+    let actor_role = public::household_members::table
+        .filter(public::household_members::household_id.eq(household_id))
+        .filter(public::household_members::member_id.eq(actor_id))
+        .filter(public::household_members::left_at.is_null())
+        .select(public::household_members::role)
+        .first::<String>(&mut *conn)
+        .await
+        .optional()?;
+    if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
+        return Err(RecordFundingPersistenceError::MemberNotFound);
     }
+    public::household_members::table
+        .filter(public::household_members::household_id.eq(household_id))
+        .filter(public::household_members::member_id.eq(member_id))
+        .filter(public::household_members::left_at.is_null())
+        .select(public::household_members::member_id)
+        .first::<Uuid>(&mut *conn)
+        .await
+        .optional()?
+        .ok_or(RecordFundingPersistenceError::MemberNotFound)?;
     public::pools::table
         .filter(public::pools::household_id.eq(household_id))
         .filter(public::pools::id.eq(pool_id))
@@ -94,7 +103,12 @@ async fn replay_record_funding_in_transaction(
     let Some((fingerprint, resource_kind, ledger_entry_id)) = record else {
         return Ok(None);
     };
-    if fingerprint.as_slice() != input.request_fingerprint || resource_kind != "ledger_entry" {
+    if fingerprint.len() != 32 || resource_kind != "ledger_entry" {
+        return Err(RecordFundingPersistenceError::CorruptPersistedData(
+            "idempotency record",
+        ));
+    }
+    if fingerprint.as_slice() != input.request_fingerprint {
         return Err(RecordFundingPersistenceError::IdempotencyConflict);
     }
     let journal_id = public::ledger_entries::table
@@ -118,6 +132,7 @@ pub enum RecordFundingPersistenceError {
     InvalidOccurredAt,
     IdempotencyConflict,
     InvalidDecision,
+    CorruptPersistedData(&'static str),
     HouseholdNotFound,
     MemberNotFound,
     PoolNotFound,
@@ -282,10 +297,10 @@ async fn persist_record_funding_in_transaction(
     }
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
-    let decision_actor_id = parse_uuid(decision.actor_id.as_str(), "decision actor_id")?;
-    let member_id = parse_uuid(decision.member_id.as_str(), "member_id")?;
-    let pool_id = parse_uuid(decision.pool_id.as_str(), "pool_id")?;
-    let event_actor_id = parse_uuid(decision.event.actor_id.as_str(), "event actor_id")?;
+    let decision_actor_id = parse_decision_uuid(decision.actor_id.as_str())?;
+    let member_id = parse_decision_uuid(decision.member_id.as_str())?;
+    let pool_id = parse_decision_uuid(decision.pool_id.as_str())?;
+    let event_actor_id = parse_decision_uuid(decision.event.actor_id.as_str())?;
     if actor_id != decision_actor_id
         || actor_id != event_actor_id
         || decision.amount_yen <= 0
@@ -327,12 +342,12 @@ async fn persist_record_funding_in_transaction(
     let source_account_id = decision
         .source_account_id
         .as_deref()
-        .map(|id| parse_uuid(id, "source_account_id"))
+        .map(|id| parse_decision_uuid(id))
         .transpose()?;
     let destination_account_id = decision
         .destination_account_id
         .as_deref()
-        .map(|id| parse_uuid(id, "destination_account_id"))
+        .map(|id| parse_decision_uuid(id))
         .transpose()?;
 
     use public::idempotency_records::dsl as idem;
@@ -351,17 +366,26 @@ async fn persist_record_funding_in_transaction(
         .await
         .optional()?
         .ok_or(RecordFundingPersistenceError::HouseholdNotFound)?;
-    for id in [actor_id, member_id] {
-        public::household_members::table
-            .filter(public::household_members::household_id.eq(household_id))
-            .filter(public::household_members::member_id.eq(id))
-            .filter(public::household_members::left_at.is_null())
-            .select(public::household_members::member_id)
-            .first::<Uuid>(&mut *conn)
-            .await
-            .optional()?
-            .ok_or(RecordFundingPersistenceError::MemberNotFound)?;
+    let actor_role = public::household_members::table
+        .filter(public::household_members::household_id.eq(household_id))
+        .filter(public::household_members::member_id.eq(actor_id))
+        .filter(public::household_members::left_at.is_null())
+        .select(public::household_members::role)
+        .first::<String>(&mut *conn)
+        .await
+        .optional()?;
+    if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
+        return Err(RecordFundingPersistenceError::MemberNotFound);
     }
+    public::household_members::table
+        .filter(public::household_members::household_id.eq(household_id))
+        .filter(public::household_members::member_id.eq(member_id))
+        .filter(public::household_members::left_at.is_null())
+        .select(public::household_members::member_id)
+        .first::<Uuid>(&mut *conn)
+        .await
+        .optional()?
+        .ok_or(RecordFundingPersistenceError::MemberNotFound)?;
     let inserted = diesel::insert_into(idem::idempotency_records)
         .values((
             idem::household_id.eq(household_id),
@@ -389,7 +413,12 @@ async fn persist_record_funding_in_transaction(
             ))
             .first::<(Vec<u8>, String, Uuid)>(&mut *conn)
             .await?;
-        if fingerprint.as_slice() != input.request_fingerprint || resource_kind != "ledger_entry" {
+        if fingerprint.len() != 32 || resource_kind != "ledger_entry" {
+            return Err(RecordFundingPersistenceError::CorruptPersistedData(
+                "idempotency record",
+            ));
+        }
+        if fingerprint.as_slice() != input.request_fingerprint {
             return Err(RecordFundingPersistenceError::IdempotencyConflict);
         }
         let (saved_journal_id, _) = public::ledger_entries::table
@@ -494,12 +523,12 @@ async fn persist_record_funding_in_transaction(
                 public::journal_entries::account_id.eq(line
                     .account_id
                     .as_deref()
-                    .map(|id| parse_uuid(id, "journal account_id"))
+                    .map(|id| parse_decision_uuid(id))
                     .transpose()?),
                 public::journal_entries::pool_id.eq(line
                     .pool_id
                     .as_deref()
-                    .map(|id| parse_uuid(id, "journal pool_id"))
+                    .map(|id| parse_decision_uuid(id))
                     .transpose()?),
                 public::journal_entries::member_id.eq(None::<Uuid>),
                 public::journal_entries::debit_yen.eq(if line.side == PostingSide::Debit {
@@ -533,25 +562,19 @@ async fn persist_record_funding_in_transaction(
         ))
         .execute(&mut *conn)
         .await?;
-    diesel::insert_into(public::household_events::table)
-        .values((
-            public::household_events::household_id.eq(household_id),
-            public::household_events::event_type.eq(EVENT_TYPE),
-            public::household_events::entity_kind.eq("ledger"),
-            public::household_events::entity_id.eq(ledger_entry_id),
-            public::household_events::revision.eq(i64::try_from(decision.event.revision)
-                .map_err(|_| RecordFundingPersistenceError::NumericOutOfRange("event revision"))?),
-            public::household_events::changed_fields.eq(decision
-                .event
-                .changed_fields
-                .iter()
-                .map(|field| Some((*field).to_owned()))
-                .collect::<Vec<_>>()),
-            public::household_events::actor_id.eq(actor_id),
-            public::household_events::created_at.eq(now),
-        ))
-        .execute(&mut *conn)
-        .await?;
+    horse_postgres_common::insert_ui_change(
+        &mut *conn,
+        household_id,
+        ledger_entry_id,
+        i64::try_from(decision.event.revision)
+            .map_err(|_| RecordFundingPersistenceError::NumericOutOfRange("event revision"))?,
+        actor_id,
+        Utc::now(),
+        bookkeeping_application::ui_changes::funding_recorded(
+            decision.event.changed_fields.iter().copied(),
+        ),
+    )
+    .await?;
     Ok(PersistedFunding {
         journal_id: journal_id.to_string(),
         ledger_entry_id: ledger_entry_id.to_string(),
@@ -690,4 +713,8 @@ fn validate_decision(
 
 fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, RecordFundingPersistenceError> {
     Uuid::parse_str(value).map_err(|_| RecordFundingPersistenceError::InvalidUuid(field))
+}
+
+fn parse_decision_uuid(value: &str) -> Result<Uuid, RecordFundingPersistenceError> {
+    Uuid::parse_str(value).map_err(|_| RecordFundingPersistenceError::InvalidDecision)
 }

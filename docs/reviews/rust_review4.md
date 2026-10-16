@@ -6,4 +6,4 @@
 
 ## Bounded Contextとテーブル所有権
 
-[`purchase_command_context.rs`](../../contexts/bookkeeping/postgres/src/purchase_command_context.rs)などでは、Bookkeepingの処理から他Contextが所有するテーブルを参照します。共有DB自体ではなく、テーブルの更新規則と所有者をどのContextに置くかが検討事項です。現在の整合性境界を保つための直接参照か、Context間の契約へ移すかを業務モデルに基づいて決める必要があります。
+BookkeepingのPostgreSQL AdapterからEvidence、Policy、Catalog、Householdが所有するテーブルを直接参照する処理が残っています。購入作成のcross-context移行だけでは解決しません。各Contextのテーブル所有者を`docs/plan.md`へ網羅的に記録し、複数Contextのデータを必要とする処理は既存のtransactionを保ったまま`contexts/cross-context/postgres`の契約を経由する必要があります。

@@ -1,4 +1,6 @@
+use crate::authorization::{self, Operation};
 use chrono::{DateTime, Utc};
+use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +59,16 @@ pub struct CreateInvitationDecision {
     pub expires_at: DateTime<Utc>,
 }
 
+impl CreateInvitationDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        UiChangeDescriptor::new(
+            "household.invitation.created",
+            "invitation",
+            ["invitations"],
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AcceptInvitationCommand {
     pub member_id: String,
@@ -72,6 +84,12 @@ pub struct AcceptInvitationDecision {
     pub restore_membership: bool,
 }
 
+impl AcceptInvitationDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        UiChangeDescriptor::new("household.member.joined", "member", ["members"])
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevokeInvitationCommand {
     pub actor_id: String,
@@ -85,6 +103,16 @@ pub struct RevokeInvitationDecision {
     pub household_id: String,
     pub invitation_id: String,
     pub already_revoked: bool,
+}
+
+impl RevokeInvitationDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        UiChangeDescriptor::new(
+            "household.invitation.revoked",
+            "invitation",
+            ["invitations"],
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -243,7 +271,7 @@ pub fn decide_create_invitation(
     let actor_id = ActorId::new(command.actor_id)?;
     let household_id = HouseholdId::new(command.household_id)?;
     let invitation_id = InvitationId::new(command.invitation_id)?;
-    if actor_role != Some("OWNER") {
+    if authorization::authorize(actor_role, Operation::ManageInvitations).is_err() {
         return Err(InvitationError::Forbidden);
     }
     let max_expiry = now + chrono::Duration::days(30);
@@ -298,7 +326,7 @@ pub fn decide_revoke_invitation(
     let actor_id = ActorId::new(command.actor_id)?;
     let household_id = HouseholdId::new(command.household_id)?;
     let invitation_id = InvitationId::new(command.invitation_id)?;
-    if actor_role != Some("OWNER") {
+    if authorization::authorize(actor_role, Operation::ManageInvitations).is_err() {
         return Err(InvitationError::Forbidden);
     }
     if accepted {

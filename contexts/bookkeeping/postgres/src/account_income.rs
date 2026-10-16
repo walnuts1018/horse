@@ -13,11 +13,10 @@ use bookkeeping_application::{
     },
 };
 
+use crate::evidence_port::EvidenceOperations;
 use crate::{PgPool, schema::public};
 
 const OPERATION: &str = "recordExternalIncome";
-const EVENT_TYPE: &str = "account.income.recorded";
-
 #[derive(Debug, Clone)]
 pub struct PersistRecordAccountIncome {
     pub household_id: String,
@@ -67,6 +66,7 @@ pub async fn persist_record_account_income(
     pool: &PgPool,
     input: PersistRecordAccountIncome,
     decision: RecordAccountIncomeDecision,
+    evidence: &impl EvidenceOperations,
 ) -> Result<PersistedAccountIncome, AccountIncomePersistenceError> {
     if input.idempotency_key.trim().is_empty() || input.idempotency_key.len() > 200 {
         return Err(AccountIncomePersistenceError::InvalidIdempotencyKey);
@@ -122,18 +122,20 @@ pub async fn persist_record_account_income(
             if !exists {
                 return Err(AccountIncomePersistenceError::HouseholdNotFound);
             }
-            let member = public::household_members::table
+            let role = public::household_members::table
                 .filter(public::household_members::household_id.eq(household_id))
                 .filter(public::household_members::member_id.eq(actor_id))
                 .filter(public::household_members::left_at.is_null())
-                .select(public::household_members::member_id)
-                .first::<Uuid>(&mut *conn)
+                .select(public::household_members::role)
+                .first::<String>(&mut *conn)
                 .await
                 .optional()?
-                .is_some();
-            if !member {
-                return Err(AccountIncomePersistenceError::MemberNotFound);
-            }
+                .ok_or(AccountIncomePersistenceError::MemberNotFound)?;
+            horse_authorization::authorize(
+                Some(&role),
+                horse_authorization::Operation::FinancialData,
+            )
+            .map_err(|_| AccountIncomePersistenceError::MemberNotFound)?;
 
             let inserted = diesel::insert_into(idem::idempotency_records)
                 .values((
@@ -182,6 +184,7 @@ pub async fn persist_record_account_income(
                     .await?;
                 if let Some(source) = &decision.statement_source {
                     require_statement_income_confirmation(
+                        evidence,
                         &mut *conn,
                         household_id,
                         resource_id,
@@ -207,6 +210,7 @@ pub async fn persist_record_account_income(
             }
             let statement_document_id = if let Some(source) = &decision.statement_source {
                 let statement_document_id = validate_statement_income_source(
+                    evidence,
                     &mut *conn,
                     household_id,
                     &source.source_document_id,
@@ -289,6 +293,7 @@ pub async fn persist_record_account_income(
                 .await?;
             if let Some((source_document_id, source_reference)) = statement_document_id {
                 insert_statement_income_confirmation(
+                    evidence,
                     &mut *conn,
                     household_id,
                     source_document_id,
@@ -298,23 +303,18 @@ pub async fn persist_record_account_income(
                 )
                 .await?;
             }
-            diesel::insert_into(public::household_events::table)
-                .values((
-                    public::household_events::household_id.eq(household_id),
-                    public::household_events::event_type.eq(EVENT_TYPE),
-                    public::household_events::entity_kind.eq("account_income"),
-                    public::household_events::entity_id.eq(income_id),
-                    public::household_events::revision.eq(1_i64),
-                    public::household_events::changed_fields.eq(decision
-                        .changed_fields
-                        .iter()
-                        .map(|field| Some((*field).to_owned()))
-                        .collect::<Vec<_>>()),
-                    public::household_events::actor_id.eq(actor_id),
-                    public::household_events::created_at.eq(now),
-                ))
-                .execute(&mut *conn)
-                .await?;
+            horse_postgres_common::insert_ui_change(
+                &mut *conn,
+                household_id,
+                income_id,
+                1,
+                actor_id,
+                Utc::now(),
+                bookkeeping_application::ui_changes::account_income_recorded(
+                    decision.changed_fields.iter().copied(),
+                ),
+            )
+            .await?;
             Ok(account_income_result(row))
         })
         .await
@@ -332,6 +332,7 @@ pub async fn persist_link_statement_income(
     pool: &PgPool,
     input: PersistLinkStatementIncome,
     decision: LinkStatementIncomeDecision,
+    evidence: &impl EvidenceOperations,
 ) -> Result<PersistedAccountIncome, AccountIncomePersistenceError> {
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
@@ -368,18 +369,20 @@ pub async fn persist_link_statement_income(
             if !household_exists {
                 return Err(AccountIncomePersistenceError::HouseholdNotFound);
             }
-            let member_exists = public::household_members::table
+            let role = public::household_members::table
                 .filter(public::household_members::household_id.eq(household_id))
                 .filter(public::household_members::member_id.eq(actor_id))
                 .filter(public::household_members::left_at.is_null())
-                .select(public::household_members::member_id)
-                .first::<Uuid>(&mut *conn)
+                .select(public::household_members::role)
+                .first::<String>(&mut *conn)
                 .await
                 .optional()?
-                .is_some();
-            if !member_exists {
-                return Err(AccountIncomePersistenceError::MemberNotFound);
-            }
+                .ok_or(AccountIncomePersistenceError::MemberNotFound)?;
+            horse_authorization::authorize(
+                Some(&role),
+                horse_authorization::Operation::FinancialData,
+            )
+            .map_err(|_| AccountIncomePersistenceError::MemberNotFound)?;
             let account_kind = public::accounts::table
                 .filter(public::accounts::household_id.eq(household_id))
                 .filter(public::accounts::id.eq(statement_account_id))
@@ -412,6 +415,7 @@ pub async fn persist_link_statement_income(
                 return Err(AccountIncomePersistenceError::InvalidDecision);
             }
             let entry = load_statement_income_entry(
+                evidence,
                 &mut *conn,
                 household_id,
                 document_id,
@@ -438,6 +442,7 @@ pub async fn persist_link_statement_income(
             })
             .map_err(map_link_workflow_error)?;
             insert_statement_income_confirmation(
+                evidence,
                 &mut *conn,
                 household_id,
                 document_id,
@@ -459,7 +464,8 @@ struct StatementIncomeEntry {
     has_region: bool,
 }
 
-async fn validate_statement_income_source(
+async fn validate_statement_income_source<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     source_document_id: &str,
@@ -470,7 +476,8 @@ async fn validate_statement_income_source(
 ) -> Result<Uuid, AccountIncomePersistenceError> {
     let document_id = parse_uuid(source_document_id, "source_document_id")?;
     let entry =
-        load_statement_income_entry(conn, household_id, document_id, source_reference).await?;
+        load_statement_income_entry(evidence, conn, household_id, document_id, source_reference)
+            .await?;
     let statement_occurred_at = DateTime::parse_from_rfc3339(&entry.occurred_at)
         .map_err(|_| AccountIncomePersistenceError::StatementIncomeMismatch)?
         .with_timezone(&Utc);
@@ -510,56 +517,30 @@ async fn validate_statement_income_source(
     Ok(document_id)
 }
 
-async fn load_statement_income_entry(
+async fn load_statement_income_entry<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     document_id: Uuid,
     source_reference: &str,
 ) -> Result<StatementIncomeEntry, AccountIncomePersistenceError> {
-    use public::extraction_jobs::dsl as jobs;
-    use public::source_confirmations::dsl as confirmations;
-    use public::source_documents::dsl as documents;
-
-    let source_kind = documents::source_documents
-        .filter(documents::household_id.eq(household_id))
-        .filter(documents::id.eq(document_id))
-        .for_update()
-        .select(documents::source_kind)
-        .first::<String>(conn)
-        .await
-        .optional()?
+    let source_kind = evidence
+        .source_kind(conn, household_id, document_id, true)
+        .await?
         .ok_or(AccountIncomePersistenceError::SourceDocumentNotFound)?;
     if source_kind != "bank" {
         return Err(AccountIncomePersistenceError::StatementIsNotExternalIncome);
     }
-    let latest_confirmation = confirmations::source_confirmations
-        .filter(confirmations::household_id.eq(household_id))
-        .filter(confirmations::source_document_id.eq(document_id))
-        .filter(confirmations::source_reference.eq(source_reference))
-        .order_by(confirmations::changed_at.desc())
-        .select((
-            confirmations::entity_kind,
-            confirmations::entity_id,
-            confirmations::status,
-        ))
-        .first::<(String, Uuid, String)>(conn)
-        .await
-        .optional()?;
-    if latest_confirmation.is_some_and(|(_, _, status)| status == "confirmed") {
+    let latest_confirmation = evidence
+        .latest_confirmation(conn, household_id, document_id, source_reference)
+        .await?;
+    if latest_confirmation.is_some_and(|confirmation| confirmation.status == "confirmed") {
         return Err(AccountIncomePersistenceError::StatementAlreadyConfirmed);
     }
-    let result = jobs::extraction_jobs
-        .filter(jobs::household_id.eq(household_id))
-        .filter(jobs::source_document_id.eq(document_id))
-        .filter(jobs::status.eq("succeeded"))
-        .order_by(jobs::version.desc())
-        .select((jobs::id, jobs::result))
-        .first::<(Uuid, Option<serde_json::Value>)>(conn)
-        .await
-        .optional()?
-        .and_then(|(id, result)| result.map(|result| (id, result)))
+    let (_, result) = evidence
+        .latest_extraction_with_id(conn, household_id, document_id)
+        .await?
         .ok_or(AccountIncomePersistenceError::StatementExtractionUnavailable)?;
-    let (_, result) = result;
     let statements = result
         .get("statements")
         .and_then(serde_json::Value::as_array)
@@ -599,30 +580,21 @@ async fn load_statement_income_entry(
     Err(AccountIncomePersistenceError::StatementReferenceNotFound)
 }
 
-async fn require_statement_income_confirmation(
+async fn require_statement_income_confirmation<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     income_id: Uuid,
     source: &StatementIncomeSource,
 ) -> Result<(), AccountIncomePersistenceError> {
-    use public::source_confirmations::dsl as confirmations;
-
     let document_id = parse_uuid(&source.source_document_id, "source_document_id")?;
-    let confirmation = confirmations::source_confirmations
-        .filter(confirmations::household_id.eq(household_id))
-        .filter(confirmations::source_document_id.eq(document_id))
-        .filter(confirmations::source_reference.eq(&source.source_reference))
-        .order_by(confirmations::changed_at.desc())
-        .select((
-            confirmations::entity_kind,
-            confirmations::entity_id,
-            confirmations::status,
-        ))
-        .first::<(String, Uuid, String)>(conn)
-        .await
-        .optional()?;
-    if confirmation.is_some_and(|(kind, id, status)| {
-        kind == "account_income" && id == income_id && status == "confirmed"
+    let confirmation = evidence
+        .latest_confirmation(conn, household_id, document_id, &source.source_reference)
+        .await?;
+    if confirmation.is_some_and(|confirmation| {
+        confirmation.entity_kind == "account_income"
+            && confirmation.entity_id == income_id
+            && confirmation.status == "confirmed"
     }) {
         Ok(())
     } else {
@@ -630,7 +602,8 @@ async fn require_statement_income_confirmation(
     }
 }
 
-async fn insert_statement_income_confirmation(
+async fn insert_statement_income_confirmation<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     document_id: Uuid,
@@ -638,24 +611,20 @@ async fn insert_statement_income_confirmation(
     income_id: Uuid,
     actor_id: Uuid,
 ) -> Result<(), AccountIncomePersistenceError> {
-    diesel::insert_into(public::source_confirmations::table)
-        .values((
-            public::source_confirmations::id.eq(Uuid::now_v7()),
-            public::source_confirmations::household_id.eq(household_id),
-            public::source_confirmations::source_document_id.eq(document_id),
-            public::source_confirmations::observation_id.eq(None::<Uuid>),
-            public::source_confirmations::source_reference.eq(source_reference),
-            public::source_confirmations::entity_kind.eq("account_income"),
-            public::source_confirmations::entity_id.eq(income_id),
-            public::source_confirmations::status.eq("confirmed"),
-            public::source_confirmations::idempotency_key
-                .eq(format!("account-income-confirmation:{}", Uuid::now_v7())),
-            public::source_confirmations::changed_by.eq(actor_id),
-            public::source_confirmations::changed_at.eq(now),
-        ))
-        .execute(conn)
-        .await?;
-    Ok(())
+    evidence
+        .insert_confirmation(
+            conn,
+            household_id,
+            document_id,
+            source_reference,
+            "account_income",
+            income_id,
+            actor_id,
+            format!("account-income-confirmation:{}", Uuid::now_v7()),
+            None,
+        )
+        .await
+        .map_err(AccountIncomePersistenceError::from)
 }
 
 fn map_link_workflow_error(error: AccountIncomeError) -> AccountIncomePersistenceError {

@@ -5,8 +5,12 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as Di
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
-use crate::{
-    PgPool,
+use crate::PgPool;
+use crate::purchase_command_context::{
+    PurchaseCommandContextError, PurchaseItemAllocationInput,
+    load_purchase_command_context_in_transaction,
+};
+use bookkeeping_postgres::{
     create_purchase::{
         CreatePurchasePersistenceError, PersistCreatePurchase, PersistedCreatePurchase,
         persist_create_purchase_in_transaction,
@@ -16,10 +20,6 @@ use crate::{
         persist_post_purchase_in_transaction,
     },
     post_purchase_loader::{PostPurchaseLoadError, load_post_purchase_command},
-    purchase_command_context::{
-        PurchaseCommandContextError, PurchaseItemAllocationInput,
-        load_purchase_command_context_in_transaction,
-    },
     schema::public,
 };
 
@@ -230,6 +230,7 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
         persistence: application::CreatePurchasePersistence,
         decision: bookkeeping_application::create_purchase::CreatePurchaseDecision,
     ) -> Result<application::CreatedPurchase, Self::Error> {
+        let mut cross_context = crate::purchase_creation_context::PurchaseCreationContext;
         let persisted = persist_create_purchase_in_transaction(
             &mut *self.conn,
             PersistCreatePurchase {
@@ -239,6 +240,7 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
                 request_fingerprint: persistence.request_fingerprint,
             },
             decision,
+            &mut cross_context,
         )
         .await
         .map_err(CreateAndPostPurchaseError::Create)?;
@@ -298,6 +300,7 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
             household_id,
             purchase_id,
             expected_revision,
+            &mut crate::reference_data::UpdatePurchaseItemReferences,
         )
         .await
         .map_err(CreateAndPostPurchaseError::Load)?;
@@ -333,14 +336,14 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
                 resolved_payments: persistence
                     .resolved_payments
                     .into_iter()
-                    .map(
-                        |payment| crate::post_purchase_loader::ResolvedPostPurchasePayment {
+                    .map(|payment| {
+                        bookkeeping_postgres::post_purchase_loader::ResolvedPostPurchasePayment {
                             line_no: payment.line_no,
                             account_id: payment.account_id,
                             amount: payment.amount,
                             is_fallback: payment.is_fallback,
-                        },
-                    )
+                        }
+                    })
                     .collect(),
             },
             decision,

@@ -7,6 +7,7 @@ use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use crate::{PgPool, post_purchase_loader::ResolvedPostPurchasePayment, schema::public};
@@ -39,9 +40,10 @@ pub enum PostPurchaseWorkflowAdapterError {
     Persistence(PostPurchasePersistenceError),
 }
 
-pub async fn post_purchase_workflow(
+pub async fn post_purchase_workflow<C: crate::post_purchase_loader::PostPurchaseReferenceData>(
     pool: &PgPool,
     command: application::PostPurchaseWorkflowCommand,
+    reference_data: &mut C,
 ) -> Result<
     application::PostPurchaseWorkflowResult,
     application::PostPurchaseWorkflowError<PostPurchaseWorkflowAdapterError>,
@@ -57,7 +59,10 @@ pub async fn post_purchase_workflow(
             DieselError,
             _,
         >(async |conn| {
-            let mut operations = PurchasePostOperations { conn };
+            let mut operations = PurchasePostOperations {
+                conn,
+                reference_data,
+            };
             Ok(application::post_purchase(&mut operations, command).await)
         })
         .await
@@ -68,11 +73,14 @@ pub async fn post_purchase_workflow(
         })?
 }
 
-struct PurchasePostOperations<'a> {
+struct PurchasePostOperations<'a, C> {
     conn: &'a mut diesel_async::AsyncPgConnection,
+    reference_data: &'a mut C,
 }
 
-impl application::PostPurchaseOperations for PurchasePostOperations<'_> {
+impl<C: crate::post_purchase_loader::PostPurchaseReferenceData> application::PostPurchaseOperations
+    for PurchasePostOperations<'_, C>
+{
     type Error = PostPurchaseWorkflowAdapterError;
 
     async fn load(
@@ -86,6 +94,7 @@ impl application::PostPurchaseOperations for PurchasePostOperations<'_> {
             household_id,
             purchase_id,
             expected_revision,
+            self.reference_data,
         )
         .await
         .map_err(PostPurchaseWorkflowAdapterError::Load)?;
@@ -217,7 +226,7 @@ pub async fn find_idempotent_post_purchase(
     }))
 }
 
-pub(crate) async fn persist_post_purchase_in_transaction(
+pub async fn persist_post_purchase_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
     input: PersistPostPurchase,
     decision: PostPurchaseDecision,
@@ -256,16 +265,15 @@ pub(crate) async fn persist_post_purchase_in_transaction(
     use public::ledger_entries::dsl as ledger;
     use public::purchases::dsl as purchases;
 
-    let actor_is_member = members::household_members
+    let actor_role = members::household_members
         .filter(members::household_id.eq(household_id))
         .filter(members::member_id.eq(actor_id))
         .filter(members::left_at.is_null())
-        .select(members::member_id)
-        .first::<Uuid>(&mut *conn)
+        .select(members::role)
+        .first::<String>(&mut *conn)
         .await
-        .optional()?
-        .is_some();
-    if !actor_is_member {
+        .optional()?;
+    if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
         return Err(PostPurchasePersistenceError::HouseholdMismatch);
     }
 
@@ -489,24 +497,19 @@ pub(crate) async fn persist_post_purchase_in_transaction(
         };
         let event_revision = i64::try_from(event.revision())
             .map_err(|_| PostPurchasePersistenceError::NumericOutOfRange("event revision"))?;
-        let changed_fields = changed_fields
-            .iter()
-            .map(|field| Some((*field).to_owned()))
-            .collect::<Vec<_>>();
-        diesel::insert_into(public::household_events::table)
-            .values((
-                public::household_events::household_id.eq(household_id),
-                public::household_events::event_type.eq(event_type),
-                public::household_events::entity_kind.eq("purchase"),
-                public::household_events::entity_id
-                    .eq(parse_uuid(event.purchase_id().as_str(), "event entity_id")?),
-                public::household_events::revision.eq(event_revision),
-                public::household_events::changed_fields.eq(changed_fields),
-                public::household_events::actor_id.eq(actor_id),
-                public::household_events::created_at.eq(now),
-            ))
-            .execute(&mut *conn)
-            .await?;
+        horse_postgres_common::insert_ui_change(
+            &mut *conn,
+            household_id,
+            parse_uuid(event.purchase_id().as_str(), "event entity_id")?,
+            event_revision,
+            actor_id,
+            Utc::now(),
+            bookkeeping_application::ui_changes::purchase_posted(
+                event_type,
+                changed_fields.iter().copied(),
+            ),
+        )
+        .await?;
     }
 
     Ok(PersistedPostPurchase {

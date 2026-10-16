@@ -8,8 +8,11 @@ use bookkeeping_application::create_purchase::{
     PurchaseOrigin as WorkflowPurchaseOrigin, QuantityUnit,
 };
 use bookkeeping_postgres::{
-    create_purchase as postgres_create, post_purchase as postgres_post,
-    post_purchase_loader::PostPurchaseLoadError, purchase_command_context, purchase_command_result,
+    create_purchase as postgres_create_persistence, post_purchase as postgres_post,
+    post_purchase_loader::PostPurchaseLoadError,
+};
+use cross_context_postgres::{
+    create_purchase_workflow as postgres_create, purchase_command_context, purchase_command_result,
     purchase_create_and_post,
 };
 use horse_postgres_common::PgPool;
@@ -629,7 +632,7 @@ pub async fn post_purchase(
     )
     .await
     .map_err(crate::internal_error)?;
-    let result = postgres_post::post_purchase_workflow(
+    let result = cross_context_postgres::reference_data::post_purchase_workflow(
         ctx.data::<PgPool>()?,
         bookkeeping_application::post_purchase::PostPurchaseWorkflowCommand {
             household_id: household_id.to_string(),
@@ -674,7 +677,7 @@ pub async fn post_purchase(
 
 struct ParsedCreatePurchase {
     command: CreatePurchaseCommand,
-    persistence: postgres_create::PersistCreatePurchase,
+    persistence: postgres_create_persistence::PersistCreatePurchase,
     household_id: Uuid,
 }
 
@@ -866,7 +869,7 @@ fn parse_create_input(
             items,
             payments,
         },
-        persistence: postgres_create::PersistCreatePurchase {
+        persistence: postgres_create_persistence::PersistCreatePurchase {
             household_id: household_id.to_string(),
             actor_id: actor_id.to_string(),
             idempotency_key: input.idempotency_key,
@@ -1287,9 +1290,9 @@ fn context_user_error(
     }
 }
 fn create_user_error(
-    error: &postgres_create::CreatePurchasePersistenceError,
+    error: &postgres_create_persistence::CreatePurchasePersistenceError,
 ) -> Option<PurchaseMutationUserError> {
-    use postgres_create::CreatePurchasePersistenceError as E;
+    use postgres_create_persistence::CreatePurchasePersistenceError as E;
     match error {
         E::HouseholdNotFound | E::MemberNotFound | E::ReferenceNotFound(_) => Some(not_found()),
         E::AccountingPeriodClosed | E::IdempotencyConflict | E::AllocationRuleMismatch => {

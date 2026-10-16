@@ -5,7 +5,7 @@ use diesel::{
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use household_application::create_household::{
-    CreateHouseholdCommand, CreateHouseholdDecision, CreateHouseholdError,
+    self, CreateHouseholdCommand, CreateHouseholdDecision, CreateHouseholdError,
     CreateHouseholdOperations,
 };
 use household_application::ports::{CreateHouseholdPortError, CreatedHousehold, HouseholdStore};
@@ -344,7 +344,6 @@ async fn persist_create_household_decision(
         .map_err(|error| CreateHouseholdPersistenceError::Pool(error.to_string()))?;
     (*pooled)
         .transaction::<String, CreateHouseholdPersistenceError, _>(async |conn| {
-            use public::household_events::dsl as events;
             use public::household_members::dsl as members;
             use public::households::dsl as households;
             use public::members::dsl as people;
@@ -391,19 +390,16 @@ async fn persist_create_household_decision(
                     .await?;
             }
 
-            diesel::insert_into(events::household_events)
-                .values((
-                    events::household_id.eq(household_id),
-                    events::event_type.eq("household.created"),
-                    events::entity_kind.eq("household"),
-                    events::entity_id.eq(household_id),
-                    events::revision.eq(1_i64),
-                    events::changed_fields.eq(Vec::<Option<String>>::new()),
-                    events::actor_id.eq(actor_id),
-                    events::created_at.eq(now),
-                ))
-                .execute(&mut *conn)
-                .await?;
+            horse_postgres_common::insert_ui_change(
+                conn,
+                household_id,
+                household_id,
+                1_i64,
+                actor_id,
+                Utc::now(),
+                create_household::household_created_change(),
+            )
+            .await?;
 
             Ok(household_id.to_string())
         })

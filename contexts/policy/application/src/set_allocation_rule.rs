@@ -1,3 +1,4 @@
+use horse_household_change::UiChangeDescriptor;
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +97,16 @@ pub struct SetAllocationRuleDecision {
     pub revision: u64,
     pub weights: Vec<AllocationRuleWeight>,
     pub changed_fields: Vec<String>,
+}
+
+impl SetAllocationRuleDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        UiChangeDescriptor::new(
+            "allocation.rule.updated",
+            "allocation_rule",
+            self.changed_fields.clone(),
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

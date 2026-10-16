@@ -263,7 +263,7 @@ async fn persist_mailbox_batch(
         .map_err(|_| MailboxError("mailbox database connection failed"))?;
     (*pooled)
         .transaction::<MailboxBatch, MailboxError, _>(async move |conn| {
-            use public::{household_events, mailbox_cursors::dsl as cursors};
+            use public::mailbox_cursors::dsl as cursors;
             for message in rejected {
                 let Some((household_id, created_by)) =
                     active_forwarding_in_transaction(conn, &message.token_hash).await?
@@ -273,22 +273,17 @@ async fn persist_mailbox_batch(
                 if household_id != message.household_id || created_by != message.created_by {
                     return Err(MailboxError("mailbox forwarding changed during polling"));
                 }
-                diesel::insert_into(household_events::table)
-                    .values((
-                        household_events::household_id.eq(message.household_id),
-                        household_events::event_type.eq("receipt.mailbox_message.rejected"),
-                        household_events::entity_kind.eq("mailbox_message"),
-                        household_events::entity_id.eq(Uuid::now_v7()),
-                        household_events::revision.eq(1_i64),
-                        household_events::changed_fields.eq(vec![Some("status".to_owned())]),
-                        household_events::payload
-                            .eq(json!({"status": "rejected", "reason": "invalid_email_size"})),
-                        household_events::actor_id.eq(message.created_by),
-                        household_events::created_at.eq(Utc::now()),
-                    ))
-                    .execute(conn)
-                    .await
-                    .map_err(|_| MailboxError("mailbox rejection event failed"))?;
+                horse_postgres_common::insert_ui_change(
+                    conn,
+                    message.household_id,
+                    Uuid::now_v7(),
+                    1_i64,
+                    message.created_by,
+                    Utc::now(),
+                    evidence_application::mailbox_message_rejected(),
+                )
+                .await
+                .map_err(|_| MailboxError("mailbox rejection event failed"))?;
             }
             for message in prepared {
                 let Some((household_id, created_by)) =

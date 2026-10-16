@@ -5,6 +5,8 @@ use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
+use horse_postgres_common::insert_ui_change;
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -40,6 +42,7 @@ pub async fn persist_set_product_alias(
 ) -> Result<PersistedProductAlias, SetProductAliasPersistenceError> {
     let decision = decide_set_product_alias(command)
         .map_err(SetProductAliasPersistenceError::InvalidWorkflow)?;
+    let ui_change = decision.ui_change();
     let household_id = parse_uuid(&decision.household_id, "household_id")?;
     let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
     let variant_id = parse_uuid(&decision.variant_id, "variant_id")?;
@@ -51,7 +54,6 @@ pub async fn persist_set_product_alias(
     (*pooled)
         .transaction::<PersistedProductAlias, SetProductAliasPersistenceError, _>(
             async move |conn| {
-                use public::household_events::dsl as events;
                 use public::household_members::dsl as members;
                 use public::households::dsl as households;
                 use public::product_aliases::dsl as aliases;
@@ -66,16 +68,15 @@ pub async fn persist_set_product_alias(
                     .optional()?
                     .ok_or(SetProductAliasPersistenceError::HouseholdNotFound)?;
 
-                let actor_is_active = members::household_members
+                let actor_role = members::household_members
                     .filter(members::household_id.eq(household_id))
                     .filter(members::member_id.eq(actor_id))
                     .filter(members::left_at.is_null())
-                    .select(members::member_id)
-                    .first::<Uuid>(&mut *conn)
+                    .select(members::role)
+                    .first::<String>(&mut *conn)
                     .await
-                    .optional()?
-                    .is_some();
-                if !actor_is_active {
+                    .optional()?;
+                if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                     return Err(SetProductAliasPersistenceError::ActorNotFound);
                 }
 
@@ -123,22 +124,16 @@ pub async fn persist_set_product_alias(
                 let event_revision = i64::try_from(revision)
                     .map_err(|_| SetProductAliasPersistenceError::NumericOutOfRange("revision"))?;
 
-                diesel::insert_into(events::household_events)
-                    .values((
-                        events::household_id.eq(household_id),
-                        events::event_type.eq("product.alias.learned"),
-                        events::entity_kind.eq("product_alias"),
-                        events::entity_id.eq(row.0),
-                        events::revision.eq(event_revision),
-                        events::changed_fields.eq(vec![
-                            Some("alias".to_owned()),
-                            Some("variantId".to_owned()),
-                            Some("merchant".to_owned()),
-                        ]),
-                        events::actor_id.eq(actor_id),
-                    ))
-                    .execute(&mut *conn)
-                    .await?;
+                insert_ui_change(
+                    conn,
+                    household_id,
+                    row.0,
+                    event_revision,
+                    actor_id,
+                    chrono::Utc::now(),
+                    ui_change,
+                )
+                .await?;
 
                 Ok(PersistedProductAlias {
                     id: row.0.to_string(),

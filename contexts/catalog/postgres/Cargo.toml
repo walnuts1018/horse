@@ -8,6 +8,8 @@ catalog-application = { path = "../application" }
 chrono = { workspace = true }
 diesel = { workspace = true, features = ["32-column-tables"] }
 diesel-async = { workspace = true }
+horse-household-change = { path = "../../../platform/household-change" }
+horse-authorization = { path = "../../../platform/authorization" }
 horse-postgres-common = { path = "../../../platform/postgres-common" }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

@@ -7,8 +7,10 @@ use bookkeeping_application::{
 use bookkeeping_postgres::{
     account_command_result as postgres_account_result, account_income as postgres_income,
     account_movement as postgres_movement, correct_purchase as postgres_correction,
-    financial_command_result as postgres_financial_result,
-    purchase_command_result as postgres_purchase_result, statement_transfer as postgres_transfer,
+    financial_command_result as postgres_financial_result, statement_transfer as postgres_transfer,
+};
+use cross_context_postgres::{
+    evidence_workflows, purchase_command_result as postgres_purchase_result,
 };
 use horse_postgres_common::PgPool;
 use uuid::Uuid;
@@ -150,7 +152,7 @@ pub async fn link_statement_account_movement(
         movement_id: movement_id.to_string(),
     };
     let pool = ctx.data::<PgPool>()?;
-    match postgres_movement::persist_link_statement_movement(
+    match evidence_workflows::persist_link_statement_movement(
         pool,
         postgres_movement::PersistLinkStatementMovement {
             household_id: household_id.to_string(),
@@ -212,7 +214,7 @@ pub async fn link_statement_account_income(
         income_account_id: statement_account_id,
     };
     let pool = ctx.data::<PgPool>()?;
-    match postgres_income::persist_link_statement_income(
+    match evidence_workflows::persist_link_statement_income(
         pool,
         postgres_income::PersistLinkStatementIncome {
             household_id: household_id.to_string(),
@@ -266,7 +268,7 @@ pub async fn link_statement_transfer(
         return Ok(transfer_error(MutationErrorCode::BadInput).into());
     }
     let pool = ctx.data::<PgPool>()?;
-    match postgres_transfer::persist_link_statement_transfer(
+    match evidence_workflows::persist_link_statement_transfer(
         pool,
         postgres_transfer::PersistLinkStatementTransfer {
             household_id: household_id.to_string(),
@@ -318,7 +320,7 @@ pub async fn link_statement_refund_correction(
         return Ok(refund_error(MutationErrorCode::BadInput).into());
     }
     let pool = ctx.data::<PgPool>()?;
-    match postgres_correction::link_statement_refund_correction(
+    match evidence_workflows::link_statement_refund_correction(
         pool,
         postgres_correction::LinkStatementRefundCorrection {
             household_id: household_id.to_string(),

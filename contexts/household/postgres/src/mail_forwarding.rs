@@ -3,6 +3,7 @@ use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_household_change::UiChangeDescriptor;
 use household_application::mail_forwarding::{
     self, Command, ForwardingAddress, IssueCommand, Status,
 };
@@ -142,14 +143,7 @@ async fn create(
                 .returning(forwardings::created_at)
                 .get_result::<DateTime<Utc>>(&mut *conn)
                 .await?;
-            record_change(
-                conn,
-                household_id,
-                forwarding_id,
-                actor_id,
-                decision.event_type,
-            )
-            .await?;
+            record_change(conn, household_id, forwarding_id, actor_id, decision.change).await?;
             Ok(ForwardingAddress {
                 id: forwarding_id.to_string(),
                 address: decision.address,
@@ -206,7 +200,7 @@ pub async fn revoke(pool: &PgPool, command: Command) -> Result<Status, MailForwa
                 household_id,
                 forwarding_id,
                 actor_id,
-                "household.mail_forwarding.revoked",
+                mail_forwarding::revoked_change(),
             )
             .await?;
             Ok(Status {
@@ -257,9 +251,9 @@ async fn record_change(
     household_id: Uuid,
     entity_id: Uuid,
     actor_id: Uuid,
-    event_type: &str,
+    change: UiChangeDescriptor,
 ) -> Result<(), MailForwardingError> {
-    use public::{household_events as events, households};
+    use public::households;
     let revision = diesel::update(households::table.filter(households::id.eq(household_id)))
         .set((
             households::revision.eq(households::revision + 1),
@@ -268,19 +262,16 @@ async fn record_change(
         .returning(households::revision)
         .get_result::<i64>(&mut *conn)
         .await?;
-    diesel::insert_into(events::table)
-        .values((
-            events::household_id.eq(household_id),
-            events::event_type.eq(event_type),
-            events::entity_kind.eq("mail_forwarding"),
-            events::entity_id.eq(entity_id),
-            events::revision.eq(revision),
-            events::changed_fields.eq(vec![Some("mailForwardingAddress".to_owned())]),
-            events::actor_id.eq(actor_id),
-            events::created_at.eq(now),
-        ))
-        .execute(&mut *conn)
-        .await?;
+    horse_postgres_common::insert_ui_change(
+        conn,
+        household_id,
+        entity_id,
+        revision,
+        actor_id,
+        Utc::now(),
+        change,
+    )
+    .await?;
     Ok(())
 }
 

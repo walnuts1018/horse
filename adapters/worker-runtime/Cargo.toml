@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 async-imap = { workspace = true }
 bookkeeping-postgres = { path = "../../contexts/bookkeeping/postgres" }
+cross-context-postgres = { path = "../../contexts/cross-context/postgres" }
 chrono = { workspace = true, features = ["clock"] }
 csv = { workspace = true }
 horse-gemini-developer-api = { path = "../ai" }

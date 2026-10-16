@@ -1,3 +1,4 @@
+use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +16,16 @@ pub struct CreateConceptDecision {
     pub name: String,
     pub normalized_name: String,
     pub category_id: Option<String>,
+}
+
+impl CreateConceptDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        UiChangeDescriptor::new(
+            "product.concept.created",
+            "product_concept",
+            ["name", "categoryId"],
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +49,16 @@ pub struct CreateVariantDecision {
     pub brand: Option<String>,
     pub package_size: Option<String>,
     pub barcode: Option<String>,
+}
+
+impl CreateVariantDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        UiChangeDescriptor::new(
+            "product.variant.created",
+            "product_variant",
+            ["name", "conceptId"],
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

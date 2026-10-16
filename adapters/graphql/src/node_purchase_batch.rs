@@ -99,13 +99,14 @@ pub(crate) async fn load(
         parent_ids.insert(*purchase_id);
     }
     let parent_ids = parent_ids.into_iter().collect::<Vec<_>>();
-    let projections = bookkeeping_postgres::purchase_command_result::load_purchase_command_results(
-        pool,
-        household_ids,
-        &parent_ids,
-    )
-    .await
-    .map_err(crate::internal_error)?;
+    let projections =
+        cross_context_postgres::purchase_command_result::load_purchase_command_results(
+            pool,
+            household_ids,
+            &parent_ids,
+        )
+        .await
+        .map_err(crate::internal_error)?;
     let mut purchase_nodes = HashMap::new();
     for projection in projections {
         let household_id = projection.household_id;

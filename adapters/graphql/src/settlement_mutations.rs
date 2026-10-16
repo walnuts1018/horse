@@ -140,18 +140,8 @@ pub async fn close_period(ctx: &Context<'_>, input: ClosePeriodInput) -> Result<
                     message: "未確定の購入があるため締められません。".to_owned(),
                 }))
             }
-            ClosePeriodError::InvalidPeriod
-            | ClosePeriodError::EmptyMemberId
-            | ClosePeriodError::EmptyMemberName
-            | ClosePeriodError::DuplicateMember
-            | ClosePeriodError::DuplicatePurchase
-            | ClosePeriodError::NegativeNonnegativeAmount
-            | ClosePeriodError::AmountOverflow
-            | ClosePeriodError::RevisionOverflow
-            | ClosePeriodError::InvalidFundingSchedule
-            | ClosePeriodError::FundingAmountOverflow => {
-                Ok(ClosePeriodResult::UserError(bad_input()))
-            }
+            ClosePeriodError::InvalidPeriod => Ok(ClosePeriodResult::UserError(bad_input())),
+            error => Err(crate::internal_error(error)),
         },
         Err(ClosePeriodWorkflowError::Operations(
             postgres_close_period::ClosePeriodPersistenceError::PeriodAlreadyClosed
@@ -168,7 +158,6 @@ pub async fn close_period(ctx: &Context<'_>, input: ClosePeriodInput) -> Result<
         })),
         Err(ClosePeriodWorkflowError::Operations(
             postgres_close_period::ClosePeriodPersistenceError::InvalidPeriod
-            | postgres_close_period::ClosePeriodPersistenceError::InvalidDecision
             | postgres_close_period::ClosePeriodPersistenceError::InvalidUuid(_),
         )) => Ok(ClosePeriodResult::UserError(bad_input())),
         Err(ClosePeriodWorkflowError::Operations(

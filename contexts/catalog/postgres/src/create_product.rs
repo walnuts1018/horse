@@ -2,9 +2,10 @@ use catalog_application::create_product::{
     CreateConceptCommand, CreateProductError, CreateVariantCommand, decide_create_concept,
     decide_create_variant,
 };
-use chrono::Utc;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
+use horse_postgres_common::insert_ui_change;
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -54,6 +55,7 @@ pub async fn persist_create_concept(
 ) -> Result<String, CreateProductPersistenceError> {
     let decision =
         decide_create_concept(command).map_err(CreateProductPersistenceError::InvalidWorkflow)?;
+    let ui_change = decision.ui_change();
     let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
     let household_id = parse_uuid(&decision.household_id, "household_id")?;
     let concept = PersistedConcept {
@@ -75,7 +77,6 @@ pub async fn persist_create_concept(
     (*pooled)
         .transaction::<String, CreateProductPersistenceError, _>(async |conn| {
             use public::categories::dsl as categories;
-            use public::household_events::dsl as events;
             use public::household_members::dsl as members;
             use public::households::dsl as households;
             use public::product_concepts::dsl as concepts;
@@ -92,15 +93,15 @@ pub async fn persist_create_concept(
                 return Err(CreateProductPersistenceError::HouseholdNotFound);
             }
 
-            let member_exists = diesel::select(diesel::dsl::exists(
-                members::household_members
-                    .filter(members::household_id.eq(household_id))
-                    .filter(members::member_id.eq(actor_id))
-                    .filter(members::left_at.is_null()),
-            ))
-            .first::<bool>(conn)
-            .await?;
-            if !member_exists {
+            let actor_role = members::household_members
+                .filter(members::household_id.eq(household_id))
+                .filter(members::member_id.eq(actor_id))
+                .filter(members::left_at.is_null())
+                .select(members::role)
+                .first::<String>(conn)
+                .await
+                .optional()?;
+            if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                 return Err(CreateProductPersistenceError::MemberNotFound);
             }
 
@@ -129,20 +130,16 @@ pub async fn persist_create_concept(
                 .execute(&mut *conn)
                 .await?;
 
-            diesel::insert_into(events::household_events)
-                .values((
-                    events::household_id.eq(household_id),
-                    events::event_type.eq("product.concept.created"),
-                    events::entity_kind.eq("product_concept"),
-                    events::entity_id.eq(concept.id),
-                    events::revision.eq(1_i64),
-                    events::changed_fields
-                        .eq(vec![Some("name".to_owned()), Some("categoryId".to_owned())]),
-                    events::actor_id.eq(actor_id),
-                    events::created_at.eq(Utc::now()),
-                ))
-                .execute(&mut *conn)
-                .await?;
+            insert_ui_change(
+                conn,
+                household_id,
+                concept.id,
+                1_i64,
+                actor_id,
+                chrono::Utc::now(),
+                ui_change,
+            )
+            .await?;
             Ok(concept.id.to_string())
         })
         .await
@@ -154,6 +151,7 @@ pub async fn persist_create_variant(
 ) -> Result<String, CreateProductPersistenceError> {
     let decision =
         decide_create_variant(command).map_err(CreateProductPersistenceError::InvalidWorkflow)?;
+    let ui_change = decision.ui_change();
     let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
     let household_id = parse_uuid(&decision.household_id, "household_id")?;
     let variant = PersistedVariant {
@@ -173,7 +171,6 @@ pub async fn persist_create_variant(
         .map_err(|error| CreateProductPersistenceError::Pool(error.to_string()))?;
     (*pooled)
         .transaction::<String, CreateProductPersistenceError, _>(async |conn| {
-            use public::household_events::dsl as events;
             use public::household_members::dsl as members;
             use public::households::dsl as households;
             use public::product_concepts::dsl as concepts;
@@ -191,15 +188,15 @@ pub async fn persist_create_variant(
                 return Err(CreateProductPersistenceError::HouseholdNotFound);
             }
 
-            let member_exists = diesel::select(diesel::dsl::exists(
-                members::household_members
-                    .filter(members::household_id.eq(household_id))
-                    .filter(members::member_id.eq(actor_id))
-                    .filter(members::left_at.is_null()),
-            ))
-            .first::<bool>(conn)
-            .await?;
-            if !member_exists {
+            let actor_role = members::household_members
+                .filter(members::household_id.eq(household_id))
+                .filter(members::member_id.eq(actor_id))
+                .filter(members::left_at.is_null())
+                .select(members::role)
+                .first::<String>(conn)
+                .await
+                .optional()?;
+            if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                 return Err(CreateProductPersistenceError::MemberNotFound);
             }
 
@@ -230,20 +227,16 @@ pub async fn persist_create_variant(
                 .execute(&mut *conn)
                 .await?;
 
-            diesel::insert_into(events::household_events)
-                .values((
-                    events::household_id.eq(household_id),
-                    events::event_type.eq("product.variant.created"),
-                    events::entity_kind.eq("product_variant"),
-                    events::entity_id.eq(variant.id),
-                    events::revision.eq(1_i64),
-                    events::changed_fields
-                        .eq(vec![Some("name".to_owned()), Some("conceptId".to_owned())]),
-                    events::actor_id.eq(actor_id),
-                    events::created_at.eq(Utc::now()),
-                ))
-                .execute(&mut *conn)
-                .await?;
+            insert_ui_change(
+                conn,
+                household_id,
+                variant.id,
+                1_i64,
+                actor_id,
+                chrono::Utc::now(),
+                ui_change,
+            )
+            .await?;
             Ok(variant.id.to_string())
         })
         .await

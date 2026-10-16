@@ -1,6 +1,7 @@
 use std::{collections::BTreeSet, num::NonZeroI64};
 
 use bookkeeping_application::create_pool::{CreatePoolCommand, decide_create_pool};
+use chrono::Utc;
 use diesel::{
     BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, dsl::now,
     result::Error as DieselError,
@@ -41,7 +42,7 @@ pub async fn persist_create_pool(
         .map_err(|error| CreatePoolMutationError::Pool(error.to_string()))?;
     (*pooled)
         .transaction::<String, CreatePoolMutationError, _>(async move |conn| {
-            use public::{allocation_defaults as defaults, household_events as events};
+            use public::allocation_defaults as defaults;
 
             let household = public::households::table
                 .filter(public::households::id.eq(household_id))
@@ -137,19 +138,16 @@ pub async fn persist_create_pool(
             ))
             .execute(&mut *conn)
             .await?;
-            diesel::insert_into(events::table)
-                .values((
-                    events::household_id.eq(household_id),
-                    events::event_type.eq("pool.created"),
-                    events::entity_kind.eq("pool"),
-                    events::entity_id.eq(pool_id),
-                    events::revision.eq(revision),
-                    events::changed_fields
-                        .eq(vec![Some("name".to_owned()), Some("kind".to_owned())]),
-                    events::actor_id.eq(actor_id),
-                ))
-                .execute(&mut *conn)
-                .await?;
+            horse_postgres_common::insert_ui_change(
+                &mut *conn,
+                household_id,
+                pool_id,
+                revision,
+                actor_id,
+                Utc::now(),
+                bookkeeping_application::ui_changes::pool_created(),
+            )
+            .await?;
             Ok(pool_id.to_string())
         })
         .await
@@ -237,8 +235,8 @@ pub async fn persist_set_pool_funding_rule(
         .transaction::<PersistedPoolFundingRule, SetPoolFundingRulePersistenceError, _>(
             async move |conn| {
                 use public::{
-                    household_events as events, household_members as members, households,
-                    pool_funding_rules as rules, pool_funding_shares as funding_shares, pools,
+                    household_members as members, households, pool_funding_rules as rules,
+                    pool_funding_shares as funding_shares, pools,
                 };
 
                 let household = households::table
@@ -377,22 +375,16 @@ pub async fn persist_set_pool_funding_rule(
                     ))
                     .execute(&mut *conn)
                     .await?;
-                diesel::insert_into(events::table)
-                    .values((
-                        events::household_id.eq(household_id),
-                        events::event_type.eq("pool.funding_rule.updated"),
-                        events::entity_kind.eq("pool"),
-                        events::entity_id.eq(pool_id),
-                        events::revision.eq(revision),
-                        events::changed_fields.eq(vec![
-                            Some("ownerMemberId".to_owned()),
-                            Some("fundingShares".to_owned()),
-                            Some("settlementPolicy".to_owned()),
-                        ]),
-                        events::actor_id.eq(actor_id),
-                    ))
-                    .execute(&mut *conn)
-                    .await?;
+                horse_postgres_common::insert_ui_change(
+                    &mut *conn,
+                    household_id,
+                    pool_id,
+                    revision,
+                    actor_id,
+                    Utc::now(),
+                    bookkeeping_application::ui_changes::pool_funding_rule_updated(),
+                )
+                .await?;
                 Ok(PersistedPoolFundingRule {
                     pool_id: pool_id.to_string(),
                     version,

@@ -9,5 +9,6 @@ evidence-application = { path = "../application" }
 diesel = { workspace = true, features = ["32-column-tables"] }
 diesel-async = { workspace = true }
 horse-postgres-common = { path = "../../../platform/postgres-common" }
+horse-household-change = { path = "../../../platform/household-change" }
 serde_json = { workspace = true }
 uuid = { workspace = true }

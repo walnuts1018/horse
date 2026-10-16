@@ -2,4 +2,4 @@
 
 ## 操作権限の契約
 
-Household内の操作ごとに許可する役割を定義した共通契約がなく、各Workflow Runnerの権限検証も統一されていません。操作と役割の対応をHousehold Contextの契約として定義し、すべての更新Workflowで同じ契約を検証する必要があります。
+Household Contextに操作と役割の共通契約を定義し、Householdの管理操作をOWNERに限定します。OWNERとMEMBERは家計データを更新できます。現在は管理操作の一部だけが共通契約を呼び、他の更新WorkflowはPostgreSQL Adapterごとに有効な所属を確認しています。すべての更新Workflowが同じ契約を検証する構造へ揃える必要があります。

@@ -1,3 +1,6 @@
+use crate::authorization::{self, Operation, Role};
+use horse_household_change::UiChangeDescriptor;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeaveHouseholdCommand {
     pub member_id: String,
@@ -31,6 +34,22 @@ pub enum MembershipChange {
     Leave,
     Remove,
     TransferOwner { new_owner_was_owner: bool },
+}
+
+impl MembershipChange {
+    pub fn ui_change(self) -> UiChangeDescriptor {
+        match self {
+            Self::Leave => UiChangeDescriptor::new("household.member.left", "member", ["members"]),
+            Self::Remove => {
+                UiChangeDescriptor::new("household.member.removed", "member", ["members"])
+            }
+            Self::TransferOwner { .. } => UiChangeDescriptor::new(
+                "household.owner.transferred",
+                "member",
+                ["members", "owner"],
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -173,10 +192,9 @@ pub fn decide_leave_household(
     if command.member_id.is_empty() || command.household_id.is_empty() {
         return Err(MembershipError::InvalidIdentifier);
     }
-    let Some(target_role) = target_role else {
-        return Err(MembershipError::Forbidden);
-    };
-    if target_role == "OWNER" && owner_count <= 1 {
+    let target_role = authorization::authorize(target_role, Operation::LeaveHousehold)
+        .map_err(|_| MembershipError::Forbidden)?;
+    if target_role == Role::Owner && owner_count <= 1 {
         return Err(MembershipError::LastOwner);
     }
     if has_active_funding_reference {
@@ -203,10 +221,12 @@ pub fn decide_remove_household_member(
     {
         return Err(MembershipError::InvalidIdentifier);
     }
-    if actor_role != Some("OWNER") || target_role.is_none() {
+    if authorization::authorize(actor_role, Operation::ManageMembers).is_err()
+        || target_role.and_then(Role::parse).is_none()
+    {
         return Err(MembershipError::Forbidden);
     }
-    if target_role == Some("OWNER") && owner_count <= 1 {
+    if target_role.and_then(Role::parse) == Some(Role::Owner) && owner_count <= 1 {
         return Err(MembershipError::LastOwner);
     }
     if has_active_funding_reference {
@@ -231,9 +251,12 @@ pub fn decide_transfer_owner(
     {
         return Err(MembershipError::InvalidIdentifier);
     }
-    if actor_role != Some("OWNER") || new_owner_role.is_none() {
+    if authorization::authorize(actor_role, Operation::ManageMembers).is_err() {
         return Err(MembershipError::Forbidden);
     }
+    let Some(new_owner_role) = new_owner_role.and_then(Role::parse) else {
+        return Err(MembershipError::Forbidden);
+    };
     if command.actor_id == command.new_owner_id {
         return Err(MembershipError::SelfTransfer);
     }
@@ -242,7 +265,7 @@ pub fn decide_transfer_owner(
         household_id: command.household_id,
         member_id: command.new_owner_id,
         change: MembershipChange::TransferOwner {
-            new_owner_was_owner: new_owner_role == Some("OWNER"),
+            new_owner_was_owner: new_owner_role == Role::Owner,
         },
     })
 }

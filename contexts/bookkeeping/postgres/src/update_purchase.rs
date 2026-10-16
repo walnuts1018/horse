@@ -13,6 +13,7 @@ use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -65,11 +66,12 @@ impl From<DieselError> for UpdatePurchasePersistenceError {
     }
 }
 
-pub async fn persist_update_purchase(
+pub async fn persist_update_purchase<C: crate::post_purchase_loader::PostPurchaseReferenceData>(
     pool: &PgPool,
     input: PersistUpdatePurchase,
     command: bookkeeping_application::update_purchase::UpdatePurchaseCommand,
     decision: UpdatePurchaseDecision,
+    reference_data: &mut C,
 ) -> Result<PersistedUpdatePurchase, UpdatePurchasePersistenceError> {
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
@@ -87,6 +89,7 @@ pub async fn persist_update_purchase(
                     command,
                     decision,
                     false,
+                    reference_data,
                 )
                 .await
             },
@@ -94,13 +97,14 @@ pub async fn persist_update_purchase(
         .await
 }
 
-pub async fn persist_update_purchase_in_transaction(
+pub async fn persist_update_purchase_in_transaction<C: crate::post_purchase_loader::PostPurchaseReferenceData>(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     actor_id: Uuid,
     command: bookkeeping_application::update_purchase::UpdatePurchaseCommand,
     decision: UpdatePurchaseDecision,
     defer_accounting_sync: bool,
+    reference_data: &mut C,
 ) -> Result<PersistedUpdatePurchase, UpdatePurchasePersistenceError> {
     let purchase_id = parse_uuid(&command.purchase_id, "purchase_id")?;
     let revision = i64::try_from(decision.revision)
@@ -125,7 +129,6 @@ pub async fn persist_update_purchase_in_transaction(
         .map(parse_occurred_at)
         .transpose()?;
     use public::accounting_periods::dsl as periods;
-    use public::household_events::dsl as events;
     use public::households::dsl as households;
     use public::purchase_payments::dsl as payments;
     use public::purchases::dsl as purchases;
@@ -404,20 +407,18 @@ pub async fn persist_update_purchase_in_transaction(
         }
     }
 
-    let event_fields: Vec<Option<String>> =
-        decision.changed_fields.iter().cloned().map(Some).collect();
-    diesel::insert_into(events::household_events)
-        .values((
-            events::household_id.eq(household_id),
-            events::event_type.eq("purchase.updated"),
-            events::entity_kind.eq("purchase"),
-            events::entity_id.eq(purchase_id),
-            events::revision.eq(revision),
-            events::changed_fields.eq(event_fields),
-            events::actor_id.eq(actor_id),
-        ))
-        .execute(&mut *conn)
-        .await?;
+    horse_postgres_common::insert_ui_change(
+        &mut *conn,
+        household_id,
+        purchase_id,
+        revision,
+        actor_id,
+        Utc::now(),
+        bookkeeping_application::ui_changes::purchase_updated(
+            decision.changed_fields.iter().cloned(),
+        ),
+    )
+    .await?;
 
     Ok(PersistedUpdatePurchase {
         purchase_id: purchase_id.to_string(),
@@ -430,20 +431,18 @@ async fn require_member(
     household_id: Uuid,
     actor_id: Uuid,
 ) -> Result<(), UpdatePurchasePersistenceError> {
-    let member = public::household_members::dsl::household_members
+    let role = public::household_members::dsl::household_members
         .filter(public::household_members::dsl::household_id.eq(household_id))
         .filter(public::household_members::dsl::member_id.eq(actor_id))
         .filter(public::household_members::dsl::left_at.is_null())
-        .select(public::household_members::dsl::member_id)
-        .first::<Uuid>(conn)
+        .select(public::household_members::dsl::role)
+        .first::<String>(conn)
         .await
-        .optional()?
-        .is_some();
-    if member {
-        Ok(())
-    } else {
-        Err(UpdatePurchasePersistenceError::MemberNotFound)
+        .optional()?;
+    if authorize(role.as_deref(), Operation::FinancialData).is_err() {
+        return Err(UpdatePurchasePersistenceError::MemberNotFound);
     }
+    Ok(())
 }
 
 async fn purchase_total(
@@ -537,6 +536,7 @@ async fn sync_posted_purchase_accounting(
         &purchase_id.to_string(),
         u64::try_from(revision)
             .map_err(|_| UpdatePurchasePersistenceError::NumericOutOfRange("revision"))?,
+        reference_data,
     )
     .await
     .map_err(|error| match error {

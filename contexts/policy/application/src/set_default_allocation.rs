@@ -1,3 +1,4 @@
+use horse_household_change::UiChangeDescriptor;
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +35,16 @@ pub struct SetDefaultAllocationDecision {
     pub version: u64,
     pub weights: Vec<DefaultAllocationWeight>,
     pub changed_fields: Vec<String>,
+}
+
+impl SetDefaultAllocationDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        UiChangeDescriptor::new(
+            "allocation.default.updated",
+            "household",
+            self.changed_fields.clone(),
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

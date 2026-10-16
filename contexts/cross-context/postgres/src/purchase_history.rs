@@ -5,7 +5,7 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-use crate::{PgPool, schema::public};
+use horse_postgres_common::{PgPool, schema::public};
 
 #[derive(Clone, Debug)]
 pub struct PurchaseHistoryItem {

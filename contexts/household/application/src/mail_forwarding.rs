@@ -1,3 +1,5 @@
+use crate::authorization::{self, Operation};
+use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,13 +15,13 @@ pub struct IssueCommand {
     pub local_part_prefix: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Decision {
     pub actor_id: Uuid,
     pub household_id: Uuid,
     pub forwarding_id: Uuid,
     pub address: String,
-    pub event_type: &'static str,
+    pub change: UiChangeDescriptor,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,7 +50,7 @@ pub enum Error {
 pub fn decide_active(command: Command, actor_role: Option<&str>) -> Result<(Uuid, Uuid), Error> {
     let actor_id = parse_id(&command.actor_id)?;
     let household_id = parse_id(&command.household_id)?;
-    if actor_role != Some("OWNER") {
+    if authorization::authorize(actor_role, Operation::ManageMailForwarding).is_err() {
         return Err(Error::Forbidden);
     }
     Ok((actor_id, household_id))
@@ -64,7 +66,7 @@ pub fn decide_issue(
 ) -> Result<Decision, Error> {
     let actor_id = parse_id(&command.command.actor_id)?;
     let household_id = parse_id(&command.command.household_id)?;
-    if actor_role != Some("OWNER") {
+    if authorization::authorize(actor_role, Operation::ManageMailForwarding).is_err() {
         return Err(Error::Forbidden);
     }
     if rotate && !active_exists {
@@ -95,12 +97,28 @@ pub fn decide_issue(
         household_id,
         forwarding_id,
         address,
-        event_type: if rotate {
-            "household.mail_forwarding.rotated"
+        change: if rotate {
+            UiChangeDescriptor::new(
+                "household.mail_forwarding.rotated",
+                "mail_forwarding",
+                ["mailForwardingAddress"],
+            )
         } else {
-            "household.mail_forwarding.issued"
+            UiChangeDescriptor::new(
+                "household.mail_forwarding.issued",
+                "mail_forwarding",
+                ["mailForwardingAddress"],
+            )
         },
     })
+}
+
+pub fn revoked_change() -> UiChangeDescriptor {
+    UiChangeDescriptor::new(
+        "household.mail_forwarding.revoked",
+        "mail_forwarding",
+        ["mailForwardingAddress"],
+    )
 }
 
 pub fn decide_revoke(
@@ -110,7 +128,7 @@ pub fn decide_revoke(
 ) -> Result<(Uuid, Uuid), Error> {
     let actor_id = parse_id(&command.actor_id)?;
     let household_id = parse_id(&command.household_id)?;
-    if actor_role != Some("OWNER") {
+    if authorization::authorize(actor_role, Operation::ManageMailForwarding).is_err() {
         return Err(Error::Forbidden);
     }
     if !active_exists {

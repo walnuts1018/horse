@@ -12,6 +12,7 @@ use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -75,7 +76,6 @@ pub async fn persist_bulk_update_purchase_items(
         .transaction::<PersistedBulkUpdatePurchaseItems, BulkUpdatePurchaseItemsPersistenceError, _>(
             async move |conn| {
                 use public::accounting_periods::dsl as periods;
-                use public::household_events::dsl as events;
                 use public::household_members::dsl as members;
                 use public::households::dsl as households;
                 use public::purchase_items::dsl as items;
@@ -126,16 +126,15 @@ pub async fn persist_bulk_update_purchase_items(
                 if observed_purchases.iter().any(|row| row.1 != household_id) {
                     return Err(BulkUpdatePurchaseItemsPersistenceError::HouseholdMismatch);
                 }
-                let active_member = members::household_members
+                let actor_role = members::household_members
                     .filter(members::household_id.eq(household_id))
                     .filter(members::member_id.eq(actor_id))
                     .filter(members::left_at.is_null())
-                    .select(members::member_id)
-                    .first::<Uuid>(conn)
+                    .select(members::role)
+                    .first::<String>(conn)
                     .await
-                    .optional()?
-                    .is_some();
-                if !active_member {
+                    .optional()?;
+                if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                     return Err(BulkUpdatePurchaseItemsPersistenceError::MemberNotFound);
                 }
                 let period_dates = observed_purchases
@@ -357,17 +356,15 @@ pub async fn persist_bulk_update_purchase_items(
                                 .execute(&mut *conn).await?;
                         }
                     }
-                    diesel::insert_into(events::household_events)
-                        .values((
-                            events::household_id.eq(household_id),
-                            events::event_type.eq("purchase.item.updated"),
-                            events::entity_kind.eq("purchase_item"),
-                            events::entity_id.eq(item_id),
-                            events::revision.eq(i64::try_from(item_decision.revision).map_err(|_| BulkUpdatePurchaseItemsPersistenceError::NumericOutOfRange("item_revision"))?),
-                            events::changed_fields.eq(item_decision.changed_fields.iter().cloned().map(Some).collect::<Vec<_>>()),
-                            events::actor_id.eq(actor_id),
-                        ))
-                        .execute(&mut *conn).await?;
+                    horse_postgres_common::insert_ui_change(
+                        &mut *conn,
+                        household_id,
+                        item_id,
+                        i64::try_from(item_decision.revision).map_err(|_| BulkUpdatePurchaseItemsPersistenceError::NumericOutOfRange("item_revision"))?,
+                        actor_id,
+                        Utc::now(),
+                        bookkeeping_application::ui_changes::purchase_item_updated(item_decision.changed_fields.iter().cloned()),
+                    ).await?;
                     result.push((item_decision.item_id.clone(), item_decision.purchase_id.clone()));
                 }
                 for purchase_decision in &decision.purchases {

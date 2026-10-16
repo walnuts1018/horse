@@ -40,11 +40,14 @@ impl From<DieselError> for SavePurchaseItemEditsPersistenceError {
     }
 }
 
-pub async fn persist_save_purchase_item_edits(
+pub async fn persist_save_purchase_item_edits<
+    C: update_purchase_item::UpdatePurchaseItemReferenceData,
+>(
     pool: &PgPool,
     input: PersistSavePurchaseItemEdits,
     items: Vec<UpdatePurchaseItemCommand>,
     purchase_patch: Option<UpdatePurchaseCommand>,
+    reference_data: &mut C,
 ) -> Result<Vec<String>, SavePurchaseItemEditsPersistenceError> {
     let decision = decide_save_purchase_item_edits(SavePurchaseItemEditsCommand {
         purchase_id: input.purchase_id.clone(),
@@ -177,6 +180,7 @@ pub async fn persist_save_purchase_item_edits(
                     actor_id,
                     command,
                     true,
+                    reference_data,
                 )
                 .await
                 .map_err(SavePurchaseItemEditsPersistenceError::InvalidItemUpdate)?;
@@ -265,6 +269,7 @@ pub async fn persist_save_purchase_item_edits(
                     command,
                     decision,
                     accounting_changed,
+                    reference_data,
                 )
                 .await
                 .map_err(SavePurchaseItemEditsPersistenceError::InvalidPurchaseUpdate)?;

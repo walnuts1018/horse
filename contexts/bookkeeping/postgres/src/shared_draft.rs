@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use chrono::{DateTime, Utc};
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
@@ -51,11 +53,22 @@ impl From<DieselError> for SharedPurchaseDraftPersistenceError {
 
 type DraftRow = (Uuid, Uuid, i64, Value, DateTime<Utc>, DateTime<Utc>);
 
-pub async fn create_shared_purchase_draft(
+pub trait SharedDraftReferenceData: Send {
+    fn find_references(
+        &mut self,
+        conn: &mut crate::AsyncPgConnection,
+        household_id: Uuid,
+        kind: DraftReferenceKind,
+        ids: &[Uuid],
+    ) -> impl Future<Output = Result<Vec<Uuid>, DieselError>> + Send;
+}
+
+pub async fn create_shared_purchase_draft<C: SharedDraftReferenceData>(
     pool: &PgPool,
     actor_id: &str,
     household_id: &str,
     payload: &str,
+    reference_data: &mut C,
 ) -> Result<SharedPurchaseDraft, SharedPurchaseDraftPersistenceError> {
     let actor_id = parse_uuid(actor_id, "actor_id")?;
     let household_id = parse_uuid(household_id, "household_id")?;
@@ -78,7 +91,8 @@ pub async fn create_shared_purchase_draft(
         .transaction::<SharedPurchaseDraft, SharedPurchaseDraftPersistenceError, _>(
             async move |conn| {
                 validate_household_and_membership(conn, household_id, actor_id).await?;
-                validate_references(conn, household_id, &decision.references).await?;
+                validate_references(conn, household_id, &decision.references, reference_data)
+                    .await?;
                 use public::shared_purchase_drafts::dsl as drafts;
                 diesel::insert_into(public::shared_purchase_drafts::table)
                     .values((
@@ -131,12 +145,13 @@ pub async fn get_shared_purchase_draft(
     Ok(draft)
 }
 
-pub async fn update_shared_purchase_draft(
+pub async fn update_shared_purchase_draft<C: SharedDraftReferenceData>(
     pool: &PgPool,
     actor_id: &str,
     draft_id: &str,
     expected_revision: i64,
     payload: &str,
+    reference_data: &mut C,
 ) -> Result<UpdateSharedPurchaseDraftResult, SharedPurchaseDraftPersistenceError> {
     let decision = decide_update_shared_purchase_draft(UpdateSharedPurchaseDraftCommand {
         actor_id: actor_id.to_owned(),
@@ -182,7 +197,7 @@ pub async fn update_shared_purchase_draft(
                 let (canonical_payload, references) = parse_payload(&decision.payload)?;
                 validate_shared_purchase_draft_payload(&decision.payload, &references)
                     .map_err(SharedPurchaseDraftPersistenceError::InvalidWorkflow)?;
-                validate_references(conn, current.1, &references).await?;
+                validate_references(conn, current.1, &references, reference_data).await?;
                 let revision = current
                     .2
                     .checked_add(1)
@@ -253,10 +268,11 @@ async fn validate_membership(
     Ok(())
 }
 
-async fn validate_references(
+async fn validate_references<C: SharedDraftReferenceData>(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
     references: &[DraftReference],
+    reference_data: &mut C,
 ) -> Result<(), SharedPurchaseDraftPersistenceError> {
     for kind in [
         DraftReferenceKind::Account,
@@ -272,44 +288,9 @@ async fn validate_references(
         if ids.is_empty() {
             continue;
         }
-        let found = match kind {
-            DraftReferenceKind::Account => {
-                use public::accounts::dsl as table;
-                table::accounts
-                    .filter(table::household_id.eq(household_id))
-                    .filter(table::id.eq_any(&ids))
-                    .select(table::id)
-                    .load::<Uuid>(conn)
-                    .await?
-            }
-            DraftReferenceKind::Category => {
-                use public::categories::dsl as table;
-                table::categories
-                    .filter(table::household_id.eq(household_id))
-                    .filter(table::id.eq_any(&ids))
-                    .select(table::id)
-                    .load::<Uuid>(conn)
-                    .await?
-            }
-            DraftReferenceKind::Pool => {
-                use public::pools::dsl as table;
-                table::pools
-                    .filter(table::household_id.eq(household_id))
-                    .filter(table::id.eq_any(&ids))
-                    .select(table::id)
-                    .load::<Uuid>(conn)
-                    .await?
-            }
-            DraftReferenceKind::ProductVariant => {
-                use public::product_variants::dsl as table;
-                table::product_variants
-                    .filter(table::household_id.eq(household_id))
-                    .filter(table::id.eq_any(&ids))
-                    .select(table::id)
-                    .load::<Uuid>(conn)
-                    .await?
-            }
-        };
+        let found = reference_data
+            .find_references(conn, household_id, kind, &ids)
+            .await?;
         if found.len() != ids.len() {
             return Err(SharedPurchaseDraftPersistenceError::InvalidPayload(
                 reference_error(kind),

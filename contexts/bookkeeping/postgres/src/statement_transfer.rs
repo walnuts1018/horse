@@ -1,7 +1,5 @@
 use chrono::{DateTime, Utc};
-use diesel::{
-    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
-};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
@@ -9,6 +7,7 @@ use bookkeeping_application::statement_transfer::{
     LinkStatementTransferCommand, StatementTransferObservation, decide_link_statement_transfer,
 };
 
+use crate::evidence_port::EvidenceOperations;
 use crate::{PgPool, schema::public};
 
 #[derive(Debug, Clone)]
@@ -57,6 +56,7 @@ impl From<DieselError> for StatementTransferPersistenceError {
 pub async fn persist_link_statement_transfer(
     pool: &PgPool,
     input: PersistLinkStatementTransfer,
+    evidence: &impl EvidenceOperations,
 ) -> Result<PersistedStatementTransfer, StatementTransferPersistenceError> {
     validate_input(&input)?;
     let household_id = parse_uuid(&input.household_id, "household_id")?;
@@ -82,20 +82,23 @@ pub async fn persist_link_statement_transfer(
                 if !household_exists {
                     return Err(StatementTransferPersistenceError::HouseholdNotFound);
                 }
-                let member_exists = public::household_members::table
+                let role = public::household_members::table
                     .filter(public::household_members::household_id.eq(household_id))
                     .filter(public::household_members::member_id.eq(actor_id))
                     .filter(public::household_members::left_at.is_null())
-                    .select(public::household_members::member_id)
-                    .first::<Uuid>(&mut *conn)
+                    .select(public::household_members::role)
+                    .first::<String>(&mut *conn)
                     .await
                     .optional()?
-                    .is_some();
-                if !member_exists {
-                    return Err(StatementTransferPersistenceError::MemberNotFound);
-                }
+                    .ok_or(StatementTransferPersistenceError::MemberNotFound)?;
+                horse_authorization::authorize(
+                    Some(&role),
+                    horse_authorization::Operation::FinancialData,
+                )
+                .map_err(|_| StatementTransferPersistenceError::MemberNotFound)?;
 
                 let (source_kind, statement) = load_statement(
+                    evidence,
                     &mut *conn,
                     household_id,
                     document_id,
@@ -205,6 +208,7 @@ pub async fn persist_link_statement_transfer(
                     return Err(StatementTransferPersistenceError::InvalidDecision);
                 }
                 insert_confirmation(
+                    evidence,
                     &mut *conn,
                     household_id,
                     actor_id,
@@ -227,53 +231,32 @@ struct StatementRow {
     occurred_at: DateTime<Utc>,
 }
 
-async fn load_statement(
+async fn load_statement<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     document_id: Uuid,
     source_reference: &str,
 ) -> Result<(String, StatementRow), StatementTransferPersistenceError> {
-    use public::{
-        extraction_jobs::dsl as jobs, source_confirmations::dsl as confirmations,
-        source_documents::dsl as documents,
-    };
     if source_reference.is_empty() || source_reference.len() > 256 {
         return Err(StatementTransferPersistenceError::InvalidSource);
     }
-    let source_kind = documents::source_documents
-        .filter(documents::household_id.eq(household_id))
-        .filter(documents::id.eq(document_id))
-        .for_update()
-        .select(documents::source_kind)
-        .first::<String>(conn)
-        .await
-        .optional()?
+    let source_kind = evidence
+        .source_kind(conn, household_id, document_id, true)
+        .await?
         .ok_or(StatementTransferPersistenceError::SourceDocumentNotFound)?;
     if source_kind != "bank" {
         return Err(StatementTransferPersistenceError::SourceIsNotBankStatement);
     }
-    let already_confirmed = confirmations::source_confirmations
-        .filter(confirmations::household_id.eq(household_id))
-        .filter(confirmations::source_document_id.eq(document_id))
-        .filter(confirmations::source_reference.eq(source_reference))
-        .order_by(confirmations::changed_at.desc())
-        .select(confirmations::status)
-        .first::<String>(conn)
-        .await
-        .optional()?;
+    let already_confirmed = evidence
+        .latest_confirmation_status(conn, household_id, document_id, source_reference)
+        .await?;
     if already_confirmed.as_deref() == Some("confirmed") {
         return Err(StatementTransferPersistenceError::StatementAlreadyConfirmed);
     }
-    let result = jobs::extraction_jobs
-        .filter(jobs::household_id.eq(household_id))
-        .filter(jobs::source_document_id.eq(document_id))
-        .filter(jobs::status.eq("succeeded"))
-        .order_by(jobs::version.desc())
-        .select(jobs::result)
-        .first::<Option<serde_json::Value>>(conn)
-        .await
-        .optional()?
-        .flatten()
+    let result = evidence
+        .latest_extraction(conn, household_id, document_id)
+        .await?
         .ok_or(StatementTransferPersistenceError::StatementExtractionUnavailable)?;
     let rows = result
         .get("statements")
@@ -317,7 +300,8 @@ async fn load_statement(
     Err(StatementTransferPersistenceError::StatementReferenceNotFound)
 }
 
-async fn insert_confirmation(
+async fn insert_confirmation<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     actor_id: Uuid,
@@ -325,24 +309,20 @@ async fn insert_confirmation(
     source_reference: &str,
     transfer_id: Uuid,
 ) -> Result<(), StatementTransferPersistenceError> {
-    diesel::insert_into(public::source_confirmations::table)
-        .values((
-            public::source_confirmations::id.eq(Uuid::now_v7()),
-            public::source_confirmations::household_id.eq(household_id),
-            public::source_confirmations::source_document_id.eq(document_id),
-            public::source_confirmations::observation_id.eq(None::<Uuid>),
-            public::source_confirmations::source_reference.eq(source_reference),
-            public::source_confirmations::entity_kind.eq("transfer"),
-            public::source_confirmations::entity_id.eq(transfer_id),
-            public::source_confirmations::status.eq("confirmed"),
-            public::source_confirmations::idempotency_key
-                .eq(format!("transfer-confirmation:{}", Uuid::now_v7())),
-            public::source_confirmations::changed_by.eq(actor_id),
-            public::source_confirmations::changed_at.eq(now),
-        ))
-        .execute(conn)
-        .await?;
-    Ok(())
+    evidence
+        .insert_confirmation(
+            conn,
+            household_id,
+            document_id,
+            source_reference,
+            "transfer",
+            transfer_id,
+            actor_id,
+            format!("transfer-confirmation:{}", Uuid::now_v7()),
+            None,
+        )
+        .await
+        .map_err(StatementTransferPersistenceError::from)
 }
 
 fn validate_input(

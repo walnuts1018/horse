@@ -1,8 +1,6 @@
 use async_graphql::{Context, ID, InputObject, OneofObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::{
-    create_pool::CreatePoolCommand, set_funding_schedule::SetFundingScheduleCommand,
-};
+use bookkeeping_application::create_pool::CreatePoolCommand;
 use cross_context_postgres::pool_mutations as postgres_pool_mutations;
 use horse_postgres_common::PgPool;
 use household_postgres::create_household;
@@ -12,6 +10,7 @@ use policy_application::{
         SetAllocationRuleCommand,
     },
     set_default_allocation::{DefaultAllocationWeight, SetDefaultAllocationCommand},
+    set_funding_schedule::SetFundingScheduleCommand,
 };
 use policy_postgres::{
     set_allocation_rule as postgres_allocation_rule,

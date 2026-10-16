@@ -4,6 +4,8 @@ use diesel::{
     result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_household_change::UiChangeDescriptor;
+use household_application::authorization::{self, Operation};
 use household_application::invitation::{
     AcceptInvitationDecision, AcceptInvitationFacts, AcceptInvitationOperations,
     CreateInvitationCommand, CreateInvitationDecision, CreateInvitationOperations, InvitationError,
@@ -85,7 +87,7 @@ pub async fn list_invitations(
         .first::<String>(&mut *conn)
         .await
         .optional()?;
-    if owner.as_deref() != Some("OWNER") {
+    if authorization::authorize(owner.as_deref(), Operation::ManageInvitations).is_err() {
         return Err(HouseholdInvitationError::HouseholdNotFound);
     }
 
@@ -333,9 +335,7 @@ impl CreateInvitationOperations for PostgresCreateInvitationOperations<'_> {
             household_id,
             invitation_id,
             actor_id,
-            "invitation",
-            "household.invitation.created",
-            vec![Some("invitations".to_owned())],
+            decision.ui_change(),
         )
         .await?;
         Ok(CreatedInvitationDto {
@@ -501,9 +501,7 @@ impl AcceptInvitationOperations for PostgresAcceptInvitationOperations<'_> {
             household_id,
             member_id,
             member_id,
-            "member",
-            "household.member.joined",
-            vec![Some("members".to_owned())],
+            decision.ui_change(),
         )
         .await?;
         Ok(household_id.to_string())
@@ -640,9 +638,7 @@ impl RevokeInvitationOperations for PostgresRevokeInvitationOperations<'_> {
                 household_id,
                 invitation_id,
                 actor_id,
-                "invitation",
-                "household.invitation.revoked",
-                vec![Some("invitations".to_owned())],
+                decision.ui_change(),
             )
             .await?;
         }
@@ -666,11 +662,9 @@ async fn record_change(
     household_id: Uuid,
     entity_id: Uuid,
     actor_id: Uuid,
-    entity_kind: &str,
-    event_type: &str,
-    changed_fields: Vec<Option<String>>,
+    change: UiChangeDescriptor,
 ) -> Result<(), HouseholdInvitationError> {
-    use public::{household_events as events, households};
+    use public::households;
     let revision = diesel::update(households::table.filter(households::id.eq(household_id)))
         .set((
             households::revision.eq(households::revision + 1),
@@ -679,19 +673,16 @@ async fn record_change(
         .returning(households::revision)
         .get_result::<i64>(&mut *conn)
         .await?;
-    diesel::insert_into(events::table)
-        .values((
-            events::household_id.eq(household_id),
-            events::event_type.eq(event_type),
-            events::entity_kind.eq(entity_kind),
-            events::entity_id.eq(entity_id),
-            events::revision.eq(revision),
-            events::changed_fields.eq(changed_fields),
-            events::actor_id.eq(actor_id),
-            events::created_at.eq(now),
-        ))
-        .execute(&mut *conn)
-        .await?;
+    horse_postgres_common::insert_ui_change(
+        conn,
+        household_id,
+        entity_id,
+        revision,
+        actor_id,
+        Utc::now(),
+        change,
+    )
+    .await?;
     Ok(())
 }
 

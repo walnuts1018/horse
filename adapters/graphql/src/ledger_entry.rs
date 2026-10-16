@@ -2,8 +2,8 @@ use async_graphql::{ID, Interface, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_postgres::{
     financial_command_result::TransferLedgerEntryResult,
-    funding_command_result::FundingLedgerEntryResult,
 };
+use cross_context_postgres::funding_command_result::FundingLedgerEntryResult;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, SimpleObject)]

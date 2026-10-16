@@ -1,6 +1,7 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_postgres::correct_purchase as postgres_correct_purchase;
+use cross_context_postgres::evidence_workflows;
 use horse_postgres_common::PgPool;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -249,7 +250,7 @@ async fn execute(
 ) -> Result<CorrectPurchaseResult> {
     let household_id = Uuid::parse_str(&request.household_id).map_err(crate::internal_error)?;
     let purchase_id = request.purchase_id.clone();
-    match postgres_correct_purchase::correct_purchase(ctx.data::<PgPool>()?, request).await {
+    match evidence_workflows::correct_purchase(ctx.data::<PgPool>()?, request).await {
         Ok(_) => Ok(Box::new(CorrectPurchaseSuccess {
             result: crate::purchase_mutations::purchase_result(
                 ctx.data::<PgPool>()?,

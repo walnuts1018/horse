@@ -13,6 +13,7 @@ use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -59,10 +60,11 @@ struct TargetRow {
     base_revision: u64,
 }
 
-pub async fn persist_bulk_delete_purchase_items(
+pub async fn persist_bulk_delete_purchase_items<C: crate::post_purchase_loader::PostPurchaseReferenceData>(
     pool: &PgPool,
     input: PersistBulkDeletePurchaseItems,
     targets: Vec<BulkDeleteItemTarget>,
+    reference_data: &mut C,
 ) -> Result<PersistedBulkDeletePurchaseItems, BulkDeletePurchaseItemsPersistenceError> {
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
@@ -120,7 +122,6 @@ pub async fn persist_bulk_delete_purchase_items(
         .transaction::<PersistedBulkDeletePurchaseItems, BulkDeletePurchaseItemsPersistenceError, _>(
             async move |conn| {
                 use public::accounting_periods::dsl as periods;
-                use public::household_events::dsl as events;
                 use public::household_members::dsl as members;
                 use public::households::dsl as households;
                 use public::purchase_items::dsl as items;
@@ -165,16 +166,15 @@ pub async fn persist_bulk_delete_purchase_items(
                     .iter()
                     .map(|purchase| period_start(purchase.2))
                     .collect::<Result<BTreeSet<_>, _>>()?;
-                let active_member = members::household_members
+                let actor_role = members::household_members
                     .filter(members::household_id.eq(household_id))
                     .filter(members::member_id.eq(actor_id))
                     .filter(members::left_at.is_null())
-                    .select(members::member_id)
-                    .first::<Uuid>(conn)
+                    .select(members::role)
+                    .first::<String>(conn)
                     .await
-                    .optional()?
-                    .is_some();
-                if !active_member {
+                    .optional()?;
+                if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                     return Err(BulkDeletePurchaseItemsPersistenceError::MemberNotFound);
                 }
                 let period_dates = periods_to_lock.iter().copied().collect::<Vec<_>>();
@@ -341,19 +341,15 @@ pub async fn persist_bulk_delete_purchase_items(
                             .ok_or(BulkDeletePurchaseItemsPersistenceError::NumericOutOfRange("item_revision"))?;
                         diesel::delete(items::purchase_items.filter(items::household_id.eq(household_id)).filter(items::purchase_id.eq(purchase_id)).filter(items::id.eq(item_id)))
                             .execute(&mut *conn).await?;
-                        diesel::insert_into(events::household_events)
-                            .values((
-                                events::household_id.eq(household_id),
-                                events::event_type.eq("purchase.item.deleted"),
-                                events::entity_kind.eq("purchase_item"),
-                                events::entity_id.eq(item_id),
-                                events::revision.eq(revision),
-                                events::changed_fields.eq(vec![Some("deleted".to_owned())]),
-                                events::payload.eq(serde_json::json!({
-                                    "purchaseId": purchase_id.to_string(),
-                                })),
-                                events::actor_id.eq(actor_id),
-                            )).execute(&mut *conn).await?;
+                        horse_postgres_common::insert_ui_change(
+                            &mut *conn,
+                            household_id,
+                            *item_id,
+                            revision,
+                            actor_id,
+                            Utc::now(),
+                            bookkeeping_application::ui_changes::purchase_item_deleted(purchase_id.to_string()),
+                        ).await?;
                     }
                     let next_revision = i64::try_from(decision.purchase_revision).map_err(|_| BulkDeletePurchaseItemsPersistenceError::NumericOutOfRange("purchase_revision"))?;
                     diesel::update(purchases::purchases.filter(purchases::id.eq(purchase_id)))
@@ -361,7 +357,7 @@ pub async fn persist_bulk_delete_purchase_items(
                         .execute(&mut *conn).await?;
                     let (_, status, old_revision, _, old_payments, new_payments) = previous_accounting.get(&purchase_id).ok_or(BulkDeletePurchaseItemsPersistenceError::InvalidDecision)?;
                     if status == "POSTED" {
-                        sync_posted_accounting(&mut *conn, household_id, purchase_id, *old_revision, *old_payments != *new_payments).await?;
+                        sync_posted_accounting(&mut *conn, household_id, purchase_id, *old_revision, *old_payments != *new_payments, reference_data).await?;
                     }
                 }
                 Ok(PersistedBulkDeletePurchaseItems { deleted_item_ids: deleted_ids })
@@ -370,12 +366,13 @@ pub async fn persist_bulk_delete_purchase_items(
         .await
 }
 
-async fn sync_posted_accounting(
+async fn sync_posted_accounting<C: crate::post_purchase_loader::PostPurchaseReferenceData>(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
     purchase_id: Uuid,
     revision: i64,
     payments_changed: bool,
+    reference_data: &mut C,
 ) -> Result<(), BulkDeletePurchaseItemsPersistenceError> {
     use public::purchase_member_burdens::dsl as burdens;
     use public::purchase_payment_funding_snapshots::dsl as snapshots;
@@ -445,6 +442,7 @@ async fn sync_posted_accounting(
         u64::try_from(revision).map_err(|_| {
             BulkDeletePurchaseItemsPersistenceError::NumericOutOfRange("purchase_revision")
         })?,
+        reference_data,
     )
     .await
     .map_err(|error| match error {

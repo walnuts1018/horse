@@ -2,10 +2,9 @@ use bookkeeping_application::create_account::{
     CreateAccountCommand, CreateAccountError, decide_create_account,
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
-use diesel::{
-    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
-};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -76,7 +75,6 @@ pub async fn persist_create_account(
         .transaction::<PersistedCreateAccount, CreateAccountPersistenceError, _>(async |conn| {
             use public::accounting_periods::dsl as periods;
             use public::accounts::dsl as accounts;
-            use public::household_events::dsl as events;
             use public::household_members::dsl as members;
             use public::households::dsl as households;
             use public::journal_entries::dsl as entries;
@@ -95,16 +93,15 @@ pub async fn persist_create_account(
                 return Err(CreateAccountPersistenceError::HouseholdNotFound);
             }
 
-            let member_exists = members::household_members
+            let actor_role = members::household_members
                 .filter(members::household_id.eq(household_id))
                 .filter(members::member_id.eq(actor_id))
                 .filter(members::left_at.is_null())
-                .select(members::member_id)
-                .first::<Uuid>(conn)
+                .select(members::role)
+                .first::<String>(conn)
                 .await
-                .optional()?
-                .is_some();
-            if !member_exists {
+                .optional()?;
+            if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                 return Err(CreateAccountPersistenceError::MemberNotFound);
             }
 
@@ -211,24 +208,16 @@ pub async fn persist_create_account(
                     .await?;
             }
 
-            diesel::insert_into(events::household_events)
-                .values((
-                    events::household_id.eq(household_id),
-                    events::event_type.eq("account.created"),
-                    events::entity_kind.eq("account"),
-                    events::entity_id.eq(account_id),
-                    events::revision.eq(1_i64),
-                    events::changed_fields.eq(vec![
-                        Some("name".to_owned()),
-                        Some("kind".to_owned()),
-                        Some("cardLast4".to_owned()),
-                        Some("poolId".to_owned()),
-                    ]),
-                    events::actor_id.eq(actor_id),
-                    events::created_at.eq(now),
-                ))
-                .execute(&mut *conn)
-                .await?;
+            horse_postgres_common::insert_ui_change(
+                &mut *conn,
+                household_id,
+                account_id,
+                1,
+                actor_id,
+                Utc::now(),
+                bookkeeping_application::ui_changes::account_created(),
+            )
+            .await?;
 
             Ok(PersistedCreateAccount {
                 id: account_id.to_string(),

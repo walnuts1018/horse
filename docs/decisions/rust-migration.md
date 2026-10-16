@@ -2,7 +2,7 @@
 
 ## 状態
 
-進行中。CLIを除くGoの実行コードをRustへ移し、Go Backendを削除した。Rustのformat、Clippy、workspaceテストは成功し、空のPostgreSQLへ25件のAtlasマイグレーションを適用してDiesel schemaを生成した。本番DBの再作成、Kubernetes切替、稼働確認が残っている。
+Rust移行は本番へ反映済み。CLIを除くGoの実行コードをRustへ移し、Go Backendを削除した。空のPostgreSQLへAtlas migrationを適用してDiesel schemaを生成し、本番DBを再作成した。2026年10月15日時点でRust APIとWorkerはKubernetes上でReadyになり、`horse.walnuts.dev`と`/healthz`はHTTP 200を返した。
 
 ## 決定
 
@@ -16,17 +16,19 @@ Workspaceは`apps/`にComposition Root、`contexts/<bounded-context>/{domain,app
 
 Application Workflowは業務操作のLoad・Decision・Persistの順序を所有し、小さな操作契約を通じてPostgreSQL AdapterへI/Oを要求する。PostgreSQL AdapterがDieselのtransactionとロックを維持し、Workflow全体を原子的に実行する。GraphQL ResolverはDTOを認証済みActor付きCommandへ変換し、Application Workflowを呼び出す。
 
+GraphQL境界ではApplication Decisionの業務エラーを入力・状態エラーへ変換し、PostgreSQLのI/O障害と永続化データの破損は内部エラーとして扱う。PostgreSQL Adapter内でも呼び出し側Decisionの不整合と保存済みデータの破損を別のエラーとして表現する。
+
 購入訂正の`journals.occurred_at`とLedger Entryの日時には訂正を記録した時刻を保存する。`effective_period`は訂正対象として指定したOpen会計期間と月次精算を決める値であり、記録日時を過去へ変更しない。
 
 ## 残作業
 
-- Rust用Atlas設定と新schemaをKubernetesへ反映し、承認済みの本番DB再作成を実施する。
-- Rust API、Worker、既存のWeb・OCRサービスをデプロイし、稼働状態と主要なAPI経路を確認する。
-- 操作権限の共通契約を定義し、各更新Workflowで同じ契約を検証する。
+- すべての更新Workflowで共通の操作権限契約を検証する。
+- Context横断Workflowをcross-context Adapterへ整理し、各Contextのテーブル所有権を維持する。
+- 作業ツリーの変更をまとめて検証し、必要なHorseとinfraの更新をデプロイして稼働状態を確認する。
 
 ## 理由
 
-GraphQLとHTTPの公開契約を維持し、既存クライアントへの変更を避ける。Rustで全機能の置き換えと業務動作を検証してからGo実装を一括で置き換える。本番DBのリセットはRust API、Worker、契約、デプロイ定義を検証した後に行う。
+GraphQLとHTTPの公開契約を維持し、既存クライアントへの変更を避ける。Rustで全機能の置き換えと業務動作を検証した後にGo実装を一括で置き換え、本番DBを承認済みの新schemaで再作成した。
 
 Atlasを正本にしてDB変更の適用履歴とスキーマを一元管理する。Dieselの型付きDSLはDBアクセスの型検査を提供し、pure DecisionとI/Oの分離は業務判断を外部状態から独立して表現する。
 

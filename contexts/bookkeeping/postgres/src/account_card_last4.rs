@@ -1,10 +1,10 @@
 use bookkeeping_application::account_card_last4::{
     SetCardLast4Command, SetCardLast4Error, decide_set_card_last4,
 };
-use diesel::{
-    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
-};
+use chrono::Utc;
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -49,7 +49,6 @@ pub async fn persist_set_card_last4(
     (*pooled)
         .transaction::<PersistedSetCardLast4, SetCardLast4PersistenceError, _>(async move |conn| {
             use public::accounts::dsl as accounts;
-            use public::household_events::dsl as events;
             use public::household_members::dsl as members;
             use public::households::dsl as households;
 
@@ -68,16 +67,15 @@ pub async fn persist_set_card_last4(
                 .optional()?
                 .ok_or(SetCardLast4PersistenceError::AccountNotFound)?;
 
-            let member_exists = members::household_members
+            let actor_role = members::household_members
                 .filter(members::household_id.eq(row.0))
                 .filter(members::member_id.eq(actor_id))
                 .filter(members::left_at.is_null())
-                .select(members::member_id)
-                .first::<Uuid>(&mut *conn)
+                .select(members::role)
+                .first::<String>(&mut *conn)
                 .await
-                .optional()?
-                .is_some();
-            if !member_exists {
+                .optional()?;
+            if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                 return Err(SetCardLast4PersistenceError::AccountNotFound);
             }
 
@@ -117,20 +115,17 @@ pub async fn persist_set_card_last4(
                     .optional()?
                     .ok_or(SetCardLast4PersistenceError::AccountNotFound)?;
 
-                diesel::insert_into(events::household_events)
-                    .values((
-                        events::household_id.eq(row.0),
-                        events::event_type.eq(event.event_type),
-                        events::entity_kind.eq("account"),
-                        events::entity_id.eq(account_id),
-                        events::revision.eq(i64::try_from(event.revision)
-                            .map_err(|_| SetCardLast4PersistenceError::InvalidDecision)?),
-                        events::changed_fields.eq(vec![Some(event.changed_fields[0].to_owned())]),
-                        events::actor_id.eq(actor_id),
-                        events::created_at.eq(now),
-                    ))
-                    .execute(&mut *conn)
-                    .await?;
+                horse_postgres_common::insert_ui_change(
+                    &mut *conn,
+                    row.0,
+                    account_id,
+                    i64::try_from(event.revision)
+                        .map_err(|_| SetCardLast4PersistenceError::InvalidDecision)?,
+                    actor_id,
+                    Utc::now(),
+                    bookkeeping_application::ui_changes::account_card_last4_updated(),
+                )
+                .await?;
             }
 
             Ok(PersistedSetCardLast4 {

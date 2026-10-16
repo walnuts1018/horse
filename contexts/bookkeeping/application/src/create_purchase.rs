@@ -179,6 +179,16 @@ pub struct CreatePurchaseDecision {
     pub payments: Vec<CreatePurchasePayment>,
 }
 
+impl CreatePurchaseDecision {
+    pub fn ui_change(&self) -> horse_household_change::UiChangeDescriptor {
+        horse_household_change::UiChangeDescriptor::new(
+            "purchase.created",
+            "purchase",
+            Vec::<String>::new(),
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecidedPurchaseItem {
     pub item_id: String,

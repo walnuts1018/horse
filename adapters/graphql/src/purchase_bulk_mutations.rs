@@ -3,9 +3,9 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_application::update_purchase::{UpdatePurchaseCommand, UpdatePurchasePayment};
 use bookkeeping_postgres::{
     bulk_update_purchases::{self, PersistBulkUpdatePurchases},
-    purchase_command_result,
     save_purchase_item_edits::{self, PersistSavePurchaseItemEdits},
 };
+use cross_context_postgres::purchase_command_result;
 use horse_postgres_common::PgPool;
 use household_postgres::household_access;
 use uuid::Uuid;
@@ -193,7 +193,7 @@ pub async fn save_purchase_item_edits(
             }
         }
     };
-    match save_purchase_item_edits::persist_save_purchase_item_edits(
+    match cross_context_postgres::reference_data::persist_save_purchase_item_edits(
         pool,
         PersistSavePurchaseItemEdits {
             household_id: household_id.to_string(),

@@ -1,3 +1,4 @@
+use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +28,12 @@ pub struct CreateTagDecision {
     pub changed_fields: Vec<String>,
 }
 
+impl CreateTagDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        UiChangeDescriptor::new(self.event_type, "tag", self.changed_fields.clone())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateTagCommand {
     pub actor_id: String,
@@ -49,6 +56,12 @@ pub struct UpdateTagDecision {
     pub tag: Tag,
     pub event_type: &'static str,
     pub changed_fields: Vec<String>,
+}
+
+impl UpdateTagDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        UiChangeDescriptor::new(self.event_type, "tag", self.changed_fields.clone())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

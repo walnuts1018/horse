@@ -1,4 +1,5 @@
 use chrono::NaiveDate;
+use horse_household_change::UiChangeDescriptor;
 
 const MAX_AMOUNT_YEN: i64 = 1_000_000_000_000;
 
@@ -61,6 +62,15 @@ pub struct CreateBudgetDecision {
     pub ends_on: Option<NaiveDate>,
 }
 
+impl CreateBudgetDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        budget_change(
+            "budget.updated",
+            ["name", "amountYen", "categoryId", "startsOn", "endsOn"],
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EndDateChange {
     Unchanged,
@@ -80,6 +90,15 @@ pub struct UpdateBudgetDecision {
     pub ends_on: EndDateChange,
 }
 
+impl UpdateBudgetDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        budget_change(
+            "budget.updated",
+            ["name", "amountYen", "categoryId", "startsOn", "endsOn"],
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchiveBudgetDecision {
     pub actor_id: String,
@@ -87,6 +106,19 @@ pub struct ArchiveBudgetDecision {
     pub household_id: String,
     pub expected_revision: i64,
     pub archived: bool,
+}
+
+impl ArchiveBudgetDecision {
+    pub fn ui_change(&self) -> UiChangeDescriptor {
+        budget_change("budget.archived", ["archived"])
+    }
+}
+
+fn budget_change(
+    event_type: &'static str,
+    changed_fields: impl IntoIterator<Item = &'static str>,
+) -> UiChangeDescriptor {
+    UiChangeDescriptor::new(event_type, "budget", changed_fields)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

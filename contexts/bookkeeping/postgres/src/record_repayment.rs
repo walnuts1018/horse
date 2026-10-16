@@ -15,6 +15,7 @@ use bookkeeping_application::{
 };
 use bookkeeping_domain::AccountingPeriodStatus;
 
+use crate::evidence_port::EvidenceOperations;
 use crate::{PgPool, schema::public};
 
 const OPERATION: &str = "recordTransfer";
@@ -87,6 +88,7 @@ pub async fn persist_record_repayment(
     pool: &PgPool,
     input: PersistRecordRepayment,
     decision: RecordRepaymentDecision,
+    evidence: &impl EvidenceOperations,
 ) -> Result<PersistedRepayment, RecordRepaymentPersistenceError> {
     if input.idempotency_key.is_empty() || input.idempotency_key.len() > 200 {
         return Err(RecordRepaymentPersistenceError::InvalidIdempotencyKey);
@@ -189,8 +191,14 @@ pub async fn persist_record_repayment(
                     .select((ledger::journal_id, ledger::source_id))
                     .first::<(Uuid, Uuid)>(&mut *conn)
                     .await?;
-                validate_statement_replay(&mut *conn, household_id, saved_transfer_id, &input)
-                    .await?;
+                validate_statement_replay(
+                    evidence,
+                    &mut *conn,
+                    household_id,
+                    saved_transfer_id,
+                    &input,
+                )
+                .await?;
                 let saved_transfer_id = public::transfers::table
                     .filter(public::transfers::household_id.eq(household_id))
                     .filter(public::transfers::id.eq(saved_transfer_id))
@@ -217,6 +225,7 @@ pub async fn persist_record_repayment(
                     amount,
                     decision: &decision,
                     input: &input,
+                    evidence,
                 },
             )
             .await?;
@@ -304,6 +313,7 @@ pub async fn persist_record_repayment(
                 .await?;
             if let Some(statement) = statement_decision {
                 insert_statement_confirmation(
+                    evidence,
                     &mut *conn,
                     household_id,
                     actor_id,
@@ -330,24 +340,18 @@ pub async fn persist_record_repayment(
                     .execute(&mut *conn)
                     .await?;
             }
-            diesel::insert_into(public::household_events::table)
-                .values((
-                    public::household_events::household_id.eq(household_id),
-                    public::household_events::event_type.eq(decision.event.event_type),
-                    public::household_events::entity_kind.eq("ledger"),
-                    public::household_events::entity_id.eq(ledger_entry_id),
-                    public::household_events::revision.eq(1_i64),
-                    public::household_events::changed_fields.eq(decision
-                        .event
-                        .changed_fields
-                        .iter()
-                        .map(|field| Some((*field).to_owned()))
-                        .collect::<Vec<_>>()),
-                    public::household_events::actor_id.eq(actor_id),
-                    public::household_events::created_at.eq(now),
-                ))
-                .execute(&mut *conn)
-                .await?;
+            horse_postgres_common::insert_ui_change(
+                &mut *conn,
+                household_id,
+                ledger_entry_id,
+                1,
+                actor_id,
+                Utc::now(),
+                bookkeeping_application::ui_changes::repayment_recorded(
+                    decision.event.changed_fields.iter().copied(),
+                ),
+            )
+            .await?;
             Ok(PersistedRepayment {
                 transfer_id: transfer_id.to_string(),
                 journal_id: journal_id.to_string(),
@@ -360,6 +364,7 @@ pub async fn persist_record_repayment(
 pub async fn find_record_repayment_replay(
     pool: &PgPool,
     input: &FindRecordRepaymentReplay,
+    evidence: &impl EvidenceOperations,
 ) -> Result<Option<String>, RecordRepaymentPersistenceError> {
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
@@ -382,6 +387,20 @@ pub async fn find_record_repayment_replay(
         .get()
         .await
         .map_err(|error| RecordRepaymentPersistenceError::Pool(error.to_string()))?;
+    let actor_role = public::household_members::table
+        .filter(public::household_members::household_id.eq(household_id))
+        .filter(public::household_members::member_id.eq(actor_id))
+        .filter(public::household_members::left_at.is_null())
+        .select(public::household_members::role)
+        .first::<String>(&mut *conn)
+        .await
+        .optional()?
+        .ok_or(RecordRepaymentPersistenceError::MemberNotFound)?;
+    horse_authorization::authorize(
+        Some(&actor_role),
+        horse_authorization::Operation::FinancialData,
+    )
+    .map_err(|_| RecordRepaymentPersistenceError::MemberNotFound)?;
     for member_id in [actor_id, from_member_id, to_member_id] {
         public::household_members::table
             .filter(public::household_members::household_id.eq(household_id))
@@ -428,7 +447,14 @@ pub async fn find_record_repayment_replay(
         source_reference: input.source_reference.clone(),
         source_account_id: input.source_account_id.clone(),
     };
-    validate_statement_replay(&mut conn, household_id, transfer_id, &replay_input).await?;
+    validate_statement_replay(
+        evidence,
+        &mut conn,
+        household_id,
+        transfer_id,
+        &replay_input,
+    )
+    .await?;
     Ok(Some(resource_id.to_string()))
 }
 
@@ -459,6 +485,20 @@ async fn validate_active_members(
         .map(|id| parse_uuid(id.as_str(), "borrower_id"))
         .transpose()?
         .ok_or(RecordRepaymentPersistenceError::InvalidDecision)?;
+    let actor_role = public::household_members::table
+        .filter(public::household_members::household_id.eq(household_id))
+        .filter(public::household_members::member_id.eq(actor_id))
+        .filter(public::household_members::left_at.is_null())
+        .select(public::household_members::role)
+        .first::<String>(conn)
+        .await
+        .optional()?
+        .ok_or(RecordRepaymentPersistenceError::MemberNotFound)?;
+    horse_authorization::authorize(
+        Some(&actor_role),
+        horse_authorization::Operation::FinancialData,
+    )
+    .map_err(|_| RecordRepaymentPersistenceError::MemberNotFound)?;
     for member_id in [actor_id, borrower, lender] {
         public::household_members::table
             .filter(public::household_members::household_id.eq(household_id))
@@ -498,7 +538,7 @@ fn validate_statement_input(
     Ok(())
 }
 
-struct StatementTransferContext<'a> {
+struct StatementTransferContext<'a, E: EvidenceOperations + ?Sized> {
     household_id: Uuid,
     actor_id: Uuid,
     ledger_entry_id: Uuid,
@@ -506,11 +546,12 @@ struct StatementTransferContext<'a> {
     amount: i64,
     decision: &'a RecordRepaymentDecision,
     input: &'a PersistRecordRepayment,
+    evidence: &'a E,
 }
 
-async fn prepare_statement_transfer(
+async fn prepare_statement_transfer<E: EvidenceOperations + ?Sized>(
     conn: &mut diesel_async::AsyncPgConnection,
-    context: StatementTransferContext<'_>,
+    context: StatementTransferContext<'_, E>,
 ) -> Result<Option<StatementConfirmation>, RecordRepaymentPersistenceError> {
     let StatementTransferContext {
         household_id,
@@ -520,6 +561,7 @@ async fn prepare_statement_transfer(
         amount,
         decision,
         input,
+        evidence,
     } = context;
     let (Some(document_id), Some(reference), Some(source_account_id)) = (
         input.source_document_id.as_deref(),
@@ -530,40 +572,22 @@ async fn prepare_statement_transfer(
     };
     let document_id = parse_uuid(document_id, "source_document_id")?;
     let source_account_id = parse_uuid(source_account_id, "source_account_id")?;
-    let source_kind = public::source_documents::table
-        .filter(public::source_documents::household_id.eq(household_id))
-        .filter(public::source_documents::id.eq(document_id))
-        .for_update()
-        .select(public::source_documents::source_kind)
-        .first::<String>(conn)
-        .await
-        .optional()?
+    let source_kind = evidence
+        .source_kind(conn, household_id, document_id, true)
+        .await?
         .ok_or(RecordRepaymentPersistenceError::SourceDocumentNotFound)?;
     if source_kind != "bank" {
         return Err(RecordRepaymentPersistenceError::SourceIsNotBankStatement);
     }
-    let latest_status = public::source_confirmations::table
-        .filter(public::source_confirmations::household_id.eq(household_id))
-        .filter(public::source_confirmations::source_document_id.eq(document_id))
-        .filter(public::source_confirmations::source_reference.eq(reference))
-        .order_by(public::source_confirmations::changed_at.desc())
-        .select(public::source_confirmations::status)
-        .first::<String>(conn)
-        .await
-        .optional()?;
+    let latest_status = evidence
+        .latest_confirmation_status(conn, household_id, document_id, reference)
+        .await?;
     if latest_status.as_deref() == Some("confirmed") {
         return Err(RecordRepaymentPersistenceError::StatementAlreadyConfirmed);
     }
-    let result = public::extraction_jobs::table
-        .filter(public::extraction_jobs::household_id.eq(household_id))
-        .filter(public::extraction_jobs::source_document_id.eq(document_id))
-        .filter(public::extraction_jobs::status.eq("succeeded"))
-        .order_by(public::extraction_jobs::version.desc())
-        .select(public::extraction_jobs::result)
-        .first::<Option<serde_json::Value>>(conn)
-        .await
-        .optional()?
-        .flatten()
+    let result = evidence
+        .latest_extraction(conn, household_id, document_id)
+        .await?
         .ok_or(RecordRepaymentPersistenceError::StatementExtractionUnavailable)?;
     let rows = result
         .get("statements")
@@ -646,7 +670,8 @@ async fn prepare_statement_transfer(
     }))
 }
 
-async fn validate_statement_replay(
+async fn validate_statement_replay<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     transfer_id: Uuid,
@@ -660,50 +685,41 @@ async fn validate_statement_replay(
         return Ok(());
     };
     let document_id = parse_uuid(document_id, "source_document_id")?;
-    let confirmation = public::source_confirmations::table
-        .filter(public::source_confirmations::household_id.eq(household_id))
-        .filter(public::source_confirmations::source_document_id.eq(document_id))
-        .filter(public::source_confirmations::source_reference.eq(reference))
-        .order_by(public::source_confirmations::changed_at.desc())
-        .select((
-            public::source_confirmations::status,
-            public::source_confirmations::entity_kind,
-            public::source_confirmations::entity_id,
-        ))
-        .first::<(String, String, Uuid)>(conn)
-        .await
-        .optional()?;
-    if confirmation != Some(("confirmed".to_owned(), "transfer".to_owned(), transfer_id)) {
+    let confirmation = evidence
+        .latest_confirmation(conn, household_id, document_id, reference)
+        .await?;
+    if !confirmation.is_some_and(|confirmation| {
+        confirmation.status == "confirmed"
+            && confirmation.entity_kind == "transfer"
+            && confirmation.entity_id == transfer_id
+    }) {
         return Err(RecordRepaymentPersistenceError::IdempotencyConflict);
     }
     Ok(())
 }
 
-async fn insert_statement_confirmation(
+async fn insert_statement_confirmation<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     actor_id: Uuid,
     transfer_id: Uuid,
     confirmation: StatementConfirmation,
 ) -> Result<(), RecordRepaymentPersistenceError> {
-    diesel::insert_into(public::source_confirmations::table)
-        .values((
-            public::source_confirmations::id.eq(Uuid::now_v7()),
-            public::source_confirmations::household_id.eq(household_id),
-            public::source_confirmations::source_document_id.eq(confirmation.source_document_id),
-            public::source_confirmations::observation_id.eq(None::<Uuid>),
-            public::source_confirmations::source_reference.eq(confirmation.source_reference),
-            public::source_confirmations::entity_kind.eq("transfer"),
-            public::source_confirmations::entity_id.eq(transfer_id),
-            public::source_confirmations::status.eq("confirmed"),
-            public::source_confirmations::idempotency_key
-                .eq(format!("transfer-confirmation:{}", Uuid::now_v7())),
-            public::source_confirmations::changed_by.eq(actor_id),
-            public::source_confirmations::changed_at.eq(now),
-        ))
-        .execute(conn)
-        .await?;
-    Ok(())
+    evidence
+        .insert_confirmation(
+            conn,
+            household_id,
+            confirmation.source_document_id,
+            &confirmation.source_reference,
+            "transfer",
+            transfer_id,
+            actor_id,
+            format!("transfer-confirmation:{}", Uuid::now_v7()),
+            None,
+        )
+        .await
+        .map_err(RecordRepaymentPersistenceError::from)
 }
 
 async fn ensure_open_period(

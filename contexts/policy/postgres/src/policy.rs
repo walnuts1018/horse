@@ -1,8 +1,11 @@
-use chrono::{NaiveDate, Utc};
+use chrono::NaiveDate;
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
+use horse_household_change::UiChangeDescriptor;
+use horse_postgres_common::insert_ui_change;
 use policy_application::{budget, recurring_expense};
 use uuid::Uuid;
 
@@ -58,6 +61,7 @@ pub async fn persist_create_budget(
     pool: &PgPool,
     decision: budget::CreateBudgetDecision,
 ) -> Result<budget::Budget, PolicyPersistenceError> {
+    let change = decision.ui_change();
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(&decision.household_id, "household_id")?;
     let id = parse_uuid(&decision.id, "budget_id")?;
@@ -117,16 +121,7 @@ pub async fn persist_create_budget(
                 ))
                 .execute(conn)
                 .await?;
-            record_event(
-                conn,
-                household,
-                id,
-                "budget.updated",
-                1,
-                vec!["name", "amountYen", "categoryId", "startsOn", "endsOn"],
-                actor,
-            )
-            .await?;
+            record_event(conn, household, id, change, 1, actor).await?;
             Ok(budget::Budget {
                 id: id.to_string(),
                 household_id: household.to_string(),
@@ -146,6 +141,7 @@ pub async fn persist_update_budget(
     pool: &PgPool,
     decision: budget::UpdateBudgetDecision,
 ) -> Result<budget::Budget, PolicyPersistenceError> {
+    let change = decision.ui_change();
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(&decision.household_id, "household_id")?;
     let id = parse_uuid(&decision.id, "budget_id")?;
@@ -230,16 +226,7 @@ pub async fn persist_update_budget(
             ))
             .execute(conn)
             .await?;
-            record_event(
-                conn,
-                row.0,
-                id,
-                "budget.updated",
-                revision,
-                vec!["name", "amountYen", "categoryId", "startsOn", "endsOn"],
-                actor,
-            )
-            .await?;
+            record_event(conn, row.0, id, change, revision, actor).await?;
             Ok(budget::Budget {
                 id: id.to_string(),
                 household_id: row.0.to_string(),
@@ -259,6 +246,7 @@ pub async fn persist_archive_budget(
     pool: &PgPool,
     decision: budget::ArchiveBudgetDecision,
 ) -> Result<budget::Budget, PolicyPersistenceError> {
+    let change = decision.ui_change();
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(&decision.household_id, "household_id")?;
     let id = parse_uuid(&decision.id, "budget_id")?;
@@ -315,16 +303,7 @@ pub async fn persist_archive_budget(
             ))
             .execute(conn)
             .await?;
-            record_event(
-                conn,
-                row.0,
-                id,
-                "budget.archived",
-                revision,
-                vec!["archived"],
-                actor,
-            )
-            .await?;
+            record_event(conn, row.0, id, change, revision, actor).await?;
             Ok(budget::Budget {
                 id: id.to_string(),
                 household_id: row.0.to_string(),
@@ -344,6 +323,7 @@ pub async fn persist_create_recurring_expense(
     pool: &PgPool,
     decision: recurring_expense::RecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
+    let change = decision.ui_change();
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(
         decision
@@ -450,26 +430,7 @@ pub async fn persist_create_recurring_expense(
                     ))
                     .execute(conn)
                     .await?;
-                record_event(
-                    conn,
-                    household,
-                    id,
-                    "recurring_expense.updated",
-                    1,
-                    vec![
-                        "name",
-                        "merchant",
-                        "amountYen",
-                        "categoryId",
-                        "paymentAccountId",
-                        "cadence",
-                        "startsOn",
-                        "nextDueOn",
-                        "endsOn",
-                    ],
-                    actor,
-                )
-                .await?;
+                record_event(conn, household, id, change, 1, actor).await?;
                 Ok(recurring_expense::RecurringExpense {
                     id: id.to_string(),
                     household_id: household.to_string(),
@@ -495,6 +456,7 @@ pub async fn persist_update_recurring_expense(
     pool: &PgPool,
     decision: recurring_expense::RecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
+    let change = decision.ui_change();
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(
         decision
@@ -635,26 +597,7 @@ pub async fn persist_update_recurring_expense(
                 ))
                 .execute(conn)
                 .await?;
-                record_event(
-                    conn,
-                    row.0,
-                    id,
-                    "recurring_expense.updated",
-                    revision,
-                    vec![
-                        "name",
-                        "merchant",
-                        "amountYen",
-                        "categoryId",
-                        "paymentAccountId",
-                        "cadence",
-                        "startsOn",
-                        "nextDueOn",
-                        "endsOn",
-                    ],
-                    actor,
-                )
-                .await?;
+                record_event(conn, row.0, id, change, revision, actor).await?;
                 Ok(recurring_expense::RecurringExpense {
                     id: id.to_string(),
                     household_id: row.0.to_string(),
@@ -680,6 +623,7 @@ pub async fn persist_archive_recurring_expense(
     pool: &PgPool,
     decision: recurring_expense::RecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
+    let change = decision.ui_change();
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(
         decision
@@ -755,16 +699,7 @@ pub async fn persist_archive_recurring_expense(
                 ))
                 .execute(conn)
                 .await?;
-                record_event(
-                    conn,
-                    row.0,
-                    id,
-                    "recurring_expense.archived",
-                    revision,
-                    vec!["archived"],
-                    actor,
-                )
-                .await?;
+                record_event(conn, row.0, id, change, revision, actor).await?;
                 let cadence = recurring_expense::Cadence::parse(&row.6)
                     .map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
                 Ok(recurring_expense::RecurringExpense {
@@ -792,6 +727,7 @@ pub async fn persist_match_recurring_expense(
     pool: &PgPool,
     decision: recurring_expense::MatchRecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
+    let change = decision.ui_change();
     let actor = parse_uuid(&decision.actor_id, "actor_id")?;
     let household = parse_uuid(&decision.household_id, "household_id")?;
     let id = parse_uuid(&decision.id, "expense_id")?;
@@ -908,16 +844,7 @@ pub async fn persist_match_recurring_expense(
                 ))
                 .execute(conn)
                 .await?;
-                record_event(
-                    conn,
-                    household,
-                    id,
-                    "recurring_expense.matched",
-                    revision,
-                    vec!["nextDueOn"],
-                    actor,
-                )
-                .await?;
+                record_event(conn, household, id, change, revision, actor).await?;
                 Ok(recurring_expense::RecurringExpense {
                     id: id.to_string(),
                     household_id: household.to_string(),
@@ -945,52 +872,38 @@ async fn require_member(
     actor: Uuid,
 ) -> Result<(), PolicyPersistenceError> {
     use public::household_members::dsl as members;
-    let found = diesel::select(diesel::dsl::exists(
-        members::household_members
-            .filter(members::household_id.eq(household))
-            .filter(members::member_id.eq(actor))
-            .filter(members::left_at.is_null()),
-    ))
-    .first::<bool>(conn)
-    .await?;
-    if found {
-        Ok(())
-    } else {
-        Err(PolicyPersistenceError::MemberNotFound)
+    let role = members::household_members
+        .filter(members::household_id.eq(household))
+        .filter(members::member_id.eq(actor))
+        .filter(members::left_at.is_null())
+        .select(members::role)
+        .first::<String>(conn)
+        .await
+        .optional()?;
+    if authorize(role.as_deref(), Operation::FinancialData).is_err() {
+        return Err(PolicyPersistenceError::MemberNotFound);
     }
+    Ok(())
 }
 
 async fn record_event(
     conn: &mut diesel_async::AsyncPgConnection,
     household: Uuid,
     entity: Uuid,
-    event_type: &'static str,
+    change: UiChangeDescriptor,
     revision: i64,
-    fields: Vec<&str>,
     actor: Uuid,
 ) -> Result<(), PolicyPersistenceError> {
-    use public::household_events::dsl as events;
-    let fields = fields
-        .into_iter()
-        .map(|field| Some(field.to_owned()))
-        .collect::<Vec<_>>();
-    diesel::insert_into(events::household_events)
-        .values((
-            events::household_id.eq(household),
-            events::event_type.eq(event_type),
-            events::entity_kind.eq(if event_type.starts_with("budget") {
-                "budget"
-            } else {
-                "recurring_expense"
-            }),
-            events::entity_id.eq(entity),
-            events::revision.eq(revision),
-            events::changed_fields.eq(fields),
-            events::actor_id.eq(actor),
-            events::created_at.eq(Utc::now()),
-        ))
-        .execute(conn)
-        .await?;
+    insert_ui_change(
+        conn,
+        household,
+        entity,
+        revision,
+        actor,
+        chrono::Utc::now(),
+        change,
+    )
+    .await?;
     Ok(())
 }
 

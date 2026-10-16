@@ -1801,7 +1801,7 @@ async fn retry_document(
         return (StatusCode::BAD_REQUEST, "invalid extraction retry input").into_response();
     }
     use horse_postgres_common::schema::public::{
-        evidence_links, extraction_jobs, household_events, household_members, source_confirmations,
+        evidence_links, extraction_jobs, household_members, source_confirmations,
         source_document_attachments, source_documents,
     };
     let mut pooled = match state.pool.get().await {
@@ -2012,20 +2012,16 @@ async fn retry_document(
                     ))
                     .execute(conn)
                     .await?;
-                diesel::insert_into(household_events::table)
-                    .values((
-                        household_events::household_id.eq(household_id),
-                        household_events::event_type.eq("receipt.extraction.started"),
-                        household_events::entity_kind.eq("source_document"),
-                        household_events::entity_id.eq(document_id),
-                        household_events::revision.eq(i64::from(next_version)),
-                        household_events::changed_fields.eq(vec![Some("status".to_owned())]),
-                        household_events::payload.eq(json!({"jobId": job_id})),
-                        household_events::actor_id.eq(principal.member_id),
-                        household_events::created_at.eq(now),
-                    ))
-                    .execute(conn)
-                    .await?;
+                horse_postgres_common::insert_ui_change(
+                    conn,
+                    household_id,
+                    document_id,
+                    i64::from(next_version),
+                    principal.member_id,
+                    now,
+                    evidence_application::extraction_started(job_id),
+                )
+                .await?;
                 if reclassify {
                     diesel::update(
                         source_documents::table.filter(source_documents::id.eq(document_id)),
@@ -2068,20 +2064,16 @@ async fn retry_document(
                 ))
                 .execute(conn)
                 .await?;
-            diesel::insert_into(household_events::table)
-                .values((
-                    household_events::household_id.eq(household_id),
-                    household_events::event_type.eq("receipt.extraction.started"),
-                    household_events::entity_kind.eq("source_document"),
-                    household_events::entity_id.eq(document_id),
-                    household_events::revision.eq(1_i64),
-                    household_events::changed_fields.eq(vec![Some("status".to_owned())]),
-                    household_events::payload.eq(json!({"jobId": job_id})),
-                    household_events::actor_id.eq(principal.member_id),
-                    household_events::created_at.eq(now),
-                ))
-                .execute(conn)
-                .await?;
+            horse_postgres_common::insert_ui_change(
+                conn,
+                household_id,
+                document_id,
+                1_i64,
+                principal.member_id,
+                now,
+                evidence_application::extraction_started(job_id),
+            )
+            .await?;
             if reclassify {
                 diesel::update(
                     source_documents::table.filter(source_documents::id.eq(document_id)),
@@ -3571,8 +3563,8 @@ async fn confirm_purchase_sources(
     sources: Vec<Value>,
 ) -> Response {
     use horse_postgres_common::schema::public::{
-        evidence_links, extraction_jobs, household_events, household_members, purchase_items,
-        purchases, source_confirmations, source_documents, source_observations,
+        evidence_links, extraction_jobs, household_members, purchase_items, purchases,
+        source_confirmations, source_documents, source_observations,
     };
     let mut pooled = match state.pool.get().await {
         Ok(pooled) => pooled,
@@ -3734,20 +3726,16 @@ async fn confirm_purchase_sources(
                     .execute(conn)
                     .await?;
             }
-            diesel::insert_into(household_events::table)
-                .values((
-                    household_events::household_id.eq(household_id),
-                    household_events::event_type.eq("evidence.group_linked"),
-                    household_events::entity_kind.eq("purchase"),
-                    household_events::entity_id.eq(purchase_id),
-                    household_events::revision.eq(revision),
-                    household_events::changed_fields.eq(vec![Some("evidence".to_owned())]),
-                    household_events::payload.eq(json!({"sourceCount": sources.len()})),
-                    household_events::actor_id.eq(member_id),
-                    household_events::created_at.eq(chrono::Utc::now()),
-                ))
-                .execute(conn)
-                .await?;
+            horse_postgres_common::insert_ui_change(
+                conn,
+                household_id,
+                purchase_id,
+                revision,
+                member_id,
+                chrono::Utc::now(),
+                evidence_application::evidence_group_linked(sources.len()),
+            )
+            .await?;
             Ok(revision)
         })
         .await;

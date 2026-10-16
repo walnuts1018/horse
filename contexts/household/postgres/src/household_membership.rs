@@ -4,6 +4,7 @@ use diesel::{
     result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_household_change::UiChangeDescriptor;
 use household_application::membership::{
     LeaveHouseholdCommand, LeaveHouseholdOperations, MembershipChange, MembershipChangeDecision,
     MembershipError, MembershipFacts, RemoveHouseholdMemberCommand,
@@ -117,7 +118,8 @@ impl<'a> PostgresMembershipOperations<'a> {
             .await
             .optional()?
             .ok_or(HouseholdMembershipError::HouseholdNotFound)?;
-        let (event_type, changed_fields) = match decision.change {
+        let change_descriptor = decision.change.ui_change();
+        match decision.change {
             MembershipChange::Leave => {
                 let affected = diesel::update(
                     members::table
@@ -131,7 +133,6 @@ impl<'a> PostgresMembershipOperations<'a> {
                 if affected != 1 {
                     return Err(HouseholdMembershipError::MemberNotFound);
                 }
-                ("household.member.left", vec![Some("members".to_owned())])
             }
             MembershipChange::Remove => {
                 let affected = diesel::update(
@@ -146,7 +147,6 @@ impl<'a> PostgresMembershipOperations<'a> {
                 if affected != 1 {
                     return Err(HouseholdMembershipError::MemberNotFound);
                 }
-                ("household.member.removed", vec![Some("members".to_owned())])
             }
             MembershipChange::TransferOwner {
                 new_owner_was_owner,
@@ -171,10 +171,6 @@ impl<'a> PostgresMembershipOperations<'a> {
                     .execute(&mut *self.conn)
                     .await?;
                 }
-                (
-                    "household.owner.transferred",
-                    vec![Some("members".to_owned()), Some("owner".to_owned())],
-                )
             }
         };
         record_change(
@@ -182,8 +178,7 @@ impl<'a> PostgresMembershipOperations<'a> {
             household_id,
             member_id,
             actor_id,
-            event_type,
-            changed_fields,
+            change_descriptor,
         )
         .await?;
         Ok(household_id.to_string())
@@ -364,10 +359,9 @@ async fn record_change(
     household_id: Uuid,
     entity_id: Uuid,
     actor_id: Uuid,
-    event_type: &str,
-    changed_fields: Vec<Option<String>>,
+    change: UiChangeDescriptor,
 ) -> Result<(), HouseholdMembershipError> {
-    use public::{household_events as events, households};
+    use public::households;
     let revision = diesel::update(households::table.filter(households::id.eq(household_id)))
         .set((
             households::revision.eq(households::revision + 1),
@@ -376,19 +370,16 @@ async fn record_change(
         .returning(households::revision)
         .get_result::<i64>(&mut *conn)
         .await?;
-    diesel::insert_into(events::table)
-        .values((
-            events::household_id.eq(household_id),
-            events::event_type.eq(event_type),
-            events::entity_kind.eq("member"),
-            events::entity_id.eq(entity_id),
-            events::revision.eq(revision),
-            events::changed_fields.eq(changed_fields),
-            events::actor_id.eq(actor_id),
-            events::created_at.eq(now),
-        ))
-        .execute(&mut *conn)
-        .await?;
+    horse_postgres_common::insert_ui_change(
+        conn,
+        household_id,
+        entity_id,
+        revision,
+        actor_id,
+        Utc::now(),
+        change,
+    )
+    .await?;
     Ok(())
 }
 

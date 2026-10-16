@@ -1,5 +1,6 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use bookkeeping_postgres::shared_draft as postgres_shared_draft;
+use cross_context_postgres::reference_data as shared_draft_workflow;
 use horse_postgres_common::PgPool;
 
 use crate::{DateTime, MutationErrorCode, internal_error};
@@ -71,7 +72,7 @@ pub async fn shared_purchase_draft(
     id: ID,
 ) -> Result<Option<SharedPurchaseDraft>> {
     let actor = crate::actor(ctx)?;
-    match postgres_shared_draft::get_shared_purchase_draft(
+    match shared_draft_workflow::get_shared_purchase_draft(
         ctx.data::<PgPool>()?,
         &actor.0.to_string(),
         id.as_str(),
@@ -88,7 +89,7 @@ pub async fn create_shared_purchase_draft(
     input: CreateSharedPurchaseDraftInput,
 ) -> Result<CreateSharedPurchaseDraftResult> {
     let actor = crate::actor(ctx)?;
-    match postgres_shared_draft::create_shared_purchase_draft(
+    match shared_draft_workflow::create_shared_purchase_draft(
         ctx.data::<PgPool>()?,
         &actor.0.to_string(),
         input.household_id.as_str(),
@@ -112,7 +113,7 @@ pub async fn update_shared_purchase_draft(
     input: UpdateSharedPurchaseDraftInput,
 ) -> Result<UpdateSharedPurchaseDraftResult> {
     let actor = crate::actor(ctx)?;
-    match postgres_shared_draft::update_shared_purchase_draft(
+    match shared_draft_workflow::update_shared_purchase_draft(
         ctx.data::<PgPool>()?,
         &actor.0.to_string(),
         input.id.as_str(),

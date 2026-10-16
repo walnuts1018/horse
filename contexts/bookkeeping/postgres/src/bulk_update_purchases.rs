@@ -7,6 +7,7 @@ use bookkeeping_application::update_purchase::{UpdatePurchaseCommand, UpdatePurc
 use chrono::{DateTime, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public, update_purchase};
@@ -90,16 +91,15 @@ pub async fn persist_bulk_update_purchases(
             if observed.iter().any(|(_, owner, _)| *owner != household_id) {
                 return Err(BulkUpdatePurchasesPersistenceError::HouseholdMismatch);
             }
-            let active_member = members::household_members
+            let actor_role = members::household_members
                 .filter(members::household_id.eq(household_id))
                 .filter(members::member_id.eq(actor_id))
                 .filter(members::left_at.is_null())
-                .select(members::member_id)
-                .first::<Uuid>(conn)
+                .select(members::role)
+                .first::<String>(conn)
                 .await
-                .optional()?
-                .is_some();
-            if !active_member {
+                .optional()?;
+            if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                 return Err(BulkUpdatePurchasesPersistenceError::MemberNotFound);
             }
 

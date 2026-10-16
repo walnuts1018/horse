@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, future::Future};
 
 use bookkeeping_application::update_purchase_item::{
     AllocationBasis, ItemAllocationWeight, OptionalValueChange, ProductLearning, PurchaseItemState,
@@ -17,6 +17,38 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
 use crate::{PgPool, persistence_values, schema::public};
+
+pub trait UpdatePurchaseItemReferenceData: Send + crate::post_purchase_loader::PostPurchaseReferenceData {
+    fn load_default_allocation(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+        version: i64,
+    ) -> impl Future<Output = Result<Vec<(Uuid, i64)>, DieselError>> + Send;
+
+    fn load_automatic_allocation(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+        category_id: Option<Uuid>,
+        variant_id: Option<Uuid>,
+        merchant: &str,
+    ) -> impl Future<Output = Result<Option<(Uuid, i64, Vec<(Uuid, i64)>)>, DieselError>> + Send;
+
+    fn active_category(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+        category_id: Uuid,
+    ) -> impl Future<Output = Result<bool, DieselError>> + Send;
+
+    fn active_variant(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+        variant_id: Uuid,
+    ) -> impl Future<Output = Result<bool, DieselError>> + Send;
+}
 
 pub(crate) type BurdenSnapshot = (Uuid, Uuid, Uuid, i32, i64, Option<String>, String);
 pub(crate) type PaymentSnapshot = (Uuid, Uuid, Uuid, i32, i64, Option<String>, String);
@@ -85,10 +117,11 @@ impl From<DieselError> for UpdatePurchaseItemPersistenceError {
     }
 }
 
-pub async fn persist_update_purchase_item(
+pub async fn persist_update_purchase_item<C: UpdatePurchaseItemReferenceData>(
     pool: &PgPool,
     input: PersistUpdatePurchaseItem,
     command: UpdatePurchaseItemCommand,
+    reference_data: &mut C,
 ) -> Result<PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError> {
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
@@ -105,6 +138,7 @@ pub async fn persist_update_purchase_item(
                     actor_id,
                     command,
                     false,
+                    reference_data,
                 )
                 .await
             },
@@ -112,16 +146,16 @@ pub async fn persist_update_purchase_item(
         .await
 }
 
-pub async fn persist_update_purchase_item_in_transaction(
+pub async fn persist_update_purchase_item_in_transaction<C: UpdatePurchaseItemReferenceData>(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     actor_id: Uuid,
     command: UpdatePurchaseItemCommand,
     defer_accounting_sync: bool,
+    reference_data: &mut C,
 ) -> Result<PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError> {
     let item_id = parse_uuid(&command.item_id, "item_id")?;
     use public::accounting_periods::dsl as periods;
-    use public::household_events::dsl as events;
     use public::household_members::dsl as members;
     use public::households::dsl as households;
     use public::purchase_items::dsl as items;
@@ -348,6 +382,7 @@ pub async fn persist_update_purchase_item_in_transaction(
             target_category_id,
             target_variant_id,
             &purchase.3,
+            reference_data,
         )
         .await?
     } else {
@@ -364,6 +399,7 @@ pub async fn persist_update_purchase_item_in_transaction(
             OptionalValueChange::Set(id) => Some(parse_uuid(id, "product_variant_id")?),
             OptionalValueChange::Unchanged | OptionalValueChange::Clear => None,
         },
+        reference_data,
     )
     .await?;
     let decision =
@@ -567,23 +603,18 @@ pub async fn persist_update_purchase_item_in_transaction(
         ))
         .execute(&mut *conn)
         .await?;
-    diesel::insert_into(events::household_events)
-        .values((
-            events::household_id.eq(household_id),
-            events::event_type.eq("purchase.item.updated"),
-            events::entity_kind.eq("purchase_item"),
-            events::entity_id.eq(item_id),
-            events::revision.eq(next_revision),
-            events::changed_fields.eq(decision
-                .changed_fields
-                .iter()
-                .cloned()
-                .map(Some)
-                .collect::<Vec<_>>()),
-            events::actor_id.eq(actor_id),
-        ))
-        .execute(&mut *conn)
-        .await?;
+    horse_postgres_common::insert_ui_change(
+        &mut *conn,
+        household_id,
+        item_id,
+        next_revision,
+        actor_id,
+        Utc::now(),
+        bookkeeping_application::ui_changes::purchase_item_updated(
+            decision.changed_fields.iter().cloned(),
+        ),
+    )
+    .await?;
     Ok(PersistedUpdatePurchaseItem {
         purchase_id: observed.1.to_string(),
         revision: decision.revision,
@@ -641,66 +672,27 @@ async fn load_default_basis(
     })
 }
 
-async fn load_automatic_basis(
+async fn load_automatic_basis<C: UpdatePurchaseItemReferenceData>(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
     category_id: Option<Uuid>,
     variant_id: Option<Uuid>,
     merchant: &str,
+    reference_data: &mut C,
 ) -> Result<Option<AllocationBasis>, UpdatePurchaseItemPersistenceError> {
-    use public::allocation_rules::dsl as rules;
-    let concept_id = if let Some(variant_id) = variant_id {
-        public::product_variants::dsl::product_variants
-            .filter(public::product_variants::dsl::household_id.eq(household_id))
-            .filter(public::product_variants::dsl::id.eq(variant_id))
-            .select(public::product_variants::dsl::concept_id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
-    } else {
-        None
-    };
-    macro_rules! find_rule {
-        ($condition:expr) => {
-            rules::allocation_rules
-                .filter(rules::household_id.eq(household_id))
-                .filter($condition)
-                .select((rules::id, rules::revision))
-                .first::<(Uuid, i64)>(conn)
-                .await
-                .optional()?
-        };
-    }
-    let mut rule = None;
-    if let Some(id) = variant_id {
-        rule = find_rule!(rules::product_variant_id.eq(Some(id)));
-    }
-    if rule.is_none()
-        && let Some(id) = concept_id
-    {
-        rule = find_rule!(rules::product_concept_id.eq(Some(id)));
-    }
-    if rule.is_none()
-        && let Some(id) = category_id
-    {
-        rule = find_rule!(rules::category_id.eq(Some(id)));
-    }
-    if rule.is_none() && !merchant.trim().is_empty() {
-        rule = find_rule!(rules::merchant_key.eq(Some(normalize_merchant(merchant))));
-    }
-    let Some((rule_id, revision)) = rule else {
+    let Some((rule_id, revision, rows)) = reference_data
+        .load_automatic_allocation(
+            conn,
+            household_id,
+            category_id,
+            variant_id,
+            &normalize_merchant(merchant),
+        )
+        .await?
+    else {
         return Ok(None);
     };
-    let weights = public::allocation_rule_weights::dsl::allocation_rule_weights
-        .filter(public::allocation_rule_weights::dsl::household_id.eq(household_id))
-        .filter(public::allocation_rule_weights::dsl::rule_id.eq(rule_id))
-        .order(public::allocation_rule_weights::dsl::pool_id)
-        .select((
-            public::allocation_rule_weights::dsl::pool_id,
-            public::allocation_rule_weights::dsl::weight,
-        ))
-        .load::<(Uuid, i64)>(conn)
-        .await?
+    let weights = rows
         .into_iter()
         .map(|(pool_id, weight)| ItemAllocationWeight {
             pool_id: pool_id.to_string(),
@@ -714,22 +706,17 @@ async fn load_automatic_basis(
     }))
 }
 
-async fn validate_references(
+async fn validate_references<C: UpdatePurchaseItemReferenceData>(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
     category_id: Option<Uuid>,
     variant_id: Option<Uuid>,
+    reference_data: &mut C,
 ) -> Result<(), UpdatePurchaseItemPersistenceError> {
     if let Some(category_id) = category_id {
-        let exists = public::categories::dsl::categories
-            .filter(public::categories::dsl::household_id.eq(household_id))
-            .filter(public::categories::dsl::id.eq(category_id))
-            .filter(public::categories::dsl::archived.eq(false))
-            .select(public::categories::dsl::id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
-            .is_some();
+        let exists = reference_data
+            .active_category(conn, household_id, category_id)
+            .await?;
         if !exists {
             return Err(UpdatePurchaseItemPersistenceError::ReferenceNotFound(
                 "category_id",
@@ -737,15 +724,9 @@ async fn validate_references(
         }
     }
     if let Some(variant_id) = variant_id {
-        let exists = public::product_variants::dsl::product_variants
-            .filter(public::product_variants::dsl::household_id.eq(household_id))
-            .filter(public::product_variants::dsl::id.eq(variant_id))
-            .filter(public::product_variants::dsl::archived.eq(false))
-            .select(public::product_variants::dsl::id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
-            .is_some();
+        let exists = reference_data
+            .active_variant(conn, household_id, variant_id)
+            .await?;
         if !exists {
             return Err(UpdatePurchaseItemPersistenceError::ReferenceNotFound(
                 "product_variant_id",
@@ -930,6 +911,7 @@ pub(crate) async fn sync_posted_accounting(
         &household_id.to_string(),
         &purchase_id.to_string(),
         to_u64(revision, "purchase_revision")?,
+        reference_data,
     )
     .await
     .map_err(|error| match error {
@@ -1344,7 +1326,6 @@ async fn persist_product_learning(
         merchant,
         learning,
     } = context;
-    use public::household_events::dsl as events;
     use public::product_aliases::dsl as aliases;
     use public::product_corrections::dsl as corrections;
     use public::product_variants::dsl as variants;
@@ -1369,18 +1350,16 @@ async fn persist_product_learning(
         .returning(variants::revision)
         .get_result::<i64>(conn)
         .await?;
-        diesel::insert_into(events::household_events)
-            .values((
-                events::household_id.eq(household_id),
-                events::event_type.eq("product.variant.renamed"),
-                events::entity_kind.eq("product_variant"),
-                events::entity_id.eq(variant_id),
-                events::revision.eq(revision),
-                events::changed_fields.eq(vec![Some("name".to_owned())]),
-                events::actor_id.eq(actor_id),
-            ))
-            .execute(conn)
-            .await?;
+        horse_postgres_common::insert_ui_change(
+            conn,
+            household_id,
+            variant_id,
+            revision,
+            actor_id,
+            Utc::now(),
+            bookkeeping_application::ui_changes::product_variant_renamed(),
+        )
+        .await?;
     }
 
     if !variant_changed {
@@ -1424,22 +1403,16 @@ async fn persist_product_learning(
             .returning((aliases::id, aliases::revision))
             .get_result::<(Uuid, i64)>(conn)
             .await?;
-        diesel::insert_into(events::household_events)
-            .values((
-                events::household_id.eq(household_id),
-                events::event_type.eq("product.alias.learned"),
-                events::entity_kind.eq("product_alias"),
-                events::entity_id.eq(alias.0),
-                events::revision.eq(alias.1),
-                events::changed_fields.eq(vec![
-                    Some("alias".to_owned()),
-                    Some("variantId".to_owned()),
-                    Some("merchant".to_owned()),
-                ]),
-                events::actor_id.eq(actor_id),
-            ))
-            .execute(conn)
-            .await?;
+        horse_postgres_common::insert_ui_change(
+            conn,
+            household_id,
+            alias.0,
+            alias.1,
+            actor_id,
+            Utc::now(),
+            bookkeeping_application::ui_changes::product_alias_learned(),
+        )
+        .await?;
     }
 
     diesel::insert_into(corrections::product_corrections)

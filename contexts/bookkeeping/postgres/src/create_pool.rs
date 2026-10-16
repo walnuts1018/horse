@@ -126,20 +126,16 @@ pub async fn persist_create_pool(
                 .execute(&mut *conn)
                 .await?;
 
-            diesel::insert_into(public::household_events::table)
-                .values((
-                    public::household_events::household_id.eq(household_id),
-                    public::household_events::event_type.eq("pool.created"),
-                    public::household_events::entity_kind.eq("pool"),
-                    public::household_events::entity_id.eq(pool_id),
-                    public::household_events::revision.eq(version),
-                    public::household_events::changed_fields
-                        .eq(vec![Some("name".to_owned()), Some("kind".to_owned())]),
-                    public::household_events::actor_id.eq(actor_id),
-                    public::household_events::created_at.eq(Utc::now()),
-                ))
-                .execute(&mut *conn)
-                .await?;
+            horse_postgres_common::insert_ui_change(
+                &mut *conn,
+                household_id,
+                pool_id,
+                version,
+                actor_id,
+                Utc::now(),
+                bookkeeping_application::ui_changes::pool_created(),
+            )
+            .await?;
 
             Ok(PersistedCreatePool {
                 pool_id: pool_id.to_string(),

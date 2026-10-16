@@ -11,6 +11,7 @@ use diesel::{
     result::Error as DieselError,
 };
 use diesel_async::RunQueryDsl;
+use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -30,6 +31,8 @@ pub enum ClosePeriodPersistenceError {
     InvalidPeriod,
     NumericOutOfRange(&'static str),
     InvalidDecision,
+    CorruptPersistedData(&'static str),
+    SettlementPreview,
     HouseholdNotFound,
     PeriodNotFound,
     PeriodAlreadyClosed,
@@ -111,16 +114,15 @@ impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePer
         if !household_exists {
             return Err(ClosePeriodPersistenceError::HouseholdNotFound);
         }
-        let actor_is_member = household_members::table
+        let actor_role = household_members::table
             .filter(household_members::household_id.eq(self.household_id))
             .filter(household_members::member_id.eq(self.actor_id))
             .filter(household_members::left_at.is_null())
-            .select(household_members::member_id)
-            .first::<Uuid>(&mut *self.conn)
+            .select(household_members::role)
+            .first::<String>(&mut *self.conn)
             .await
-            .optional()?
-            .is_some();
-        if !actor_is_member {
+            .optional()?;
+        if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
             return Err(ClosePeriodPersistenceError::HouseholdNotFound);
         }
         diesel::insert_into(accounting_periods::table)
@@ -149,7 +151,11 @@ impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePer
             Some((status, revision)) if status == "CLOSED" || status == "OPEN" => {
                 (status, revision)
             }
-            Some(_) => return Err(ClosePeriodPersistenceError::PeriodNotFound),
+            Some(_) => {
+                return Err(ClosePeriodPersistenceError::CorruptPersistedData(
+                    "accounting period status",
+                ));
+            }
             None => ("OPEN".to_owned(), 1),
         };
         let draft_purchases = purchases::table
@@ -172,10 +178,12 @@ impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePer
             .into_iter()
             .map(|(id, revision)| {
                 Ok(PurchaseSnapshot {
-                    id: bookkeeping_application::PurchaseId::new(id.to_string())
-                        .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
-                    revision: u64::try_from(revision)
-                        .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
+                    id: bookkeeping_application::PurchaseId::new(id.to_string()).map_err(|_| {
+                        ClosePeriodPersistenceError::CorruptPersistedData("purchase id")
+                    })?,
+                    revision: u64::try_from(revision).map_err(|_| {
+                        ClosePeriodPersistenceError::CorruptPersistedData("purchase revision")
+                    })?,
                 })
             })
             .collect::<Result<Vec<_>, ClosePeriodPersistenceError>>()?;
@@ -185,13 +193,18 @@ impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePer
             &self.period,
         )
         .await
-        .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?;
+        .map_err(|_| ClosePeriodPersistenceError::SettlementPreview)?;
         let settlements = previews
             .into_iter()
             .map(|line| {
                 Ok(SettlementInput {
-                    member_id: bookkeeping_application::MemberId::new(line.member_id)
-                        .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
+                    member_id: bookkeeping_application::MemberId::new(line.member_id).map_err(
+                        |_| {
+                            ClosePeriodPersistenceError::CorruptPersistedData(
+                                "settlement member id",
+                            )
+                        },
+                    )?,
                     member_name: line.member_name,
                     scheduled_yen: line.scheduled_yen,
                     paid_yen: line.paid_yen,
@@ -255,12 +268,20 @@ impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePer
                         "MONTHLY" => FundingCadence::Monthly,
                         "WEEKLY" => FundingCadence::Weekly,
                         "CUSTOM" => FundingCadence::Custom,
-                        _ => return Err(ClosePeriodPersistenceError::InvalidDecision),
+                        _ => {
+                            return Err(ClosePeriodPersistenceError::CorruptPersistedData(
+                                "funding cadence",
+                            ));
+                        }
                     };
                     Ok(FundingScheduleInput {
                         id: id.to_string(),
                         member_id: bookkeeping_application::MemberId::new(member_id.to_string())
-                            .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
+                            .map_err(|_| {
+                                ClosePeriodPersistenceError::CorruptPersistedData(
+                                    "funding schedule member id",
+                                )
+                            })?,
                         pool_id: pool_id.to_string(),
                         amount_yen,
                         cadence,
@@ -278,12 +299,13 @@ impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePer
             draft_purchases: draft_purchases
                 .into_iter()
                 .map(|id| {
-                    bookkeeping_application::PurchaseId::new(id.to_string())
-                        .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)
+                    bookkeeping_application::PurchaseId::new(id.to_string()).map_err(|_| {
+                        ClosePeriodPersistenceError::CorruptPersistedData("purchase id")
+                    })
                 })
                 .collect::<Result<Vec<_>, _>>()?,
             actor_id: bookkeeping_application::MemberId::new(self.actor_id.to_string())
-                .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?,
+                .map_err(|_| ClosePeriodPersistenceError::CorruptPersistedData("actor id"))?,
             settlements,
             purchases: posted_purchases,
             funding_schedules,
@@ -422,9 +444,9 @@ async fn persist_close_period_in_transaction(
         .collect::<BTreeMap<_, _>>();
     for obligation in &decision.funding_obligations {
         let id = Uuid::now_v7();
-        let schedule_id = parse_uuid(&obligation.schedule_id, "schedule_id")?;
-        let member_id = parse_uuid(obligation.member_id.as_str(), "member_id")?;
-        let pool_id = parse_uuid(&obligation.pool_id, "pool_id")?;
+        let schedule_id = parse_decision_uuid(&obligation.schedule_id)?;
+        let member_id = parse_decision_uuid(obligation.member_id.as_str())?;
+        let pool_id = parse_decision_uuid(&obligation.pool_id)?;
         let amount_yen = obligation.amount_yen.max(
             existing_amount_by_member_pool
                 .get(&(member_id, pool_id))
@@ -469,17 +491,15 @@ async fn persist_close_period_in_transaction(
     let mut funding_totals = BTreeMap::<Uuid, (i64, i64)>::new();
     for (member_id, scheduled_yen, paid_yen) in obligations {
         let totals = funding_totals.entry(member_id).or_default();
-        totals.0 = totals
-            .0
-            .checked_add(scheduled_yen)
-            .ok_or(ClosePeriodPersistenceError::InvalidDecision)?;
-        totals.1 = totals
-            .1
-            .checked_add(paid_yen)
-            .ok_or(ClosePeriodPersistenceError::InvalidDecision)?;
+        totals.0 = totals.0.checked_add(scheduled_yen).ok_or(
+            ClosePeriodPersistenceError::CorruptPersistedData("funding obligation amount"),
+        )?;
+        totals.1 = totals.1.checked_add(paid_yen).ok_or(
+            ClosePeriodPersistenceError::CorruptPersistedData("funding payment amount"),
+        )?;
     }
     for line in &decision.settlements {
-        let member_id = parse_uuid(line.member_id.as_str(), "member_id")?;
+        let member_id = parse_decision_uuid(line.member_id.as_str())?;
         let totals = funding_totals.remove(&member_id).unwrap_or_default();
         if (line.scheduled_yen, line.paid_yen) != totals {
             return Err(ClosePeriodPersistenceError::InvalidDecision);
@@ -508,7 +528,7 @@ async fn persist_close_period_in_transaction(
     let active_members = active_members.into_iter().collect::<BTreeMap<_, _>>();
     if active_members.len() != decision.settlements.len()
         || decision.settlements.iter().any(|line| {
-            parse_uuid(line.member_id.as_str(), "member_id")
+            parse_decision_uuid(line.member_id.as_str())
                 .ok()
                 .and_then(|member_id| active_members.get(&member_id))
                 != Some(&line.member_name)
@@ -622,7 +642,7 @@ async fn persist_close_period_in_transaction(
         .await?;
 
     for line in &decision.settlements {
-        let member_id = parse_uuid(line.member_id.as_str(), "member_id")?;
+        let member_id = parse_decision_uuid(line.member_id.as_str())?;
         diesel::insert_into(public::settlement_run_lines::table)
             .values((
                 public::settlement_run_lines::household_id.eq(household_id),
@@ -668,7 +688,7 @@ async fn persist_close_period_in_transaction(
     }
 
     for snapshot in &decision.purchases {
-        let purchase_id = parse_uuid(snapshot.id.as_str(), "purchase_id")?;
+        let purchase_id = parse_decision_uuid(snapshot.id.as_str())?;
         let purchase_revision = i64::try_from(snapshot.revision)
             .map_err(|_| ClosePeriodPersistenceError::NumericOutOfRange("purchase revision"))?;
         diesel::insert_into(public::settlement_run_purchase_snapshots::table)
@@ -701,19 +721,18 @@ async fn persist_close_period_in_transaction(
         return Err(ClosePeriodPersistenceError::StalePeriod);
     }
 
-    diesel::insert_into(public::household_events::table)
-        .values((
-            public::household_events::household_id.eq(household_id),
-            public::household_events::event_type.eq("period.closed"),
-            public::household_events::entity_kind.eq("settlement_run"),
-            public::household_events::entity_id.eq(settlement_run_id),
-            public::household_events::revision.eq(revision),
-            public::household_events::changed_fields.eq(vec![Some("status".to_owned())]),
-            public::household_events::actor_id.eq(actor_id),
-            public::household_events::created_at.eq(now),
-        ))
-        .execute(&mut *conn)
-        .await?;
+    horse_postgres_common::insert_ui_change(
+        &mut *conn,
+        household_id,
+        settlement_run_id,
+        revision,
+        actor_id,
+        Utc::now(),
+        bookkeeping_application::ui_changes::period_closed(
+            decision.event.changed_fields.iter().copied(),
+        ),
+    )
+    .await?;
 
     Ok(PersistedClosePeriod {
         settlement_run_id: settlement_run_id.to_string(),
@@ -735,7 +754,7 @@ fn validate_decision(
         || decision.period.status() != AccountingPeriodStatus::Closed
         || decision.event.period != decision.period.year_month()
         || decision.event.revision != decision.period.revision()
-        || parse_uuid(decision.event.actor_id.as_str(), "actor_id")? != actor_id
+        || parse_decision_uuid(decision.event.actor_id.as_str())? != actor_id
         || decision.event.changed_fields != ["status"]
         || revision <= 1
         || i64::try_from(decision.period.revision()).ok() != Some(revision)
@@ -746,7 +765,7 @@ fn validate_decision(
         || decision
             .settlements
             .iter()
-            .map(|line| parse_uuid(line.member_id.as_str(), "member_id"))
+            .map(|line| parse_decision_uuid(line.member_id.as_str()))
             .collect::<Result<std::collections::BTreeSet<_>, _>>()?
             .len()
             != decision.settlements.len()
@@ -788,7 +807,7 @@ fn validate_purchase_revisions(
         .purchases
         .iter()
         .map(|snapshot| {
-            let id = parse_uuid(snapshot.id.as_str(), "purchase_id")?;
+            let id = parse_decision_uuid(snapshot.id.as_str())?;
             let revision = i64::try_from(snapshot.revision)
                 .map_err(|_| ClosePeriodPersistenceError::NumericOutOfRange("purchase revision"))?;
             Ok((id, revision))
@@ -834,14 +853,18 @@ fn period_model(
     revision: i64,
 ) -> Result<AccountingPeriod, ClosePeriodPersistenceError> {
     let year_month = year_month(period_start)?;
-    let revision =
-        u64::try_from(revision).map_err(|_| ClosePeriodPersistenceError::InvalidDecision)?;
+    let revision = u64::try_from(revision)
+        .map_err(|_| ClosePeriodPersistenceError::CorruptPersistedData("period revision"))?;
     match status {
         "OPEN" => AccountingPeriod::open(year_month, revision),
         "CLOSED" => AccountingPeriod::closed(year_month, revision),
-        _ => return Err(ClosePeriodPersistenceError::PeriodNotFound),
+        _ => {
+            return Err(ClosePeriodPersistenceError::CorruptPersistedData(
+                "accounting period status",
+            ));
+        }
     }
-    .map_err(|_| ClosePeriodPersistenceError::InvalidDecision)
+    .map_err(|_| ClosePeriodPersistenceError::CorruptPersistedData("accounting period"))
 }
 
 fn period_start_utc(date: NaiveDate) -> Result<DateTime<Utc>, ClosePeriodPersistenceError> {
@@ -855,6 +878,10 @@ fn period_start_utc(date: NaiveDate) -> Result<DateTime<Utc>, ClosePeriodPersist
         .single()
         .map(|datetime| datetime.with_timezone(&Utc))
         .ok_or(ClosePeriodPersistenceError::InvalidPeriod)
+}
+
+fn parse_decision_uuid(value: &str) -> Result<Uuid, ClosePeriodPersistenceError> {
+    Uuid::parse_str(value).map_err(|_| ClosePeriodPersistenceError::InvalidDecision)
 }
 
 fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, ClosePeriodPersistenceError> {

@@ -1,9 +1,11 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
+use horse_postgres_common::insert_ui_change;
 use uuid::Uuid;
 
-use bookkeeping_application::set_funding_schedule::{
+use policy_application::set_funding_schedule::{
     ActiveFundingSchedule, SetFundingScheduleCommand, SetFundingScheduleDecision,
     SetFundingScheduleError, decide_set_funding_schedule,
 };
@@ -62,7 +64,6 @@ pub async fn persist_set_funding_schedule(
         .transaction::<PersistedFundingSchedule, SetFundingSchedulePersistenceError, _>(
             async move |conn| {
                 use public::funding_schedules::dsl as schedules;
-                use public::household_events::dsl as events;
                 use public::household_members::dsl as members;
                 use public::households::dsl as households;
                 use public::pools::dsl as pools;
@@ -76,16 +77,15 @@ pub async fn persist_set_funding_schedule(
                     .optional()?
                     .ok_or(SetFundingSchedulePersistenceError::HouseholdNotFound)?;
 
-                let actor_is_active = members::household_members
+                let actor_role = members::household_members
                     .filter(members::household_id.eq(household_id))
                     .filter(members::member_id.eq(actor_id))
                     .filter(members::left_at.is_null())
-                    .select(members::member_id)
-                    .first::<Uuid>(conn)
+                    .select(members::role)
+                    .first::<String>(conn)
                     .await
-                    .optional()?
-                    .is_some();
-                if !actor_is_active {
+                    .optional()?;
+                if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                     return Err(SetFundingSchedulePersistenceError::ActorNotFound);
                 }
 
@@ -131,7 +131,7 @@ pub async fn persist_set_funding_schedule(
                         ends_on: ends_on.map(|date| date.format("%Y-%m-%d").to_string()),
                     })
                     .collect();
-                let mut decision = decide_set_funding_schedule(
+                let decision = decide_set_funding_schedule(
                     SetFundingScheduleCommand {
                         schedule_id: schedule_id.to_string(),
                         ..command
@@ -183,23 +183,16 @@ pub async fn persist_set_funding_schedule(
                     .get_result::<(Uuid, chrono::DateTime<chrono::Utc>)>(conn)
                     .await?;
 
-                let changed_fields = decision
-                    .changed_fields
-                    .drain(..)
-                    .map(Some)
-                    .collect::<Vec<_>>();
-                diesel::insert_into(events::household_events)
-                    .values((
-                        events::household_id.eq(household_id),
-                        events::event_type.eq("funding.schedule.updated"),
-                        events::entity_kind.eq("fundingSchedule"),
-                        events::entity_id.eq(id),
-                        events::revision.eq(1_i64),
-                        events::changed_fields.eq(changed_fields),
-                        events::actor_id.eq(actor_id),
-                    ))
-                    .execute(conn)
-                    .await?;
+                insert_ui_change(
+                    conn,
+                    household_id,
+                    id,
+                    1_i64,
+                    actor_id,
+                    created_at,
+                    decision.ui_change(),
+                )
+                .await?;
 
                 Ok(PersistedFundingSchedule {
                     id: id.to_string(),

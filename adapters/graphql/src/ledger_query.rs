@@ -93,7 +93,7 @@ pub async fn graphql_ledger(
             }
             "funding" | "FUNDING" => {
                 let projection =
-                    bookkeeping_postgres::funding_command_result::load_funding_ledger_entry_result(
+                    cross_context_postgres::funding_command_result::load_funding_ledger_entry_result(
                         ctx.data::<PgPool>()?,
                         household_id,
                         id,

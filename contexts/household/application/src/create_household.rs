@@ -64,6 +64,14 @@ pub fn decide_create_household(
     })
 }
 
+pub fn household_created_change() -> UiChangeDescriptor {
+    UiChangeDescriptor::new(
+        "household.created",
+        "household",
+        std::iter::empty::<String>(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,3 +114,4 @@ mod tests {
         );
     }
 }
+use horse_household_change::UiChangeDescriptor;

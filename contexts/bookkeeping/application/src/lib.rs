@@ -20,11 +20,11 @@ pub mod post_purchase;
 pub mod record_repayment;
 pub mod record_transfer;
 pub mod save_purchase_item_edits;
-pub mod set_funding_schedule;
 pub mod settlement_preview;
 pub mod settlement_query;
 pub mod shared_draft;
 pub mod statement_transfer;
+pub mod ui_changes;
 pub mod update_purchase;
 pub mod update_purchase_item;
 

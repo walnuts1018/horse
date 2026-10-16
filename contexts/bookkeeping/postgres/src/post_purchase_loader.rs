@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::future::Future;
 
 use bookkeeping_application::{
     AccountId, AccountingPeriod, AccountingPeriodStatus, DraftPurchase, FundingBasisError, ItemId,
@@ -12,6 +13,16 @@ use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use uuid::Uuid;
 
 use crate::schema::public;
+
+pub trait PostPurchaseReferenceData: Send {
+    fn load_funding_rule(
+        &mut self,
+        conn: &mut AsyncPgConnection,
+        household_id: Uuid,
+        pool_id: Uuid,
+        version: i32,
+    ) -> impl Future<Output = Result<Option<(Option<Uuid>, Option<String>, Vec<(Uuid, i64)>)>, DieselError>> + Send;
+}
 
 #[derive(Debug)]
 pub enum PostPurchaseLoadError {
@@ -53,17 +64,16 @@ impl From<DieselError> for PostPurchaseLoadError {
 }
 
 /// `purchase_id`のDraft状態からworkflow commandを構築する。呼び出し側が開始したtransaction内で実行する。
-pub async fn load_post_purchase_command(
+pub async fn load_post_purchase_command<C: PostPurchaseReferenceData>(
     conn: &mut AsyncPgConnection,
     household_id: &str,
     purchase_id: &str,
     expected_revision: u64,
+    reference_data: &mut C,
 ) -> Result<LoadedPostPurchaseCommand, PostPurchaseLoadError> {
     use public::accounting_periods::dsl as periods;
     use public::accounts::dsl as accounts;
     use public::household_members::dsl as household_members;
-    use public::pool_funding_rules::dsl as rules;
-    use public::pool_funding_shares::dsl as shares;
     use public::pools::dsl as pools;
     use public::purchase_allocations::dsl as allocations;
     use public::purchase_items::dsl as items;
@@ -328,24 +338,10 @@ pub async fn load_post_purchase_command(
         let funding_version = pool.2.ok_or(PostPurchaseLoadError::MissingFundingRule)?;
         let funding_version_u32 = u32::try_from(funding_version)
             .map_err(|_| PostPurchaseLoadError::NumericOutOfRange("pool funding version"))?;
-        let (owner_member_id, settlement_policy) = rules::pool_funding_rules
-            .filter(rules::household_id.eq(household_id))
-            .filter(rules::pool_id.eq(pool_id))
-            .filter(rules::version.eq(funding_version))
-            .for_update()
-            .select((rules::owner_member_id, rules::settlement_policy))
-            .first::<(Option<Uuid>, Option<String>)>(conn)
-            .await
-            .optional()?
+        let (owner_member_id, settlement_policy, share_rows) = reference_data
+            .load_funding_rule(conn, household_id, pool_id, funding_version)
+            .await?
             .ok_or(PostPurchaseLoadError::MissingFundingRule)?;
-        let share_rows = shares::pool_funding_shares
-            .filter(shares::household_id.eq(household_id))
-            .filter(shares::pool_id.eq(pool_id))
-            .filter(shares::version.eq(funding_version))
-            .for_update()
-            .select((shares::member_id, shares::weight))
-            .load::<(Uuid, i64)>(conn)
-            .await?;
         let basis = match pool.1.as_str() {
             "PERSONAL" => {
                 if settlement_policy.is_some() || !share_rows.is_empty() {
