@@ -56,8 +56,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 testcontainers-modules = { version = "0.15", default-features = false, features = ["postgres"] }
 opentelemetry = { version = "0.33.1", features = ["trace", "metrics"] }
-opentelemetry_sdk = { version = "0.33.1", features = ["trace", "metrics", "experimental_trace_batch_span_processor_with_async_runtime", "rt-tokio"] }
-opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["trace", "metrics", "grpc-tonic", "http-proto", "http-json", "reqwest-client", "reqwest-rustls", "tls-webpki-roots"] }
+opentelemetry_sdk = { version = "0.33.1", features = ["trace", "metrics"] }
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["trace", "metrics", "grpc-tonic", "http-proto", "http-json", "reqwest-blocking-client", "reqwest-rustls", "tls-webpki-roots"] }
 opentelemetry-stdout = { version = "0.33.0", default-features = false, features = ["trace", "metrics"] }
 opentelemetry-http = "0.33.0"
 opentelemetry-propagator-b3 = "0.33.0"
