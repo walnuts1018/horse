@@ -89,12 +89,13 @@ async fn run_queue(worker: Arc<Worker>, mut shutdown: tokio::sync::watch::Receiv
                                                     break;
                                                 }
                                             }
-                                            Err(error) => {
-                                                tracing::error!(job_id = %job_id, error = %error, "Run notified extraction failed");
-                                                if let Err(error) = queue.nack_requeue(&delivery).await {
-                                                    tracing::warn!(error = %error, "Requeue extraction delivery failed");
+                                            Err(_error) => {
+                                                let failure_class = "worker_processing_error";
+                                                if let Err(error) = queue.ack(&delivery).await {
+                                                    tracing::warn!(job_id = %job_id, failure_class, error = %error, "Acknowledge failed extraction delivery failed");
                                                     break;
                                                 }
+                                                tracing::warn!(job_id = %job_id, failure_class, "Extraction notification failed; database polling will retry");
                                             }
                                         }
                                     }
