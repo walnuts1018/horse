@@ -11,7 +11,6 @@ pub mod funding_command_result;
 pub mod home_summary_query;
 pub mod household_identity_query;
 pub mod ledger_query;
-pub mod monthly_spending_query;
 pub mod node_query;
 pub mod policy_data;
 pub mod policy_settlement;

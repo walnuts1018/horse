@@ -5,28 +5,67 @@ use diesel::{ExpressionMethods, JoinOnDsl, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
+use bookkeeping_application::purchase_defaults_query::{
+    PurchaseDefaultProjection, PurchaseDefaultsQuery as PurchaseDefaultsQueryPort,
+    PurchaseDefaultsQueryError as ApplicationQueryError,
+};
+
 use crate::{PgPool, schema::public};
 
+pub struct PostgresPurchaseDefaultsQuery {
+    pool: PgPool,
+}
+
+impl PostgresPurchaseDefaultsQuery {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl PurchaseDefaultsQueryPort for PostgresPurchaseDefaultsQuery {
+    fn query<'a>(
+        &'a self,
+        actor_id: Uuid,
+        household_id: Uuid,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<Vec<PurchaseDefaultProjection>, ApplicationQueryError>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            purchase_defaults(&self.pool, actor_id, household_id)
+                .await
+                .map_err(|error| match error {
+                    PurchaseDefaultsReadError::HouseholdNotFound => {
+                        ApplicationQueryError::HouseholdNotFound
+                    }
+                    PurchaseDefaultsReadError::CountOutOfRange => {
+                        ApplicationQueryError::CountOutOfRange
+                    }
+                    error @ (PurchaseDefaultsReadError::Pool(_)
+                    | PurchaseDefaultsReadError::Database(_)) => {
+                        ApplicationQueryError::Infrastructure(format!("{error:?}"))
+                    }
+                })
+        })
+    }
+}
+
 #[derive(Debug)]
-pub enum PurchaseDefaultsQueryError {
+pub enum PurchaseDefaultsReadError {
     Pool(String),
     Database(diesel::result::Error),
     HouseholdNotFound,
     CountOutOfRange,
 }
 
-impl From<diesel::result::Error> for PurchaseDefaultsQueryError {
+impl From<diesel::result::Error> for PurchaseDefaultsReadError {
     fn from(error: diesel::result::Error) -> Self {
         Self::Database(error)
     }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PurchaseDefaultProjection {
-    pub merchant: String,
-    pub payment_account_id: Uuid,
-    pub purchase_count: i32,
-    pub last_used_at: DateTime<Utc>,
 }
 
 type PurchasePayment = (Uuid, String, Uuid, DateTime<Utc>);
@@ -35,11 +74,11 @@ pub async fn purchase_defaults(
     pool: &PgPool,
     actor_id: Uuid,
     household_id: Uuid,
-) -> Result<Vec<PurchaseDefaultProjection>, PurchaseDefaultsQueryError> {
+) -> Result<Vec<PurchaseDefaultProjection>, PurchaseDefaultsReadError> {
     let mut conn = pool
         .get()
         .await
-        .map_err(|error| PurchaseDefaultsQueryError::Pool(error.to_string()))?;
+        .map_err(|error| PurchaseDefaultsReadError::Pool(error.to_string()))?;
     require_member(&mut conn, actor_id, household_id).await?;
 
     use public::{purchase_payments, purchases};
@@ -68,7 +107,7 @@ pub async fn purchase_defaults(
         aggregate.0 = aggregate
             .0
             .checked_add(1)
-            .ok_or(PurchaseDefaultsQueryError::CountOutOfRange)?;
+            .ok_or(PurchaseDefaultsReadError::CountOutOfRange)?;
         if occurred_at > aggregate.1 {
             aggregate.1 = occurred_at;
         }
@@ -102,13 +141,13 @@ async fn require_member(
     conn: &mut diesel_async::AsyncPgConnection,
     actor_id: Uuid,
     household_id: Uuid,
-) -> Result<(), PurchaseDefaultsQueryError> {
+) -> Result<(), PurchaseDefaultsReadError> {
     if household_postgres::household_access::active_member_role(conn, household_id, actor_id)
         .await?
         .is_some()
     {
         Ok(())
     } else {
-        Err(PurchaseDefaultsQueryError::HouseholdNotFound)
+        Err(PurchaseDefaultsReadError::HouseholdNotFound)
     }
 }

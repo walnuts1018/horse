@@ -12,7 +12,7 @@ PostgreSQLのスキーマとmigrationの正本にはAtlasを使う。Rustから�
 
 業務処理はDMMFに沿って、入力と現在状態から結果・イベント・失敗を値として返すpure Decisionと、DBや外部サービスのI/Oを行う実行境界に分ける。DecisionはI/O、GraphQL、永続化型に依存させない。実行境界が必要な読み込みを行い、Decisionを呼び出し、その結果に基づいて書き込みとイベント配送を行う。
 
-Workspaceは`apps/`にComposition Root、`contexts/<bounded-context>/{domain,application,postgres}`に業務ごとの実装、`adapters/`にGraphQL・HTTP・Identity・AI・Workerの接続、`platform/postgres-common`に接続Poolと生成済みDiesel Schemaを配置する。複数Contextを横断する読み取りと更新は`contexts/cross-context/postgres`に配置し、単一Contextのデータ所有権へ混在させない。
+Workspaceは`apps/`にComposition Root、`contexts/<bounded-context>/{domain,application,postgres}`に業務ごとの実装、`adapters/`にGraphQL・HTTP・Identity・AI・Workerの接続、`platform/postgres-common`に接続Poolと生成済みDiesel Schemaを配置する。複数Contextを横断する読み取りは`contexts/cross-context/postgres`に置く。更新処理とその業務判断は状態を所有するContextに置き、別Contextの更新が必要な場合はApplication契約を通じて同一transaction内で実行する。
 
 Application Workflowは業務操作のLoad・Decision・Persistの順序を所有し、小さな操作契約を通じてPostgreSQL AdapterへI/Oを要求する。PostgreSQL AdapterがDieselのtransactionとロックを維持し、Workflow全体を原子的に実行する。GraphQL ResolverはDTOを認証済みActor付きCommandへ変換し、Application Workflowを呼び出す。
 

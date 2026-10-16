@@ -65,8 +65,23 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             local_part_prefix,
         },
         horse_graphql_api::Ports {
+            account_history_query: Arc::new(
+                bookkeeping_postgres::account_history_query::PostgresAccountHistoryQuery::new(
+                    pool.clone(),
+                ),
+            ),
             account_balances_query: Arc::new(
                 bookkeeping_postgres::account_balances::PostgresAccountBalancesQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            monthly_spending_query: Arc::new(
+                bookkeeping_postgres::monthly_spending_query::PostgresMonthlySpendingQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            purchase_defaults_query: Arc::new(
+                bookkeeping_postgres::purchase_defaults_query::PostgresPurchaseDefaultsQuery::new(
                     pool.clone(),
                 ),
             ),

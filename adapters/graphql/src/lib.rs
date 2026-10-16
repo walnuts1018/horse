@@ -71,6 +71,12 @@ pub struct Actor(pub Uuid);
 pub struct Ports {
     pub account_balances_query:
         std::sync::Arc<dyn bookkeeping_application::account_balances_query::AccountBalancesQuery>,
+    pub account_history_query:
+        std::sync::Arc<dyn bookkeeping_application::account_history_query::AccountHistoryQuery>,
+    pub monthly_spending_query:
+        std::sync::Arc<dyn bookkeeping_application::monthly_spending_query::MonthlySpendingQuery>,
+    pub purchase_defaults_query:
+        std::sync::Arc<dyn bookkeeping_application::purchase_defaults_query::PurchaseDefaultsQuery>,
     pub tag_query: std::sync::Arc<dyn catalog_application::tag_query::TagQuery>,
     pub product_query: std::sync::Arc<dyn catalog_application::product_query::ProductQuery>,
     pub category_mutation: std::sync::Arc<dyn catalog_application::category::CategoryMutation>,
@@ -84,6 +90,9 @@ pub fn schema(pool: PgPool, config: Config, ports: Ports) -> Schema {
     GraphqlSchema::build(QueryRoot, MutationRoot, subscriptions::SubscriptionRoot)
         .data(pool)
         .data(ports.account_balances_query)
+        .data(ports.account_history_query)
+        .data(ports.monthly_spending_query)
+        .data(ports.purchase_defaults_query)
         .data(ports.tag_query)
         .data(ports.product_query)
         .data(ports.category_mutation)

@@ -6,42 +6,64 @@ use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
+use bookkeeping_application::monthly_spending_query::{
+    MonthlyCategorySpendingProjection, MonthlyMemberSpendingProjection,
+    MonthlyMemberSpendingReportProjection, MonthlySpendingQuery, MonthlySpendingQueryError,
+};
 
-#[derive(Debug)]
-pub enum MonthlySpendingQueryError {
-    Pool(String),
-    Database(diesel::result::Error),
-    HouseholdNotFound,
-    InvalidPeriod,
-    AmountOutOfRange,
+pub struct PostgresMonthlySpendingQuery {
+    pool: PgPool,
 }
 
-impl From<diesel::result::Error> for MonthlySpendingQueryError {
-    fn from(error: diesel::result::Error) -> Self {
-        Self::Database(error)
+impl PostgresMonthlySpendingQuery {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MonthlyCategorySpendingProjection {
-    pub period: String,
-    pub category_id: Option<Uuid>,
-    pub category_name: Option<String>,
-    pub amount_yen: i64,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MonthlyMemberSpendingProjection {
-    pub period: String,
-    pub member_id: Uuid,
-    pub member_name: String,
-    pub amount_yen: i64,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MonthlyMemberSpendingReportProjection {
-    pub items: Vec<MonthlyMemberSpendingProjection>,
-    pub has_unattributed_purchases: bool,
+impl MonthlySpendingQuery for PostgresMonthlySpendingQuery {
+    fn monthly_category_spending<'a>(
+        &'a self,
+        actor_id: Uuid,
+        household_id: Uuid,
+        from: &'a str,
+        to: &'a str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        Vec<MonthlyCategorySpendingProjection>,
+                        MonthlySpendingQueryError,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            monthly_category_spending(&self.pool, actor_id, household_id, from, to).await
+        })
+    }
+    fn monthly_member_spending<'a>(
+        &'a self,
+        actor_id: Uuid,
+        household_id: Uuid,
+        from: &'a str,
+        to: &'a str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        MonthlyMemberSpendingReportProjection,
+                        MonthlySpendingQueryError,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            monthly_member_spending(&self.pool, actor_id, household_id, from, to).await
+        })
+    }
 }
 
 type PurchaseFact = (DateTime<Utc>, Option<Uuid>, i64);
@@ -58,7 +80,7 @@ pub async fn monthly_category_spending(
     let mut conn = pool
         .get()
         .await
-        .map_err(|error| MonthlySpendingQueryError::Pool(error.to_string()))?;
+        .map_err(|error| MonthlySpendingQueryError::Infrastructure(error.to_string()))?;
     require_member(&mut conn, actor_id, household_id).await?;
 
     use public::{categories, purchase_corrections, purchase_items, purchases};
@@ -74,7 +96,8 @@ pub async fn monthly_category_spending(
             purchase_items::amount_yen,
         ))
         .load::<PurchaseFact>(&mut conn)
-        .await?;
+        .await
+        .map_err(infrastructure)?;
     let corrections = purchase_corrections::table
         .inner_join(purchases::table.on(purchases::id.eq(purchase_corrections::purchase_id)))
         .filter(purchases::household_id.eq(household_id))
@@ -87,7 +110,8 @@ pub async fn monthly_category_spending(
             purchase_corrections::amount_delta_yen,
         ))
         .load::<(DateTime<Utc>, Option<Uuid>, i64)>(&mut conn)
-        .await?;
+        .await
+        .map_err(infrastructure)?;
 
     let corrected_item_ids = corrections
         .iter()
@@ -101,7 +125,8 @@ pub async fn monthly_category_spending(
             .filter(purchase_items::id.eq_any(corrected_item_ids))
             .select((purchase_items::id, purchase_items::category_id))
             .load::<(Uuid, Option<Uuid>)>(&mut conn)
-            .await?
+            .await
+            .map_err(infrastructure)?
             .into_iter()
             .collect::<BTreeMap<_, _>>()
     };
@@ -133,7 +158,8 @@ pub async fn monthly_category_spending(
             .filter(categories::id.eq_any(category_ids))
             .select((categories::id, categories::name))
             .load::<(Uuid, String)>(&mut conn)
-            .await?
+            .await
+            .map_err(infrastructure)?
             .into_iter()
             .collect::<BTreeMap<_, _>>()
     };
@@ -161,7 +187,7 @@ pub async fn monthly_member_spending(
     let mut conn = pool
         .get()
         .await
-        .map_err(|error| MonthlySpendingQueryError::Pool(error.to_string()))?;
+        .map_err(|error| MonthlySpendingQueryError::Infrastructure(error.to_string()))?;
     require_member(&mut conn, actor_id, household_id).await?;
 
     use public::{
@@ -180,7 +206,8 @@ pub async fn monthly_member_spending(
             purchase_member_burdens::amount_yen,
         ))
         .load::<MemberFact>(&mut conn)
-        .await?;
+        .await
+        .map_err(infrastructure)?;
     let correction_burdens = correction_member_burdens::table
         .inner_join(
             purchase_corrections::table
@@ -198,7 +225,8 @@ pub async fn monthly_member_spending(
             correction_member_burdens::amount_delta_yen,
         ))
         .load::<MemberFact>(&mut conn)
-        .await?;
+        .await
+        .map_err(infrastructure)?;
 
     let mut totals = BTreeMap::<(String, Uuid), i64>::new();
     for (occurred_at, member_id, amount) in burdens.into_iter().chain(correction_burdens) {
@@ -220,7 +248,8 @@ pub async fn monthly_member_spending(
                 public::members::display_name,
             ))
             .load::<(Uuid, String)>(&mut conn)
-            .await?
+            .await
+            .map_err(infrastructure)?
             .into_iter()
             .collect::<BTreeMap<_, _>>()
     };
@@ -268,7 +297,8 @@ async fn unattributed_purchases(
             purchase_allocations::amount_yen,
         ))
         .load::<(Uuid, Uuid, Uuid, i64)>(conn)
-        .await?;
+        .await
+        .map_err(infrastructure)?;
     let burdens = purchase_member_burdens::table
         .inner_join(purchases::table.on(purchases::id.eq(purchase_member_burdens::purchase_id)))
         .filter(purchases::household_id.eq(household_id))
@@ -283,7 +313,8 @@ async fn unattributed_purchases(
             purchase_member_burdens::amount_yen,
         ))
         .load::<(Uuid, Uuid, Uuid, i64)>(conn)
-        .await?;
+        .await
+        .map_err(infrastructure)?;
     let mut allocation_totals = BTreeMap::<(Uuid, Uuid, Uuid), i64>::new();
     let mut burden_totals = BTreeMap::<(Uuid, Uuid, Uuid), i64>::new();
     for (purchase, item, pool, amount) in allocations {
@@ -309,7 +340,8 @@ async fn unattributed_purchases(
             purchase_corrections::amount_delta_yen,
         ))
         .load::<(Uuid, i64)>(conn)
-        .await?;
+        .await
+        .map_err(infrastructure)?;
     let correction_ids = corrections.iter().map(|(id, _)| *id).collect::<Vec<_>>();
     if correction_ids.is_empty() {
         return Ok(false);
@@ -322,7 +354,8 @@ async fn unattributed_purchases(
             correction_member_burdens::amount_delta_yen,
         ))
         .load::<(Uuid, i64)>(conn)
-        .await?;
+        .await
+        .map_err(infrastructure)?;
     let mut correction_totals = BTreeMap::<Uuid, i64>::new();
     for (id, amount) in correction_burden_rows {
         add_amount(&mut correction_totals, id, amount)?;
@@ -337,16 +370,11 @@ async fn require_member(
     actor_id: Uuid,
     household_id: Uuid,
 ) -> Result<(), MonthlySpendingQueryError> {
-    use public::household_members;
-    let active = diesel::select(diesel::dsl::exists(
-        household_members::table
-            .filter(household_members::household_id.eq(household_id))
-            .filter(household_members::member_id.eq(actor_id))
-            .filter(household_members::left_at.is_null()),
-    ))
-    .get_result::<bool>(conn)
-    .await?;
-    if active {
+    if household_postgres::household_access::active_member_role(conn, household_id, actor_id)
+        .await
+        .map_err(infrastructure)?
+        .is_some()
+    {
         Ok(())
     } else {
         Err(MonthlySpendingQueryError::HouseholdNotFound)
@@ -407,4 +435,8 @@ fn add_amount<K: Ord>(
         .checked_add(amount)
         .ok_or(MonthlySpendingQueryError::AmountOutOfRange)?;
     Ok(())
+}
+
+fn infrastructure(error: diesel::result::Error) -> MonthlySpendingQueryError {
+    MonthlySpendingQueryError::Infrastructure(format!("{error:?}"))
 }

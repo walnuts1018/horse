@@ -51,11 +51,11 @@ impl From<DieselError> for SetFundingSchedulePersistenceError {
 pub async fn persist_set_funding_schedule(
     pool: &PgPool,
     command: SetFundingScheduleCommand,
-) -> Result<PersistedFundingSchedule, SetFundingSchedulePersistenceError> {
+) -> Result<PersistedFundingSchedule, policy_application::WorkflowFailure> {
     let mut pooled = pool
         .get()
         .await
-        .map_err(|error| SetFundingSchedulePersistenceError::Pool(error.to_string()))?;
+        .map_err(|error| policy_application::WorkflowFailure::Infrastructure(error.to_string()))?;
     (*pooled)
         .transaction::<PersistedFundingSchedule, SetFundingSchedulePersistenceError, _>(
             async move |conn| {
@@ -74,6 +74,40 @@ pub async fn persist_set_funding_schedule(
             },
         )
         .await
+        .map_err(classify_set_funding_schedule_error)
+}
+
+fn classify_set_funding_schedule_error(
+    error: SetFundingSchedulePersistenceError,
+) -> policy_application::WorkflowFailure {
+    use policy_application::WorkflowFailure;
+    match error {
+        SetFundingSchedulePersistenceError::HouseholdNotFound
+        | SetFundingSchedulePersistenceError::ActorNotFound
+        | SetFundingSchedulePersistenceError::MemberNotFound
+        | SetFundingSchedulePersistenceError::PoolNotFound => WorkflowFailure::NotFound,
+        SetFundingSchedulePersistenceError::InvalidUuid(_)
+        | SetFundingSchedulePersistenceError::InvalidDate(_)
+        | SetFundingSchedulePersistenceError::InvalidDecision => WorkflowFailure::Decision,
+        SetFundingSchedulePersistenceError::InvalidWorkflow(error) => match error {
+            SetFundingScheduleError::DuplicateActiveSchedule => WorkflowFailure::Conflict,
+            SetFundingScheduleError::InvalidAmount | SetFundingScheduleError::InvalidEndDate => {
+                WorkflowFailure::Decision
+            }
+            SetFundingScheduleError::InvalidExistingSchedule => {
+                WorkflowFailure::Infrastructure("stored funding schedule is invalid".to_owned())
+            }
+        },
+        SetFundingSchedulePersistenceError::Pool(message) => {
+            WorkflowFailure::Infrastructure(message)
+        }
+        SetFundingSchedulePersistenceError::Database(error) => {
+            WorkflowFailure::Infrastructure(error.to_string())
+        }
+        SetFundingSchedulePersistenceError::NumericOutOfRange(field) => {
+            WorkflowFailure::Infrastructure(format!("{field} is out of range"))
+        }
+    }
 }
 
 struct PostgresSetFundingScheduleOperations<'a> {

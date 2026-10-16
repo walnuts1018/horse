@@ -20,6 +20,12 @@ use policy_application::{
         FundingScheduleDate, FundingScheduleId, HouseholdId as FundingHouseholdId,
         MemberId as FundingMemberId, PoolId as FundingPoolId, SetFundingScheduleCommand,
     },
+    set_pool_funding_rule::{
+        FundingRuleActorId, FundingRuleHouseholdId, FundingRuleMemberId, FundingRulePoolId,
+        PoolFundingConfiguration as WorkflowPoolFundingConfiguration,
+        PoolFundingShareInput as WorkflowPoolFundingShareInput, SetPoolFundingRuleCommand,
+        SharedSettlementPolicy,
+    },
 };
 use policy_postgres::{
     pool_mutations as postgres_pool_mutations, set_allocation_rule as postgres_allocation_rule,
@@ -287,8 +293,8 @@ pub async fn set_pool_funding_rule(
                     return Ok(set_pool_funding_rule_error(MutationErrorCode::BadInput).into());
                 }
             };
-            postgres_pool_mutations::PoolFundingConfiguration::Personal {
-                owner_member_id: owner_id.to_string(),
+            WorkflowPoolFundingConfiguration::Personal {
+                owner_member_id: FundingRuleMemberId::new(owner_id),
             }
         }
         PoolFundingRuleConfigurationInput::Shared(input) => {
@@ -300,31 +306,30 @@ pub async fn set_pool_funding_rule(
                         return Ok(set_pool_funding_rule_error(MutationErrorCode::BadInput).into());
                     }
                 };
-                shares.push(postgres_pool_mutations::PoolFundingShareInput {
-                    member_id: member_id.to_string(),
+                shares.push(WorkflowPoolFundingShareInput {
+                    member_id: FundingRuleMemberId::new(member_id),
                     weight: share.weight.0,
                 });
             }
-            postgres_pool_mutations::PoolFundingConfiguration::Shared {
+            WorkflowPoolFundingConfiguration::Shared {
                 funding_shares: shares,
                 settlement_policy: match input.settlement_policy {
                     member_pool::SharedPoolSettlementPolicy::BalanceToStandard => {
-                        "BALANCE_TO_STANDARD"
+                        SharedSettlementPolicy::BalanceToStandard
                     }
                     member_pool::SharedPoolSettlementPolicy::ReimbursePersonal => {
-                        "REIMBURSE_PERSONAL"
+                        SharedSettlementPolicy::ReimbursePersonal
                     }
-                }
-                .to_owned(),
+                },
             }
         }
     };
-    match postgres_pool_mutations::persist_set_pool_funding_rule(
+    match policy_postgres::set_pool_funding_rule::persist_set_pool_funding_rule(
         ctx.data::<PgPool>()?,
-        postgres_pool_mutations::SetPoolFundingRuleCommand {
-            actor_id: actor.0.to_string(),
-            household_id: household_id.to_string(),
-            pool_id: pool_id.to_string(),
+        SetPoolFundingRuleCommand {
+            actor_id: FundingRuleActorId::new(actor.0),
+            household_id: FundingRuleHouseholdId::new(household_id),
+            pool_id: FundingRulePoolId::new(pool_id),
             expected_version: input.expected_version,
             configuration,
         },
@@ -348,7 +353,7 @@ pub async fn set_pool_funding_rule(
             })
             .into())
         }
-        Err(error) => set_pool_funding_rule_persistence_error(error),
+        Err(error) => set_pool_funding_rule_workflow_error(error),
     }
 }
 
@@ -457,7 +462,11 @@ pub async fn set_allocation_rule(
             .await
         {
             Ok(value) => value.id.value(),
-            Err(error) => return set_allocation_rule_persistence_error(error),
+            Err(error) => {
+                return workflow_failure_result(error, |code| {
+                    set_allocation_rule_error(code).into()
+                });
+            }
         };
     let projection = match cross_pool_queries::load_allocation_rule_projection(
         ctx.data::<PgPool>()?,
@@ -518,7 +527,9 @@ pub async fn set_funding_schedule(
             result: map_funding_schedule_projection(value)?,
         })
         .into()),
-        Err(error) => set_funding_schedule_persistence_error(error),
+        Err(error) => {
+            workflow_failure_result(error, |code| set_funding_schedule_error(code).into())
+        }
     }
 }
 
@@ -663,19 +674,22 @@ fn pool_read_error<T>(error: cross_pool_queries::PoolReadModelError) -> Result<T
     }
 }
 
-fn set_pool_funding_rule_persistence_error(
-    error: postgres_pool_mutations::SetPoolFundingRulePersistenceError,
+fn set_pool_funding_rule_workflow_error(
+    error: policy_application::WorkflowFailure,
 ) -> Result<SetPoolFundingRuleResult> {
-    use postgres_pool_mutations::SetPoolFundingRulePersistenceError as E;
     match error {
-        E::InvalidUuid(_) | E::InvalidConfiguration => {
+        policy_application::WorkflowFailure::Decision => {
             Ok(set_pool_funding_rule_error(MutationErrorCode::BadInput).into())
         }
-        E::HouseholdNotFound | E::ActorNotFound | E::PoolNotFound | E::MemberNotFound => {
+        policy_application::WorkflowFailure::NotFound => {
             Ok(set_pool_funding_rule_error(MutationErrorCode::NotFound).into())
         }
-        E::Conflict => Ok(set_pool_funding_rule_error(MutationErrorCode::Conflict).into()),
-        E::Pool(_) | E::Database(_) | E::NumericOutOfRange(_) => Err(crate::internal_error(error)),
+        policy_application::WorkflowFailure::Conflict => {
+            Ok(set_pool_funding_rule_error(MutationErrorCode::Conflict).into())
+        }
+        policy_application::WorkflowFailure::Infrastructure(message) => {
+            Err(crate::internal_error(message))
+        }
     }
 }
 
@@ -696,23 +710,6 @@ fn set_default_allocation_persistence_error(
     }
 }
 
-fn set_allocation_rule_persistence_error(
-    error: postgres_allocation_rule::SetAllocationRulePersistenceError,
-) -> Result<SetAllocationRuleResult> {
-    use postgres_allocation_rule::SetAllocationRulePersistenceError as E;
-    match error {
-        E::InvalidUuid(_) | E::InvalidWorkflow(_) => {
-            Ok(set_allocation_rule_error(MutationErrorCode::BadInput).into())
-        }
-        E::HouseholdNotFound | E::ActorNotFound | E::ReferenceNotFound | E::PoolNotFound => {
-            Ok(set_allocation_rule_error(MutationErrorCode::NotFound).into())
-        }
-        E::Pool(_) | E::Database(_) | E::InvalidDecision | E::NumericOutOfRange(_) => {
-            Err(crate::internal_error(error))
-        }
-    }
-}
-
 fn allocation_rule_projection_error(
     error: cross_pool_queries::AllocationRuleProjectionError,
 ) -> Result<SetAllocationRuleResult> {
@@ -725,19 +722,22 @@ fn allocation_rule_projection_error(
     }
 }
 
-fn set_funding_schedule_persistence_error(
-    error: postgres_funding_schedule::SetFundingSchedulePersistenceError,
-) -> Result<SetFundingScheduleResult> {
-    use postgres_funding_schedule::SetFundingSchedulePersistenceError as E;
+fn workflow_failure_result<T>(
+    error: policy_application::WorkflowFailure,
+    build_user_error: impl FnOnce(MutationErrorCode) -> T,
+) -> Result<T> {
     match error {
-        E::InvalidUuid(_) | E::InvalidDate(_) | E::InvalidWorkflow(_) => {
-            Ok(set_funding_schedule_error(MutationErrorCode::BadInput).into())
+        policy_application::WorkflowFailure::Decision => {
+            Ok(build_user_error(MutationErrorCode::BadInput))
         }
-        E::HouseholdNotFound | E::ActorNotFound | E::MemberNotFound | E::PoolNotFound => {
-            Ok(set_funding_schedule_error(MutationErrorCode::NotFound).into())
+        policy_application::WorkflowFailure::NotFound => {
+            Ok(build_user_error(MutationErrorCode::NotFound))
         }
-        E::Pool(_) | E::Database(_) | E::NumericOutOfRange(_) | E::InvalidDecision => {
-            Err(crate::internal_error(error))
+        policy_application::WorkflowFailure::Conflict => {
+            Ok(build_user_error(MutationErrorCode::Conflict))
+        }
+        policy_application::WorkflowFailure::Infrastructure(message) => {
+            Err(crate::internal_error(message))
         }
     }
 }

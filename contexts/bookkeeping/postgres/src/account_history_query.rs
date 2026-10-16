@@ -8,7 +8,149 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
+use bookkeeping_application::account_history_query::{
+    AccountHistoryQuery, AccountHistoryQueryError as ApplicationQueryError,
+    AccountIncomePage as ApplicationIncomePage, AccountIncomeProjection as ApplicationIncome,
+    AccountMovementPage as ApplicationMovementPage,
+    AccountMovementProjection as ApplicationMovement, AccountProjection as ApplicationAccount,
+};
+
 use crate::{PgPool, schema::public};
+
+pub struct PostgresAccountHistoryQuery {
+    pool: PgPool,
+}
+
+impl PostgresAccountHistoryQuery {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl AccountHistoryQuery for PostgresAccountHistoryQuery {
+    fn account_movements<'a>(
+        &'a self,
+        actor_id: Uuid,
+        household_id: Uuid,
+        after_id: Option<Uuid>,
+        before_id: Option<Uuid>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<ApplicationMovementPage, ApplicationQueryError>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let page = account_movements(
+                &self.pool,
+                actor_id,
+                household_id,
+                after_id,
+                before_id,
+                first,
+                last,
+            )
+            .await
+            .map_err(application_error)?;
+            Ok(ApplicationMovementPage {
+                rows: page
+                    .rows
+                    .into_iter()
+                    .map(|row| ApplicationMovement {
+                        id: row.id,
+                        household_id: row.household_id,
+                        kind: row.kind,
+                        occurred_at: row.occurred_at,
+                        from_account_id: row.from_account_id,
+                        from_account: application_account(row.from_account),
+                        to_account_id: row.to_account_id,
+                        to_account: application_account(row.to_account),
+                        amount_yen: row.amount_yen,
+                        description: row.description,
+                        created_at: row.created_at,
+                    })
+                    .collect(),
+                total_count: page.total_count,
+                has_next_page: page.has_next_page,
+                has_previous_page: page.has_previous_page,
+            })
+        })
+    }
+
+    fn account_incomes<'a>(
+        &'a self,
+        actor_id: Uuid,
+        household_id: Uuid,
+        after_id: Option<Uuid>,
+        before_id: Option<Uuid>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<ApplicationIncomePage, ApplicationQueryError>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let page = account_incomes(
+                &self.pool,
+                actor_id,
+                household_id,
+                after_id,
+                before_id,
+                first,
+                last,
+            )
+            .await
+            .map_err(application_error)?;
+            Ok(ApplicationIncomePage {
+                rows: page
+                    .rows
+                    .into_iter()
+                    .map(|row| ApplicationIncome {
+                        id: row.id,
+                        household_id: row.household_id,
+                        account_id: row.account_id,
+                        amount_yen: row.amount_yen,
+                        occurred_at: row.occurred_at,
+                        description: row.description,
+                        created_at: row.created_at,
+                    })
+                    .collect(),
+                total_count: page.total_count,
+                has_next_page: page.has_next_page,
+                has_previous_page: page.has_previous_page,
+            })
+        })
+    }
+}
+
+fn application_account(row: AccountProjection) -> ApplicationAccount {
+    ApplicationAccount {
+        id: row.id,
+        name: row.name,
+        kind: row.kind,
+        card_last4: row.card_last4,
+        pool_id: row.pool_id,
+    }
+}
+
+fn application_error(error: AccountHistoryQueryError) -> ApplicationQueryError {
+    match error {
+        AccountHistoryQueryError::HouseholdNotFound => ApplicationQueryError::HouseholdNotFound,
+        AccountHistoryQueryError::InvalidPagination => ApplicationQueryError::InvalidPagination,
+        AccountHistoryQueryError::InvalidCursor => ApplicationQueryError::InvalidCursor,
+        error @ (AccountHistoryQueryError::Pool(_)
+        | AccountHistoryQueryError::Database(_)
+        | AccountHistoryQueryError::InvalidPersistedData) => {
+            ApplicationQueryError::Infrastructure(format!("{error:?}"))
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountProjection {

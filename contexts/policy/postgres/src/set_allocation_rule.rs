@@ -39,9 +39,35 @@ impl From<DieselError> for SetAllocationRulePersistenceError {
 pub async fn persist_set_allocation_rule(
     pool: &PgPool,
     command: SetAllocationRuleCommand,
-) -> Result<PersistedAllocationRule, SetAllocationRulePersistenceError> {
+) -> Result<PersistedAllocationRule, policy_application::WorkflowFailure> {
     let mut operations = AllocationRuleOperations { pool };
-    set_allocation_rule(&mut operations, command).await
+    set_allocation_rule(&mut operations, command)
+        .await
+        .map_err(classify_set_allocation_rule_error)
+}
+
+fn classify_set_allocation_rule_error(
+    error: SetAllocationRulePersistenceError,
+) -> policy_application::WorkflowFailure {
+    use policy_application::WorkflowFailure;
+    match error {
+        SetAllocationRulePersistenceError::HouseholdNotFound
+        | SetAllocationRulePersistenceError::ActorNotFound
+        | SetAllocationRulePersistenceError::ReferenceNotFound
+        | SetAllocationRulePersistenceError::PoolNotFound => WorkflowFailure::NotFound,
+        SetAllocationRulePersistenceError::InvalidUuid(_)
+        | SetAllocationRulePersistenceError::InvalidWorkflow(_)
+        | SetAllocationRulePersistenceError::InvalidDecision => WorkflowFailure::Decision,
+        SetAllocationRulePersistenceError::Pool(message) => {
+            WorkflowFailure::Infrastructure(message)
+        }
+        SetAllocationRulePersistenceError::Database(error) => {
+            WorkflowFailure::Infrastructure(error.to_string())
+        }
+        SetAllocationRulePersistenceError::NumericOutOfRange(field) => {
+            WorkflowFailure::Infrastructure(format!("{field} is out of range"))
+        }
+    }
 }
 
 struct AllocationRuleOperations<'a> {

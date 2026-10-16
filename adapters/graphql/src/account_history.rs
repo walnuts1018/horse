@@ -1,7 +1,9 @@
 use async_graphql::{Context, Error, ID, Result, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_postgres::account_history_query as postgres_query;
-use horse_postgres_common::PgPool;
+use bookkeeping_application::account_history_query::{
+    AccountHistoryQuery, AccountHistoryQueryError as QueryError, AccountIncomeProjection,
+    AccountMovementProjection, AccountProjection,
+};
 use uuid::Uuid;
 
 use crate::{Actor, account_mutations, pagination::PageInfo};
@@ -44,17 +46,11 @@ pub async fn graphql_account_movements(
     let household_id = crate::decode_household_id(&household_id)?;
     let after_id = decode_cursor(after.as_deref(), "AccountMovement")?;
     let before_id = decode_cursor(before.as_deref(), "AccountMovement")?;
-    let page = postgres_query::account_movements(
-        ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        after_id,
-        before_id,
-        first,
-        last,
-    )
-    .await
-    .map_err(map_query_error)?;
+    let page = ctx
+        .data::<std::sync::Arc<dyn AccountHistoryQuery>>()?
+        .account_movements(actor.0, household_id, after_id, before_id, first, last)
+        .await
+        .map_err(map_query_error)?;
     let rows = page
         .rows
         .into_iter()
@@ -92,17 +88,11 @@ pub async fn graphql_account_incomes(
     let household_id = crate::decode_household_id(&household_id)?;
     let after_id = decode_cursor(after.as_deref(), "AccountIncome")?;
     let before_id = decode_cursor(before.as_deref(), "AccountIncome")?;
-    let page = postgres_query::account_incomes(
-        ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        after_id,
-        before_id,
-        first,
-        last,
-    )
-    .await
-    .map_err(map_query_error)?;
+    let page = ctx
+        .data::<std::sync::Arc<dyn AccountHistoryQuery>>()?
+        .account_incomes(actor.0, household_id, after_id, before_id, first, last)
+        .await
+        .map_err(map_query_error)?;
     let rows = page
         .rows
         .into_iter()
@@ -135,7 +125,7 @@ fn actor(ctx: &Context<'_>) -> Result<Actor> {
 }
 
 fn map_movement(
-    row: postgres_query::AccountMovementProjection,
+    row: AccountMovementProjection,
 ) -> Result<account_mutations::AccountMovementObject> {
     use account_mutations::AccountMovementKind;
 
@@ -164,9 +154,7 @@ fn map_movement(
     })
 }
 
-fn map_income(
-    row: postgres_query::AccountIncomeProjection,
-) -> Result<account_mutations::AccountIncomeObject> {
+fn map_income(row: AccountIncomeProjection) -> Result<account_mutations::AccountIncomeObject> {
     Ok(account_mutations::AccountIncomeObject {
         id: encode_node_id("AccountIncome", row.id),
         household_id: encode_node_id("Household", row.household_id),
@@ -179,12 +167,12 @@ fn map_income(
     })
 }
 
-fn map_account(row: postgres_query::AccountProjection) -> Result<account_mutations::AccountObject> {
+fn map_account(row: AccountProjection) -> Result<account_mutations::AccountObject> {
     Ok(row.into())
 }
 
-impl From<postgres_query::AccountProjection> for account_mutations::AccountObject {
-    fn from(row: postgres_query::AccountProjection) -> Self {
+impl From<AccountProjection> for account_mutations::AccountObject {
+    fn from(row: AccountProjection) -> Self {
         let kind = match row.kind.as_str() {
             "BANK" => account_mutations::AccountKind::Bank,
             "CASH" => account_mutations::AccountKind::Cash,
@@ -268,14 +256,11 @@ fn decode_node_id(value: &str, expected_kind: &str) -> std::result::Result<Uuid,
     Uuid::from_slice(payload).map_err(|_| ())
 }
 
-fn map_query_error(error: postgres_query::AccountHistoryQueryError) -> Error {
-    use postgres_query::AccountHistoryQueryError as QueryError;
+fn map_query_error(error: QueryError) -> Error {
     match error {
         QueryError::HouseholdNotFound => Error::new("household not found"),
         QueryError::InvalidPagination => Error::new("invalid pagination"),
         QueryError::InvalidCursor => Error::new("invalid cursor"),
-        error @ (QueryError::Pool(_)
-        | QueryError::Database(_)
-        | QueryError::InvalidPersistedData) => crate::internal_error(error),
+        QueryError::Infrastructure(error) => crate::internal_error(error),
     }
 }

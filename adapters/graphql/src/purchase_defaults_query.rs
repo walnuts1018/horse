@@ -1,6 +1,7 @@
 use async_graphql::{Context, Error, ID, Result, SimpleObject};
-use bookkeeping_postgres::purchase_defaults_query as postgres_query;
-use horse_postgres_common::PgPool;
+use bookkeeping_application::purchase_defaults_query::{
+    PurchaseDefaultsQuery, PurchaseDefaultsQueryError,
+};
 
 use crate::{Actor, DateTime};
 
@@ -21,7 +22,9 @@ pub async fn graphql_purchase_defaults(
         .copied()
         .map_err(|_| Error::new("authentication required"))?;
     let household_id = crate::decode_household_id(&household_id)?;
-    let rows = postgres_query::purchase_defaults(ctx.data::<PgPool>()?, actor.0, household_id)
+    let rows = ctx
+        .data::<std::sync::Arc<dyn PurchaseDefaultsQuery>>()?
+        .query(actor.0, household_id)
         .await
         .map_err(map_query_error)?;
     rows.into_iter()
@@ -40,11 +43,11 @@ pub async fn graphql_purchase_defaults(
         .collect()
 }
 
-fn map_query_error(error: postgres_query::PurchaseDefaultsQueryError) -> Error {
-    use postgres_query::PurchaseDefaultsQueryError as E;
+fn map_query_error(error: PurchaseDefaultsQueryError) -> Error {
+    use PurchaseDefaultsQueryError as E;
     match error {
         E::HouseholdNotFound => Error::new("household access denied"),
         E::CountOutOfRange => Error::new("purchase count exceeds GraphQL Int"),
-        E::Pool(_) | E::Database(_) => crate::internal_error(error),
+        E::Infrastructure(_) => crate::internal_error(error),
     }
 }

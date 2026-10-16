@@ -1,7 +1,8 @@
 use crate::{Long, policy_mutations::YearMonth};
 use async_graphql::{Context, Error, ID, Result, SimpleObject};
-use cross_context_postgres::monthly_spending_query as postgres_query;
-use horse_postgres_common::PgPool;
+use bookkeeping_application::monthly_spending_query::{
+    MonthlySpendingQuery, MonthlySpendingQueryError,
+};
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct MonthlyCategorySpending {
@@ -33,15 +34,11 @@ pub async fn graphql_monthly_category_spending(
 ) -> Result<Vec<MonthlyCategorySpending>> {
     let actor = crate::actor(ctx)?;
     let household_id = crate::decode_household_id(&household_id)?;
-    let rows = postgres_query::monthly_category_spending(
-        ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        from.as_str(),
-        to.as_str(),
-    )
-    .await
-    .map_err(map_query_error)?;
+    let rows = ctx
+        .data::<std::sync::Arc<dyn MonthlySpendingQuery>>()?
+        .monthly_category_spending(actor.0, household_id, from.as_str(), to.as_str())
+        .await
+        .map_err(map_query_error)?;
     let mut rows = rows;
     rows.sort_by(|left, right| {
         right
@@ -78,15 +75,11 @@ pub async fn graphql_monthly_member_spending(
 ) -> Result<MonthlyMemberSpendingReport> {
     let actor = crate::actor(ctx)?;
     let household_id = crate::decode_household_id(&household_id)?;
-    let report = postgres_query::monthly_member_spending(
-        ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        from.as_str(),
-        to.as_str(),
-    )
-    .await
-    .map_err(map_query_error)?;
+    let report = ctx
+        .data::<std::sync::Arc<dyn MonthlySpendingQuery>>()?
+        .monthly_member_spending(actor.0, household_id, from.as_str(), to.as_str())
+        .await
+        .map_err(map_query_error)?;
     let items = report
         .items
         .into_iter()
@@ -112,12 +105,12 @@ pub async fn graphql_monthly_member_spending(
     })
 }
 
-fn map_query_error(error: postgres_query::MonthlySpendingQueryError) -> Error {
-    use postgres_query::MonthlySpendingQueryError as E;
+fn map_query_error(error: MonthlySpendingQueryError) -> Error {
+    use MonthlySpendingQueryError as E;
     match error {
         E::HouseholdNotFound => Error::new("household access denied"),
         E::InvalidPeriod => Error::new("invalid monthly spending period"),
         E::AmountOutOfRange => Error::new("monthly spending total exceeds supported range"),
-        E::Pool(_) | E::Database(_) => crate::internal_error(error),
+        E::Infrastructure(_) => crate::internal_error(error),
     }
 }

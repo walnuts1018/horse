@@ -22,6 +22,7 @@ pub mod financial_command_context;
 pub mod funding_command_context;
 pub mod funding_record;
 pub mod loan_balance_query;
+pub mod monthly_spending_query;
 pub mod policy_data;
 pub mod post_purchase;
 pub mod post_purchase_loader;

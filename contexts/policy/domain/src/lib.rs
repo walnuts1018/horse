@@ -2,6 +2,7 @@ pub mod budget;
 pub mod create_pool;
 pub mod recurring_expense;
 pub mod set_allocation_rule;
+pub mod set_pool_funding_rule;
 
 pub use budget::{
     ArchiveBudgetCommand, ArchiveBudgetDecision, Budget, BudgetActorId, BudgetAmountYen,
@@ -28,6 +29,12 @@ pub use set_allocation_rule::{
     NormalizedMerchant, SetAllocationRuleCommand, SetAllocationRuleDecision,
     SetAllocationRuleError, SetAllocationRuleResult, ValidatedAllocationRuleTarget,
     ValidatedAllocationRuleWeight, ValidatedSetAllocationRuleCommand,
+};
+pub use set_pool_funding_rule::{
+    FundingRuleActorId, FundingRuleHouseholdId, FundingRuleMemberId, FundingRulePoolId,
+    PoolFundingConfiguration, PoolFundingKind, PoolFundingRuleContext, PoolFundingShare,
+    PoolFundingShareInput, SetPoolFundingRuleCommand, SetPoolFundingRuleDecision,
+    SetPoolFundingRuleError, SharedSettlementPolicy, decide_set_pool_funding_rule,
 };
 
 use chrono::NaiveDate;

@@ -3,6 +3,7 @@
 pub mod account_balances;
 pub mod account_balances_query;
 pub mod account_card_last4;
+pub mod account_history_query;
 pub mod account_income;
 pub mod account_movement;
 pub mod close_period;
@@ -12,8 +13,10 @@ pub mod create_account;
 pub mod create_and_post_purchase;
 pub mod create_purchase_workflow;
 pub mod funding_record;
+pub mod monthly_spending_query;
 pub mod post_purchase;
 pub mod post_purchase_entry;
+pub mod purchase_defaults_query;
 pub mod record_repayment;
 pub mod record_transfer;
 pub mod settlement_preview;
