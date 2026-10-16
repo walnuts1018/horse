@@ -2,7 +2,7 @@
 
 ## 状態
 
-Rust移行は本番へ反映済み。CLIを除くGoの実行コードをRustへ移し、Go Backendを削除した。空のPostgreSQLへAtlas migrationを適用してDiesel schemaを生成し、本番DBを再作成した。2026年10月15日時点でRust APIとWorkerはKubernetes上でReadyになり、`horse.walnuts.dev`と`/healthz`はHTTP 200を返した。
+Rust移行は本番へ反映済み。CLIを除くGoの実行コードをRustへ移し、Go Backendを削除した。空のPostgreSQLへAtlas migrationを適用してDiesel schemaを生成し、本番DBを再作成した。2026年10月17日時点でRust API・Worker・Web・OCRはKubernetes上でReadyになり、`horse.walnuts.dev/healthz`はHTTP 200を返した。
 
 ## 決定
 
@@ -23,10 +23,6 @@ GraphQL境界ではApplication Decisionの業務エラーを入力・状態エ�
 家計操作の認可は`horse-authorization`の共通契約で判定する。家計のDefault配賦、Poolの作成、負担配賦・資金拠出設定、メンバー・招待・メール転送設定はOWNERのみが管理できる。口座・購入・入金予定・締めなどの家計データ更新は有効なOWNERまたはMEMBERが実行できる。各更新Workflowは同じトランザクションで有効な所属と操作権限を確認する。
 
 購入訂正の`journals.occurred_at`とLedger Entryの日時には訂正を記録した時刻を保存する。`effective_period`は訂正対象として指定したOpen会計期間と月次精算を決める値であり、記録日時を過去へ変更しない。
-
-## 残作業
-
-- 作業ツリーの変更をまとめて検証し、必要なHorseとinfraの更新をデプロイして稼働状態を確認する。
 
 ## 理由
 
