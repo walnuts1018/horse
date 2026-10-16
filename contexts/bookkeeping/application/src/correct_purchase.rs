@@ -36,15 +36,19 @@ pub enum CorrectionTarget {
     Item(ItemId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PostedPurchase(());
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostedPurchase(PurchaseId);
 
 impl PostedPurchase {
-    pub fn from_lifecycle(lifecycle: PurchaseLifecycle) -> Result<Self, CorrectPurchaseError> {
+    pub fn new(id: PurchaseId, lifecycle: PurchaseLifecycle) -> Result<Self, CorrectPurchaseError> {
         match lifecycle {
-            PurchaseLifecycle::Posted => Ok(Self(())),
+            PurchaseLifecycle::Posted => Ok(Self(id)),
             PurchaseLifecycle::Draft => Err(CorrectPurchaseError::PurchaseNotPosted),
         }
+    }
+
+    pub fn id(&self) -> &PurchaseId {
+        &self.0
     }
 }
 
@@ -56,7 +60,6 @@ pub struct CorrectionPayment {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorrectionCommand {
-    pub purchase_id: PurchaseId,
     pub purchase: PostedPurchase,
     pub target: CorrectionTarget,
     pub amount_delta: SignedYenDelta,
@@ -380,7 +383,7 @@ pub fn decide_correct_purchase(
     }
 
     Ok(CorrectPurchaseDecision {
-        purchase_id: command.purchase_id.clone(),
+        purchase_id: command.purchase.id().clone(),
         target: command.target,
         amount_delta: command.amount_delta,
         reason: command.reason,
@@ -390,7 +393,7 @@ pub fn decide_correct_purchase(
         journal_lines,
         event: CorrectionEvent {
             event_type: "purchase.corrected",
-            purchase_id: command.purchase_id,
+            purchase_id: command.purchase.id().clone(),
             changed_fields: vec!["correction"],
         },
     })
@@ -956,8 +959,11 @@ mod tests {
 
     fn command(delta: i64) -> CorrectionCommand {
         CorrectionCommand {
-            purchase_id: id(PurchaseId::new, "purchase-1"),
-            purchase: PostedPurchase::from_lifecycle(PurchaseLifecycle::Posted).unwrap(),
+            purchase: PostedPurchase::new(
+                id(PurchaseId::new, "purchase-1"),
+                PurchaseLifecycle::Posted,
+            )
+            .unwrap(),
             target: CorrectionTarget::Item(id(ItemId::new, "item-1")),
             amount_delta: SignedYenDelta::new(delta).unwrap(),
             reason: "refund".into(),
@@ -1099,7 +1105,7 @@ mod tests {
     #[test]
     fn correction_requires_posted_purchase_open_period_and_matching_payment_total() {
         assert_eq!(
-            PostedPurchase::from_lifecycle(PurchaseLifecycle::Draft),
+            PostedPurchase::new(id(PurchaseId::new, "purchase-1"), PurchaseLifecycle::Draft,),
             Err(CorrectPurchaseError::PurchaseNotPosted)
         );
 
