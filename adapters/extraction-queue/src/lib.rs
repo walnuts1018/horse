@@ -59,6 +59,10 @@ impl ExtractionQueue {
             .create_channel()
             .await
             .map_err(|_| QueueError("RabbitMQ channel creation failed".to_owned()))?;
+        channel
+            .confirm_select(lapin::options::ConfirmSelectOptions::default())
+            .await
+            .map_err(|_| QueueError("RabbitMQ publisher confirm setup failed".to_owned()))?;
         let mut arguments = FieldTable::default();
         arguments.insert(
             ShortString::from("x-queue-type"),
