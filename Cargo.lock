@@ -2298,6 +2298,7 @@ dependencies = [
 name = "evidence-domain"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "uuid",
 ]
 
