@@ -268,11 +268,6 @@ impl EvidenceOperations for TestEvidence {
                 public::source_confirmations::changed_by.eq(confirmation.changed_by),
                 public::source_confirmations::changed_at
                     .eq(confirmation.changed_at.unwrap_or_else(chrono::Utc::now)),
-                public::source_confirmations::purchase_id.eq(None::<Uuid>),
-                public::source_confirmations::correction_id.eq(Some(confirmation.entity_id)),
-                public::source_confirmations::transfer_id.eq(None::<Uuid>),
-                public::source_confirmations::account_income_id.eq(None::<Uuid>),
-                public::source_confirmations::account_movement_id.eq(None::<Uuid>),
             ))
             .execute(conn)
             .await?;
