@@ -66,7 +66,8 @@ pub(crate) async fn delete_expired_unconfirmed(
             .filter(dsl::not(dsl::exists(
                 source_confirmations::table
                     .filter(source_confirmations::household_id.eq(documents::household_id))
-                    .filter(source_confirmations::source_document_id.eq(documents::id)),
+                    .filter(source_confirmations::source_document_id.eq(documents::id))
+                    .filter(source_confirmations::status.eq("confirmed")),
             )))
             .filter(dsl::not(dsl::exists(
                 bank_statement_imports::table
@@ -168,7 +169,8 @@ async fn delete_one(
             let has_confirmation = dsl::select(dsl::exists(
                 source_confirmations::table
                     .filter(source_confirmations::household_id.eq(household_id))
-                    .filter(source_confirmations::source_document_id.eq(document_id)),
+                    .filter(source_confirmations::source_document_id.eq(document_id))
+                    .filter(source_confirmations::status.eq("confirmed")),
             ))
             .get_result::<bool>(conn)
             .await?;
@@ -241,7 +243,8 @@ async fn delete_one(
             let has_confirmation = dsl::select(dsl::exists(
                 source_confirmations::table
                     .filter(source_confirmations::household_id.eq(keys.household_id))
-                    .filter(source_confirmations::source_document_id.eq(keys.id)),
+                    .filter(source_confirmations::source_document_id.eq(keys.id))
+                    .filter(source_confirmations::status.eq("confirmed")),
             ))
             .get_result::<bool>(conn)
             .await?;
