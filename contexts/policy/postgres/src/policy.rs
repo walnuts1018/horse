@@ -324,24 +324,25 @@ pub async fn persist_create_recurring_expense(
     decision: recurring_expense::RecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
     let change = decision.ui_change();
-    let actor = parse_uuid(&decision.actor_id, "actor_id")?;
+    let actor = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+    let id = parse_uuid(decision.id.as_str(), "expense_id")?;
     let household = parse_uuid(
         decision
             .household_id
-            .as_deref()
-            .ok_or(PolicyPersistenceError::InvalidWorkflow)?,
+            .as_ref()
+            .ok_or(PolicyPersistenceError::InvalidWorkflow)?
+            .as_str(),
         "household_id",
     )?;
-    let id = parse_uuid(&decision.id, "expense_id")?;
     let category = decision
         .category_id
-        .as_deref()
-        .map(|value| parse_uuid(value, "category_id"))
+        .as_ref()
+        .map(|value| parse_uuid(value.as_str(), "category_id"))
         .transpose()?;
     let account = decision
         .payment_account_id
-        .as_deref()
-        .map(|value| parse_uuid(value, "payment_account_id"))
+        .as_ref()
+        .map(|value| parse_uuid(value.as_str(), "payment_account_id"))
         .transpose()?;
     let name = decision
         .name
@@ -351,7 +352,8 @@ pub async fn persist_create_recurring_expense(
         .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
     let amount = decision
         .amount_yen
-        .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
+        .ok_or(PolicyPersistenceError::InvalidWorkflow)?
+        .value();
     let cadence = decision
         .cadence
         .ok_or(PolicyPersistenceError::InvalidWorkflow)?
@@ -432,14 +434,20 @@ pub async fn persist_create_recurring_expense(
                     .await?;
                 record_event(conn, household, id, change, 1, actor).await?;
                 Ok(recurring_expense::RecurringExpense {
-                    id: id.to_string(),
-                    household_id: household.to_string(),
+                    id: recurring_expense::RecurringExpenseId::from_persisted(id),
+                    household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(
+                        household,
+                    ),
                     name,
                     merchant,
                     amount_yen: amount,
                     currency: recurring_expense::CURRENCY.to_owned(),
-                    category_id: category.map(|value| value.to_string()),
-                    payment_account_id: account.map(|value| value.to_string()),
+                    category_id: category.map(|value| {
+                        recurring_expense::RecurringExpenseCategoryId::from_persisted(value)
+                    }),
+                    payment_account_id: account.map(|value| {
+                        recurring_expense::RecurringExpensePaymentAccountId::from_persisted(value)
+                    }),
                     cadence: decision.cadence.unwrap(),
                     starts_on: starts,
                     next_due_on: due,
@@ -457,15 +465,16 @@ pub async fn persist_update_recurring_expense(
     decision: recurring_expense::RecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
     let change = decision.ui_change();
-    let actor = parse_uuid(&decision.actor_id, "actor_id")?;
+    let actor = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
     let household = parse_uuid(
         decision
             .household_id
-            .as_deref()
-            .ok_or(PolicyPersistenceError::InvalidWorkflow)?,
+            .as_ref()
+            .ok_or(PolicyPersistenceError::InvalidWorkflow)?
+            .as_str(),
         "household_id",
     )?;
-    let id = parse_uuid(&decision.id, "expense_id")?;
+    let id = parse_uuid(decision.id.as_str(), "expense_id")?;
     let mut pooled = pool
         .get()
         .await
@@ -521,8 +530,8 @@ pub async fn persist_update_recurring_expense(
                 }
                 let category = decision
                     .category_id
-                    .as_deref()
-                    .map(|value| parse_uuid(value, "category_id"))
+                    .as_ref()
+                    .map(|value| parse_uuid(value.as_str(), "category_id"))
                     .transpose()?;
                 if let Some(value) = category {
                     let found = categories::categories
@@ -539,8 +548,8 @@ pub async fn persist_update_recurring_expense(
                 }
                 let account = decision
                     .payment_account_id
-                    .as_deref()
-                    .map(|value| parse_uuid(value, "payment_account_id"))
+                    .as_ref()
+                    .map(|value| parse_uuid(value.as_str(), "payment_account_id"))
                     .transpose()?;
                 if let Some(value) = account {
                     let found = accounts::accounts
@@ -563,7 +572,8 @@ pub async fn persist_update_recurring_expense(
                     .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
                 let amount = decision
                     .amount_yen
-                    .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
+                    .ok_or(PolicyPersistenceError::InvalidWorkflow)?
+                    .value();
                 let cadence = decision
                     .cadence
                     .ok_or(PolicyPersistenceError::InvalidWorkflow)?;
@@ -599,14 +609,20 @@ pub async fn persist_update_recurring_expense(
                 .await?;
                 record_event(conn, row.0, id, change, revision, actor).await?;
                 Ok(recurring_expense::RecurringExpense {
-                    id: id.to_string(),
-                    household_id: row.0.to_string(),
+                    id: recurring_expense::RecurringExpenseId::from_persisted(id),
+                    household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(
+                        row.0,
+                    ),
                     name,
                     merchant,
                     amount_yen: amount,
                     currency: recurring_expense::CURRENCY.to_owned(),
-                    category_id: category.map(|value| value.to_string()),
-                    payment_account_id: account.map(|value| value.to_string()),
+                    category_id: category.map(|value| {
+                        recurring_expense::RecurringExpenseCategoryId::from_persisted(value)
+                    }),
+                    payment_account_id: account.map(|value| {
+                        recurring_expense::RecurringExpensePaymentAccountId::from_persisted(value)
+                    }),
                     cadence,
                     starts_on: starts,
                     next_due_on: due,
@@ -624,15 +640,16 @@ pub async fn persist_archive_recurring_expense(
     decision: recurring_expense::RecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
     let change = decision.ui_change();
-    let actor = parse_uuid(&decision.actor_id, "actor_id")?;
+    let actor = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
     let household = parse_uuid(
         decision
             .household_id
-            .as_deref()
-            .ok_or(PolicyPersistenceError::InvalidWorkflow)?,
+            .as_ref()
+            .ok_or(PolicyPersistenceError::InvalidWorkflow)?
+            .as_str(),
         "household_id",
     )?;
-    let id = parse_uuid(&decision.id, "expense_id")?;
+    let id = parse_uuid(decision.id.as_str(), "expense_id")?;
     let mut pooled = pool
         .get()
         .await
@@ -703,14 +720,20 @@ pub async fn persist_archive_recurring_expense(
                 let cadence = recurring_expense::Cadence::parse(&row.6)
                     .map_err(|_| PolicyPersistenceError::InvalidWorkflow)?;
                 Ok(recurring_expense::RecurringExpense {
-                    id: id.to_string(),
-                    household_id: row.0.to_string(),
+                    id: recurring_expense::RecurringExpenseId::from_persisted(id),
+                    household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(
+                        row.0,
+                    ),
                     name: row.1,
                     merchant: row.2,
                     amount_yen: row.3,
                     currency: recurring_expense::CURRENCY.to_owned(),
-                    category_id: row.4.map(|value| value.to_string()),
-                    payment_account_id: row.5.map(|value| value.to_string()),
+                    category_id: row.4.map(|value| {
+                        recurring_expense::RecurringExpenseCategoryId::from_persisted(value)
+                    }),
+                    payment_account_id: row.5.map(|value| {
+                        recurring_expense::RecurringExpensePaymentAccountId::from_persisted(value)
+                    }),
                     cadence,
                     starts_on: row.7,
                     next_due_on: row.8,
@@ -728,10 +751,10 @@ pub async fn persist_match_recurring_expense(
     decision: recurring_expense::MatchRecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
     let change = decision.ui_change();
-    let actor = parse_uuid(&decision.actor_id, "actor_id")?;
-    let household = parse_uuid(&decision.household_id, "household_id")?;
-    let id = parse_uuid(&decision.id, "expense_id")?;
-    let purchase_id = parse_uuid(&decision.purchase_id, "purchase_id")?;
+    let actor = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+    let household = parse_uuid(decision.household_id.as_str(), "household_id")?;
+    let id = parse_uuid(decision.id.as_str(), "expense_id")?;
+    let purchase_id = parse_uuid(decision.purchase_id.as_str(), "purchase_id")?;
     let mut pooled = pool
         .get()
         .await
@@ -846,14 +869,20 @@ pub async fn persist_match_recurring_expense(
                 .await?;
                 record_event(conn, household, id, change, revision, actor).await?;
                 Ok(recurring_expense::RecurringExpense {
-                    id: id.to_string(),
-                    household_id: household.to_string(),
+                    id: recurring_expense::RecurringExpenseId::from_persisted(id),
+                    household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(
+                        household,
+                    ),
                     name: row.1,
                     merchant: row.2,
                     amount_yen: row.3,
                     currency: row.4,
-                    category_id: row.5.map(|value| value.to_string()),
-                    payment_account_id: row.6.map(|value| value.to_string()),
+                    category_id: row.5.map(|value| {
+                        recurring_expense::RecurringExpenseCategoryId::from_persisted(value)
+                    }),
+                    payment_account_id: row.6.map(|value| {
+                        recurring_expense::RecurringExpensePaymentAccountId::from_persisted(value)
+                    }),
                     cadence,
                     starts_on: row.8,
                     next_due_on: next_due,

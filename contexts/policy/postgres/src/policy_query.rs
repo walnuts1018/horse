@@ -620,14 +620,18 @@ fn recurring_expense_from_row(
     row: RecurringExpenseRow,
 ) -> Result<recurring_expense::RecurringExpense, PolicyQueryError> {
     Ok(recurring_expense::RecurringExpense {
-        id: row.0.to_string(),
-        household_id: row.1.to_string(),
+        id: recurring_expense::RecurringExpenseId::from_persisted(row.0),
+        household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(row.1),
         name: row.2,
         merchant: row.3,
         amount_yen: row.4,
         currency: row.5,
-        category_id: row.6.map(|id| id.to_string()),
-        payment_account_id: row.7.map(|id| id.to_string()),
+        category_id: row
+            .6
+            .map(|id| recurring_expense::RecurringExpenseCategoryId::from_persisted(id)),
+        payment_account_id: row
+            .7
+            .map(|id| recurring_expense::RecurringExpensePaymentAccountId::from_persisted(id)),
         cadence: recurring_expense::Cadence::parse(&row.8)
             .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?,
         starts_on: row.9,

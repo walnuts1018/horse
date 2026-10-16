@@ -15,9 +15,23 @@ pub struct SetDefaultAllocationCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatedDefaultAllocation {
-    pub actor_id: String,
-    pub household_id: String,
-    pub weights: Vec<DefaultAllocationWeight>,
+    actor_id: String,
+    household_id: String,
+    weights: Vec<DefaultAllocationWeight>,
+}
+
+impl ValidatedDefaultAllocation {
+    pub fn actor_id(&self) -> &str {
+        &self.actor_id
+    }
+
+    pub fn household_id(&self) -> &str {
+        &self.household_id
+    }
+
+    pub fn weights(&self) -> &[DefaultAllocationWeight] {
+        &self.weights
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

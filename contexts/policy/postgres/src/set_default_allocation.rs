@@ -68,10 +68,10 @@ async fn persist_validated(
     pool: &PgPool,
     validated: ValidatedDefaultAllocation,
 ) -> Result<PersistedDefaultAllocation, SetDefaultAllocationPersistenceError> {
-    let household_id = parse_uuid(&validated.household_id, "household_id")?;
-    let actor_id = parse_uuid(&validated.actor_id, "actor_id")?;
+    let household_id = parse_uuid(validated.household_id(), "household_id")?;
+    let actor_id = parse_uuid(validated.actor_id(), "actor_id")?;
     let pool_ids = validated
-        .weights
+        .weights()
         .iter()
         .map(|weight| parse_uuid(&weight.pool_id, "pool_id"))
         .collect::<Result<Vec<_>, _>>()?;

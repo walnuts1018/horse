@@ -709,7 +709,7 @@ pub async fn graphql_recurring_expenses(
         .rows
         .into_iter()
         .map(|value| RecurringExpenseEdge {
-            cursor: encode_cursor("RecurringExpense", &value.id),
+            cursor: encode_cursor("RecurringExpense", value.id.as_str()),
             node: value.into(),
         })
         .collect::<Vec<_>>();
@@ -758,10 +758,10 @@ impl From<postgres_policy_query::BudgetReadModel> for BudgetObject {
 impl From<recurring_expense::RecurringExpense> for RecurringExpenseObject {
     fn from(value: recurring_expense::RecurringExpense) -> Self {
         Self {
-            id: encode_node_id("RecurringExpense", &value.id)
+            id: encode_node_id("RecurringExpense", value.id.as_str())
                 .expect("persisted recurring expense id must be a UUID")
                 .into(),
-            household_id: encode_node_id("Household", &value.household_id)
+            household_id: encode_node_id("Household", value.household_id.as_str())
                 .expect("persisted household id must be a UUID")
                 .into(),
             name: value.name,
@@ -770,12 +770,14 @@ impl From<recurring_expense::RecurringExpense> for RecurringExpenseObject {
             currency: value.currency,
             category_id: value
                 .category_id
-                .as_deref()
+                .as_ref()
+                .map(|id| id.as_str())
                 .and_then(|id| encode_node_id("Category", id).ok())
                 .map(Into::into),
             payment_account_id: value
                 .payment_account_id
-                .as_deref()
+                .as_ref()
+                .map(|id| id.as_str())
                 .and_then(|id| encode_node_id("Account", id).ok())
                 .map(Into::into),
             cadence: match value.cadence {

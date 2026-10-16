@@ -1,7 +1,36 @@
 use chrono::NaiveDate;
 use horse_household_change::UiChangeDescriptor;
+use uuid::Uuid;
 
 const MAX_AMOUNT_YEN: i64 = 1_000_000_000_000;
+
+macro_rules! recurring_expense_id {
+    ($name:ident) => {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub struct $name(String);
+
+        impl $name {
+            fn new(value: String) -> Self {
+                Self(value)
+            }
+
+            pub fn from_persisted(value: Uuid) -> Self {
+                Self(value.to_string())
+            }
+
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+    };
+}
+
+recurring_expense_id!(RecurringExpenseActorId);
+recurring_expense_id!(RecurringExpenseHouseholdId);
+recurring_expense_id!(RecurringExpenseId);
+recurring_expense_id!(RecurringExpenseCategoryId);
+recurring_expense_id!(RecurringExpensePaymentAccountId);
+recurring_expense_id!(RecurringExpensePurchaseId);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cadence {
@@ -30,14 +59,14 @@ impl Cadence {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecurringExpense {
-    pub id: String,
-    pub household_id: String,
+    pub id: RecurringExpenseId,
+    pub household_id: RecurringExpenseHouseholdId,
     pub name: String,
     pub merchant: String,
     pub amount_yen: i64,
     pub currency: String,
-    pub category_id: Option<String>,
-    pub payment_account_id: Option<String>,
+    pub category_id: Option<RecurringExpenseCategoryId>,
+    pub payment_account_id: Option<RecurringExpensePaymentAccountId>,
     pub cadence: Cadence,
     pub starts_on: NaiveDate,
     pub next_due_on: NaiveDate,
@@ -47,6 +76,27 @@ pub struct RecurringExpense {
 }
 
 pub const CURRENCY: &str = "JPY";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecurringExpenseAmountYen(i64);
+
+impl RecurringExpenseAmountYen {
+    pub const fn value(self) -> i64 {
+        self.0
+    }
+}
+
+impl TryFrom<i64> for RecurringExpenseAmountYen {
+    type Error = RecurringExpenseError;
+
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        if (1..=MAX_AMOUNT_YEN).contains(&value) {
+            Ok(Self(value))
+        } else {
+            Err(RecurringExpenseError::InvalidAmount)
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateRecurringExpenseCommand {
@@ -101,15 +151,15 @@ pub struct MatchRecurringExpenseCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecurringExpenseDecision {
-    pub actor_id: String,
-    pub id: String,
-    pub household_id: Option<String>,
+    pub actor_id: RecurringExpenseActorId,
+    pub id: RecurringExpenseId,
+    pub household_id: Option<RecurringExpenseHouseholdId>,
     pub expected_revision: Option<i64>,
     pub name: Option<String>,
     pub merchant: Option<String>,
-    pub amount_yen: Option<i64>,
-    pub category_id: Option<String>,
-    pub payment_account_id: Option<String>,
+    pub amount_yen: Option<RecurringExpenseAmountYen>,
+    pub category_id: Option<RecurringExpenseCategoryId>,
+    pub payment_account_id: Option<RecurringExpensePaymentAccountId>,
     pub cadence: Option<Cadence>,
     pub starts_on: Option<NaiveDate>,
     pub next_due_on: Option<NaiveDate>,
@@ -147,10 +197,10 @@ impl RecurringExpenseDecision {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchRecurringExpenseDecision {
-    pub actor_id: String,
-    pub household_id: String,
-    pub id: String,
-    pub purchase_id: String,
+    pub actor_id: RecurringExpenseActorId,
+    pub household_id: RecurringExpenseHouseholdId,
+    pub id: RecurringExpenseId,
+    pub purchase_id: RecurringExpensePurchaseId,
     pub expected_revision: i64,
 }
 
@@ -191,10 +241,10 @@ pub fn decide_match(
         return Err(RecurringExpenseError::InvalidRevision);
     }
     Ok(MatchRecurringExpenseDecision {
-        actor_id: command.actor_id,
-        household_id: command.household_id,
-        id: command.id,
-        purchase_id: command.purchase_id,
+        actor_id: RecurringExpenseActorId::new(command.actor_id),
+        household_id: RecurringExpenseHouseholdId::new(command.household_id),
+        id: RecurringExpenseId::new(command.id),
+        purchase_id: RecurringExpensePurchaseId::new(command.purchase_id),
         expected_revision: command.expected_revision,
     })
 }
@@ -244,13 +294,13 @@ pub fn decide_create(
     )?;
     validate_dates(command.starts_on, command.next_due_on, command.ends_on)?;
     Ok(RecurringExpenseDecision {
-        actor_id: command.actor_id,
-        id: command.id,
-        household_id: Some(command.household_id),
+        actor_id: RecurringExpenseActorId::new(command.actor_id),
+        id: RecurringExpenseId::new(command.id),
+        household_id: Some(RecurringExpenseHouseholdId::new(command.household_id)),
         expected_revision: None,
         name: Some(fields.name),
         merchant: Some(fields.merchant),
-        amount_yen: Some(command.amount_yen),
+        amount_yen: Some(fields.amount_yen),
         category_id: fields.category_id,
         payment_account_id: fields.payment_account_id,
         cadence: Some(fields.cadence),
@@ -278,13 +328,13 @@ pub fn decide_update(
     )?;
     validate_dates(command.starts_on, command.next_due_on, command.ends_on)?;
     Ok(RecurringExpenseDecision {
-        actor_id: command.actor_id,
-        id: command.id,
-        household_id: Some(command.household_id),
+        actor_id: RecurringExpenseActorId::new(command.actor_id),
+        id: RecurringExpenseId::new(command.id),
+        household_id: Some(RecurringExpenseHouseholdId::new(command.household_id)),
         expected_revision: Some(command.expected_revision),
         name: Some(fields.name),
         merchant: Some(fields.merchant),
-        amount_yen: Some(command.amount_yen),
+        amount_yen: Some(fields.amount_yen),
         category_id: fields.category_id,
         payment_account_id: fields.payment_account_id,
         cadence: Some(fields.cadence),
@@ -303,9 +353,9 @@ pub fn decide_archive(
         return Err(RecurringExpenseError::InvalidRevision);
     }
     Ok(RecurringExpenseDecision {
-        actor_id: command.actor_id,
-        id: command.id,
-        household_id: Some(command.household_id),
+        actor_id: RecurringExpenseActorId::new(command.actor_id),
+        id: RecurringExpenseId::new(command.id),
+        household_id: Some(RecurringExpenseHouseholdId::new(command.household_id)),
         expected_revision: Some(command.expected_revision),
         name: None,
         merchant: None,
@@ -335,8 +385,9 @@ fn identity(actor: &str, household: Option<&str>, id: &str) -> Result<(), Recurr
 struct ValidatedRecurringExpenseFields {
     name: String,
     merchant: String,
-    category_id: Option<String>,
-    payment_account_id: Option<String>,
+    amount_yen: RecurringExpenseAmountYen,
+    category_id: Option<RecurringExpenseCategoryId>,
+    payment_account_id: Option<RecurringExpensePaymentAccountId>,
     cadence: Cadence,
 }
 
@@ -356,16 +407,15 @@ fn validate_fields(
     if merchant.chars().count() > 240 {
         return Err(RecurringExpenseError::InvalidMerchant);
     }
-    if !(1..=MAX_AMOUNT_YEN).contains(&amount) {
-        return Err(RecurringExpenseError::InvalidAmount);
-    }
+    let amount_yen = RecurringExpenseAmountYen::try_from(amount)?;
     let category = validate_id(category, RecurringExpenseError::InvalidCategoryId)?;
     let account = validate_id(account, RecurringExpenseError::InvalidPaymentAccountId)?;
     Ok(ValidatedRecurringExpenseFields {
         name,
         merchant,
-        category_id: category,
-        payment_account_id: account,
+        amount_yen,
+        category_id: category.map(RecurringExpenseCategoryId::new),
+        payment_account_id: account.map(RecurringExpensePaymentAccountId::new),
         cadence: Cadence::parse(cadence)?,
     })
 }

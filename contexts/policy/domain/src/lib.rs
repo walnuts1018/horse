@@ -11,7 +11,10 @@ pub use budget::{
 pub use recurring_expense::{
     ArchiveRecurringExpenseCommand, CURRENCY, Cadence, CreateRecurringExpenseCommand,
     MatchRecurringExpenseCommand, MatchRecurringExpenseDecision, RecurringExpense,
-    RecurringExpenseDecision, RecurringExpenseError, UpdateRecurringExpenseCommand,
+    RecurringExpenseActorId, RecurringExpenseAmountYen, RecurringExpenseCategoryId,
+    RecurringExpenseDecision, RecurringExpenseError, RecurringExpenseHouseholdId,
+    RecurringExpenseId, RecurringExpensePaymentAccountId, RecurringExpensePurchaseId,
+    UpdateRecurringExpenseCommand,
 };
 pub use set_allocation_rule::{
     AllocationRuleTarget, AllocationRuleWeight, SetAllocationRuleCommand,
