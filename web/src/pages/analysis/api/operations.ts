@@ -55,7 +55,7 @@ export const analysisDashboardQuery = graphql`
     }
     purchaseAnalytics(householdId: $householdId, from: $from, to: $to) {
       dimension
-      id
+      dimensionId
       name
       period
       amountYen

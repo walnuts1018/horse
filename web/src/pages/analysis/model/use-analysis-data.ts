@@ -32,7 +32,10 @@ export function useAnalysisData(
     fetchPolicy: "network-only",
   });
   const purchaseAnalytics = useMemo(
-    () => aggregatePurchaseAnalytics(dashboard.purchaseAnalytics),
+    () =>
+      aggregatePurchaseAnalytics(
+        dashboard.purchaseAnalytics.map((entry) => ({ ...entry, id: entry.dimensionId })),
+      ),
     [dashboard.purchaseAnalytics],
   );
   const priceItemIds = useMemo(

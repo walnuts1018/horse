@@ -11,7 +11,7 @@ use crate::{Long, policy_mutations::YearMonth, scalars::DateTime};
 #[derive(Clone, Debug, SimpleObject)]
 pub struct PurchaseAnalyticsEntry {
     pub dimension: String,
-    pub id: String,
+    pub dimension_id: String,
     pub name: String,
     pub period: YearMonth,
     pub amount_yen: Long,
@@ -53,7 +53,7 @@ pub async fn graphql_purchase_analytics(
             let count = i32::try_from(row.count).map_err(crate::internal_error)?;
             Ok(PurchaseAnalyticsEntry {
                 dimension: row.dimension,
-                id,
+                dimension_id: id,
                 name: row.name,
                 period: YearMonth::from_naive_date(period),
                 amount_yen: Long(row.amount_yen),

@@ -1,6 +1,6 @@
 type PurchaseAnalyticsEntry {
   dimension: String!
-  id: String!
+  dimensionId: String!
   name: String!
   period: YearMonth!
   amountYen: Long!
