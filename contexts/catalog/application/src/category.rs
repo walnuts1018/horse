@@ -7,6 +7,7 @@ pub use catalog_domain::category::{
 use catalog_domain::category::{
     decide_create_category, decide_set_category_archived, decide_update_category_name,
 };
+use std::{future::Future, pin::Pin};
 
 pub trait CreateCategoryOperations {
     type Error: From<CategoryError>;
@@ -111,4 +112,29 @@ pub async fn set_category_archived<O: SetCategoryArchivedOperations>(
         return Ok(category.into_category());
     }
     operations.persist(category, decision).await
+}
+
+#[derive(Debug)]
+pub enum CategoryMutationError {
+    BadInput,
+    NotFound,
+    InvariantViolation(&'static str),
+    Infrastructure(String),
+}
+
+pub trait CategoryMutation: Send + Sync {
+    fn create<'a>(
+        &'a self,
+        command: CreateCategoryCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<CategoryView, CategoryMutationError>> + Send + 'a>>;
+
+    fn update_name<'a>(
+        &'a self,
+        command: UpdateCategoryNameCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<CategoryView, CategoryMutationError>> + Send + 'a>>;
+
+    fn set_archived<'a>(
+        &'a self,
+        command: SetCategoryArchivedCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<CategoryView, CategoryMutationError>> + Send + 'a>>;
 }

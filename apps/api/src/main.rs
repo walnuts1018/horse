@@ -70,6 +70,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         Arc::new(catalog_postgres::product_query::PostgresProductQuery::new(
             pool.clone(),
         )),
+        Arc::new(catalog_postgres::category_mutation::PostgresCategoryMutation::new(pool.clone())),
     );
     let object_store = match ObjectStore::from_env().await {
         Ok(store) => Some(Arc::new(store)),

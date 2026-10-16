@@ -1,12 +1,10 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use catalog_application::category as application_category;
-use catalog_domain::category::CategoryView as DomainCategory;
-use catalog_domain::category::{
-    CreateCategoryCommand, SetCategoryArchivedCommand, UpdateCategoryNameCommand,
+use catalog_application::category::{
+    CategoryMutation, CategoryMutationError, CreateCategoryCommand, SetCategoryArchivedCommand,
+    UpdateCategoryNameCommand,
 };
-use catalog_postgres::category as postgres_category;
-use horse_postgres_common::PgPool;
+use catalog_domain::category::CategoryView as DomainCategory;
 use uuid::Uuid;
 
 use crate::MutationErrorCode;
@@ -112,13 +110,10 @@ pub async fn create_category(
         parent_id,
         name: input.name,
     };
-    let result = postgres_category::with_transaction(ctx.data::<PgPool>()?, move |conn| {
-        Box::pin(async move {
-            let mut operations = postgres_category::PostgresCreateCategoryOperations::new(conn);
-            application_category::create_category(&mut operations, command).await
-        })
-    })
-    .await;
+    let result = ctx
+        .data::<std::sync::Arc<dyn CategoryMutation>>()?
+        .create(command)
+        .await;
     match result {
         Ok(category) => Ok(CreateCategorySuccess {
             result: category.into(),
@@ -145,13 +140,10 @@ pub async fn update_category_name(
         category_id: category_id.to_string(),
         name: input.name,
     };
-    let result = postgres_category::with_transaction(ctx.data::<PgPool>()?, move |conn| {
-        Box::pin(async move {
-            let mut operations = postgres_category::PostgresUpdateCategoryNameOperations::new(conn);
-            application_category::update_category_name(&mut operations, command).await
-        })
-    })
-    .await;
+    let result = ctx
+        .data::<std::sync::Arc<dyn CategoryMutation>>()?
+        .update_name(command)
+        .await;
     match result {
         Ok(category) => Ok(UpdateCategoryNameSuccess {
             result: category.into(),
@@ -178,14 +170,10 @@ pub async fn set_category_archived(
         category_id: category_id.to_string(),
         archived: input.archived,
     };
-    let result = postgres_category::with_transaction(ctx.data::<PgPool>()?, move |conn| {
-        Box::pin(async move {
-            let mut operations =
-                postgres_category::PostgresSetCategoryArchivedOperations::new(conn);
-            application_category::set_category_archived(&mut operations, command).await
-        })
-    })
-    .await;
+    let result = ctx
+        .data::<std::sync::Arc<dyn CategoryMutation>>()?
+        .set_archived(command)
+        .await;
     match result {
         Ok(category) => Ok(SetCategoryArchivedSuccess {
             result: category.into(),
@@ -243,18 +231,13 @@ fn encode_node_id(kind: &str, raw_id: &str) -> std::result::Result<String, ()> {
     Ok(URL_SAFE_NO_PAD.encode(payload))
 }
 
-fn user_error_code(error: &postgres_category::CategoryWorkflowError) -> Option<MutationErrorCode> {
-    use postgres_category::CategoryWorkflowError as E;
+fn user_error_code(error: &CategoryMutationError) -> Option<MutationErrorCode> {
     match error {
-        E::InvalidActorId
-        | E::InvalidHouseholdId
-        | E::InvalidCategoryId
-        | E::InvalidParentId
-        | E::InvalidName => Some(MutationErrorCode::BadInput),
-        E::HouseholdNotFound | E::CategoryNotFound | E::ParentNotFound | E::NotAMember => {
-            Some(MutationErrorCode::NotFound)
+        CategoryMutationError::BadInput => Some(MutationErrorCode::BadInput),
+        CategoryMutationError::NotFound => Some(MutationErrorCode::NotFound),
+        CategoryMutationError::InvariantViolation(_) | CategoryMutationError::Infrastructure(_) => {
+            None
         }
-        E::InvariantViolation(_) | E::Pool(_) | E::Database(_) | E::CorruptStoredData => None,
     }
 }
 

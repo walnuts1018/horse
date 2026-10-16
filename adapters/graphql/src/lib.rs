@@ -73,11 +73,13 @@ pub fn schema(
     config: Config,
     tag_query: std::sync::Arc<dyn catalog_application::tag_query::TagQuery>,
     product_query: std::sync::Arc<dyn catalog_application::product_query::ProductQuery>,
+    category_mutation: std::sync::Arc<dyn catalog_application::category::CategoryMutation>,
 ) -> Schema {
     GraphqlSchema::build(QueryRoot, MutationRoot, subscriptions::SubscriptionRoot)
         .data(pool)
         .data(tag_query)
         .data(product_query)
+        .data(category_mutation)
         .data(config)
         .data(subscriptions::SubscriptionHub::new())
         .register_output_type::<MutationError>()
