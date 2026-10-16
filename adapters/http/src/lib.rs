@@ -497,6 +497,7 @@ async fn upload_document(
     let member = household_members::table
         .filter(household_members::household_id.eq(household_id))
         .filter(household_members::member_id.eq(principal.member_id))
+        .filter(household_members::left_at.is_null())
         .select(household_members::member_id)
         .first::<uuid::Uuid>(&mut *pooled)
         .await;
@@ -807,6 +808,7 @@ async fn list_documents(
     let member = household_members::table
         .filter(household_members::household_id.eq(household_id))
         .filter(household_members::member_id.eq(principal.member_id))
+        .filter(household_members::left_at.is_null())
         .select(household_members::member_id)
         .first::<uuid::Uuid>(&mut *pooled)
         .await;
@@ -1296,6 +1298,7 @@ async fn read_document(
         )
         .filter(source_documents::id.eq(document_id))
         .filter(household_members::member_id.eq(principal.member_id))
+        .filter(household_members::left_at.is_null())
         .select((
             source_documents::household_id,
             source_documents::sha256,
@@ -1461,7 +1464,8 @@ async fn delete_document(
             let member_exists = diesel::select(diesel::dsl::exists(
                 household_members::table
                     .filter(household_members::household_id.eq(household_id))
-                    .filter(household_members::member_id.eq(principal.member_id)),
+                    .filter(household_members::member_id.eq(principal.member_id))
+                    .filter(household_members::left_at.is_null()),
             ))
             .get_result::<bool>(conn)
             .await?;
@@ -1705,6 +1709,7 @@ async fn document_content(
         )
         .filter(source_documents::id.eq(document_id))
         .filter(household_members::member_id.eq(principal.member_id))
+        .filter(household_members::left_at.is_null())
         .select((source_documents::object_key, source_documents::mime_type))
         .first::<(String, String)>(&mut *pooled)
         .await;
@@ -1824,6 +1829,7 @@ async fn retry_document(
                 )
                 .filter(source_documents::id.eq(document_id))
                 .filter(household_members::member_id.eq(principal.member_id))
+                .filter(household_members::left_at.is_null())
                 .for_update()
                 .select((
                     source_documents::household_id,
@@ -2176,6 +2182,7 @@ async fn document_extractions(
         )
         .filter(source_documents::id.eq(document_id))
         .filter(household_members::member_id.eq(principal.member_id))
+        .filter(household_members::left_at.is_null())
         .select(source_documents::household_id)
         .first::<uuid::Uuid>(&mut *pooled)
         .await;
@@ -2274,6 +2281,7 @@ async fn document_extraction(
         )
         .filter(source_documents::id.eq(document_id))
         .filter(household_members::member_id.eq(principal.member_id))
+        .filter(household_members::left_at.is_null())
         .select(source_documents::household_id)
         .first::<uuid::Uuid>(&mut *pooled)
         .await;
@@ -2396,6 +2404,7 @@ async fn interact_with_document(
         )
         .filter(source_documents::id.eq(document_id))
         .filter(household_members::member_id.eq(principal.member_id))
+        .filter(household_members::left_at.is_null())
         .select(source_documents::household_id)
         .first::<uuid::Uuid>(&mut *pooled)
         .await;
@@ -2617,6 +2626,7 @@ async fn document_interaction_events(
         )
         .filter(source_documents::id.eq(document_id))
         .filter(household_members::member_id.eq(principal.member_id))
+        .filter(household_members::left_at.is_null())
         .select(source_documents::household_id)
         .first::<uuid::Uuid>(&mut *connection)
         .await;
@@ -2674,7 +2684,8 @@ async fn document_interaction_events(
             let member_exists = diesel::select(diesel::dsl::exists(
                 household_members::table
                     .filter(household_members::household_id.eq(household_id))
-                    .filter(household_members::member_id.eq(member_id)),
+                    .filter(household_members::member_id.eq(member_id))
+                    .filter(household_members::left_at.is_null()),
             ))
             .get_result::<bool>(&mut *connection)
             .await
@@ -2771,6 +2782,7 @@ async fn read_purchase_evidence(
         )
         .filter(purchases::id.eq(purchase_id))
         .filter(household_members::member_id.eq(principal.member_id))
+        .filter(household_members::left_at.is_null())
         .select(purchases::household_id)
         .first::<uuid::Uuid>(&mut *pooled)
         .await;
@@ -2988,6 +3000,7 @@ async fn document_matches(
         )
         .filter(source_documents::id.eq(document_id))
         .filter(household_members::member_id.eq(principal.member_id))
+        .filter(household_members::left_at.is_null())
         .select(source_documents::household_id)
         .first::<uuid::Uuid>(&mut *pooled)
         .await;
@@ -3300,6 +3313,7 @@ async fn document_preview(
         )
         .filter(source_documents::id.eq(document_id))
         .filter(household_members::member_id.eq(principal.member_id))
+        .filter(household_members::left_at.is_null())
         .select((source_documents::mime_type, source_documents::object_key))
         .first::<(String, String)>(&mut *pooled)
         .await;
@@ -3582,7 +3596,8 @@ async fn confirm_purchase_sources(
             let member_exists = diesel::select(diesel::dsl::exists(
                 household_members::table
                     .filter(household_members::household_id.eq(household_id))
-                    .filter(household_members::member_id.eq(member_id)),
+                    .filter(household_members::member_id.eq(member_id))
+                    .filter(household_members::left_at.is_null()),
             ))
             .get_result::<bool>(conn)
             .await?;
@@ -3786,6 +3801,7 @@ async fn events(
     let member = household_members::table
         .filter(household_members::household_id.eq(household_id))
         .filter(household_members::member_id.eq(principal.member_id))
+        .filter(household_members::left_at.is_null())
         .select(household_members::member_id)
         .first::<uuid::Uuid>(&mut *pooled)
         .await;
@@ -3822,8 +3838,13 @@ async fn events(
     drop(pooled);
     use horse_postgres_common::schema::public::household_events;
     let stream = stream::unfold(
-        (state.pool.clone(), household_id, cursor),
-        |(pool, household_id, cursor)| async move {
+        (
+            state.pool.clone(),
+            household_id,
+            principal.member_id,
+            cursor,
+        ),
+        |(pool, household_id, member_id, cursor)| async move {
             let next_pool = pool.clone();
             let mut connection = match pool.get().await {
                 Ok(connection) => connection,
@@ -3831,11 +3852,17 @@ async fn events(
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     return Some((
                         Ok(Event::default().comment("keepalive")),
-                        (next_pool, household_id, cursor),
+                        (next_pool, household_id, member_id, cursor),
                     ));
                 }
             };
             let events = household_events::table
+                .inner_join(
+                    household_members::table
+                        .on(household_members::household_id.eq(household_events::household_id)),
+                )
+                .filter(household_members::member_id.eq(member_id))
+                .filter(household_members::left_at.is_null())
                 .filter(household_events::household_id.eq(household_id))
                 .filter(household_events::stream_cursor.gt(cursor))
                 .order_by(household_events::stream_cursor.asc())
@@ -3886,12 +3913,15 @@ async fn events(
                     .id(event_cursor.to_string())
                     .json_data(event)
                     .unwrap_or_else(|_| Event::default().comment("event encoding failed"));
-                return Some((Ok(stream_event), (next_pool, household_id, *event_cursor)));
+                return Some((
+                    Ok(stream_event),
+                    (next_pool, household_id, member_id, *event_cursor),
+                ));
             }
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             Some((
                 Ok(Event::default().comment("keepalive")),
-                (next_pool, household_id, cursor),
+                (next_pool, household_id, member_id, cursor),
             ))
         },
     );

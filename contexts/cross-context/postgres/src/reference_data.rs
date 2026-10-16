@@ -28,6 +28,26 @@ use uuid::Uuid;
 
 pub struct UpdatePurchaseItemReferences;
 
+struct ProductLearningPostgresOperations<'a> {
+    conn: &'a mut diesel_async::AsyncPgConnection,
+}
+
+impl catalog_application::product_learning::ProductLearningOperations
+    for ProductLearningPostgresOperations<'_>
+{
+    type Error = DieselError;
+
+    async fn persist_product_learning(
+        &mut self,
+        decision: catalog_application::product_learning::ProductLearningDecision,
+    ) -> Result<(), Self::Error> {
+        catalog_postgres::product_learning::persist_product_learning_in_transaction(
+            self.conn, decision,
+        )
+        .await
+    }
+}
+
 pub async fn persist_bulk_update_purchase_items(
     pool: &horse_postgres_common::PgPool,
     input: bookkeeping_postgres::bulk_update_purchase_items::PersistBulkUpdatePurchaseItems,
@@ -528,9 +548,7 @@ impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
         conn: &mut diesel_async::AsyncPgConnection,
         context: ProductLearningRequest,
     ) -> Result<(), UpdatePurchaseItemPersistenceError> {
-        use catalog_application::product_learning::{
-            ProductLearningCommand, ProductLearningKind, decide_product_learning,
-        };
+        use catalog_application::product_learning::{ProductLearningCommand, ProductLearningKind};
         let learning = context.learning.map(|learning| match learning {
             bookkeeping_domain::purchase_commands::ProductLearning::VariantName(name) => {
                 ProductLearningKind::VariantName(name)
@@ -542,7 +560,7 @@ impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
                 ProductLearningKind::ItemOnly
             }
         });
-        let decision = decide_product_learning(ProductLearningCommand {
+        let command = ProductLearningCommand {
             household_id: context.household_id.into(),
             actor_id: context.actor_id.into(),
             purchase_id: context.purchase_id.into(),
@@ -553,22 +571,21 @@ impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
             variant_changed: context.variant_changed,
             merchant: context.merchant,
             learning,
-        })
-        .map_err(|error| match error {
-            catalog_application::product_learning::ProductLearningError::MerchantRequired => {
-                UpdatePurchaseItemPersistenceError::MerchantRequired
-            }
-            catalog_application::product_learning::ProductLearningError::InvalidVariantName => {
-                UpdatePurchaseItemPersistenceError::InvalidDecision
-            }
-        })?;
-        if let Some(decision) = decision {
-            catalog_postgres::product_learning::persist_product_learning_in_transaction(
-                conn, decision,
-            )
-            .await?;
-        }
-        Ok(())
+        };
+        let mut operations = ProductLearningPostgresOperations { conn };
+        catalog_application::product_learning::learn_product(&mut operations, command)
+            .await
+            .map_err(|error| match error {
+                catalog_application::product_learning::ProductLearningWorkflowError::Decision(
+                    catalog_application::product_learning::ProductLearningError::MerchantRequired,
+                ) => UpdatePurchaseItemPersistenceError::MerchantRequired,
+                catalog_application::product_learning::ProductLearningWorkflowError::Decision(
+                    catalog_application::product_learning::ProductLearningError::InvalidVariantName,
+                ) => UpdatePurchaseItemPersistenceError::InvalidDecision,
+                catalog_application::product_learning::ProductLearningWorkflowError::Operations(
+                    error,
+                ) => error.into(),
+            })
     }
 }
 

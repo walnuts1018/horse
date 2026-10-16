@@ -492,12 +492,16 @@ pub async fn process(
             ));
             break;
         }
+        let mut reservation_estimate = None;
+        let mut reservation_latency_ms = None;
         let reservation_id = if let Some(limit) = config
             .quota_limits
             .get(&(candidate_route.to_owned(), candidate_model.clone()))
         {
             let estimate = i64::try_from((document.data.len() / 4).max(256)).unwrap_or(i64::MAX);
-            match gemini_quota::reserve(
+            reservation_estimate = Some(estimate);
+            let reservation_started = Instant::now();
+            let reservation_result = gemini_quota::reserve(
                 pool,
                 candidate_route,
                 &candidate_model,
@@ -505,8 +509,18 @@ pub async fn process(
                 *limit,
                 Utc::now(),
             )
-            .await
-            {
+            .await;
+            let elapsed_ms = reservation_started.elapsed().as_millis() as i64;
+            reservation_latency_ms = Some(elapsed_ms);
+            tracing::debug!(
+                model = %candidate_model,
+                route = candidate_route,
+                estimated_input_tokens = estimate,
+                reservation_latency_ms = elapsed_ms,
+                succeeded = matches!(&reservation_result, Ok(Ok(_))),
+                "Gemini quota reservation measured"
+            );
+            match reservation_result {
                 Ok(Ok(id)) => Some(id),
                 Ok(Err(delay)) => {
                     let mut failure = Failure::new(
@@ -584,6 +598,8 @@ pub async fn process(
                     candidate_project,
                     candidate_reason,
                     reservation_id,
+                    reservation_estimate,
+                    reservation_latency_ms,
                 ));
                 break;
             }
@@ -631,6 +647,8 @@ pub async fn process(
         selected_project,
         route_reason,
         reservation_id,
+        reservation_estimate,
+        reservation_latency_ms,
     )) = selected
     else {
         return Err(failure_with_transform(
@@ -792,6 +810,19 @@ pub async fn process(
                     empty_partial(),
                 )
             })?;
+        if let (Some(estimate), Some(reservation_latency_ms)) =
+            (reservation_estimate, reservation_latency_ms)
+        {
+            tracing::info!(
+                model = %model,
+                route,
+                estimated_input_tokens = estimate,
+                actual_input_tokens = input_tokens,
+                input_token_delta = input_tokens.saturating_sub(estimate),
+                reservation_latency_ms,
+                "Gemini quota reservation usage measured"
+            );
+        }
     }
     let parsed = parse_json_output(&output).ok_or_else(|| {
         Failure::new(
