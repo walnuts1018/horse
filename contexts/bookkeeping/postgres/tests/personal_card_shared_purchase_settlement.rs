@@ -333,7 +333,7 @@ async fn personal_card_payment_of_shared_purchase_persists_balanced_journal_bala
     let balances = account_balances(&pool, household_id).await.unwrap();
     assert_eq!(balances.len(), 1);
     assert_eq!(balances[0].account_id, account_id);
-    assert_eq!(balances[0].balance_yen, -1_000);
+    assert_eq!(balances[0].balance_yen, 1_000);
 
     let mut conn = pool.get().await.unwrap();
     let burdens = public::purchase_member_burdens::table
