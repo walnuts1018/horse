@@ -333,6 +333,14 @@ async fn callback(
                     StatusCode::SERVICE_UNAVAILABLE
                 }
             };
+            if matches!(
+                &error,
+                OidcError::InvalidGrant
+                    | OidcError::AuthenticationFailed
+                    | OidcError::SessionExpired
+            ) {
+                tracing::warn!(error = ?error, status = status.as_u16(), "OIDC callback rejected");
+            }
             let mut response = status.into_response();
             set_cookie(&mut response, &state_clear);
             response

@@ -257,7 +257,10 @@ impl AuthService {
                 }
                 error => OidcError::TransientProvider(error.to_string()),
             })?;
-        let id_token = token.id_token().ok_or(OidcError::AuthenticationFailed)?;
+        let id_token = token.id_token().ok_or_else(|| {
+            tracing::warn!(reason = "missing_id_token", "OIDC callback rejected");
+            OidcError::AuthenticationFailed
+        })?;
         let nonce = Nonce::new(nonce);
         let claims = id_token
             .claims(&self.client.id_token_verifier(), &nonce)
@@ -265,11 +268,16 @@ impl AuthService {
                 if is_transient_claims_error(&error) {
                     OidcError::TransientProvider(error.to_string())
                 } else {
+                    tracing::warn!(
+                        reason = "id_token_claims_verification",
+                        "OIDC callback rejected"
+                    );
                     OidcError::AuthenticationFailed
                 }
             })?;
         let subject = claims.subject().as_str().to_owned();
         if subject.is_empty() {
+            tracing::warn!(reason = "empty_subject", "OIDC callback rejected");
             return Err(OidcError::AuthenticationFailed);
         }
         let display_name = claims
@@ -294,6 +302,7 @@ impl AuthService {
             expiry = std::cmp::min(expiry, token_expiry);
         }
         if expiry <= Utc::now() {
+            tracing::warn!(reason = "expired_session", "OIDC callback rejected");
             return Err(OidcError::SessionExpired);
         }
 

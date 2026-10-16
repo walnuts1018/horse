@@ -11,5 +11,6 @@ horse-postgres-common = { path = "../../platform/postgres-common" }
 openidconnect = "4.0.1"
 sha2 = "0.11"
 subtle = "2"
+tracing = { workspace = true }
 url = "2"
 uuid = { workspace = true }

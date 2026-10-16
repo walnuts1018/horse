@@ -2844,6 +2844,7 @@ dependencies = [
  "openidconnect",
  "sha2 0.11.1",
  "subtle",
+ "tracing",
  "url",
  "uuid",
 ]
