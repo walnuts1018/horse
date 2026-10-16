@@ -7,6 +7,7 @@ import { defineConfig } from "vite";
 const apiOrigin =
   process.env.API_ORIGIN ??
   (process.env.NODE_ENV === "production" ? undefined : "http://localhost:8080");
+const proxy = (to: string) => ({ proxy: { to, fetchOptions: { redirect: "manual" as const } } });
 
 export default defineConfig({
   plugins: [
@@ -16,13 +17,13 @@ export default defineConfig({
       apiOrigin
         ? {
             routeRules: {
-              "/graphql": { proxy: `${apiOrigin}/graphql` },
-              "/events": { proxy: `${apiOrigin}/events` },
-              "/events/**": { proxy: `${apiOrigin}/events/**` },
-              "/auth/**": { proxy: `${apiOrigin}/auth/**` },
-              "/documents": { proxy: `${apiOrigin}/documents` },
-              "/documents/**": { proxy: `${apiOrigin}/documents/**` },
-              "/purchases/**": { proxy: `${apiOrigin}/purchases/**` },
+              "/graphql": proxy(`${apiOrigin}/graphql`),
+              "/events": proxy(`${apiOrigin}/events`),
+              "/events/**": proxy(`${apiOrigin}/events/**`),
+              "/auth/**": proxy(`${apiOrigin}/auth/**`),
+              "/documents": proxy(`${apiOrigin}/documents`),
+              "/documents/**": proxy(`${apiOrigin}/documents/**`),
+              "/purchases/**": proxy(`${apiOrigin}/purchases/**`),
             },
           }
         : {},
