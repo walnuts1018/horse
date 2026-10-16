@@ -51,7 +51,13 @@ export function usePurchaseItemRows({
 }) {
   const addItem = useCallback(() => {
     const parsed = purchaseItemSchema.safeParse({ name: draft.itemName, amount: draft.itemAmount });
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      const field = draft.itemName.trim() ? "amount" : "name";
+      setInvalidEntryField(field);
+      setFocused(field);
+      (field === "name" ? nameRef : amountRef).current?.focus();
+      return;
+    }
     markDirty();
     const item: PurchaseDraftItem = {
       key: crypto.randomUUID(),
