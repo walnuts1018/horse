@@ -1,5 +1,3 @@
-use std::future::Future;
-
 use bookkeeping_domain::purchase_commands::{
     UpdatePurchaseCommand, UpdatePurchaseDraft, decide_update_purchase,
 };
@@ -14,19 +12,17 @@ use uuid::Uuid;
 struct NoFundingRules;
 
 impl PostPurchaseReferenceData for NoFundingRules {
-    fn load_funding_rule(
+    async fn load_funding_rule(
         &mut self,
         _conn: &mut AsyncPgConnection,
         _household_id: Uuid,
         _pool_id: Uuid,
         _version: i32,
-    ) -> impl Future<
-        Output = Result<
-            Option<bookkeeping_postgres::post_purchase_loader::FundingRuleSnapshot>,
-            diesel::result::Error,
-        >,
-    > + Send {
-        async { Ok(None) }
+    ) -> Result<
+        Option<bookkeeping_postgres::post_purchase_loader::FundingRuleSnapshot>,
+        diesel::result::Error,
+    > {
+        Ok(None)
     }
 }
 
