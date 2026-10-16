@@ -266,7 +266,6 @@ export function PurchaseItemEntry({
         <button
           type="button"
           className="button button-add"
-          disabled={!itemName.trim() || !itemAmount.trim()}
           onClick={onAdd}
         >
           <Plus size={16} />

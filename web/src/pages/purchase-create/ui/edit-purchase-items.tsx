@@ -332,11 +332,15 @@ export function EditPurchaseItems({
       )
         return;
       event.preventDefault();
-      if (!draft.itemName.trim()) return;
+      if (!draft.itemName.trim()) {
+        setInvalidEntryField("name");
+        setFocused("name");
+        return;
+      }
       amountRef.current?.focus();
       setFocused("amount");
     },
-    [draft.itemName],
+    [draft.itemName, setInvalidEntryField, setFocused],
   );
   const onAmountKey = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
