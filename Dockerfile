@@ -40,7 +40,7 @@ COPY atlas-rust.hcl ./
 
 RUN --mount=type=cache,id=horse-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=horse-cargo-git,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,id=horse-cargo-target,target=/target,sharing=locked \
+    --mount=type=cache,id=horse-cargo-target-${TARGETARCH},target=/target,sharing=locked \
     cargo build --locked --release -p horse-api -p horse-worker \
     && mkdir -p /out \
     && cp "${CARGO_TARGET_DIR}/release/horse-api" /out/api \
