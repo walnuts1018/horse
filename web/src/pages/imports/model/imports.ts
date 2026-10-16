@@ -65,10 +65,16 @@ export type ImportModel = (typeof importModels)[number]["value"];
 export const defaultImportModel: ImportModel = "gemini-3.8-flash";
 
 const deferredExtractionMessages = new Map([
-  ["rate_limited", "Geminiモデルの利用枠を超えました。"],
-  ["quota_reservation_deferred", "Geminiモデルの利用枠を超えました。"],
-  ["spend_cap_reached", "有料モデルの月500円上限に達しました。"],
-  ["paid_route_unavailable", "有料モデルを利用できません。"],
+  [
+    "rate_limited",
+    "Geminiの利用枠に達しました。別モデルを選ぶか、時間をおいて再抽出してください。",
+  ],
+  ["quota_reservation_deferred", "Geminiの利用枠の回復待ちです。別モデルを選んで再抽出できます。"],
+  [
+    "spend_cap_reached",
+    "有料利用の月500円上限に達しました。無料モデルを選んで再抽出してください。",
+  ],
+  ["paid_route_unavailable", "有料モデルを利用できません。無料モデルを選んで再抽出してください。"],
   [
     "request_too_large",
     "画像の送信サイズ上限を超えています。画像サイズを小さくして再取り込みしてください。",

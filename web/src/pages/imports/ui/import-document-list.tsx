@@ -319,7 +319,10 @@ export function ImportDocumentList({
                   {document.duplicateOf ? " · 重複候補" : ""}
                 </small>
                 {deferredExtractionMessage(document.errorCode) && (
-                  <small>{deferredExtractionMessage(document.errorCode)}</small>
+                  <small className={styles.quotaNotice}>
+                    <AlertCircle size={14} aria-hidden="true" />
+                    {deferredExtractionMessage(document.errorCode)}
+                  </small>
                 )}
                 {receipt && (
                   <small>
