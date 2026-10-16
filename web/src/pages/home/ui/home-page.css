@@ -162,6 +162,44 @@
   font-weight: 600;
 }
 
+.home-page .shared-pool-balances {
+  width: 100%;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.home-page .shared-pool-balances > .eyebrow {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.home-page .shared-pool-balances ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-page .shared-pool-balances li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.home-page .shared-pool-balances b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.home-page .shared-pool-balances > .text-button {
+  margin-top: 6px;
+}
+
 .home-page .settle-line {
   margin-top: 16px;
   padding-top: 0;

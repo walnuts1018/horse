@@ -4,8 +4,15 @@ import { BookOpen, Camera, ChevronRight, Plus, Upload, Wallet } from "lucide-rea
 import { useEffect, useMemo, useState } from "react";
 import { useLazyLoadQuery } from "react-relay";
 
+import { accountBalancesQuery } from "../../../entities/ledger";
 import { useHouseholdPurchases } from "../../../entities/purchase";
-import { type Household, type HomeDashboardQuery, type Purchase } from "../../../shared/api";
+import {
+  isSharedPool,
+  type AccountBalancesQuery,
+  type Household,
+  type HomeDashboardQuery,
+  type Purchase,
+} from "../../../shared/api";
 import { japanMonth } from "../../../shared/lib";
 import { EmptyState } from "../../../shared/ui";
 import { homeDashboardQuery } from "../model/home-summary";
@@ -83,6 +90,11 @@ export function HomePage({
     fetchPolicy: "network-only",
     fetchKey: refreshKey,
   });
+  const accountBalances = useLazyLoadQuery<AccountBalancesQuery>(
+    accountBalancesQuery,
+    { householdId: household.id },
+    { fetchPolicy: "network-only", fetchKey: refreshKey },
+  );
   const pendingImports = useQuery({
     queryKey: ["home-pending-imports", household.id],
     queryFn: ({ signal }) => readPendingImportStatus(household.id, signal),
@@ -108,6 +120,24 @@ export function HomePage({
   const settlementDues = summarizeSettlementDues(
     settlement.lines.map((line) => ({ amountDueYen: Number(line.amountDueYen) })),
   );
+  const accountBalanceById = new Map(
+    accountBalances.accountBalances.map((balance) => [
+      balance.accountId,
+      Number(balance.balanceYen),
+    ]),
+  );
+  const sharedPoolBalances = household.pools.filter(isSharedPool).map((pool) => {
+    const accounts = household.accounts.filter((account) => account.poolId === pool.id);
+    return {
+      id: pool.id,
+      name: pool.name,
+      balanceYen: accounts.reduce(
+        (total, account) => total + (accountBalanceById.get(account.id) ?? 0),
+        0,
+      ),
+      hasAccounts: accounts.length > 0,
+    };
+  });
   return (
     <div className="home-page">
       <div className="welcome-row">
@@ -181,6 +211,27 @@ export function HomePage({
               </li>
             ))}
           </ul>
+          {sharedPoolBalances.length > 0 && (
+            <div className="shared-pool-balances" aria-label="共用口座残高">
+              <span className="eyebrow">共用口座残高</span>
+              <ul>
+                {sharedPoolBalances.map((pool) => (
+                  <li key={pool.id}>
+                    <span>{pool.name}</span>
+                    <b>{pool.hasAccounts ? yen(pool.balanceYen) : "口座未設定"}</b>
+                  </li>
+                ))}
+              </ul>
+              <Link
+                className="text-button"
+                to="/households/$householdId/settings"
+                params={{ householdId: household.id }}
+                search={{ tab: "accounts" }}
+              >
+                口座の残高履歴 <ChevronRight size={15} />
+              </Link>
+            </div>
+          )}
           <SettlementStatus
             state={settlement.__typename === "ClosedSettlement" ? "closed" : "open"}
           />
