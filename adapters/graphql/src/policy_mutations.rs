@@ -225,7 +225,23 @@ pub struct BudgetConnection {
 #[graphql(name = "BudgetPeriod")]
 pub struct BudgetPeriodObject {
     pub period: YearMonth,
-    pub budgets: Vec<BudgetObject>,
+    pub budgets: Vec<BudgetPeriodEntryObject>,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+#[graphql(name = "BudgetPeriodEntry")]
+pub struct BudgetPeriodEntryObject {
+    pub budget_id: ID,
+    pub household_id: ID,
+    pub category_id: Option<ID>,
+    pub name: String,
+    pub amount_yen: Long,
+    pub actual_yen: Long,
+    pub remaining_yen: Long,
+    pub starts_on: Date,
+    pub ends_on: Option<Date>,
+    pub archived: bool,
+    pub revision: i32,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -708,7 +724,11 @@ pub async fn graphql_budget_periods(
         .into_iter()
         .map(|value| BudgetPeriodObject {
             period: YearMonth(value.period),
-            budgets: value.budgets.into_iter().map(Into::into).collect(),
+            budgets: value
+                .budgets
+                .into_iter()
+                .map(BudgetPeriodEntryObject::from)
+                .collect(),
         })
         .collect())
 }
@@ -795,6 +815,36 @@ impl From<budget::BudgetReadModel> for BudgetObject {
         let projection = value.budget;
         Self {
             id: encode_node_id("Budget", &projection.id.value().to_string())
+                .expect("persisted budget id must be a UUID")
+                .into(),
+            household_id: encode_node_id("Household", &projection.household_id.value().to_string())
+                .expect("persisted household id must be a UUID")
+                .into(),
+            category_id: projection
+                .category_id
+                .as_ref()
+                .map(|id| id.value().to_string())
+                .and_then(|id| encode_node_id("Category", &id).ok())
+                .map(Into::into),
+            name: projection.name,
+            amount_yen: Long(projection.amount_yen.value()),
+            actual_yen: Long(actual_yen),
+            remaining_yen: Long(remaining_yen),
+            starts_on: Date(projection.starts_on),
+            ends_on: projection.ends_on.map(Date),
+            archived: projection.archived,
+            revision: projection.revision.value() as i32,
+        }
+    }
+}
+
+impl From<budget::BudgetReadModel> for BudgetPeriodEntryObject {
+    fn from(value: budget::BudgetReadModel) -> Self {
+        let actual_yen = value.actual_yen;
+        let remaining_yen = value.remaining_yen;
+        let projection = value.budget;
+        Self {
+            budget_id: encode_node_id("Budget", &projection.id.value().to_string())
                 .expect("persisted budget id must be a UUID")
                 .into(),
             household_id: encode_node_id("Household", &projection.household_id.value().to_string())

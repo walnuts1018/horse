@@ -37,7 +37,21 @@ type BudgetConnection {
 
 type BudgetPeriod {
   period: YearMonth!
-  budgets: [Budget!]!
+  budgets: [BudgetPeriodEntry!]!
+}
+
+type BudgetPeriodEntry {
+  budgetId: ID!
+  householdId: ID!
+  categoryId: ID
+  name: String!
+  amountYen: Long!
+  actualYen: Long!
+  remainingYen: Long!
+  startsOn: Date!
+  endsOn: Date
+  archived: Boolean!
+  revision: Int!
 }
 
 extend type Query {

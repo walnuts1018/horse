@@ -64,7 +64,7 @@ export const analysisDashboardQuery = graphql`
     budgetPeriods(householdId: $householdId, from: $from, to: $to) {
       period
       budgets {
-        id
+        budgetId
         householdId
         categoryId
         name

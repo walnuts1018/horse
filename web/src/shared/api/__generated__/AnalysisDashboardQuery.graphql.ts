@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<92fe8ebbeb6dc6789610c86e6e3bcdc6>>
+ * @generated SignedSource<<53cc8585d5e69b9c64e8b3ec9a71abe0>>
  * @lightSyntaxTransform
  */
 
@@ -20,10 +20,10 @@ export type AnalysisDashboardQuery$data = {
       readonly actualYen: any;
       readonly amountYen: any;
       readonly archived: boolean;
+      readonly budgetId: string;
       readonly categoryId: string | null | undefined;
       readonly endsOn: string | null | undefined;
       readonly householdId: string;
-      readonly id: string;
       readonly name: string;
       readonly remainingYen: any;
       readonly revision: number;
@@ -272,12 +272,18 @@ v18 = {
     {
       "alias": null,
       "args": null,
-      "concreteType": "Budget",
+      "concreteType": "BudgetPeriodEntry",
       "kind": "LinkedField",
       "name": "budgets",
       "plural": true,
       "selections": [
-        (v10/*:: as any*/),
+        {
+          "alias": null,
+          "args": null,
+          "kind": "ScalarField",
+          "name": "budgetId",
+          "storageKey": null
+        },
         (v13/*:: as any*/),
         (v6/*:: as any*/),
         (v11/*:: as any*/),
@@ -490,16 +496,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "c27e50cd752480b548d3771b93228736",
+    "cacheID": "a2ca0bf366d4128e62a92f5f8d934f72",
     "id": null,
     "metadata": {},
     "name": "AnalysisDashboardQuery",
     "operationKind": "query",
-    "text": "query AnalysisDashboardQuery(\n  $householdId: ID!\n  $from: YearMonth!\n  $to: YearMonth!\n) {\n  monthlyCategorySpending(householdId: $householdId, from: $from, to: $to) {\n    period\n    categoryId\n    categoryName\n    amountYen\n  }\n  monthlyMemberSpending(householdId: $householdId, from: $from, to: $to) {\n    items {\n      period\n      memberId\n      memberName\n      amountYen\n    }\n    hasUnattributedPurchases\n  }\n  purchaseAnalytics(householdId: $householdId, from: $from, to: $to) {\n    dimension\n    id\n    name\n    period\n    amountYen\n    count\n  }\n  budgetPeriods(householdId: $householdId, from: $from, to: $to) {\n    period\n    budgets {\n      id\n      householdId\n      categoryId\n      name\n      amountYen\n      actualYen\n      remainingYen\n      startsOn\n      endsOn\n      archived\n      revision\n    }\n  }\n  ...AnalysisRecurringExpensesFragment_2BD5SD\n}\n\nfragment AnalysisRecurringExpensesFragment_2BD5SD on Query {\n  recurringExpenses(householdId: $householdId, includeArchived: false, first: 100) {\n    edges {\n      node {\n        id\n        householdId\n        name\n        merchant\n        amountYen\n        currency\n        categoryId\n        paymentAccountId\n        cadence\n        startsOn\n        nextDueOn\n        endsOn\n        archived\n        revision\n        __typename\n      }\n      cursor\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
+    "text": "query AnalysisDashboardQuery(\n  $householdId: ID!\n  $from: YearMonth!\n  $to: YearMonth!\n) {\n  monthlyCategorySpending(householdId: $householdId, from: $from, to: $to) {\n    period\n    categoryId\n    categoryName\n    amountYen\n  }\n  monthlyMemberSpending(householdId: $householdId, from: $from, to: $to) {\n    items {\n      period\n      memberId\n      memberName\n      amountYen\n    }\n    hasUnattributedPurchases\n  }\n  purchaseAnalytics(householdId: $householdId, from: $from, to: $to) {\n    dimension\n    id\n    name\n    period\n    amountYen\n    count\n  }\n  budgetPeriods(householdId: $householdId, from: $from, to: $to) {\n    period\n    budgets {\n      budgetId\n      householdId\n      categoryId\n      name\n      amountYen\n      actualYen\n      remainingYen\n      startsOn\n      endsOn\n      archived\n      revision\n    }\n  }\n  ...AnalysisRecurringExpensesFragment_2BD5SD\n}\n\nfragment AnalysisRecurringExpensesFragment_2BD5SD on Query {\n  recurringExpenses(householdId: $householdId, includeArchived: false, first: 100) {\n    edges {\n      node {\n        id\n        householdId\n        name\n        merchant\n        amountYen\n        currency\n        categoryId\n        paymentAccountId\n        cadence\n        startsOn\n        nextDueOn\n        endsOn\n        archived\n        revision\n        __typename\n      }\n      cursor\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3f1ff75b776ca9207ffd875d5eab6a58";
+(node as any).hash = "51b61816af68b1edfa9985749870662e";
 
 export default node;

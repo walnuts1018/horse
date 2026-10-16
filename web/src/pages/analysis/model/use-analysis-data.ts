@@ -100,7 +100,7 @@ export function useAnalysisData(
   const budgetPeriods = dashboard.budgetPeriods.map(({ period, budgets }) => ({
     period,
     budgets: budgets.map((node): Budget => ({
-      id: node.id,
+      id: node.budgetId,
       householdId: node.householdId,
       categoryId: node.categoryId,
       name: node.name,
