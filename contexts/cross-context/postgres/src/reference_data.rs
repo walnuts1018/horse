@@ -580,7 +580,9 @@ impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
                     catalog_application::product_learning::ProductLearningError::MerchantRequired,
                 ) => UpdatePurchaseItemPersistenceError::MerchantRequired,
                 catalog_application::product_learning::ProductLearningWorkflowError::Decision(
-                    catalog_application::product_learning::ProductLearningError::InvalidVariantName,
+                    catalog_application::product_learning::ProductLearningError::InvalidVariantName
+                    | catalog_application::product_learning::ProductLearningError::InvalidMerchant
+                    | catalog_application::product_learning::ProductLearningError::InvalidAlias,
                 ) => UpdatePurchaseItemPersistenceError::InvalidDecision,
                 catalog_application::product_learning::ProductLearningWorkflowError::Operations(
                     error,
