@@ -71,10 +71,10 @@ impl PolicySettlementData for FundingPolicy {
         start: NaiveDate,
         end: NaiveDate,
     ) -> Result<Vec<FundingScheduleRow>, diesel::result::Error> {
-        Ok((start == NaiveDate::from_ymd_opt(2026, 9, 1).unwrap()
-            || start == NaiveDate::from_ymd_opt(2026, 10, 1).unwrap())
-        .then(|| {
-            vec![(
+        if start == NaiveDate::from_ymd_opt(2026, 9, 1).unwrap()
+            || start == NaiveDate::from_ymd_opt(2026, 10, 1).unwrap()
+        {
+            Ok(vec![(
                 self.schedule_id,
                 self.member_id,
                 self.pool_id,
@@ -84,9 +84,10 @@ impl PolicySettlementData for FundingPolicy {
                 Some(end - chrono::Duration::days(1)),
                 true,
                 Utc.with_ymd_and_hms(2026, 8, 1, 0, 0, 0).unwrap(),
-            )]
-        })
-        .unwrap_or_default())
+            )])
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     async fn schedules_overlapping(
