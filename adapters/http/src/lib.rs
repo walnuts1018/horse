@@ -352,6 +352,21 @@ async fn health() -> StatusCode {
     StatusCode::OK
 }
 
+fn is_supported_extraction_model(model: &str) -> bool {
+    matches!(
+        model,
+        "free"
+            | "pro"
+            | "flash"
+            | "flash-lite"
+            | "gemini-3.8-flash"
+            | "gemini-3.5-flash-lite"
+            | "gemini-3.1-flash-lite"
+            | "gemini-3.1-pro-preview"
+            | "gemini-4-argon"
+    )
+}
+
 async fn upload_document(
     State(state): State<ApiState>,
     headers: HeaderMap,
@@ -460,7 +475,7 @@ async fn upload_document(
         _ => return (StatusCode::BAD_REQUEST, "invalid source kind").into_response(),
     };
     if !matches!(purpose.as_str(), "interactive" | "background")
-        || !matches!(model.as_str(), "free" | "pro" | "flash" | "flash-lite")
+        || !is_supported_extraction_model(&model)
     {
         return (StatusCode::BAD_REQUEST, "invalid extraction options").into_response();
     }
@@ -1784,7 +1799,7 @@ async fn retry_document(
         }
     };
     let model = input.get("model").and_then(Value::as_str).unwrap_or("free");
-    if !matches!(model, "free" | "pro" | "flash" | "flash-lite") {
+    if !is_supported_extraction_model(model) {
         return (StatusCode::BAD_REQUEST, "invalid extraction retry input").into_response();
     }
     if let Some(crop) = input.get("crop") {
