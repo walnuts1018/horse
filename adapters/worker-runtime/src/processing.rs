@@ -46,6 +46,7 @@ pub struct ProcessConfig {
     usd_jpy_rate: f64,
     usd_jpy_rate_source: String,
     usd_jpy_rate_as_of: String,
+    model_price_table: ModelPriceTable,
     quota_limits: HashMap<(String, String), QuotaLimit>,
     ocr_url: String,
 }
@@ -57,6 +58,8 @@ impl ProcessConfig {
                 .ok_or_else(|| "GEMINI_ENABLED must be a boolean".to_owned())?;
         let quota_limits =
             parse_quota_limits(&env::var("GEMINI_QUOTA_LIMITS").unwrap_or_default())?;
+        let model_price_table =
+            parse_model_price_table(&env::var("GEMINI_MODEL_PRICES").unwrap_or_default())?;
         let usd_jpy_rate_override = configured_exchange_rate("USDJPY_RATE")?;
         let legacy_usd_jpy_rate_override = configured_exchange_rate("GEMINI_USDJPY_RATE")?;
         let usd_jpy_rate = usd_jpy_rate_override
@@ -85,6 +88,7 @@ impl ProcessConfig {
             usd_jpy_rate_source,
             usd_jpy_rate_as_of: env::var("USDJPY_RATE_AS_OF")
                 .unwrap_or_else(|_| "unspecified".to_owned()),
+            model_price_table,
             quota_limits,
             ocr_url: env::var("OCR_URL").unwrap_or_default(),
         })
@@ -469,7 +473,9 @@ pub async fn process(
         if candidate_key.is_empty() {
             continue;
         }
-        if candidate_route == "paid" && model_prices(&candidate_model, 0, Utc::now()).is_none() {
+        if candidate_route == "paid"
+            && model_prices(&config.model_price_table, &candidate_model, 0, Utc::now()).is_none()
+        {
             last_error = Some(Failure::new(
                 ProcessErrorKind::Permanent,
                 "unknown_model_price",
@@ -1685,7 +1691,7 @@ fn apply_cost_snapshot(
     output_tokens: i64,
     priced_at: DateTime<Utc>,
 ) {
-    let prices = model_prices(model, input_tokens, priced_at);
+    let prices = model_prices(&config.model_price_table, model, input_tokens, priced_at);
     let price_status = if route == "free" {
         "free_tier"
     } else if prices.is_none() {
@@ -1730,44 +1736,205 @@ fn apply_cost_snapshot(
         json!(config.usd_jpy_rate_as_of),
     );
     run.insert("pricedAt".to_owned(), json!(priced_at.to_rfc3339()));
+    run.insert(
+        "priceTableVersion".to_owned(),
+        json!(config.model_price_table.version),
+    );
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ModelPrices {
     input_usd_per_million: f64,
     output_usd_per_million: f64,
 }
 
-fn model_prices(model: &str, input_tokens: i64, at: DateTime<Utc>) -> Option<ModelPrices> {
-    let (input_usd_per_million, output_usd_per_million) = match model {
-        "gemini-4-argon"
-            if at
-                < DateTime::parse_from_rfc3339("2026-12-01T00:00:00Z")
-                    .unwrap()
-                    .to_utc() =>
-        {
-            (2.0, 10.0)
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelPriceRule {
+    model_id: String,
+    #[serde(default)]
+    starts_at: Option<String>,
+    #[serde(default)]
+    ends_at: Option<String>,
+    #[serde(default)]
+    min_input_tokens: Option<i64>,
+    #[serde(default)]
+    max_input_tokens: Option<i64>,
+    input_usd_per_million_tokens: f64,
+    output_usd_per_million_tokens: f64,
+}
+
+#[derive(Clone)]
+struct ModelPriceTable {
+    version: String,
+    rules: Vec<ModelPriceRule>,
+}
+
+impl ModelPriceTable {
+    fn defaults() -> Self {
+        let rule = |model_id: &str,
+                    starts_at: Option<&str>,
+                    ends_at: Option<&str>,
+                    min_input_tokens: Option<i64>,
+                    input: f64,
+                    output: f64| ModelPriceRule {
+            model_id: model_id.to_owned(),
+            starts_at: starts_at.map(str::to_owned),
+            ends_at: ends_at.map(str::to_owned),
+            min_input_tokens,
+            max_input_tokens: None,
+            input_usd_per_million_tokens: input,
+            output_usd_per_million_tokens: output,
+        };
+        Self {
+            version: "gemini-prices-2026-10-v2".to_owned(),
+            rules: vec![
+                rule(
+                    "gemini-4-argon",
+                    None,
+                    Some("2026-12-01T00:00:00Z"),
+                    None,
+                    2.0,
+                    10.0,
+                ),
+                rule(
+                    "gemini-4-argon",
+                    Some("2026-12-01T00:00:00Z"),
+                    None,
+                    None,
+                    4.0,
+                    20.0,
+                ),
+                rule(
+                    "gemini-3.8-flash",
+                    None,
+                    Some("2027-01-01T00:00:00Z"),
+                    None,
+                    0.75,
+                    3.75,
+                ),
+                rule(
+                    "gemini-3.8-flash",
+                    Some("2027-01-01T00:00:00Z"),
+                    None,
+                    None,
+                    1.5,
+                    7.5,
+                ),
+                rule(
+                    "gemini-3.6-flash",
+                    None,
+                    Some("2027-01-01T00:00:00Z"),
+                    None,
+                    0.75,
+                    3.75,
+                ),
+                rule(
+                    "gemini-3.6-flash",
+                    Some("2027-01-01T00:00:00Z"),
+                    None,
+                    None,
+                    1.5,
+                    7.5,
+                ),
+                rule("gemini-3.5-flash-lite", None, None, None, 0.3, 2.5),
+                rule("gemini-3.1-flash-lite", None, None, None, 0.25, 1.5),
+                rule(
+                    "gemini-3.1-pro-preview",
+                    None,
+                    None,
+                    Some(200_001),
+                    4.0,
+                    18.0,
+                ),
+                rule("gemini-3.1-pro-preview", None, None, None, 2.0, 12.0),
+            ],
         }
-        "gemini-4-argon" => (4.0, 20.0),
-        "gemini-3.8-flash" | "gemini-3.6-flash"
-            if at
-                < DateTime::parse_from_rfc3339("2027-01-01T00:00:00Z")
-                    .unwrap()
-                    .to_utc() =>
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ConfiguredModelPriceTable {
+    version: String,
+    models: Vec<ModelPriceRule>,
+}
+
+fn parse_model_price_table(raw: &str) -> Result<ModelPriceTable, String> {
+    if raw.trim().is_empty() {
+        return Ok(ModelPriceTable::defaults());
+    }
+    let configured: ConfiguredModelPriceTable = serde_json::from_str(raw)
+        .map_err(|error| format!("GEMINI_MODEL_PRICES must be valid JSON: {error}"))?;
+    if configured.version.trim().is_empty() || configured.models.is_empty() {
+        return Err(
+            "GEMINI_MODEL_PRICES requires a version and at least one model rule".to_owned(),
+        );
+    }
+    for rule in &configured.models {
+        if !valid_model_id(&rule.model_id)
+            || !rule.input_usd_per_million_tokens.is_finite()
+            || rule.input_usd_per_million_tokens < 0.0
+            || !rule.output_usd_per_million_tokens.is_finite()
+            || rule.output_usd_per_million_tokens < 0.0
+            || rule.min_input_tokens.is_some_and(|value| value < 0)
+            || rule.max_input_tokens.is_some_and(|value| value < 0)
+            || rule
+                .min_input_tokens
+                .zip(rule.max_input_tokens)
+                .is_some_and(|(min, max)| min > max)
         {
-            (0.75, 3.75)
+            return Err("GEMINI_MODEL_PRICES contains an invalid model rule".to_owned());
         }
-        "gemini-3.8-flash" | "gemini-3.6-flash" => (1.5, 7.5),
-        "gemini-3.5-flash-lite" => (0.3, 2.5),
-        "gemini-3.1-flash-lite" => (0.25, 1.5),
-        "gemini-3.1-pro-preview" if input_tokens > 200_000 => (4.0, 18.0),
-        "gemini-3.1-pro-preview" => (2.0, 12.0),
-        _ => return None,
-    };
-    Some(ModelPrices {
-        input_usd_per_million,
-        output_usd_per_million,
+        for date in [&rule.starts_at, &rule.ends_at].into_iter().flatten() {
+            DateTime::parse_from_rfc3339(date)
+                .map_err(|_| "GEMINI_MODEL_PRICES dates must use RFC3339".to_owned())?;
+        }
+        if let (Some(start), Some(end)) = (&rule.starts_at, &rule.ends_at) {
+            if DateTime::parse_from_rfc3339(start).unwrap()
+                >= DateTime::parse_from_rfc3339(end).unwrap()
+            {
+                return Err("GEMINI_MODEL_PRICES end date must follow start date".to_owned());
+            }
+        }
+    }
+    Ok(ModelPriceTable {
+        version: configured.version,
+        rules: configured.models,
     })
+}
+
+fn model_prices(
+    table: &ModelPriceTable,
+    model: &str,
+    input_tokens: i64,
+    at: DateTime<Utc>,
+) -> Option<ModelPrices> {
+    table
+        .rules
+        .iter()
+        .find(|rule| {
+            rule.model_id == model
+                && rule
+                    .min_input_tokens
+                    .is_none_or(|minimum| input_tokens >= minimum)
+                && rule
+                    .max_input_tokens
+                    .is_none_or(|maximum| input_tokens <= maximum)
+                && rule
+                    .starts_at
+                    .as_deref()
+                    .is_none_or(|start| at >= DateTime::parse_from_rfc3339(start).unwrap().to_utc())
+                && rule
+                    .ends_at
+                    .as_deref()
+                    .is_none_or(|end| at < DateTime::parse_from_rfc3339(end).unwrap().to_utc())
+        })
+        .map(|rule| ModelPrices {
+            input_usd_per_million: rule.input_usd_per_million_tokens,
+            output_usd_per_million: rule.output_usd_per_million_tokens,
+        })
 }
 
 fn valid_model_id(model: &str) -> bool {
@@ -3016,12 +3183,12 @@ fn statement_kind_instruction(source_kind: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
+    use chrono::{DateTime, Utc};
     use serde_json::{Value, json};
 
     use super::{
-        ProcessConfig, apply_cost_snapshot, model_prices, needs_pro_review, truncate_to_byte_limit,
-        verify_receipt,
+        ModelPriceTable, ProcessConfig, apply_cost_snapshot, model_prices, needs_pro_review,
+        parse_model_price_table, truncate_to_byte_limit, verify_receipt,
     };
     use std::collections::HashMap;
 
@@ -3075,7 +3242,46 @@ mod tests {
 
     #[test]
     fn unknown_model_has_no_price() {
-        assert!(model_prices("unconfigured-model", 1_000, Utc::now()).is_none());
+        assert!(
+            model_prices(
+                &ModelPriceTable::defaults(),
+                "unconfigured-model",
+                1_000,
+                Utc::now()
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn configured_prices_use_versioned_model_and_period_rules() {
+        let table = parse_model_price_table(
+            r#"{"version":"operator-2026-11","models":[{"modelId":"model-a","startsAt":"2026-11-01T00:00:00Z","endsAt":"2026-12-01T00:00:00Z","minInputTokens":10,"inputUsdPerMillionTokens":1.25,"outputUsdPerMillionTokens":6.5}]}"#,
+        )
+        .unwrap();
+        let start = DateTime::parse_from_rfc3339("2026-11-01T00:00:00Z")
+            .unwrap()
+            .to_utc();
+        let end = DateTime::parse_from_rfc3339("2026-12-01T00:00:00Z")
+            .unwrap()
+            .to_utc();
+        let price = model_prices(&table, "model-a", 10, start).unwrap();
+
+        assert_eq!(table.version, "operator-2026-11");
+        assert_eq!(price.input_usd_per_million, 1.25);
+        assert_eq!(price.output_usd_per_million, 6.5);
+        assert!(model_prices(&table, "model-a", 10, end).is_none());
+        assert!(model_prices(&table, "unconfigured-model", 10, start).is_none());
+        assert!(model_prices(&table, "model-a", 0, start).is_none());
+    }
+
+    #[test]
+    fn configured_prices_reject_invalid_periods() {
+        let result = parse_model_price_table(
+            r#"{"version":"invalid","models":[{"modelId":"model-a","startsAt":"2026-12-01T00:00:00Z","endsAt":"2026-11-01T00:00:00Z","inputUsdPerMillionTokens":1,"outputUsdPerMillionTokens":1}]}"#,
+        );
+
+        assert!(result.is_err());
     }
 
     #[test]
@@ -3092,6 +3298,7 @@ mod tests {
             usd_jpy_rate: 150.0,
             usd_jpy_rate_source: "test".to_owned(),
             usd_jpy_rate_as_of: "2026-10-16".to_owned(),
+            model_price_table: ModelPriceTable::defaults(),
             quota_limits: HashMap::new(),
             ocr_url: String::new(),
         };
