@@ -191,7 +191,7 @@ export function AnalysisBreakdown({
         {rows.length === 0 ? (
           <div className="empty-state compact">
             <BarChart3 />
-            <span>支出の記録</span>
+            <span>この期間の記録はありません</span>
           </div>
         ) : (
           rows.map((row, index) => (

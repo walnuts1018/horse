@@ -318,6 +318,7 @@ export function HomePage({
 function MiniBars({ dailySpending }: { dailySpending: HomeSummary["dailySpending"] }) {
   const totals = dailySpending.map((day) => day.amountYen);
   const peak = Math.max(...totals, 1);
+  const hasSpending = totals.some((amount) => amount > 0);
   const spendingSummary = dailySpending
     .map((day) => {
       const date = new Intl.DateTimeFormat("ja-JP", {
@@ -331,11 +332,14 @@ function MiniBars({ dailySpending }: { dailySpending: HomeSummary["dailySpending
     .join("、");
   return (
     <figure className="mini-chart" aria-label={`直近7日の支出。${spendingSummary}`}>
+      {!hasSpending && <figcaption className="mini-chart-empty">支出なし</figcaption>}
       <div className="mini-bars" aria-hidden="true">
         {dailySpending.map((day, index) => (
           <div key={day.date} className="bar-track" title={`${day.date}: ${yen(day.amountYen)}`}>
             <i
-              style={{ height: `${Math.max(5, (day.amountYen / peak) * 100)}%` }}
+              style={{
+                height: day.amountYen > 0 ? `${Math.max(5, (day.amountYen / peak) * 100)}%` : 0,
+              }}
               className={index === dailySpending.length - 1 ? "bar-current" : ""}
             />
           </div>
