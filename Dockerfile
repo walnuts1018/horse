@@ -21,7 +21,25 @@ COPY web/ ./
 COPY graphql/ /src/graphql/
 RUN pnpm build
 
-FROM rust:1.99.0-bookworm AS rust-build
+FROM rust:1.99.0-bookworm AS rust-chef
+
+RUN cargo install --locked --version 0.1.78 cargo-chef
+
+WORKDIR /src
+
+FROM rust-chef AS rust-planner
+
+COPY Cargo.toml Cargo.lock ./
+COPY apps/ apps/
+COPY adapters/ adapters/
+COPY contexts/ contexts/
+COPY platform/ platform/
+COPY rust-migrations/ rust-migrations/
+COPY atlas-rust.hcl ./
+
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM rust-chef AS rust-build
 
 WORKDIR /src
 
@@ -29,6 +47,12 @@ ARG TARGETARCH
 ENV CARGO_TARGET_DIR=/target/${TARGETARCH}
 
 RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev && rm -rf /var/lib/apt/lists/*
+
+COPY --from=rust-planner /src/recipe.json recipe.json
+
+RUN --mount=type=cache,id=horse-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=horse-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    cargo chef cook --locked --release --recipe-path recipe.json -p horse-api -p horse-worker
 
 COPY Cargo.toml Cargo.lock ./
 COPY apps/ apps/
@@ -40,7 +64,6 @@ COPY atlas-rust.hcl ./
 
 RUN --mount=type=cache,id=horse-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=horse-cargo-git,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,id=horse-cargo-target-${TARGETARCH},target=/target,sharing=locked \
     cargo build --locked --release -p horse-api -p horse-worker \
     && mkdir -p /out \
     && cp "${CARGO_TARGET_DIR}/release/horse-api" /out/api \
