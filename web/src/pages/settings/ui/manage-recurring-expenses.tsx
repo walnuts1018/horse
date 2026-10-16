@@ -19,7 +19,13 @@ import {
 
 import styles from "./settings-page.module.css";
 
-const localDate = () => new Date().toISOString().slice(0, 10);
+const localDate = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 const yen = (amount: number) =>
   new Intl.NumberFormat("ja-JP", {
     style: "currency",

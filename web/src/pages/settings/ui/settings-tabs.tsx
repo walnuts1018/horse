@@ -1,5 +1,7 @@
 import { settingsTabs, type SettingsTab } from "../model/settings-navigation";
 
+import styles from "./settings-page.module.css";
+
 export function SettingsTabs({
   activeTab,
   onSelect,
@@ -8,10 +10,7 @@ export function SettingsTabs({
   onSelect: (tab: SettingsTab) => void;
 }) {
   return (
-    <nav
-      aria-label="設定項目"
-      style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}
-    >
+    <nav aria-label="設定項目" className={styles.settingsTabs}>
       {settingsTabs.map((tab) => (
         <button
           key={tab.id}

@@ -4,6 +4,13 @@
   gap: 14px;
 }
 
+.settingsTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
 .settingsSection {
   padding: 18px 18px 15px;
 }
