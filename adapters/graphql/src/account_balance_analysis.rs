@@ -311,7 +311,7 @@ fn map_query_error(error: AccountBalanceAnalysisQueryError) -> Error {
     match error {
         E::AccountNotFound => Error::new("not found"),
         E::InvalidInput => Error::new("bad input"),
-        E::BalanceOverflow => Error::new("account balance exceeds int64"),
+        E::BalanceOverflow => crate::internal_error(error),
         E::Infrastructure(error) => crate::internal_error(error),
     }
 }

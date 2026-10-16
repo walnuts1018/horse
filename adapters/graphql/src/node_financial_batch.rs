@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use async_graphql::{Error, Result};
+use async_graphql::Result;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use cross_context_application::node_financial_batch::{
     NodeFinancialBatchInput, NodeFinancialBatchProjection, NodeFinancialBatchQuery,
@@ -89,7 +89,12 @@ fn map_projection(
         let remaining_yen = value
             .amount_yen
             .checked_sub(value.actual_yen)
-            .ok_or_else(|| Error::new("budget remaining exceeds int64"))?;
+            .ok_or_else(|| {
+                crate::internal_error(format!(
+                    "budget remaining overflow for budget {}: amount {}, actual {}",
+                    value.id, value.amount_yen, value.actual_yen
+                ))
+            })?;
         let revision = i32::try_from(value.revision).map_err(crate::internal_error)?;
         result.insert(
             ("Budget".to_owned(), value.id),
@@ -117,7 +122,12 @@ fn map_projection(
         let balance_yen = value
             .principal_yen
             .checked_sub(value.repaid_yen)
-            .ok_or_else(|| Error::new("loan balance exceeds int64"))?;
+            .ok_or_else(|| {
+                crate::internal_error(format!(
+                    "loan balance overflow for loan {}: principal {}, repaid {}",
+                    value.id, value.principal_yen, value.repaid_yen
+                ))
+            })?;
         result.insert(
             ("LoanBalance".to_owned(), value.id),
             Node::LoanBalance(LoanBalance {

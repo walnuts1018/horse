@@ -47,7 +47,7 @@ fn map_query_error(error: PurchaseDefaultsQueryError) -> Error {
     use PurchaseDefaultsQueryError as E;
     match error {
         E::HouseholdNotFound => Error::new("household access denied"),
-        E::CountOutOfRange => Error::new("purchase count exceeds GraphQL Int"),
+        E::CountOutOfRange => crate::internal_error(error),
         E::Infrastructure(_) => crate::internal_error(error),
     }
 }

@@ -110,7 +110,7 @@ fn map_query_error(error: MonthlySpendingQueryError) -> Error {
     match error {
         E::HouseholdNotFound => Error::new("household access denied"),
         E::InvalidPeriod => Error::new("invalid monthly spending period"),
-        E::AmountOutOfRange => Error::new("monthly spending total exceeds supported range"),
+        E::AmountOutOfRange => crate::internal_error(error),
         E::Infrastructure(_) => crate::internal_error(error),
     }
 }

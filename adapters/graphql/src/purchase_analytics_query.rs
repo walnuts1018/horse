@@ -165,9 +165,7 @@ fn map_query_error(error: PurchaseAnalyticsQueryError) -> Error {
     match error {
         QueryError::HouseholdNotFound => Error::new("household access denied"),
         QueryError::InvalidPeriod => Error::new("invalid purchase analytics period"),
-        QueryError::AmountOutOfRange => {
-            Error::new("purchase analytics total exceeds supported range")
-        }
+        QueryError::AmountOutOfRange => crate::internal_error(error),
         QueryError::Infrastructure(_) => crate::internal_error(error),
     }
 }

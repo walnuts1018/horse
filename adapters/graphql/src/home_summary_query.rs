@@ -40,7 +40,7 @@ fn map_query_error(error: HomeSummaryQueryError) -> Error {
     use HomeSummaryQueryError as E;
     match error {
         E::HouseholdNotFound => Error::new("household access denied"),
-        E::AmountOutOfRange => Error::new("home summary total exceeds supported range"),
+        E::AmountOutOfRange => crate::internal_error(error),
         E::Failed(_) => crate::internal_error(error),
     }
 }
