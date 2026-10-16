@@ -326,7 +326,7 @@ fn callback_error_response(error: OidcError, state_clear: &Cookie) -> Response {
             status = StatusCode::SEE_OTHER.as_u16(),
             "OIDC authorization code rejected; restarting login"
         );
-        return restart_login_response(&redirect_to, state_clear);
+        return restart_login_response(redirect_to, state_clear);
     }
 
     let status = match &error {
