@@ -94,7 +94,7 @@ impl SetPoolFundingRuleOperations for PostgresSetPoolFundingRuleOperations<'_> {
             .first::<String>(&mut *self.conn)
             .await
             .optional()?;
-        if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
+        if authorize(actor_role.as_deref(), Operation::ManageHousehold).is_err() {
             return Err(SetPoolFundingRulePersistenceError::ActorNotFound);
         }
 

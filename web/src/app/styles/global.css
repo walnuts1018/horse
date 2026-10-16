@@ -116,7 +116,7 @@ input:is([type="checkbox"], [type="radio"]):disabled {
 }
 
 select:disabled {
-  background-color: #f3f5f3;
+  background-color: var(--surface-muted);
   color: var(--muted);
   cursor: not-allowed;
 }

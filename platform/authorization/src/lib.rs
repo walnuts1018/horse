@@ -41,3 +41,24 @@ pub fn authorize(role: Option<&str>, operation: Operation) -> Result<Role, Autho
     }
     Ok(role)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{AuthorizationError, Operation, Role, authorize};
+
+    #[test]
+    fn household_management_is_owner_only_while_financial_updates_allow_members() {
+        assert_eq!(
+            authorize(Some("OWNER"), Operation::ManageHousehold),
+            Ok(Role::Owner)
+        );
+        assert_eq!(
+            authorize(Some("MEMBER"), Operation::ManageHousehold),
+            Err(AuthorizationError)
+        );
+        assert_eq!(
+            authorize(Some("MEMBER"), Operation::FinancialData),
+            Ok(Role::Member)
+        );
+    }
+}

@@ -57,7 +57,7 @@ pub async fn persist_create_pool(
                 .first::<String>(&mut *conn)
                 .await
                 .optional()?;
-            if authorize(role.as_deref(), Operation::FinancialData).is_err() {
+            if authorize(role.as_deref(), Operation::ManageHousehold).is_err() {
                 return Err(CreatePoolMutationError::MemberNotFound);
             }
             diesel::insert_into(public::pools::table)

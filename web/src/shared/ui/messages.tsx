@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 
 function InlineError({ message }: { message: string }) {
   return (
-    <div className="inline-error">
+    <div className="inline-error" role="alert">
       <span>!</span>
       {message}
     </div>

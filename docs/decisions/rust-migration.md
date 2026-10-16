@@ -20,7 +20,7 @@ Application Workflowは業務操作のLoad・Decision・Persistの順序を所�
 
 GraphQL境界ではApplication Decisionの業務エラーを入力・状態エラーへ変換し、PostgreSQLのI/O障害と永続化データの破損は内部エラーとして扱う。PostgreSQL Adapter内でも呼び出し側Decisionの不整合と保存済みデータの破損を別のエラーとして表現する。
 
-家計操作の認可は`horse-authorization`の共通契約で判定する。家計・メンバー・招待・メール転送設定はOWNERのみが管理でき、家計データの更新は有効なOWNERまたはMEMBERが実行できる。各更新Workflowは同じトランザクションで有効な所属と操作権限を確認する。
+家計操作の認可は`horse-authorization`の共通契約で判定する。家計のDefault配賦、Poolの作成、負担配賦・資金拠出設定、メンバー・招待・メール転送設定はOWNERのみが管理できる。口座・購入・入金予定・締めなどの家計データ更新は有効なOWNERまたはMEMBERが実行できる。各更新Workflowは同じトランザクションで有効な所属と操作権限を確認する。
 
 購入訂正の`journals.occurred_at`とLedger Entryの日時には訂正を記録した時刻を保存する。`effective_period`は訂正対象として指定したOpen会計期間と月次精算を決める値であり、記録日時を過去へ変更しない。
 
