@@ -74,6 +74,7 @@ async fn purchase_events_and_multiple_purchase_snapshots_use_bounded_queries() {
                     purchases::status.eq("DRAFT"),
                     purchases::revision.eq(1_i64),
                     purchases::created_by.eq(member_id),
+                    purchases::allocation_rule_version.eq(0_i64),
                 ))
                 .execute(&mut *conn)
                 .await
