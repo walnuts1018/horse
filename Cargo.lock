@@ -1249,9 +1249,11 @@ dependencies = [
  "horse-authorization",
  "horse-household-change",
  "horse-postgres-common",
+ "horse-test-infra",
  "household-postgres",
  "serde_json",
  "sha2 0.11.1",
+ "tokio",
  "uuid",
 ]
 

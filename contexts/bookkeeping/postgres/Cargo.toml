@@ -19,3 +19,7 @@ household-postgres = { path = "../../household/postgres" }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+horse-test-infra = { path = "../../../platform/test-infra" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

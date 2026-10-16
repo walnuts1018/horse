@@ -146,6 +146,17 @@ pub enum RecordFundingWorkflowAdapterError {
     Persistence(RecordFundingPersistenceError),
 }
 
+enum RecordFundingTransactionError {
+    Workflow(application::RecordFundingWorkflowError<RecordFundingWorkflowAdapterError>),
+    Database(DieselError),
+}
+
+impl From<DieselError> for RecordFundingTransactionError {
+    fn from(error: DieselError) -> Self {
+        Self::Database(error)
+    }
+}
+
 pub async fn record_funding_workflow<P: crate::policy_data::PolicyData>(
     pool: &PgPool,
     command: application::RecordFundingWorkflowCommand,
@@ -161,23 +172,25 @@ pub async fn record_funding_workflow<P: crate::policy_data::PolicyData>(
             )),
         )
     })?;
-    (*pooled)
-        .transaction::<
-            Result<_, application::RecordFundingWorkflowError<RecordFundingWorkflowAdapterError>>,
-            DieselError,
-            _,
-        >(async |conn| {
+    match (*pooled)
+        .transaction::<_, RecordFundingTransactionError, _>(async |conn| {
             let mut operations = PgRecordFundingOperations { conn, policy };
-            Ok(application::record_funding(&mut operations, command).await)
+            application::record_funding(&mut operations, command)
+                .await
+                .map_err(RecordFundingTransactionError::Workflow)
         })
         .await
-        .map_err(|error| {
-            application::RecordFundingWorkflowError::Operations(
+    {
+        Ok(result) => Ok(result),
+        Err(RecordFundingTransactionError::Workflow(error)) => Err(error),
+        Err(RecordFundingTransactionError::Database(error)) => {
+            Err(application::RecordFundingWorkflowError::Operations(
                 RecordFundingWorkflowAdapterError::Persistence(
                     RecordFundingPersistenceError::Database(error),
                 ),
-            )
-        })?
+            ))
+        }
+    }
 }
 
 struct PgRecordFundingOperations<'a, P> {
