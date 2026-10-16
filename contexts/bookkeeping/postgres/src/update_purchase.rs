@@ -97,7 +97,9 @@ pub async fn persist_update_purchase<C: crate::post_purchase_loader::PostPurchas
         .await
 }
 
-pub async fn persist_update_purchase_in_transaction<C: crate::post_purchase_loader::PostPurchaseReferenceData>(
+pub async fn persist_update_purchase_in_transaction<
+    C: crate::post_purchase_loader::PostPurchaseReferenceData,
+>(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     actor_id: Uuid,
@@ -391,6 +393,7 @@ pub async fn persist_update_purchase_in_transaction<C: crate::post_purchase_load
                     previous_payment_snapshots: &previous_payment_snapshots,
                     payments_changed: decision.payment_allocations.is_some(),
                 },
+                reference_data,
             )
             .await?;
         } else if decision.merchant.is_some() {
@@ -462,9 +465,12 @@ async fn purchase_total(
         .ok_or(UpdatePurchasePersistenceError::PaymentTotalMismatch)
 }
 
-async fn sync_posted_purchase_accounting(
+async fn sync_posted_purchase_accounting<
+    C: crate::post_purchase_loader::PostPurchaseReferenceData,
+>(
     conn: &mut crate::AsyncPgConnection,
     accounting: PostedPurchaseAccounting<'_>,
+    reference_data: &mut C,
 ) -> Result<(), UpdatePurchasePersistenceError> {
     let PostedPurchaseAccounting {
         household_id,

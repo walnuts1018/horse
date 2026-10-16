@@ -70,18 +70,25 @@ impl application::CreatePurchaseOperations for PgCreatePurchaseOperations<'_> {
             .map_err(CreatePurchaseWorkflowAdapterError::Persistence)?;
         let actor_id = parse_uuid(actor_id, "actor_id")
             .map_err(CreatePurchaseWorkflowAdapterError::Persistence)?;
-        members::household_members
+        let role = members::household_members
             .filter(members::household_id.eq(household_id))
             .filter(members::member_id.eq(actor_id))
             .filter(members::left_at.is_null())
-            .select(members::member_id)
-            .first::<Uuid>(&mut *self.conn)
+            .select(members::role)
+            .first::<String>(&mut *self.conn)
             .await
             .optional()
-            .map_err(CreatePurchaseWorkflowAdapterError::Database)?
-            .ok_or(CreatePurchaseWorkflowAdapterError::Persistence(
+            .map_err(CreatePurchaseWorkflowAdapterError::Database)?;
+        if horse_authorization::authorize(
+            role.as_deref(),
+            horse_authorization::Operation::FinancialData,
+        )
+        .is_err()
+        {
+            return Err(CreatePurchaseWorkflowAdapterError::Persistence(
                 CreatePurchasePersistenceError::MemberNotFound,
-            ))?;
+            ));
+        }
         Ok(())
     }
 

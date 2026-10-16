@@ -14,6 +14,7 @@ diesel-async = { workspace = true }
 evidence-application = { path = "../../evidence/application" }
 horse-postgres-common = { path = "../../../platform/postgres-common" }
 horse-household-change = { path = "../../../platform/household-change" }
+horse-authorization = { path = "../../../platform/authorization" }
 household-postgres = { path = "../../household/postgres" }
 serde_json = { workspace = true }
 uuid = { workspace = true }

@@ -622,15 +622,19 @@ impl PurchaseCreationCrossContext for PurchaseCreationContext {
         actor_id: Uuid,
     ) -> Result<bool, CreatePurchasePersistenceError> {
         use public::household_members::dsl as members;
-        Ok(members::household_members
+        let role = members::household_members
             .filter(members::household_id.eq(household_id))
             .filter(members::member_id.eq(actor_id))
             .filter(members::left_at.is_null())
-            .select(members::member_id)
-            .first::<Uuid>(conn)
+            .select(members::role)
+            .first::<String>(conn)
             .await
-            .optional()?
-            .is_some())
+            .optional()?;
+        Ok(horse_authorization::authorize(
+            role.as_deref(),
+            horse_authorization::Operation::FinancialData,
+        )
+        .is_ok())
     }
     async fn current_default_allocation_version(
         &mut self,

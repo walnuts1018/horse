@@ -1,4 +1,9 @@
 use bookkeeping_postgres::{
+    bulk_delete_purchase_items::{
+        BulkDeletePurchaseItemsPersistenceError, PersistBulkDeletePurchaseItems,
+        PersistedBulkDeletePurchaseItems,
+    },
+    post_purchase::PostPurchaseWorkflowAdapterError,
     post_purchase_loader::PostPurchaseReferenceData,
     save_purchase_item_edits::{
         PersistSavePurchaseItemEdits, SavePurchaseItemEditsPersistenceError,
@@ -8,24 +13,55 @@ use bookkeeping_postgres::{
         SharedDraftReferenceData, SharedPurchaseDraft, SharedPurchaseDraftPersistenceError,
         UpdateSharedPurchaseDraftResult,
     },
+    update_purchase::{
+        PersistUpdatePurchase, PersistedUpdatePurchase, UpdatePurchasePersistenceError,
+    },
     update_purchase_item::{
         PersistUpdatePurchaseItem, PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError,
         UpdatePurchaseItemReferenceData,
     },
-    update_purchase::{
-        PersistUpdatePurchase, PersistedUpdatePurchase, UpdatePurchasePersistenceError,
-    },
-    bulk_delete_purchase_items::{
-        PersistBulkDeletePurchaseItems, PersistedBulkDeletePurchaseItems,
-        BulkDeletePurchaseItemsPersistenceError,
-    },
-    post_purchase::PostPurchaseWorkflowAdapterError,
 };
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
 pub struct UpdatePurchaseItemReferences;
+
+pub async fn persist_bulk_update_purchase_items(
+    pool: &horse_postgres_common::PgPool,
+    input: bookkeeping_postgres::bulk_update_purchase_items::PersistBulkUpdatePurchaseItems,
+    targets: Vec<bookkeeping_application::bulk_update_items::BulkUpdateItemTarget>,
+    patch: bookkeeping_application::bulk_update_items::BulkUpdateItemPatch,
+) -> Result<
+    bookkeeping_postgres::bulk_update_purchase_items::PersistedBulkUpdatePurchaseItems,
+    bookkeeping_postgres::bulk_update_purchase_items::BulkUpdatePurchaseItemsPersistenceError,
+> {
+    bookkeeping_postgres::bulk_update_purchase_items::persist_bulk_update_purchase_items(
+        pool,
+        input,
+        targets,
+        patch,
+        &mut UpdatePurchaseItemReferences,
+    )
+    .await
+}
+
+pub async fn persist_bulk_update_purchases(
+    pool: &horse_postgres_common::PgPool,
+    input: bookkeeping_postgres::bulk_update_purchases::PersistBulkUpdatePurchases,
+    commands: Vec<bookkeeping_application::update_purchase::UpdatePurchaseCommand>,
+) -> Result<
+    Vec<String>,
+    bookkeeping_postgres::bulk_update_purchases::BulkUpdatePurchasesPersistenceError,
+> {
+    bookkeeping_postgres::bulk_update_purchases::persist_bulk_update_purchases(
+        pool,
+        input,
+        commands,
+        &mut UpdatePurchaseItemReferences,
+    )
+    .await
+}
 
 pub async fn post_purchase_workflow(
     pool: &horse_postgres_common::PgPool,
@@ -148,6 +184,24 @@ pub async fn get_shared_purchase_draft(
 
 #[allow(async_fn_in_trait)]
 impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
+    async fn load_default_allocation(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+        version: i64,
+    ) -> Result<Vec<(Uuid, i64)>, DieselError> {
+        Ok(public::allocation_defaults::table
+            .filter(public::allocation_defaults::household_id.eq(household_id))
+            .filter(public::allocation_defaults::version.eq(version))
+            .order(public::allocation_defaults::pool_id)
+            .select((
+                public::allocation_defaults::pool_id,
+                public::allocation_defaults::weight,
+            ))
+            .load::<(Uuid, i64)>(conn)
+            .await?)
+    }
+
     async fn load_automatic_allocation(
         &mut self,
         conn: &mut diesel_async::AsyncPgConnection,
@@ -259,6 +313,21 @@ impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
             .await
             .optional()?
             .is_some())
+    }
+
+    async fn active_tags(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+        tag_ids: Vec<Uuid>,
+    ) -> Result<Vec<Uuid>, DieselError> {
+        public::tags::table
+            .filter(public::tags::household_id.eq(household_id))
+            .filter(public::tags::id.eq_any(tag_ids))
+            .filter(public::tags::archived.eq(false))
+            .select(public::tags::id)
+            .load::<Uuid>(conn)
+            .await
     }
 }
 

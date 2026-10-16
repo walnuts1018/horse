@@ -7,8 +7,8 @@ use bookkeeping_domain::{AccountingPeriod, YearMonth};
 use bookkeeping_postgres::{
     funding_command_context as postgres_funding_context, funding_record as postgres_funding,
 };
-use cross_context_postgres::funding_command_result as postgres_funding_result;
 use chrono::{Datelike, FixedOffset};
+use cross_context_postgres::funding_command_result as postgres_funding_result;
 use horse_postgres_common::PgPool;
 use serde::Serialize;
 use sha2::{Digest, Sha256};

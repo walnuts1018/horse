@@ -795,7 +795,7 @@ HTTP APIは`async-graphql-axum`のWebSocket transportを`/graphql`のGETとし�
 
 購入品目の削除イベントには親Purchase IDを`household_events.payload`へ保存します。削除後は品目行から親IDを引けないためです。この変更履歴はGraphQLの更新通知に使い、BC間の公開イベントやTransactional Outboxの代わりにはしません。
 
-変更通知のイベント種別、entity種別、変更項目、payloadは各Application Contextが`UiChangeDescriptor`として決定します。PostgreSQL Adapterは`platform/postgres-common`のwriterを使い、同じtransactionでDB採番値と変更通知を保存します。通知の保存形式とGraphQL Subscriptionのcursor契約は維持します。
+変更通知のイベント種別、entity種別、変更項目、payloadは各Application Contextが`UiChangeDescriptor`として決定します。PostgreSQL Adapterは`platform/postgres-common`の`household_events` writerを使い、同じtransactionでDB採番値と変更通知を保存します。通知の保存形式とGraphQL Subscriptionのcursor契約は維持します。
 
 ## 11. AI 取り込み Worker は永続状態機械として設計する
 

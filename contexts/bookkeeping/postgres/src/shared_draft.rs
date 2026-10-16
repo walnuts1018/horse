@@ -5,6 +5,7 @@ use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -253,16 +254,16 @@ async fn validate_membership(
     actor_id: Uuid,
 ) -> Result<(), SharedPurchaseDraftPersistenceError> {
     use public::household_members::dsl as members;
-    let member = members::household_members
+    let role = members::household_members
         .filter(members::household_id.eq(household_id))
         .filter(members::member_id.eq(actor_id))
         .filter(members::left_at.is_null())
         .for_share()
-        .select(members::member_id)
-        .first::<Uuid>(conn)
+        .select(members::role)
+        .first::<String>(conn)
         .await
         .optional()?;
-    if member.is_none() {
+    if authorize(role.as_deref(), Operation::FinancialData).is_err() {
         return Err(SharedPurchaseDraftPersistenceError::DraftNotFound);
     }
     Ok(())

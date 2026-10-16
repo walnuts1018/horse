@@ -38,10 +38,13 @@ impl From<DieselError> for BulkUpdatePurchasesPersistenceError {
     }
 }
 
-pub async fn persist_bulk_update_purchases(
+pub async fn persist_bulk_update_purchases<
+    C: crate::post_purchase_loader::PostPurchaseReferenceData,
+>(
     pool: &PgPool,
     input: PersistBulkUpdatePurchases,
     commands: Vec<UpdatePurchaseCommand>,
+    reference_data: &mut C,
 ) -> Result<Vec<String>, BulkUpdatePurchasesPersistenceError> {
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
@@ -286,6 +289,7 @@ pub async fn persist_bulk_update_purchases(
                     command,
                     decision,
                     false,
+                    reference_data,
                 )
                 .await
                 .map_err(BulkUpdatePurchasesPersistenceError::InvalidUpdate)?;

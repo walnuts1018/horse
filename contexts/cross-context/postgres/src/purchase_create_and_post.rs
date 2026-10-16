@@ -141,17 +141,21 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
 
         let household_id = parse_uuid(household_id, "household_id")?;
         let actor_id = parse_uuid(actor_id, "actor_id")?;
-        let member = members::household_members
+        let role = members::household_members
             .filter(members::household_id.eq(household_id))
             .filter(members::member_id.eq(actor_id))
             .filter(members::left_at.is_null())
-            .select(members::member_id)
-            .first::<Uuid>(&mut *self.conn)
+            .select(members::role)
+            .first::<String>(&mut *self.conn)
             .await
             .optional()
-            .map_err(CreateAndPostPurchaseError::Database)?
-            .is_some();
-        if !member {
+            .map_err(CreateAndPostPurchaseError::Database)?;
+        if horse_authorization::authorize(
+            role.as_deref(),
+            horse_authorization::Operation::FinancialData,
+        )
+        .is_err()
+        {
             return Err(CreateAndPostPurchaseError::Create(
                 CreatePurchasePersistenceError::MemberNotFound,
             ));

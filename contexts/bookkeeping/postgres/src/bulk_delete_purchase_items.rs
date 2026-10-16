@@ -60,7 +60,9 @@ struct TargetRow {
     base_revision: u64,
 }
 
-pub async fn persist_bulk_delete_purchase_items<C: crate::post_purchase_loader::PostPurchaseReferenceData>(
+pub async fn persist_bulk_delete_purchase_items<
+    C: crate::post_purchase_loader::PostPurchaseReferenceData,
+>(
     pool: &PgPool,
     input: PersistBulkDeletePurchaseItems,
     targets: Vec<BulkDeleteItemTarget>,

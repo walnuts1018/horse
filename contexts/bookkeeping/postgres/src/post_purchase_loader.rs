@@ -21,7 +21,9 @@ pub trait PostPurchaseReferenceData: Send {
         household_id: Uuid,
         pool_id: Uuid,
         version: i32,
-    ) -> impl Future<Output = Result<Option<(Option<Uuid>, Option<String>, Vec<(Uuid, i64)>)>, DieselError>> + Send;
+    ) -> impl Future<
+        Output = Result<Option<(Option<Uuid>, Option<String>, Vec<(Uuid, i64)>)>, DieselError>,
+    > + Send;
 }
 
 #[derive(Debug)]

@@ -14,7 +14,8 @@ use bookkeeping_application::{
 };
 use bookkeeping_postgres::{
     bulk_delete_purchase_items::{self, PersistBulkDeletePurchaseItems},
-    bulk_update_purchase_items::{self, PersistBulkUpdatePurchaseItems},
+    bulk_update_purchase_items,
+    bulk_update_purchase_items::PersistBulkUpdatePurchaseItems,
     update_purchase::{self, PersistUpdatePurchase},
     update_purchase_item::{self, PersistUpdatePurchaseItem},
 };
@@ -330,7 +331,7 @@ pub async fn bulk_update_purchase_items(
         Ok(patch) => patch,
         Err(()) => return Ok(bulk_update_error(MutationErrorCode::BadInput).into()),
     };
-    match bulk_update_purchase_items::persist_bulk_update_purchase_items(
+    match cross_context_postgres::reference_data::persist_bulk_update_purchase_items(
         pool,
         PersistBulkUpdatePurchaseItems {
             household_id: household_id.to_string(),

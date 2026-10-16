@@ -18,7 +18,9 @@ use uuid::Uuid;
 
 use crate::{PgPool, persistence_values, schema::public};
 
-pub trait UpdatePurchaseItemReferenceData: Send + crate::post_purchase_loader::PostPurchaseReferenceData {
+pub trait UpdatePurchaseItemReferenceData:
+    Send + crate::post_purchase_loader::PostPurchaseReferenceData
+{
     fn load_default_allocation(
         &mut self,
         conn: &mut diesel_async::AsyncPgConnection,
@@ -48,6 +50,13 @@ pub trait UpdatePurchaseItemReferenceData: Send + crate::post_purchase_loader::P
         household_id: Uuid,
         variant_id: Uuid,
     ) -> impl Future<Output = Result<bool, DieselError>> + Send;
+
+    fn active_tags(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+        tag_ids: Vec<Uuid>,
+    ) -> impl Future<Output = Result<Vec<Uuid>, DieselError>> + Send;
 }
 
 pub(crate) type BurdenSnapshot = (Uuid, Uuid, Uuid, i32, i64, Option<String>, String);
@@ -586,6 +595,7 @@ pub async fn persist_update_purchase_item_in_transaction<C: UpdatePurchaseItemRe
                 previous_payment_snapshots: &previous_payment_snapshots,
                 payments_changed: payment_changed,
             },
+            reference_data,
         )
         .await?;
     }
@@ -850,9 +860,10 @@ async fn adjust_purchase_payments(
         .collect())
 }
 
-pub(crate) async fn sync_posted_accounting(
+pub(crate) async fn sync_posted_accounting<C: UpdatePurchaseItemReferenceData>(
     conn: &mut crate::AsyncPgConnection,
     sync: PostedAccountingSync<'_>,
+    reference_data: &mut C,
 ) -> Result<(), UpdatePurchaseItemPersistenceError> {
     let PostedAccountingSync {
         household_id,

@@ -2,7 +2,8 @@ use async_graphql::{Context, ID, InputObject, MaybeUndefined, Result, SimpleObje
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_application::update_purchase::{UpdatePurchaseCommand, UpdatePurchasePayment};
 use bookkeeping_postgres::{
-    bulk_update_purchases::{self, PersistBulkUpdatePurchases},
+    bulk_update_purchases,
+    bulk_update_purchases::PersistBulkUpdatePurchases,
     save_purchase_item_edits::{self, PersistSavePurchaseItemEdits},
 };
 use cross_context_postgres::purchase_command_result;
@@ -109,7 +110,7 @@ pub async fn bulk_update_purchases(
     {
         return Ok(bulk_update_error(MutationErrorCode::NotFound).into());
     }
-    match bulk_update_purchases::persist_bulk_update_purchases(
+    match cross_context_postgres::reference_data::persist_bulk_update_purchases(
         pool,
         PersistBulkUpdatePurchases {
             household_id: household_id.to_string(),

@@ -9,6 +9,7 @@ use bookkeeping_application::{
 };
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public, update_purchase, update_purchase_item};
@@ -96,16 +97,15 @@ pub async fn persist_save_purchase_item_edits<
             if purchase_owner != household_id {
                 return Err(SavePurchaseItemEditsPersistenceError::HouseholdMismatch);
             }
-            let active_member = members::household_members
+            let actor_role = members::household_members
                 .filter(members::household_id.eq(household_id))
                 .filter(members::member_id.eq(actor_id))
                 .filter(members::left_at.is_null())
-                .select(members::member_id)
-                .first::<Uuid>(conn)
+                .select(members::role)
+                .first::<String>(conn)
                 .await
-                .optional()?
-                .is_some();
-            if !active_member {
+                .optional()?;
+            if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                 return Err(SavePurchaseItemEditsPersistenceError::MemberNotFound);
             }
             let previous_burdens = burdens::purchase_member_burdens
@@ -300,6 +300,7 @@ pub async fn persist_save_purchase_item_edits<
                         previous_payment_snapshots: &previous_payment_snapshots,
                         payments_changed: payments_changed || purchase_patch_changes_payments,
                     },
+                    reference_data,
                 )
                 .await
                 .map_err(SavePurchaseItemEditsPersistenceError::InvalidItemUpdate)?;

@@ -1582,6 +1582,7 @@ dependencies = [
  "diesel",
  "diesel-async",
  "evidence-application",
+ "horse-authorization",
  "horse-household-change",
  "horse-postgres-common",
  "household-postgres",

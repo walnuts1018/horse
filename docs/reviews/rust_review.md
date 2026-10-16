@@ -1,5 +1,0 @@
-# Rustレビュー残件
-
-## 操作権限の契約
-
-Household Contextに操作と役割の共通契約を定義し、Householdの管理操作をOWNERに限定します。OWNERとMEMBERは家計データを更新できます。現在は管理操作の一部だけが共通契約を呼び、他の更新WorkflowはPostgreSQL Adapterごとに有効な所属を確認しています。すべての更新Workflowが同じ契約を検証する構造へ揃える必要があります。

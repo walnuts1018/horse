@@ -3,6 +3,7 @@ use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use bookkeeping_application::create_pool::{CreatePoolCommand, decide_create_pool};
@@ -21,6 +22,7 @@ pub enum CreatePoolPersistenceError {
     InvalidUuid(&'static str),
     InvalidDecision,
     HouseholdNotFound,
+    MemberNotFound,
     NumericOutOfRange(&'static str),
 }
 
@@ -47,6 +49,7 @@ pub async fn persist_create_pool(
     (*pooled)
         .transaction::<PersistedCreatePool, CreatePoolPersistenceError, _>(async |conn| {
             use public::allocation_defaults::dsl as defaults;
+            use public::household_members::dsl as members;
             use public::households::dsl as households;
 
             let (current_revision, current_version) = households::households
@@ -57,6 +60,17 @@ pub async fn persist_create_pool(
                 .await
                 .optional()?
                 .ok_or(CreatePoolPersistenceError::HouseholdNotFound)?;
+            let role = members::household_members
+                .filter(members::household_id.eq(household_id))
+                .filter(members::member_id.eq(actor_id))
+                .filter(members::left_at.is_null())
+                .select(members::role)
+                .first::<String>(&mut *conn)
+                .await
+                .optional()?;
+            if authorize(role.as_deref(), Operation::FinancialData).is_err() {
+                return Err(CreatePoolPersistenceError::MemberNotFound);
+            }
             let revision = current_revision
                 .checked_add(1)
                 .ok_or(CreatePoolPersistenceError::NumericOutOfRange("revision"))?;

@@ -50,11 +50,14 @@ impl From<DieselError> for BulkUpdatePurchaseItemsPersistenceError {
     }
 }
 
-pub async fn persist_bulk_update_purchase_items(
+pub async fn persist_bulk_update_purchase_items<
+    C: crate::update_purchase_item::UpdatePurchaseItemReferenceData,
+>(
     pool: &PgPool,
     input: PersistBulkUpdatePurchaseItems,
     targets: Vec<BulkUpdateItemTarget>,
     patch: BulkUpdateItemPatch,
+    reference_data: &mut C,
 ) -> Result<PersistedBulkUpdatePurchaseItems, BulkUpdatePurchaseItemsPersistenceError> {
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
@@ -240,9 +243,10 @@ pub async fn persist_bulk_update_purchase_items(
                         .flatten()
                         .map(|id| parse_uuid(id, "product_variant_id"))
                         .transpose()?,
+                    reference_data,
                 )
                 .await?;
-                let tag_ids = validate_tags(&mut *conn, household_id, patch.tag_ids_set, &patch.tag_ids).await?;
+                let tag_ids = validate_tags(&mut *conn, household_id, patch.tag_ids_set, &patch.tag_ids, reference_data).await?;
                 let mut item_states = Vec::with_capacity(targets.len());
                 for target in &targets {
                     let item_id = parse_uuid(&target.item_id, "item_id")?;
@@ -262,12 +266,15 @@ pub async fn persist_bulk_update_purchase_items(
                     } else if (patch.category_id_set || patch.product_variant_id_set) && !row.6 {
                         let category_id = if patch.category_id_set { patch.category_id.as_deref().map(|id| parse_uuid(id, "category_id")).transpose()? } else { row.4 };
                         let variant_id = if patch.product_variant_id_set { patch.product_variant_id.as_deref().map(|id| parse_uuid(id, "product_variant_id")).transpose()? } else { row.5 };
-                        let basis = load_automatic_basis(&mut *conn, household_id, category_id, variant_id, &purchase.4).await?;
-                        basis.unwrap_or(load_default_basis(&mut *conn, household_id, default_version).await?)
+                        let basis = load_automatic_basis(&mut *conn, household_id, category_id, variant_id, &purchase.4, reference_data).await?;
+                        match basis {
+                            Some(basis) => basis,
+                            None => load_default_basis(&mut *conn, household_id, default_version, reference_data).await?,
+                        }
                     } else if let Some((_, _, rule_id, version)) = current_allocations.as_slice().first() {
                         (current_allocations.iter().map(|(pool_id, weight, _, _)| ItemAllocationWeight { pool_id: pool_id.to_string(), weight: *weight }).collect(), rule_id.map(|id| id.to_string()), *version)
                     } else {
-                        load_default_basis(&mut *conn, household_id, default_version).await?
+                        load_default_basis(&mut *conn, household_id, default_version, reference_data).await?
                     };
                     let field_revisions = row.7.as_object().into_iter().flatten().filter_map(|(key, value)| value.as_u64().map(|revision| (key.clone(), revision))).collect();
                     item_states.push(BulkUpdateItemState {
@@ -377,7 +384,7 @@ pub async fn persist_bulk_update_purchase_items(
                         .execute(&mut *conn).await?;
                     let old_purchase = locked_purchases.get(&purchase_id).ok_or(BulkUpdatePurchaseItemsPersistenceError::PurchaseNotFound)?;
                     if old_purchase.2 == "POSTED" {
-                        sync_posted_accounting(&mut *conn, household_id, purchase_id, old_purchase.3).await?;
+                        sync_posted_accounting(&mut *conn, household_id, purchase_id, old_purchase.3, reference_data).await?;
                     }
                 }
                 Ok(PersistedBulkUpdatePurchaseItems { items: result })
@@ -386,21 +393,15 @@ pub async fn persist_bulk_update_purchase_items(
         .await
 }
 
-async fn load_default_basis(
+async fn load_default_basis<C: crate::update_purchase_item::UpdatePurchaseItemReferenceData>(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
     version: i64,
+    reference_data: &mut C,
 ) -> Result<(Vec<ItemAllocationWeight>, Option<String>, i64), BulkUpdatePurchaseItemsPersistenceError>
 {
-    let weights = public::allocation_defaults::dsl::allocation_defaults
-        .filter(public::allocation_defaults::dsl::household_id.eq(household_id))
-        .filter(public::allocation_defaults::dsl::version.eq(version))
-        .order(public::allocation_defaults::dsl::pool_id.asc())
-        .select((
-            public::allocation_defaults::dsl::pool_id,
-            public::allocation_defaults::dsl::weight,
-        ))
-        .load::<(Uuid, i64)>(conn)
+    let weights = reference_data
+        .load_default_allocation(conn, household_id, version)
         .await?
         .into_iter()
         .map(|(pool_id, weight)| ItemAllocationWeight {
@@ -411,74 +412,24 @@ async fn load_default_basis(
     Ok((weights, None, version))
 }
 
-async fn load_automatic_basis(
+async fn load_automatic_basis<C: crate::update_purchase_item::UpdatePurchaseItemReferenceData>(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
     category_id: Option<Uuid>,
     variant_id: Option<Uuid>,
     merchant: &str,
+    reference_data: &mut C,
 ) -> Result<
     Option<(Vec<ItemAllocationWeight>, Option<String>, i64)>,
     BulkUpdatePurchaseItemsPersistenceError,
 > {
-    use public::allocation_rules::dsl as rules;
-    let concept_id = if let Some(variant_id) = variant_id {
-        public::product_variants::dsl::product_variants
-            .filter(public::product_variants::dsl::household_id.eq(household_id))
-            .filter(public::product_variants::dsl::id.eq(variant_id))
-            .select(public::product_variants::dsl::concept_id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
-    } else {
-        None
-    };
-    let mut selected = None;
-    macro_rules! find_rule {
-        ($condition:expr) => {
-            rules::allocation_rules
-                .filter(rules::household_id.eq(household_id))
-                .filter($condition)
-                .select((rules::id, rules::revision))
-                .first::<(Uuid, i64)>(conn)
-                .await
-                .optional()?
-        };
-    }
-    if let Some(id) = variant_id {
-        selected = find_rule!(rules::product_variant_id.eq(Some(id)));
-    }
-    if selected.is_none()
-        && let Some(id) = concept_id
-    {
-        selected = find_rule!(rules::product_concept_id.eq(Some(id)));
-    }
-    if selected.is_none()
-        && let Some(id) = category_id
-    {
-        selected = find_rule!(rules::category_id.eq(Some(id)));
-    }
-    if selected.is_none() && !merchant.trim().is_empty() {
-        let merchant_key = merchant
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .to_lowercase();
-        selected = find_rule!(rules::merchant_key.eq(Some(merchant_key)));
-    }
-    let Some((rule_id, revision)) = selected else {
+    let Some((rule_id, revision, rows)) = reference_data
+        .load_automatic_allocation(conn, household_id, category_id, variant_id, merchant)
+        .await?
+    else {
         return Ok(None);
     };
-    let weights = public::allocation_rule_weights::dsl::allocation_rule_weights
-        .filter(public::allocation_rule_weights::dsl::household_id.eq(household_id))
-        .filter(public::allocation_rule_weights::dsl::rule_id.eq(rule_id))
-        .order(public::allocation_rule_weights::dsl::pool_id.asc())
-        .select((
-            public::allocation_rule_weights::dsl::pool_id,
-            public::allocation_rule_weights::dsl::weight,
-        ))
-        .load::<(Uuid, i64)>(conn)
-        .await?
+    let weights = rows
         .into_iter()
         .map(|(pool_id, weight)| ItemAllocationWeight {
             pool_id: pool_id.to_string(),
@@ -488,22 +439,17 @@ async fn load_automatic_basis(
     Ok(Some((weights, Some(rule_id.to_string()), revision)))
 }
 
-async fn validate_references(
+async fn validate_references<C: crate::update_purchase_item::UpdatePurchaseItemReferenceData>(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
     category_id: Option<Uuid>,
     variant_id: Option<Uuid>,
+    reference_data: &mut C,
 ) -> Result<(), BulkUpdatePurchaseItemsPersistenceError> {
     if let Some(id) = category_id {
-        let found = public::categories::dsl::categories
-            .filter(public::categories::dsl::household_id.eq(household_id))
-            .filter(public::categories::dsl::id.eq(id))
-            .filter(public::categories::dsl::archived.eq(false))
-            .select(public::categories::dsl::id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
-            .is_some();
+        let found = reference_data
+            .active_category(conn, household_id, id)
+            .await?;
         if !found {
             return Err(BulkUpdatePurchaseItemsPersistenceError::ReferenceNotFound(
                 "category_id",
@@ -511,15 +457,9 @@ async fn validate_references(
         }
     }
     if let Some(id) = variant_id {
-        let found = public::product_variants::dsl::product_variants
-            .filter(public::product_variants::dsl::household_id.eq(household_id))
-            .filter(public::product_variants::dsl::id.eq(id))
-            .filter(public::product_variants::dsl::archived.eq(false))
-            .select(public::product_variants::dsl::id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
-            .is_some();
+        let found = reference_data
+            .active_variant(conn, household_id, id)
+            .await?;
         if !found {
             return Err(BulkUpdatePurchaseItemsPersistenceError::ReferenceNotFound(
                 "product_variant_id",
@@ -529,11 +469,12 @@ async fn validate_references(
     Ok(())
 }
 
-async fn validate_tags(
+async fn validate_tags<C: crate::update_purchase_item::UpdatePurchaseItemReferenceData>(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
     set: bool,
     tag_ids: &[String],
+    reference_data: &mut C,
 ) -> Result<Vec<Uuid>, BulkUpdatePurchaseItemsPersistenceError> {
     if !set {
         return Ok(Vec::new());
@@ -547,12 +488,8 @@ async fn validate_tags(
             BulkUpdateItemsError::DuplicateTag,
         ));
     }
-    let found = public::tags::dsl::tags
-        .filter(public::tags::dsl::household_id.eq(household_id))
-        .filter(public::tags::dsl::id.eq_any(ids.clone()))
-        .filter(public::tags::dsl::archived.eq(false))
-        .select(public::tags::dsl::id)
-        .load::<Uuid>(conn)
+    let found = reference_data
+        .active_tags(conn, household_id, ids.clone())
         .await?;
     if found.len() != ids.len() {
         return Err(BulkUpdatePurchaseItemsPersistenceError::ReferenceNotFound(
@@ -589,11 +526,12 @@ async fn validate_pools(
     Ok(())
 }
 
-async fn sync_posted_accounting(
+async fn sync_posted_accounting<C: crate::update_purchase_item::UpdatePurchaseItemReferenceData>(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
     purchase_id: Uuid,
     old_revision: i64,
+    reference_data: &mut C,
 ) -> Result<(), BulkUpdatePurchaseItemsPersistenceError> {
     let loaded = crate::post_purchase_loader::load_post_purchase_command(
         conn,
@@ -602,6 +540,7 @@ async fn sync_posted_accounting(
         u64::try_from(old_revision).map_err(|_| {
             BulkUpdatePurchaseItemsPersistenceError::NumericOutOfRange("purchase_revision")
         })?,
+        reference_data,
     )
     .await
     .map_err(|error| match error {
