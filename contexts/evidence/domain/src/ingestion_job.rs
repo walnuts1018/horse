@@ -1,6 +1,47 @@
+use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtractionJobId(Uuid);
+
+impl ExtractionJobId {
+    pub fn new(value: impl AsRef<str>) -> Result<Self, InvalidUuid> {
+        Uuid::parse_str(value.as_ref())
+            .map(Self)
+            .map_err(|_| InvalidUuid)
+    }
+
+    pub const fn as_uuid(&self) -> &Uuid {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidUuid;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeaseToken(Uuid);
+
+impl LeaseToken {
+    pub fn new(value: impl AsRef<str>) -> Result<Self, InvalidUuid> {
+        Uuid::parse_str(value.as_ref())
+            .map(Self)
+            .map_err(|_| InvalidUuid)
+    }
+
+    pub const fn as_uuid(&self) -> &Uuid {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for LeaseToken {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueuedJob {
-    pub id: String,
+    pub id: ExtractionJobId,
     pub attempt_count: i32,
     pub max_attempts: i32,
     pub failure_count: i32,
@@ -9,22 +50,20 @@ pub struct QueuedJob {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidLease {
-    token: String,
+    token: LeaseToken,
     expires_at_ms: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidLeaseError {
-    EmptyToken,
+    InvalidToken,
     InvalidExpiry,
 }
 
 impl ValidLease {
     pub fn new(token: impl Into<String>, expires_at_ms: i64) -> Result<Self, ValidLeaseError> {
         let token = token.into();
-        if token.is_empty() {
-            return Err(ValidLeaseError::EmptyToken);
-        }
+        let token = LeaseToken::new(&token).map_err(|_| ValidLeaseError::InvalidToken)?;
         if expires_at_ms <= 0 {
             return Err(ValidLeaseError::InvalidExpiry);
         }
@@ -34,7 +73,7 @@ impl ValidLease {
         })
     }
 
-    pub fn token(&self) -> &str {
+    pub fn token(&self) -> &LeaseToken {
         &self.token
     }
 
@@ -46,7 +85,7 @@ impl ValidLease {
 // 実行中のジョブは必ず有効なリースを持つ。リースなしのRunning状態は型で表現できない。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunningJob {
-    pub id: String,
+    pub id: ExtractionJobId,
     pub attempt_count: i32,
     pub max_attempts: i32,
     pub failure_count: i32,
@@ -56,7 +95,7 @@ pub struct RunningJob {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FinishedJob {
-    pub id: String,
+    pub id: ExtractionJobId,
     pub finished_at_ms: i64,
 }
 
@@ -80,9 +119,15 @@ pub enum ExtractionJobStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClaimExtractionJob {
-    pub lease_token: String,
+    lease_token: LeaseToken,
     pub attempt_no: i32,
     pub lease_expires_at_ms: i64,
+}
+
+impl ClaimExtractionJob {
+    pub fn lease_token(&self) -> &LeaseToken {
+        &self.lease_token
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,9 +163,8 @@ pub fn claim_extraction_job(
         .checked_add(lease_duration_ms)
         .ok_or(ClaimExtractionJobError::InvalidLease)?;
     let lease_token = lease_token.into();
-    if lease_token.is_empty() {
-        return Err(ClaimExtractionJobError::InvalidLease);
-    }
+    let lease_token =
+        LeaseToken::new(&lease_token).map_err(|_| ClaimExtractionJobError::InvalidLease)?;
     Ok(ClaimExtractionJob {
         lease_token,
         attempt_no,
@@ -302,7 +346,7 @@ mod tests {
 
     fn running_job() -> RunningJob {
         RunningJob {
-            id: "job".to_owned(),
+            id: ExtractionJobId::new("01933a1c-9ed7-7f00-8000-000000000001").unwrap(),
             attempt_count: 2,
             max_attempts: 5,
             failure_count: 1,

@@ -11,7 +11,7 @@ use evidence_application::ingestion_job::{
     claim_next_local_extraction_job as claim_next_local_extraction_job_workflow,
 };
 use evidence_domain::ingestion_job::{
-    ClaimExtractionJob, ExtractionFailureKind, ExtractionJob, ExtractionJobStatus,
+    ClaimExtractionJob, ExtractionFailureKind, ExtractionJob, ExtractionJobId, ExtractionJobStatus,
     FinishExtractionJobError, FinishedJob, QueuedJob, RunningJob, ValidLease,
     finish_extraction_failure, finish_extraction_success, recover_expired_extraction_job,
 };
@@ -256,7 +256,7 @@ impl ClaimExtractionJobOperations for PostgresClaimExtractionJobOperations<'_> {
 
         let now = db_time(now_ms)?;
         let row = candidate.row;
-        let token = parse_uuid(&claim.lease_token, "lease_token")?;
+        let token = *claim.lease_token().as_uuid();
         let lease_expires_at = db_time(claim.lease_expires_at_ms)?;
         let changed = diesel::update(
             jobs::extraction_jobs
@@ -315,7 +315,7 @@ impl ClaimExtractionJobOperations for PostgresClaimExtractionJobOperations<'_> {
             source_created_by: document.created_by.to_string(),
             version: row.version,
             attempt_no: claim.attempt_no,
-            lease_token: claim.lease_token,
+            lease_token: claim.lease_token().to_string(),
             request: row.request,
             previous_result: row.result,
             provider: row.provider,
@@ -943,7 +943,7 @@ fn job_from_parts(
 ) -> Result<ExtractionJob, IngestionJobError> {
     match parse_status(status) {
         ExtractionJobStatus::Queued => Ok(ExtractionJob::Queued(QueuedJob {
-            id: id.to_owned(),
+            id: ExtractionJobId::new(id).map_err(|_| IngestionJobError::InvalidUuid("job_id"))?,
             attempt_count,
             max_attempts,
             failure_count,
@@ -956,7 +956,8 @@ fn job_from_parts(
             let lease = ValidLease::new(token, expires_at_ms)
                 .map_err(|_| IngestionJobError::InvalidState)?;
             Ok(ExtractionJob::Running(RunningJob {
-                id: id.to_owned(),
+                id: ExtractionJobId::new(id)
+                    .map_err(|_| IngestionJobError::InvalidUuid("job_id"))?,
                 attempt_count,
                 max_attempts,
                 failure_count,
@@ -969,7 +970,8 @@ fn job_from_parts(
                 return Err(IngestionJobError::InvalidState);
             };
             Ok(ExtractionJob::Succeeded(FinishedJob {
-                id: id.to_owned(),
+                id: ExtractionJobId::new(id)
+                    .map_err(|_| IngestionJobError::InvalidUuid("job_id"))?,
                 finished_at_ms,
             }))
         }
@@ -978,7 +980,8 @@ fn job_from_parts(
                 return Err(IngestionJobError::InvalidState);
             };
             Ok(ExtractionJob::Failed(FinishedJob {
-                id: id.to_owned(),
+                id: ExtractionJobId::new(id)
+                    .map_err(|_| IngestionJobError::InvalidUuid("job_id"))?,
                 finished_at_ms,
             }))
         }
@@ -987,7 +990,8 @@ fn job_from_parts(
                 return Err(IngestionJobError::InvalidState);
             };
             Ok(ExtractionJob::Cancelled(FinishedJob {
-                id: id.to_owned(),
+                id: ExtractionJobId::new(id)
+                    .map_err(|_| IngestionJobError::InvalidUuid("job_id"))?,
                 finished_at_ms,
             }))
         }
