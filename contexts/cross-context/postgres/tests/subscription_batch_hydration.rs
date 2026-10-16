@@ -256,4 +256,60 @@ async fn purchase_events_and_multiple_purchase_snapshots_use_bounded_queries() {
         AtomicUsize::load(&QUERY_COUNT, Ordering::Relaxed),
         eight_purchase_snapshot_query_count
     );
+
+    let earlier_household_event = Uuid::now_v7();
+    {
+        let mut conn = pool.get().await.unwrap();
+        for _ in 0..200 {
+            insert_into(household_events::table)
+                .values((
+                    household_events::household_id.eq(second_household_id),
+                    household_events::event_type.eq("purchase.updated"),
+                    household_events::entity_kind.eq("purchase"),
+                    household_events::entity_id.eq(Uuid::now_v7()),
+                    household_events::revision.eq(1_i64),
+                    household_events::actor_id.eq(member_id),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+        }
+        insert_into(household_events::table)
+            .values((
+                household_events::household_id.eq(second_household_id),
+                household_events::event_type.eq("purchase.updated"),
+                household_events::entity_kind.eq("purchase"),
+                household_events::entity_id.eq(earlier_household_event),
+                household_events::revision.eq(1_i64),
+                household_events::actor_id.eq(member_id),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        for _ in 0..101 {
+            insert_into(household_events::table)
+                .values((
+                    household_events::household_id.eq(household_id),
+                    household_events::event_type.eq("purchase.updated"),
+                    household_events::entity_kind.eq("purchase"),
+                    household_events::entity_id.eq(Uuid::now_v7()),
+                    household_events::revision.eq(1_i64),
+                    household_events::actor_id.eq(member_id),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+        }
+    }
+    let events = query
+        .purchase_events(vec![(household_id, 8), (second_household_id, 200)])
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 100);
+    assert_eq!(events[0].entity_id, earlier_household_event);
+    assert!(
+        events
+            .iter()
+            .any(|event| event.entity_id == earlier_household_event)
+    );
 }

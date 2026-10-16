@@ -105,9 +105,10 @@ impl SubscriptionQuery for PostgresSubscriptionQuery {
             }
             rows.extend(
                 query
-                    .order(events::stream_cursor.asc())
+                    .order(events::cursor.asc())
                     .limit(100)
                     .select((
+                        events::cursor,
                         events::stream_cursor,
                         events::household_id,
                         events::event_type,
@@ -119,6 +120,7 @@ impl SubscriptionQuery for PostgresSubscriptionQuery {
                         events::payload,
                     ))
                     .load::<(
+                        i64,
                         i64,
                         Uuid,
                         String,
@@ -139,6 +141,7 @@ impl SubscriptionQuery for PostgresSubscriptionQuery {
             .into_iter()
             .map(
                 |(
+                    _global_cursor,
                     cursor,
                     household_id,
                     event_type,

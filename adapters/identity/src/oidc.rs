@@ -279,11 +279,11 @@ impl AuthService {
                 OidcError::AuthenticationFailed
             }
         })?;
-        let authorized_party_is_invalid = claims
-            .authorized_party()
-            .is_some_and(|authorized_party| authorized_party.as_str() != self.config.client_id)
-            || (claims.audiences().len() > 1 && claims.authorized_party().is_none());
-        if authorized_party_is_invalid {
+        if !valid_authorized_party(
+            claims.audiences(),
+            claims.authorized_party(),
+            &openidconnect::ClientId::new(self.config.client_id.clone()),
+        ) {
             tracing::warn!(
                 reason = "invalid_authorized_party",
                 "OIDC callback rejected"
@@ -416,6 +416,15 @@ fn is_transient_claims_error(error: &openidconnect::ClaimsVerificationError) -> 
     )
 }
 
+fn valid_authorized_party(
+    audiences: &[openidconnect::Audience],
+    authorized_party: Option<&openidconnect::ClientId>,
+    client_id: &openidconnect::ClientId,
+) -> bool {
+    authorized_party.is_none_or(|authorized_party| authorized_party == client_id)
+        && (audiences.len() <= 1 || authorized_party.is_some())
+}
+
 fn claims_error_reason(error: &openidconnect::ClaimsVerificationError) -> &'static str {
     use openidconnect::ClaimsVerificationError;
 
@@ -463,7 +472,8 @@ fn safe_redirect(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::safe_redirect;
+    use super::{safe_redirect, valid_authorized_party};
+    use openidconnect::{Audience, ClientId};
 
     #[test]
     fn safe_redirect_preserves_local_paths_and_rejects_external_destinations() {
@@ -478,5 +488,38 @@ mod tests {
         ] {
             assert_eq!(safe_redirect(unsafe_redirect), "/");
         }
+    }
+
+    #[test]
+    fn authorized_party_matches_client_for_single_and_multiple_audiences() {
+        let client_id = ClientId::new("horse-client".to_owned());
+        let other_client_id = ClientId::new("other-client".to_owned());
+        let single_audience = vec![Audience::new("horse-client".to_owned())];
+        let multiple_audiences = vec![
+            Audience::new("horse-client".to_owned()),
+            Audience::new("trusted-api".to_owned()),
+        ];
+
+        assert!(valid_authorized_party(&single_audience, None, &client_id));
+        assert!(valid_authorized_party(
+            &multiple_audiences,
+            Some(&client_id),
+            &client_id
+        ));
+        assert!(!valid_authorized_party(
+            &multiple_audiences,
+            None,
+            &client_id
+        ));
+        assert!(!valid_authorized_party(
+            &multiple_audiences,
+            Some(&other_client_id),
+            &client_id
+        ));
+        assert!(!valid_authorized_party(
+            &single_audience,
+            Some(&other_client_id),
+            &client_id
+        ));
     }
 }

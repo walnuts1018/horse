@@ -316,41 +316,42 @@ async fn callback(
             set_cookie(&mut response, &state_clear);
             response
         }
-        Err(OidcError::InvalidGrant { redirect_to }) => {
-            tracing::warn!(
-                status = StatusCode::SEE_OTHER.as_u16(),
-                "OIDC authorization code rejected; restarting login"
-            );
-            restart_login_response(&redirect_to, &state_clear)
-        }
-        Err(error) => {
-            let status = match &error {
-                OidcError::InvalidResponse | OidcError::InvalidState => StatusCode::BAD_REQUEST,
-                OidcError::InvalidGrant { .. } => unreachable!(),
-                OidcError::AuthenticationFailed | OidcError::SessionExpired => {
-                    StatusCode::UNAUTHORIZED
-                }
-                OidcError::TransientProvider(_) => {
-                    tracing::error!(error = ?error, "OIDC callback provider request failed");
-                    StatusCode::BAD_GATEWAY
-                }
-                OidcError::IncompleteConfiguration(_) => StatusCode::SERVICE_UNAVAILABLE,
-                OidcError::Provider(_) | OidcError::Database(_) | OidcError::Pool(_) => {
-                    tracing::error!(error = ?error, "OIDC callback failed");
-                    StatusCode::SERVICE_UNAVAILABLE
-                }
-            };
-            if matches!(
-                &error,
-                OidcError::AuthenticationFailed | OidcError::SessionExpired
-            ) {
-                tracing::warn!(error = ?error, status = status.as_u16(), "OIDC callback rejected");
-            }
-            let mut response = status.into_response();
-            set_cookie(&mut response, &state_clear);
-            response
-        }
+        Err(error) => callback_error_response(error, &state_clear),
     }
+}
+
+fn callback_error_response(error: OidcError, state_clear: &Cookie) -> Response {
+    if let OidcError::InvalidGrant { ref redirect_to } = error {
+        tracing::warn!(
+            status = StatusCode::SEE_OTHER.as_u16(),
+            "OIDC authorization code rejected; restarting login"
+        );
+        return restart_login_response(&redirect_to, state_clear);
+    }
+
+    let status = match &error {
+        OidcError::InvalidResponse | OidcError::InvalidState => StatusCode::BAD_REQUEST,
+        OidcError::InvalidGrant { .. } => unreachable!(),
+        OidcError::AuthenticationFailed | OidcError::SessionExpired => StatusCode::UNAUTHORIZED,
+        OidcError::TransientProvider(_) => {
+            tracing::error!(error = ?error, "OIDC callback provider request failed");
+            StatusCode::BAD_GATEWAY
+        }
+        OidcError::IncompleteConfiguration(_) => StatusCode::SERVICE_UNAVAILABLE,
+        OidcError::Provider(_) | OidcError::Database(_) | OidcError::Pool(_) => {
+            tracing::error!(error = ?error, "OIDC callback failed");
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+    };
+    if matches!(
+        &error,
+        OidcError::AuthenticationFailed | OidcError::SessionExpired
+    ) {
+        tracing::warn!(error = ?error, status = status.as_u16(), "OIDC callback rejected");
+    }
+    let mut response = status.into_response();
+    set_cookie(&mut response, state_clear);
+    response
 }
 
 fn restart_login_response(return_to: &str, state_clear: &Cookie) -> Response {
@@ -369,9 +370,9 @@ fn restart_login_response(return_to: &str, state_clear: &Cookie) -> Response {
 
 #[cfg(test)]
 mod auth_callback_tests {
-    use super::restart_login_response;
+    use super::callback_error_response;
     use axum::http::{StatusCode, header};
-    use horse_auth::Cookie;
+    use horse_auth::{Cookie, OidcError};
 
     #[test]
     fn invalid_grant_restarts_login_with_the_local_return_path() {
@@ -386,7 +387,12 @@ mod auth_callback_tests {
             same_site_lax: true,
         };
 
-        let response = restart_login_response("/households/abc/ledger?tab=accounts", &state_clear);
+        let response = callback_error_response(
+            OidcError::InvalidGrant {
+                redirect_to: "/households/abc/ledger?tab=accounts".to_owned(),
+            },
+            &state_clear,
+        );
 
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
         assert_eq!(
