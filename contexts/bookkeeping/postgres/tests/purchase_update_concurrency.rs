@@ -222,3 +222,101 @@ async fn concurrent_purchase_updates_merge_disjoint_fields_and_reject_same_field
     assert_eq!(saved.0, 4);
     assert!(saved.1 == "Store A" || saved.1 == "Store B");
 }
+
+#[tokio::test]
+async fn purchase_update_rejects_closed_accounting_period_without_changing_purchase() {
+    let postgres = TestPostgres::start().await.unwrap();
+    apply_migrations(postgres.connection_url()).unwrap();
+    let pool = connect(postgres.connection_url()).await.unwrap();
+
+    let household_id = Uuid::now_v7();
+    let member_id = Uuid::now_v7();
+    let purchase_id = Uuid::now_v7();
+    {
+        let mut conn = pool.get().await.unwrap();
+        use public::{accounting_periods, household_members, households, members, purchases};
+
+        insert_into(households::table)
+            .values((
+                households::id.eq(household_id),
+                households::name.eq("Closed purchase update"),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(members::table)
+            .values((
+                members::id.eq(member_id),
+                members::oidc_subject.eq(format!("closed-purchase-update-{member_id}")),
+                members::display_name.eq("Owner"),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(household_members::table)
+            .values((
+                household_members::household_id.eq(household_id),
+                household_members::member_id.eq(member_id),
+                household_members::role.eq("OWNER"),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(accounting_periods::table)
+            .values((
+                accounting_periods::household_id.eq(household_id),
+                accounting_periods::period_start
+                    .eq("2026-10-01".parse::<chrono::NaiveDate>().unwrap()),
+                accounting_periods::status.eq("CLOSED"),
+                accounting_periods::revision.eq(2_i64),
+                accounting_periods::closed_by.eq(Some(member_id)),
+                accounting_periods::closed_at.eq(Some(chrono::Utc::now())),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(purchases::table)
+            .values((
+                purchases::id.eq(purchase_id),
+                purchases::household_id.eq(household_id),
+                purchases::occurred_at.eq("2026-10-16T12:00:00Z"
+                    .parse::<chrono::DateTime<chrono::Utc>>()
+                    .unwrap()),
+                purchases::status.eq("POSTED"),
+                purchases::revision.eq(1_i64),
+                purchases::allocation_rule_version.eq(1_i64),
+                purchases::created_by.eq(member_id),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+    }
+
+    let update = command(purchase_id, 1, "merchant", None, None, Some("Changed"));
+    let decision = decide_update_purchase(update.clone(), draft(1, "Original")).unwrap();
+    let mut reference_data = NoFundingRules;
+    let result = bookkeeping_postgres::update_purchase::persist_update_purchase(
+        &pool,
+        bookkeeping_postgres::update_purchase::PersistUpdatePurchase {
+            household_id: household_id.to_string(),
+            actor_id: member_id.to_string(),
+        },
+        update,
+        decision,
+        &mut reference_data,
+    )
+    .await;
+
+    assert!(matches!(
+        result,
+        Err(bookkeeping_postgres::update_purchase::UpdatePurchasePersistenceError::AccountingPeriodClosed)
+    ));
+    let mut conn = pool.get().await.unwrap();
+    let saved = public::purchases::table
+        .filter(public::purchases::id.eq(purchase_id))
+        .select((public::purchases::revision, public::purchases::status))
+        .first::<(i64, String)>(&mut *conn)
+        .await
+        .unwrap();
+    assert_eq!(saved, (1, "POSTED".to_owned()));
+}
