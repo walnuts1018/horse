@@ -31,7 +31,7 @@
     "@tanstack/react-start": "^1.169.2",
     "graphql": "^17.0.2",
     "idb": "^8.0.4",
-    "lucide-react": "^1.57.0",
+    "lucide-react": "^1.58.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-relay": "^21.0.1",
