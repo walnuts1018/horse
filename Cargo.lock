@@ -2944,6 +2944,7 @@ dependencies = [
  "horse-graphql-api",
  "horse-object-storage",
  "horse-postgres-common",
+ "horse-test-infra",
  "horse-worker-runtime",
  "reqwest 0.13.5",
  "serde",

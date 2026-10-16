@@ -29,3 +29,6 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true, features = ["serde"] }
 url = "2"
+
+[dev-dependencies]
+horse-test-infra = { path = "../../platform/test-infra" }

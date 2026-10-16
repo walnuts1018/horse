@@ -84,7 +84,7 @@ pub enum OidcError {
     Pool(String),
     InvalidResponse,
     InvalidState,
-    InvalidGrant,
+    InvalidGrant { redirect_to: String },
     AuthenticationFailed,
     SessionExpired,
 }
@@ -253,7 +253,9 @@ impl AuthService {
                 CoreRequestTokenError::ServerResponse(response)
                     if response.error().to_string() == "invalid_grant" =>
                 {
-                    OidcError::InvalidGrant
+                    OidcError::InvalidGrant {
+                        redirect_to: redirect_to.clone(),
+                    }
                 }
                 error => OidcError::TransientProvider(error.to_string()),
             })?;
@@ -457,4 +459,24 @@ fn safe_redirect(value: &str) -> String {
         .map(|query| format!("?{query}"))
         .unwrap_or_default();
     format!("{path}{query}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::safe_redirect;
+
+    #[test]
+    fn safe_redirect_preserves_local_paths_and_rejects_external_destinations() {
+        assert_eq!(
+            safe_redirect("/households/abc/ledger?tab=accounts"),
+            "/households/abc/ledger?tab=accounts"
+        );
+        for unsafe_redirect in [
+            "https://attacker.example",
+            "//attacker.example",
+            "/\\attacker",
+        ] {
+            assert_eq!(safe_redirect(unsafe_redirect), "/");
+        }
+    }
 }

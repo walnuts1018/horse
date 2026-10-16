@@ -316,10 +316,17 @@ async fn callback(
             set_cookie(&mut response, &state_clear);
             response
         }
+        Err(OidcError::InvalidGrant { redirect_to }) => {
+            tracing::warn!(
+                status = StatusCode::SEE_OTHER.as_u16(),
+                "OIDC authorization code rejected; restarting login"
+            );
+            restart_login_response(&redirect_to, &state_clear)
+        }
         Err(error) => {
             let status = match &error {
                 OidcError::InvalidResponse | OidcError::InvalidState => StatusCode::BAD_REQUEST,
-                OidcError::InvalidGrant => StatusCode::UNAUTHORIZED,
+                OidcError::InvalidGrant { .. } => unreachable!(),
                 OidcError::AuthenticationFailed | OidcError::SessionExpired => {
                     StatusCode::UNAUTHORIZED
                 }
@@ -335,9 +342,7 @@ async fn callback(
             };
             if matches!(
                 &error,
-                OidcError::InvalidGrant
-                    | OidcError::AuthenticationFailed
-                    | OidcError::SessionExpired
+                OidcError::AuthenticationFailed | OidcError::SessionExpired
             ) {
                 tracing::warn!(error = ?error, status = status.as_u16(), "OIDC callback rejected");
             }
@@ -345,6 +350,58 @@ async fn callback(
             set_cookie(&mut response, &state_clear);
             response
         }
+    }
+}
+
+fn restart_login_response(return_to: &str, state_clear: &Cookie) -> Response {
+    let query = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("returnTo", return_to)
+        .finish();
+    let mut response = StatusCode::SEE_OTHER.into_response();
+    response.headers_mut().insert(
+        header::LOCATION,
+        HeaderValue::from_str(&format!("/auth/login?{query}"))
+            .unwrap_or_else(|_| HeaderValue::from_static("/auth/login?returnTo=%2F")),
+    );
+    set_cookie(&mut response, state_clear);
+    response
+}
+
+#[cfg(test)]
+mod auth_callback_tests {
+    use super::restart_login_response;
+    use axum::http::{StatusCode, header};
+    use horse_auth::Cookie;
+
+    #[test]
+    fn invalid_grant_restarts_login_with_the_local_return_path() {
+        let state_clear = Cookie {
+            name: "horse_oidc_state",
+            value: String::new(),
+            path: "/auth/callback",
+            expires_at: None,
+            max_age_seconds: Some(-1),
+            http_only: true,
+            secure: true,
+            same_site_lax: true,
+        };
+
+        let response = restart_login_response("/households/abc/ledger?tab=accounts", &state_clear);
+
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            response.headers().get(header::LOCATION).unwrap(),
+            "/auth/login?returnTo=%2Fhouseholds%2Fabc%2Fledger%3Ftab%3Daccounts"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get_all(header::SET_COOKIE)
+                .iter()
+                .next()
+                .unwrap(),
+            "horse_oidc_state=; Path=/auth/callback; Max-Age=-1; HttpOnly; Secure; SameSite=Lax"
+        );
     }
 }
 
@@ -1399,41 +1456,15 @@ async fn read_document(
         Ok(None) => return StatusCode::UNAUTHORIZED.into_response(),
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
-    use horse_postgres_common::schema::public::{
-        evidence_links, extraction_jobs, household_members, source_documents,
-    };
+    use horse_postgres_common::schema::public::{evidence_links, extraction_jobs};
     let mut pooled = match state.pool.get().await {
         Ok(pooled) => pooled,
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
-    let document = source_documents::table
-        .inner_join(
-            household_members::table
-                .on(household_members::household_id.eq(source_documents::household_id)),
-        )
-        .filter(source_documents::id.eq(document_id))
-        .filter(household_members::member_id.eq(principal.member_id))
-        .filter(household_members::left_at.is_null())
-        .select((
-            source_documents::household_id,
-            source_documents::sha256,
-            source_documents::mime_type,
-            source_documents::source_kind,
-            source_documents::original_filename,
-            source_documents::created_at,
-        ))
-        .first::<(
-            uuid::Uuid,
-            String,
-            String,
-            String,
-            String,
-            chrono::DateTime<chrono::Utc>,
-        )>(&mut *pooled)
-        .await;
+    let document = load_document_header(&mut pooled, principal.member_id, document_id).await;
     let (household_id, sha256, mime_type, source_kind, name, created_at) = match document {
-        Ok(document) => document,
-        Err(diesel::result::Error::NotFound) => return StatusCode::NOT_FOUND.into_response(),
+        Ok(Some(document)) => document,
+        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
     let latest = extraction_jobs::table
@@ -1529,6 +1560,50 @@ async fn read_document(
         "attachmentParent": attachment_parent
     }))
     .into_response()
+}
+
+async fn load_document_header(
+    conn: &mut diesel_async::AsyncPgConnection,
+    member_id: uuid::Uuid,
+    document_id: uuid::Uuid,
+) -> Result<
+    Option<(
+        uuid::Uuid,
+        String,
+        String,
+        String,
+        String,
+        chrono::DateTime<chrono::Utc>,
+    )>,
+    diesel::result::Error,
+> {
+    use horse_postgres_common::schema::public::{household_members, source_documents};
+    source_documents::table
+        .inner_join(
+            household_members::table
+                .on(household_members::household_id.eq(source_documents::household_id)),
+        )
+        .filter(source_documents::id.eq(document_id))
+        .filter(household_members::member_id.eq(member_id))
+        .filter(household_members::left_at.is_null())
+        .select((
+            source_documents::household_id,
+            source_documents::sha256,
+            source_documents::mime_type,
+            source_documents::source_kind,
+            source_documents::original_filename,
+            source_documents::created_at,
+        ))
+        .first::<(
+            uuid::Uuid,
+            String,
+            String,
+            String,
+            String,
+            chrono::DateTime<chrono::Utc>,
+        )>(conn)
+        .await
+        .optional()
 }
 
 async fn delete_document(
@@ -4455,3 +4530,7 @@ mod reconciliation_tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "document_access_test.rs"]
+mod document_access_test;
