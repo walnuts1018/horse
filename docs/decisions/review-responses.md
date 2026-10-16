@@ -692,3 +692,9 @@ Homeの日付と最近の購入日時は`Asia/Tokyo`を指定して表示し、�
 ### Bounded Contextのデータ所有権
 
 Poolと負担・拠出ルールはPolicyが所有し、Householdのデフォルト配賦はHouseholdが所有する。口座、仕訳、購入、精算スナップショットはBookkeepingが所有する。Pool作成はPolicyからHouseholdのApplication契約を呼び、同一PostgreSQL transactionでデフォルト配賦snapshotを作成する。Policyのルール変更はHouseholdのApplication契約を通じてrevisionと変更eventを同じtransactionで記録する。更新処理は各所有Contextへ移し、複数Contextを横断する読み取りはCross-contextに残す。
+
+## 2026年10月17日
+
+複数の決済元で1回の購入を支払った場合、決済額を品目額に比例して配賦し、最大剰余法で端数を調整する。配賦結果は決済元別と品目別の両方で元の合計額を保つ。
+
+予算の変更には適用開始月を指定し、分析は対象月に有効な予算金額とカテゴリを使う。既存データに変更履歴がない期間は現在値を過去へ遡及せず、履歴の記録開始月より前の予算実績を推測しない。
