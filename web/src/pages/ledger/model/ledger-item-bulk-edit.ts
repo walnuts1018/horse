@@ -78,6 +78,7 @@ export function useLedgerItemBulkEdit({
   const [allocationsActive, setAllocationsActive] = useState(false);
   const [allocations, setAllocations] = useState<Record<string, string | undefined>>({});
   const [variantId, setVariantId] = useState("");
+  const [name, setName] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagsActive, setTagsActive] = useState(false);
   const [pending, setPending] = useState(false);
@@ -140,7 +141,7 @@ export function useLedgerItemBulkEdit({
   };
 
   const apply = async () => {
-    if (!category && !allocationsActive && !variantId && !tagsActive) return;
+    if (!category && !allocationsActive && !variantId && !name.trim() && !tagsActive) return;
     const targets = purchases.flatMap((purchase) =>
       purchase.items
         .filter((item) => selectedItems.has(item.id))
@@ -157,6 +158,7 @@ export function useLedgerItemBulkEdit({
           .filter(([, weight]) => Number(weight) > 0)
           .map(([poolId, weight]) => ({ poolId, weight: Number(weight) }));
       if (variantId) patch.productVariantId = variantId === "__none" ? null : variantId;
+      if (name.trim()) patch.name = name.trim();
       if (tagsActive) patch.tagIds = tags;
       const result = await mutateBulkUpdatePurchaseItems({
         input: {
@@ -172,6 +174,7 @@ export function useLedgerItemBulkEdit({
             .filter((allocation) => allocation.weight > 0)
             .map(({ poolId, weight }) => ({ poolId, weight }));
         if (variantId) undoPatch.productVariantId = item.productVariantId ?? null;
+        if (name.trim()) undoPatch.name = item.name;
         if (tagsActive) undoPatch.tagIds = item.tags.map((tag) => tag.id);
         return {
           itemId: item.id,
@@ -187,6 +190,7 @@ export function useLedgerItemBulkEdit({
       setAllocationsActive(false);
       setAllocations({});
       setVariantId("");
+      setName("");
       setTags([]);
       setTagsActive(false);
       await refresh();
@@ -280,6 +284,8 @@ export function useLedgerItemBulkEdit({
     setAllocations,
     variantId,
     setVariantId,
+    name,
+    setName,
     tags,
     setTags,
     tagsActive,

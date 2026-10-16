@@ -9,7 +9,7 @@ import { LedgerProductVariantSelect } from "./ledger-product-variant-select";
 import styles from "./ledger-item-bulk-actions.module.css";
 
 type LedgerItemBulkEdit = ReturnType<typeof useLedgerItemBulkEdit>;
-type BulkAction = "category" | "allocations" | "product" | "tags";
+type BulkAction = "category" | "allocations" | "product" | "name" | "tags";
 
 export function LedgerItemBulkActions({
   edit,
@@ -54,6 +54,7 @@ export function LedgerItemBulkActions({
                 ["category", "カテゴリ"],
                 ["allocations", "負担"],
                 ["product", "商品"],
+                ["name", "品名"],
                 ["tags", "タグ"],
               ] as const
             ).map(([action, label]) => (
@@ -178,6 +179,18 @@ export function LedgerItemBulkActions({
                   )}
                 </div>
               )}
+              {activeAction === "name" && (
+                <label>
+                  <span>選択した品目の品名</span>
+                  <input
+                    type="text"
+                    maxLength={240}
+                    value={edit.name}
+                    disabled={pending || disabled}
+                    onChange={(event) => edit.setName(event.target.value)}
+                  />
+                </label>
+              )}
               {activeAction === "tags" && (
                 <fieldset className={styles.tagEditor} disabled={pending || disabled}>
                   <legend>タグを置換</legend>
@@ -237,7 +250,11 @@ export function LedgerItemBulkActions({
               pending ||
               disabled ||
               selectedCount > 100 ||
-              (!edit.category && !edit.allocationsActive && !edit.variantId && !edit.tagsActive) ||
+              (!edit.category &&
+                !edit.allocationsActive &&
+                !edit.variantId &&
+                !edit.name.trim() &&
+                !edit.tagsActive) ||
               (edit.allocationsActive &&
                 Object.values(edit.allocations).some(
                   (weight) => !Number.isFinite(Number(weight)) || Number(weight) <= 0,

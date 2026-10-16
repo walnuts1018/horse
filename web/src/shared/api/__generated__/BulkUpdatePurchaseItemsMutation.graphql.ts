@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<e7475dac94935d168a91314a683c9bf7>>
+ * @generated SignedSource<<e1b97a267ef4a6d153bc3bc6c22c011a>>
  * @lightSyntaxTransform
  */
 
@@ -20,6 +20,7 @@ export type PurchaseItemTargetInput = {
 export type BulkPurchaseItemPatch = {
   allocations?: ReadonlyArray<BulkUpdatePurchaseItemsAllocationInput> | null | undefined;
   categoryId?: string | null | undefined;
+  name?: string | null | undefined;
   productVariantId?: string | null | undefined;
   tagIds?: ReadonlyArray<string> | null | undefined;
 };

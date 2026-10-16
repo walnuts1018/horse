@@ -16,6 +16,7 @@ input BulkUpdatePurchaseItemsInput {
 }
 
 input BulkPurchaseItemPatch {
+  name: String @goField(omittable: true)
   categoryId: ID @nodeID(of: "Category") @goField(omittable: true)
   productVariantId: ID @nodeID(of: "ProductVariant") @goField(omittable: true)
   allocations: [BulkUpdatePurchaseItemsAllocationInput!] @goField(omittable: true)

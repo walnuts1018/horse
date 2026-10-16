@@ -4,6 +4,7 @@ use crate::{AllocationShares, AllocationWeight, PoolId, Yen, allocate};
 use uuid::Uuid;
 
 const FIELD_CATEGORY_ID: &str = "categoryId";
+const FIELD_NAME: &str = "name";
 const FIELD_PRODUCT_VARIANT_ID: &str = "productVariantId";
 const FIELD_ALLOCATIONS: &str = "allocations";
 const FIELD_TAGS: &str = "tags";
@@ -16,6 +17,8 @@ pub struct BulkUpdateItemTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BulkUpdateItemPatch {
+    pub name_set: bool,
+    pub name: Option<String>,
     pub category_id_set: bool,
     pub category_id: Option<String>,
     pub product_variant_id_set: bool,
@@ -63,6 +66,7 @@ pub struct BulkUpdateItemDecision {
     pub purchase_id: String,
     pub revision: u64,
     pub field_revisions: BTreeMap<String, u64>,
+    pub name: Option<String>,
     pub category_id: Option<Option<String>>,
     pub product_variant_id: Option<Option<String>>,
     pub allocation_override: bool,
@@ -98,6 +102,7 @@ pub enum BulkUpdateItemsError {
     EmptyPatch,
     InvalidItemId,
     InvalidTagId,
+    InvalidName,
     InvalidPurchaseId,
     DuplicateTarget,
     DuplicateTag,
@@ -123,6 +128,7 @@ pub fn decide_bulk_update_items(
         return Err(BulkUpdateItemsError::TooManyTargets);
     }
     if !command.patch.category_id_set
+        && !command.patch.name_set
         && !command.patch.product_variant_id_set
         && !command.patch.allocations_set
         && !command.patch.tag_ids_set
@@ -164,6 +170,15 @@ pub fn decide_bulk_update_items(
             }
         }
     }
+    let name = if command.patch.name_set {
+        let value = command.patch.name.as_deref().unwrap_or_default().trim();
+        if value.is_empty() || value.chars().count() > 240 {
+            return Err(BulkUpdateItemsError::InvalidName);
+        }
+        Some(value.to_owned())
+    } else {
+        None
+    };
     if command.patch.allocations_set {
         validate_weights(&command.patch.allocations)?;
     }
@@ -184,7 +199,10 @@ pub fn decide_bulk_update_items(
             .revision
             .checked_add(1)
             .ok_or(BulkUpdateItemsError::RevisionOverflow)?;
-        let mut changed_fields = Vec::with_capacity(4);
+        let mut changed_fields = Vec::with_capacity(5);
+        if command.patch.name_set {
+            changed_fields.push(FIELD_NAME.to_owned());
+        }
         if command.patch.category_id_set {
             changed_fields.push(FIELD_CATEGORY_ID.to_owned());
         }
@@ -233,6 +251,7 @@ pub fn decide_bulk_update_items(
             purchase_id: item.purchase_id.clone(),
             revision,
             field_revisions,
+            name: name.clone(),
             category_id: command
                 .patch
                 .category_id_set
@@ -300,4 +319,67 @@ fn allocation_shares(
         })
         .collect::<Result<Vec<_>, _>>()?;
     AllocationShares::new(weights).map_err(|_| BulkUpdateItemsError::InvalidAllocation)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn command(name: &str) -> BulkUpdateItemsCommand {
+        BulkUpdateItemsCommand {
+            targets: vec![BulkUpdateItemTarget {
+                item_id: "00000000-0000-0000-0000-000000000001".to_owned(),
+                base_revision: 1,
+            }],
+            patch: BulkUpdateItemPatch {
+                name_set: true,
+                name: Some(name.to_owned()),
+                ..BulkUpdateItemPatch::default()
+            },
+        }
+    }
+
+    fn states() -> (Vec<BulkUpdatePurchaseState>, Vec<BulkUpdateItemState>) {
+        (
+            vec![BulkUpdatePurchaseState {
+                purchase_id: "00000000-0000-0000-0000-000000000002".to_owned(),
+                revision: 1,
+            }],
+            vec![BulkUpdateItemState {
+                item_id: "00000000-0000-0000-0000-000000000001".to_owned(),
+                purchase_id: "00000000-0000-0000-0000-000000000002".to_owned(),
+                revision: 1,
+                amount_yen: 500,
+                allocation_override: true,
+                field_revisions: BTreeMap::new(),
+                effective_allocations: vec![ItemAllocationWeight {
+                    pool_id: "00000000-0000-0000-0000-000000000003".to_owned(),
+                    weight: 1,
+                }],
+                allocation_rule_id: None,
+                allocation_rule_version: 1,
+            }],
+        )
+    }
+
+    #[test]
+    fn bulk_name_update_trims_name_and_advances_field_revision() {
+        let (purchases, items) = states();
+
+        let decision = decide_bulk_update_items(command("  牛乳  "), purchases, items).unwrap();
+
+        assert_eq!(decision.items[0].name.as_deref(), Some("牛乳"));
+        assert_eq!(decision.items[0].field_revisions.get("name"), Some(&2));
+        assert_eq!(decision.items[0].changed_fields, vec!["name".to_owned()]);
+    }
+
+    #[test]
+    fn bulk_name_update_rejects_empty_name() {
+        let (purchases, items) = states();
+
+        assert_eq!(
+            decide_bulk_update_items(command("   "), purchases, items),
+            Err(BulkUpdateItemsError::InvalidName),
+        );
+    }
 }

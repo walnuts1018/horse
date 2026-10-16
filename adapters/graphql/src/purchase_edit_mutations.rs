@@ -94,6 +94,7 @@ pub struct BulkUpdatePurchaseItemsInput {
 
 #[derive(Clone, Debug, InputObject)]
 pub struct BulkPurchaseItemPatch {
+    pub name: MaybeUndefined<String>,
     pub category_id: MaybeUndefined<ID>,
     pub product_variant_id: MaybeUndefined<ID>,
     pub allocations: MaybeUndefined<Vec<BulkUpdatePurchaseItemsAllocationInput>>,
@@ -548,6 +549,11 @@ fn parse_targets(
 }
 
 fn bulk_update_patch(value: BulkPurchaseItemPatch) -> std::result::Result<BulkUpdateItemPatch, ()> {
+    let (name_set, name) = match value.name {
+        MaybeUndefined::Undefined => (false, None),
+        MaybeUndefined::Null => return Err(()),
+        MaybeUndefined::Value(value) => (true, Some(value)),
+    };
     let (category_id_set, category_id) = match value.category_id {
         MaybeUndefined::Undefined => (false, None),
         MaybeUndefined::Null => (true, None),
@@ -591,6 +597,8 @@ fn bulk_update_patch(value: BulkPurchaseItemPatch) -> std::result::Result<BulkUp
         ),
     };
     Ok(BulkUpdateItemPatch {
+        name_set,
+        name,
         category_id_set,
         category_id,
         product_variant_id_set,

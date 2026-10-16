@@ -207,8 +207,9 @@ pub async fn persist_bulk_update_purchase_items<
                             items::product_variant_id,
                             items::allocation_override,
                             items::field_revisions,
+                            items::name,
                         ))
-                        .first::<(Uuid, Uuid, i64, i64, Option<Uuid>, Option<Uuid>, bool, serde_json::Value)>(
+                        .first::<(Uuid, Uuid, i64, i64, Option<Uuid>, Option<Uuid>, bool, serde_json::Value, String)>(
                             &mut *conn,
                         )
                         .await
@@ -307,6 +308,7 @@ pub async fn persist_bulk_update_purchase_items<
                         .set((
                             items::category_id.eq(category_id),
                             items::product_variant_id.eq(variant_id),
+                            items::name.eq(item_decision.name.as_deref().unwrap_or(&old.8)),
                             items::allocation_override.eq(item_decision.allocation_override),
                             items::revision.eq(i64::try_from(item_decision.revision).map_err(|_| BulkUpdatePurchaseItemsPersistenceError::NumericOutOfRange("item_revision"))?),
                             items::field_revisions.eq(field_revisions),
