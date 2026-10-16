@@ -8,153 +8,31 @@
 
 以下は実際のコードから確認できた問題です。コードの静的レビューであり、ローカルでのテスト実行や本番環境の再現試験は行っていません。
 
-## 1. フロントエンド・入力UX
-### P3 — 返金を含む分析で、内訳が実際の負担先と一致しない場合がある
+## 1. AI・データ取り込み
 
-対象： [web/src/pages/analysis/model/purchase-analytics.ts](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/web/src/pages/analysis/model/purchase-analytics.ts#L35-L115)
+### P3 — Geminiのモデル料金がコードに直接埋め込まれている
 
-現在の`purchaseDimensions()`では、購入の負担プール別内訳に元の配賦額を加算し、訂正金額を「プール未配賦の訂正」という独立した項目へ追加しています。
-
-既存テストでもこの動作が期待されています。
-
-総額は一致しますが、例えばA個人の服を返品した場合、Aのプールの支出額が減るのではなく、「プール未配賦の訂正」がマイナスになります。
-
-つまり、家計全体の支出は正しくても、プール別の実質負担分析には返品が反映されません。
-
-修正案： 訂正・返金の負担先が明確な場合は、対応するプールに訂正額を計上してください。負担先が不明な訂正に限って「未配賦」を使用する設計がよいと思います。
-
-### P3 — マイナスの支出を棒グラフで適切に表示できない
-
-対象： [web/src/pages/analysis/ui/analysis-breakdown.tsx](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/web/src/pages/analysis/ui/analysis-breakdown.tsx#L170-L198)
-
-内訳の棒グラフでは、棒の幅を以下の式で求めています。
-
-```
-Math.max(8, (row.amount / (rows[0]?.amount || 1)) * 100)
-```
-
-マイナスの金額が含まれる場合、正負を適切に区別できません。
-
-月別推移グラフには正負を別表示する処理があるのに、内訳グラフでは対応が統一されていません。
-
-修正案： 正負それぞれの棒を明示的に表示してください。少なくとも、負の値を正の値と同じ最小幅で描画しないようにするべきです。
-
-## 2. AI・データ取り込み
-
-### P3 — 高性能モデルへのエスカレーション条件が、日本語のエラーメッセージに依存している
-
-対象： [internal/ingestion/router.go](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/internal/ingestion/router.go#L630-L637)
-
-`needsProReview()`では、検証エラーの文章に「税率」「税額」「小計」「合計」などの文字列が含まれるかどうかで、Proモデルを使用する必要性を判断しています。
-
-これは表示用の文章と内部制御が密結合している状態です。
-
-例えば、エラーメッセージを「税込金額が一致しません」から「税込価格の整合性を確認してください」に変更するだけで、モデル選択に影響する可能性があります。
-
-修正案： 検証結果には、文章とは別に機械的に判別できるIssue Codeを持たせてください。
-
-```
-type VerificationIssueCode string
-
-const (
-    IssueTaxMismatch   VerificationIssueCode = "TAX_MISMATCH"
-    IssueTotalMismatch VerificationIssueCode = "TOTAL_MISMATCH"
-    IssueMissingItem   VerificationIssueCode = "MISSING_ITEM"
-)
-```
-
-UI用のメッセージはIssue Codeから生成し、モデル選択はCodeだけで判断する構成がよいです。
-
-### P3 — Geminiのモデル料金がGoコードに直接埋め込まれている
-
-対象： [internal/ingestion/router.go](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/internal/ingestion/router.go#L672-L697)
+対象： `adapters/worker-runtime/src/processing.rs`の`model_prices()`
 
 `modelPrices()`には、モデルごとの入力・出力単価と料金変更日が直接記述されています。
 
 料金変更日が分かっているものには対応できていますが、Googleの料金表が変更されるたびに、アプリケーションを修正・デプロイする必要があります。
 
-また、未知のモデルでは料金が0として返されます。有料実行時には別の検証もありますが、料金表示や評価系の計算で未知モデルを0円と扱う設計は避けたいです。
+料金表にないモデルは有料実行前に拒否され、実行記録でも料金を0円として扱わず、料金未設定として保持します。一方で、既知モデルの料金と適用期間はコードに直接記述されています。
 
-修正案： 料金表をモデル・期間・Service Tierごとのバージョン付き設定として管理し、未知の料金は0円ではなく「料金未設定」として扱ってください。
+改善案： 料金表をモデル・期間・Service Tierごとのバージョン付き設定として管理すると、料金更新をアプリ本体のリリースから分離できます。
 
-料金設定の更新をアプリ本体のリリースと分離できます。
+### P3 — Quota Reservationに使うトークン数の推定精度と性能への影響が未確認
 
-### P3 — Geminiへの呼び出し前に、毎回トークン計数APIを呼び出す経路がある
+対象： `adapters/worker-runtime/src/processing.rs`のQuota Reservation処理
 
-対象： [internal/ingestion/gemini_client.go](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/internal/ingestion/gemini_client.go#L18-L65)
+現在のRust実装は、API呼び出し前に本文サイズから入力トークン数を推定してQuotaを予約し、完了後にAPIが返した実使用量で精算します。Go実装にあった`CountTokens` APIの追加呼び出しはありません。
 
-Quota Reservationが有効な場合、`CountTokens`を呼び出し、その後に`GenerateContent`を呼び出しています。
+本文サイズによる推定と実使用量の差がQuota判定や再試行に与える影響は、実測されていません。
 
-これはリクエスト前に正確な入力トークン数を把握するうえで合理的な処理です。
+改善案： 推定値と実使用量の差、および予約処理の全体レイテンシへの影響を実測してください。性能最適化の候補として未解決のまま残します。
 
-一方、レシート画像のような比較的大きなデータでは、外部APIとの往復が1回追加されます。
-
-改善案： `CountTokens`にかかる時間を実測し、全体のレイテンシに占める割合を確認してください。
-
-厳密なQuota管理が必要な無料ルートでは維持し、有料ルートなどでは推定トークン数による予約を許容できるか検討する価値があります。
-
-これは不具合ではなく、性能最適化の候補です。
-
-## 3. バックエンドの保守性・コード品質
-
-### P3 — HTTPレスポンスのJSONエンコードエラーを無視している
-
-対象： [internal/api/server.go](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/internal/api/server.go#L395-L401)
-
-共通の`writeJSON()`は、HTTPステータスを先に送信し、JSONエンコード・書き込みのエラーを無視しています。
-
-```
-func writeJSON(w http.ResponseWriter, status int, value any) {
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(status)
-    _ = json.MarshalWrite(w, value)
-}
-```
-
-レスポンスのエンコードに失敗すると、HTTPステータスは成功なのにJSON本文が不完全という状態が発生し得ます。
-
-修正案： レスポンスを送信する前にJSONをエンコードし、失敗した場合は適切なエラーを返す方式にしてください。
-
-ネットワークへの書き込みエラーは応答をやり直せませんが、少なくとも内部ログには記録できます。
-
-### P3 — Originの比較方法がAPIと認証処理で統一されていない
-
-対象：
-
-- [internal/api/server.go](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/internal/api/server.go#L402-L409)
-- [internal/auth/oidc.go](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/internal/auth/oidc.go#L349-L367)
-
-REST API側は`Origin`ヘッダーを文字列の完全一致で比較しています。
-
-一方、認証側はURLをパースし、SchemeとHostを比較しています。
-
-例えばホスト名の大文字・小文字や設定値の末尾表記が異なる場合、認証処理とREST APIで結果が変わる可能性があります。
-
-修正案： Originの判定を共通ライブラリにまとめ、正規化したScheme・Host・Portで判定してください。
-
-認証とAPIの両方で、同じテストケースを利用できるようにします。
-
-### P3 — 入金予定の周期について、DB・ドメイン・GraphQLで対応範囲が異なる
-
-対象：
-
-- [internal/application/funding_schedule/service.go](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/internal/application/funding_schedule/service.go#L55-L61)
-- [internal/application/settlement/calculation.go](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/internal/application/settlement/calculation.go#L338-L375)
-- [graphql/funding_schedule.graphql](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/graphql/funding_schedule.graphql#L1-L12)
-
-入金予定の計算エンジンは`MONTHLY`、`WEEKLY`、`CUSTOM`に対応しています。
-
-DBも3種類を許容しています。
-
-しかし、Application Serviceで新規設定できるのは`MONTHLY`のみで、GraphQLのenumも`MONTHLY`だけです。
-
-現在の公開APIでは月次だけを提供する方針かもしれませんが、内部の対応範囲と公開契約が分かれています。
-
-改善案： 月次のみが正式仕様なら、週次・任意日付の計算処理を将来用コードとして曖昧に残さず、仕様とテストを整理してください。
-
-逆に、週次・任意日付を提供したいなら、GraphQL、Application、UIまで一貫して対応させるべきです。
-
-## 4. アーキテクチャ・開発体験
+## 2. アーキテクチャ・開発体験
 
 ### P3 — 一部のファイルに複数の独立した責務が残っている
 
@@ -164,7 +42,6 @@ DBも3種類を許容しています。
 
 | ファイル | 規模 | 混在している責務 |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------- |
-| [internal/api/documents.go](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/internal/api/documents.go) | 約1,570行 | アップロード、一覧、ページネーション、再解析、証拠確認など |
 | [use-import-confirmation.ts](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/web/src/pages/imports/model/use-import-confirmation.ts) | 約1,070行 | レシート編集、返金、貸付、送金、入金、照合 |
 | [statement-review.tsx](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/web/src/pages/imports/ui/statement-review.tsx) | 約1,070行 | 明細確認と各種取引の編集・候補選択 |
 | [edit-purchase-items.tsx](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/web/src/pages/purchase-create/ui/edit-purchase-items.tsx) | 約1,000行 | 品目編集、候補選択、貼付、一括操作 |
@@ -188,7 +65,7 @@ DBも3種類を許容しています。
 
 対象： [.github/workflows/ci.yaml](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/.github/workflows/ci.yaml#L70-L115)
 
-現在はGoのIntegration Test、Vitest、型検査、Lint、ビルドなどが揃っています。
+現在はRustの統合テスト、Vitest、型検査、Lint、ビルドなどが揃っています。
 
 一方、リポジトリ上ではPlaywrightやCypressによるブラウザE2Eテストを確認できませんでした。
 
@@ -200,13 +77,13 @@ DBも3種類を許容しています。
 
 すべてのUIをE2Eでテストする必要はありませんが、少なくとも「品目を連続入力して保存する」「通信を切断して再接続する」「2ユーザーで同時編集する」「AI結果を修正して確定する」の主要経路は自動化したいです。
 
-## 5. 設計上の注意点として残しておきたいもの
+## 3. 設計上の注意点として残しておきたいもの
 
 次の2点は、一見問題に見えましたが、既存テストに明示された仕様なので、今回の不具合指摘には含めません。
 
 過去月の精算に、加入日より前のメンバーも含める挙動
 
-[settlement/calculation.go](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/internal/application/settlement/calculation.go#L251-L253) の`memberActiveDuringPeriod()`は脱退日だけを確認しています。
+[精算期間の計算](../../contexts/bookkeeping/application/src/close_period.rs)では、過去月の精算に加入日より前のメンバーも含めています。
 
 通常の期間判定としては加入日も必要ですが、既存テストでは後から加入したメンバーを過去月に含めることが明示的に期待されています。
 
@@ -214,7 +91,7 @@ DBも3種類を許容しています。
 
 Gemini無料枠の429エラーで即座に有料枠へ切り替えない挙動
 
-[ingestion/router.go](https://github.com/walnuts1018/horse/blob/70338cc5822115b2f9a39b7934fe866b0a717a48/internal/ingestion/router.go#L579-L595) では、無料枠がQuota制限に達した際の扱いが制御されています。
+[`processing.rs`](../../adapters/worker-runtime/src/processing.rs)では、無料枠がQuota制限に達した際の扱いが制御されています。
 
 既存テストでも即時に有料APIへフォールバックしないことが期待されています。これは無料枠の消費を優先するポリシーとして理解できます。
 
@@ -222,16 +99,16 @@ Gemini無料枠の429エラーで即座に有料枠へ切り替えない挙動
 
 ## 修正の優先順位
 
-今回のレビューで特に優先したいのは、以下の順番です。
+今回残っている課題の優先順位は以下のとおりです。
 
 | 順位 | 対象 | 理由 |
 | -- | -------------------- | ----------------- |
-| 1 | 返金を含む分析とプール別内訳 | 実際の負担先を正しく把握するため |
-| 2 | AI検証結果の型付けと料金管理 | 推論の安定性と保守性 |
-| 3 | 大きなモジュールの責務整理・E2Eテスト | 将来的な変更容易性 |
+| 1 | Gemini料金設定 | 料金更新をアプリ本体のリリースから分離するため |
+| 2 | Quota Reservationの推定精度 | 無料枠の予約精度と待ち時間への影響を把握するため |
+| 3 | 大きなWebモジュールの責務整理とE2Eテスト | 主要な入力経路の保守性とブラウザ操作の回帰を検出するため |
 
 このほかのP3指摘も修正価値はありますが、上位の整合性・データ保護・性能問題より優先する必要はありません。
 
-今回確認した範囲では、全体としてGoのApplication Service、GraphQL、PostgreSQLによる整合性管理、ブラウザ側の下書き管理など、主要な構造は整えられています。一方で、正常系を実現する処理は揃っていても、過去の設定変更、大量データ、通信障害、複数人操作などの境界条件で不整合が残る傾向があります。
+今回確認した範囲では、全体としてRustのApplication Workflow、GraphQL、PostgreSQLによる整合性管理、ブラウザ側の下書き管理など、主要な構造は整えられています。一方で、正常系を実現する処理は揃っていても、過去の設定変更、大量データ、通信障害、複数人操作などの境界条件で不整合が残る傾向があります。
 
 今後のレビューでも、単純なLint違反やファイル分割だけでなく、異なるモジュール間で前提が食い違う箇所を重点的に調べる価値が高いと思います。

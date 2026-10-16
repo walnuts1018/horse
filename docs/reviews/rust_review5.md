@@ -159,30 +159,6 @@ Household、Catalog、Policy、Bookkeepingの境界を一度再検討します�
 
 ## 6. P2：Errorの意味が境界を越えると弱くなる
 
-[`household/application/src/ports.rs`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/household/application/src/ports.rs) には、
-
-```
-pub enum CreateHouseholdPortError {
-    InvalidInput,
-    NotFound,
-    Infra,
-}
-
-impl CreateHouseholdPortError {
-    pub const fn from_workflow(
-        _: CreateHouseholdError,
-    ) -> Self {
-        Self::InvalidInput
-    }
-}
-```
-
-という変換があります。
-
-ここではWorkflow固有のエラーがすべて `InvalidInput` へまとめられます。
-
-公開APIで意図的にまとめるのであれば問題ありませんが、Applicationの契約上で区別を早期に失うことは避けたいです。
-
 またGraphQL側では、PostgreSQL Adapterの詳細なエラー型を直接matchしている場所があります。
 
 これはドメイン上の失敗と、永続化実装上の失敗の変換責務が明確ではない状態です。
