@@ -1,5 +1,4 @@
 use policy_application::{budget, recurring_expense};
-use uuid::Uuid;
 
 use crate::{PgPool, policy, policy_query};
 
@@ -20,16 +19,15 @@ impl budget::BudgetMutationHandler for PostgresBudgetMutationHandler {
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<
-                    Output = Result<budget::BudgetReadModel, policy_application::WorkflowFailure>,
+                    Output = Result<budget::Budget, policy_application::WorkflowFailure>,
                 > + Send
                 + 'a,
         >,
     > {
         Box::pin(async move {
-            let actor_id = command.actor_id.value();
             let mut operations = policy::PolicyOperations::new(&self.pool);
             let saved = budget::create_budget(&mut operations, command).await?;
-            read_budget(&self.pool, actor_id, saved.id.value()).await
+            Ok(saved)
         })
     }
 
@@ -39,16 +37,15 @@ impl budget::BudgetMutationHandler for PostgresBudgetMutationHandler {
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<
-                    Output = Result<budget::BudgetReadModel, policy_application::WorkflowFailure>,
+                    Output = Result<budget::Budget, policy_application::WorkflowFailure>,
                 > + Send
                 + 'a,
         >,
     > {
         Box::pin(async move {
-            let actor_id = command.actor_id.value();
             let mut operations = policy::PolicyOperations::new(&self.pool);
             let saved = budget::update_budget(&mut operations, command).await?;
-            read_budget(&self.pool, actor_id, saved.id.value()).await
+            Ok(saved)
         })
     }
 
@@ -61,7 +58,7 @@ impl budget::BudgetMutationHandler for PostgresBudgetMutationHandler {
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<
-                    Output = Result<budget::BudgetReadModel, policy_application::WorkflowFailure>,
+                    Output = Result<budget::Budget, policy_application::WorkflowFailure>,
                 > + Send
                 + 'a,
         >,
@@ -79,7 +76,7 @@ impl budget::BudgetMutationHandler for PostgresBudgetMutationHandler {
             };
             let mut operations = policy::PolicyOperations::new(&self.pool);
             let saved = budget::archive_budget(&mut operations, command).await?;
-            read_budget(&self.pool, actor_id.value(), saved.id.value()).await
+            Ok(saved)
         })
     }
 }
@@ -134,6 +131,50 @@ impl budget::BudgetQuery for PostgresBudgetMutationHandler {
                 has_next_page: page.has_next_page,
                 has_previous_page: page.has_previous_page,
             })
+        })
+    }
+
+    fn periods<'a>(
+        &'a self,
+        request: budget::BudgetPeriodsQueryRequest,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        Vec<budget::BudgetPeriodReadModel>,
+                        policy_application::WorkflowFailure,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let periods = policy_query::budget_periods(
+                &self.pool,
+                policy_query::BudgetPeriodsQuery {
+                    actor_id: request.actor_id.value(),
+                    household_id: request.household_id.value(),
+                    from: &request.from,
+                    to: &request.to,
+                },
+            )
+            .await
+            .map_err(classify_query_error)?;
+            Ok(periods
+                .into_iter()
+                .map(|value| budget::BudgetPeriodReadModel {
+                    period: value.period,
+                    budgets: value
+                        .budgets
+                        .into_iter()
+                        .map(|value| budget::BudgetReadModel {
+                            budget: value.budget,
+                            actual_yen: value.actual_yen,
+                            remaining_yen: value.remaining_yen,
+                        })
+                        .collect(),
+                })
+                .collect())
         })
     }
 }
@@ -294,21 +335,6 @@ impl recurring_expense::RecurringExpenseQuery for PostgresRecurringExpenseMutati
             })
         })
     }
-}
-
-async fn read_budget(
-    pool: &PgPool,
-    actor_id: Uuid,
-    budget_id: Uuid,
-) -> Result<budget::BudgetReadModel, policy_application::WorkflowFailure> {
-    policy_query::budget_for_current_period(pool, actor_id, budget_id)
-        .await
-        .map(|value| budget::BudgetReadModel {
-            budget: value.budget,
-            actual_yen: value.actual_yen,
-            remaining_yen: value.remaining_yen,
-        })
-        .map_err(classify_query_error)
 }
 
 fn classify_query_error(

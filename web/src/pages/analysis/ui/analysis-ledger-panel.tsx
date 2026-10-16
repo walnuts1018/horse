@@ -1,5 +1,6 @@
 import type { LedgerEntry } from "../../../shared/api";
 
+import { formatTokyoDate } from "../model/format-tokyo-date";
 import { yen } from "../model/format-yen";
 
 const ledgerKindLabels: Partial<Record<string, string>> = {
@@ -50,7 +51,7 @@ export function AnalysisLedgerPanel({
         <ul className="analysis-ledger-list">
           {history.map((entry) => (
             <li key={entry.id}>
-              <time dateTime={entry.occurredAt}>{entry.occurredAt.slice(0, 10)}</time>
+              <time dateTime={entry.occurredAt}>{formatTokyoDate(entry.occurredAt)}</time>
               <span className="analysis-ledger-kind">{ledgerKindLabels[entry.kind]}</span>
               <span className="analysis-ledger-description">{entry.description}</span>
               <strong>{yen(entry.amountYen)}</strong>

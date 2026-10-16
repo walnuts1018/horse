@@ -9,7 +9,7 @@ CREATE TABLE budget_versions (
     starts_on date NOT NULL,
     ends_on date,
     archived boolean NOT NULL,
-    PRIMARY KEY (budget_id, revision),
+    PRIMARY KEY (budget_id, effective_from, revision),
     FOREIGN KEY (household_id, budget_id) REFERENCES budgets(household_id, id) ON DELETE CASCADE,
     FOREIGN KEY (household_id, category_id) REFERENCES categories(household_id, id),
     CHECK (ends_on IS NULL OR ends_on >= starts_on)
@@ -33,7 +33,10 @@ SELECT
     id,
     household_id,
     revision,
-    date_trunc('month', starts_on)::date,
+    GREATEST(
+        date_trunc('month', now() AT TIME ZONE 'Asia/Tokyo')::date,
+        date_trunc('month', starts_on)::date
+    ),
     category_id,
     name,
     amount_yen,

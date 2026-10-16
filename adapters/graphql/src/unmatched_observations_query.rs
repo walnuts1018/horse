@@ -90,6 +90,7 @@ pub(crate) struct UnmatchedObservationsParams {
     pub(crate) to: Option<YearMonth>,
     pub(crate) source_kind: Option<SourceKind>,
     pub(crate) state: Option<UnmatchedObservationState>,
+    pub(crate) undated_only: bool,
     pub(crate) after: Option<String>,
     pub(crate) before: Option<String>,
     pub(crate) first: Option<i32>,
@@ -106,6 +107,7 @@ pub(crate) async fn graphql_unmatched_observations(
         to,
         source_kind,
         state,
+        undated_only,
         after,
         before,
         first,
@@ -129,6 +131,7 @@ pub(crate) async fn graphql_unmatched_observations(
             to: to.as_ref().map(|period| period.as_str().to_owned()),
             source_kind,
             state: state.map(str::to_owned),
+            undated_only,
             after,
             before,
             first,
@@ -155,6 +158,30 @@ pub(crate) async fn graphql_unmatched_observations(
         page_info,
         total_count,
     })
+}
+
+pub(crate) async fn graphql_undated_unmatched_observations(
+    ctx: &Context<'_>,
+    household_id: ID,
+    after: Option<String>,
+    first: Option<i32>,
+) -> Result<UnmatchedObservationConnection> {
+    graphql_unmatched_observations(
+        ctx,
+        UnmatchedObservationsParams {
+            household_id,
+            from: None,
+            to: None,
+            source_kind: None,
+            state: Some(UnmatchedObservationState::Unmatched),
+            undated_only: true,
+            after,
+            before: None,
+            first,
+            last: None,
+        },
+    )
+    .await
 }
 
 pub(crate) async fn resolve_unmatched_observation(

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useLazyLoadQuery, usePaginationFragment } from "react-relay";
 
 import type {
-  AnalysisBudgetsFragment$key,
   AnalysisDashboardQuery,
   AnalysisPurchasePriceObservationsQuery,
   AnalysisRecurringExpensesFragment$key,
@@ -13,7 +12,6 @@ import type { Dimension, ItemMetric } from "./purchase-analytics";
 
 import {
   analysisPurchasePriceObservationsQuery,
-  analysisBudgetsFragment,
   analysisDashboardQuery,
   analysisRecurringExpensesFragment,
 } from "../api/operations";
@@ -23,13 +21,12 @@ export function useAnalysisData(
   householdId: string,
   fromMonth: string,
   toMonth: string,
-  periodMonth: string,
   dimension: Dimension,
   itemMetric: ItemMetric,
 ) {
   const variables = useMemo(
-    () => ({ householdId, from: fromMonth, to: toMonth, period: periodMonth }),
-    [fromMonth, householdId, periodMonth, toMonth],
+    () => ({ householdId, from: fromMonth, to: toMonth }),
+    [fromMonth, householdId, toMonth],
   );
   const dashboard = useLazyLoadQuery<AnalysisDashboardQuery>(analysisDashboardQuery, variables, {
     fetchPolicy: "network-only",
@@ -48,15 +45,6 @@ export function useAnalysisData(
     { fetchPolicy: "network-only" },
   );
   const {
-    data: budgetData,
-    hasNext: hasMoreBudgets,
-    isLoadingNext: loadingBudgets,
-    loadNext: loadNextBudgets,
-  } = usePaginationFragment<AnalysisDashboardQuery, AnalysisBudgetsFragment$key>(
-    analysisBudgetsFragment,
-    dashboard,
-  );
-  const {
     data: recurringData,
     hasNext: hasMoreRecurringExpenses,
     isLoadingNext: loadingRecurringExpenses,
@@ -66,14 +54,10 @@ export function useAnalysisData(
     dashboard,
   );
   const requestKey = JSON.stringify(variables);
-  const [budgetErrorState, setBudgetErrorState] = useState<{ key: string; message: string } | null>(
-    null,
-  );
   const [recurringErrorState, setRecurringErrorState] = useState<{
     key: string;
     message: string;
   } | null>(null);
-  const budgetError = budgetErrorState?.key === requestKey ? budgetErrorState.message : "";
   const recurringError = recurringErrorState?.key === requestKey ? recurringErrorState.message : "";
 
   const spending = dashboard.monthlyCategorySpending.map((entry) => ({
@@ -95,19 +79,6 @@ export function useAnalysisData(
     dimension === "member" && dashboard.monthlyMemberSpending.hasUnattributedPurchases;
 
   useEffect(() => {
-    if (!hasMoreBudgets || loadingBudgets || budgetError) return;
-    loadNextBudgets(100, {
-      onComplete: (error) => {
-        if (error)
-          setBudgetErrorState({
-            key: requestKey,
-            message: error.message || "予算を取得できませんでした",
-          });
-      },
-    });
-  }, [budgetError, hasMoreBudgets, loadNextBudgets, loadingBudgets, requestKey]);
-
-  useEffect(() => {
     if (!hasMoreRecurringExpenses || loadingRecurringExpenses || recurringError) return;
     loadNextRecurringExpenses(100, {
       onComplete: (error) => {
@@ -126,18 +97,21 @@ export function useAnalysisData(
     requestKey,
   ]);
 
-  const budgets: Budget[] = budgetData.budgets.edges.map(({ node }) => ({
-    id: node.id,
-    householdId: node.householdId,
-    categoryId: node.categoryId,
-    name: node.name,
-    amountYen: Number(node.amountYen),
-    actualYen: Number(node.actualYen),
-    remainingYen: Number(node.remainingYen),
-    startsOn: node.startsOn,
-    endsOn: node.endsOn,
-    archived: node.archived,
-    revision: node.revision,
+  const budgetPeriods = dashboard.budgetPeriods.map(({ period, budgets }) => ({
+    period,
+    budgets: budgets.map((node): Budget => ({
+      id: node.id,
+      householdId: node.householdId,
+      categoryId: node.categoryId,
+      name: node.name,
+      amountYen: Number(node.amountYen),
+      actualYen: Number(node.actualYen),
+      remainingYen: Number(node.remainingYen),
+      startsOn: node.startsOn,
+      endsOn: node.endsOn,
+      archived: node.archived,
+      revision: node.revision,
+    })),
   }));
   const recurringExpenses: RecurringExpense[] = recurringData.recurringExpenses.edges.map(
     ({ node }) => ({
@@ -168,8 +142,8 @@ export function useAnalysisData(
     hasUnattributedPurchases,
     memberSpendingLoading: false,
     memberSpendingError: "",
-    budgets,
-    budgetError,
+    budgetPeriods,
+    budgetError: "",
     recurringExpenses,
     recurringError,
   };

@@ -488,6 +488,16 @@ impl QueryRoot {
             .await
     }
 
+    async fn budget_periods(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        from: policy_mutations::YearMonth,
+        to: policy_mutations::YearMonth,
+    ) -> Result<Vec<policy_mutations::BudgetPeriodObject>> {
+        policy_mutations::graphql_budget_periods(ctx, household_id, from, to).await
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn recurring_expenses(
         &self,
@@ -665,11 +675,28 @@ impl QueryRoot {
                 to,
                 source_kind,
                 state,
+                undated_only: false,
                 after,
                 before,
                 first,
                 last,
             },
+        )
+        .await
+    }
+
+    async fn undated_unmatched_observations(
+        &self,
+        ctx: &Context<'_>,
+        household_id: ID,
+        after: Option<String>,
+        first: Option<i32>,
+    ) -> Result<unmatched_observations_query::UnmatchedObservationConnection> {
+        unmatched_observations_query::graphql_undated_unmatched_observations(
+            ctx,
+            household_id,
+            after,
+            first,
         )
         .await
     }

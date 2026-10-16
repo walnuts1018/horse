@@ -61,6 +61,7 @@ pub struct UnmatchedObservationsQuery<'a> {
     pub to: Option<&'a str>,
     pub source_kind: Option<&'a str>,
     pub state: Option<&'a str>,
+    pub undated_only: bool,
     pub after: Option<ObservationCursor>,
     pub before: Option<ObservationCursor>,
     pub first: Option<i32>,
@@ -90,6 +91,7 @@ pub async fn unmatched_observations(
         to,
         source_kind,
         state,
+        undated_only,
         after,
         before,
         first,
@@ -136,6 +138,9 @@ pub async fn unmatched_observations(
     }
     if let Some(to) = to {
         query = query.filter(observations::occurred_at.lt(to));
+    }
+    if undated_only {
+        query = query.filter(observations::occurred_at.is_null());
     }
     let is_confirmed = diesel::dsl::exists(
         confirmations::table

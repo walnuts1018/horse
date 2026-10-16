@@ -83,11 +83,11 @@ export function AnalysisPage({ household }: { household: Household }) {
     hasUnattributedPurchases,
     memberSpendingLoading,
     memberSpendingError,
-    budgets,
+    budgetPeriods,
     budgetError,
     recurringExpenses,
     recurringError,
-  } = useAnalysisData(household.id, months[0], finalMonth, finalMonth, dimension, itemMetric);
+  } = useAnalysisData(household.id, months[0], finalMonth, dimension, itemMetric);
   const evidence = useAnalysisEvidence(household.id, months[0], finalMonth);
 
   const usesPurchases = dimension !== "category" && dimension !== "member";
@@ -244,7 +244,7 @@ export function AnalysisPage({ household }: { household: Household }) {
           peakRow={peakRow}
         />
       )}
-      <AnalysisBudgetPanel budgets={budgets} household={household} periodMonth={finalMonth} />
+      <AnalysisBudgetPanel budgetPeriods={budgetPeriods} household={household} />
       <RecurringExpensePanel
         expenses={activeRecurringExpenses}
         monthlyAmount={recurringMonthlyAmount}

@@ -16,6 +16,7 @@ pub struct UnmatchedObservationsInput {
     pub to: Option<String>,
     pub source_kind: Option<String>,
     pub state: Option<String>,
+    pub undated_only: bool,
     pub after: Option<ObservationCursor>,
     pub before: Option<ObservationCursor>,
     pub first: Option<i32>,

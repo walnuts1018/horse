@@ -5,7 +5,7 @@ extend type Mutation {
 union UpdateBudgetResult = UpdateBudgetSuccess | UpdateBudgetUserError
 
 type UpdateBudgetSuccess {
-  result: Budget!
+  result: BudgetSettings!
 }
 
 input UpdateBudgetInput {

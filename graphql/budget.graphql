@@ -12,6 +12,18 @@ type Budget implements Node {
   revision: Int!
 }
 
+type BudgetSettings {
+  budgetId: ID!
+  householdId: ID!
+  categoryId: ID
+  name: String!
+  amountYen: Long!
+  startsOn: Date!
+  endsOn: Date
+  archived: Boolean!
+  revision: Int!
+}
+
 type BudgetEdge {
   cursor: String!
   node: Budget!
@@ -23,6 +35,11 @@ type BudgetConnection {
   totalCount: Int!
 }
 
+type BudgetPeriod {
+  period: YearMonth!
+  budgets: [Budget!]!
+}
+
 extend type Query {
   budgets(
     householdId: ID! @nodeID(of: "Household")
@@ -32,4 +49,9 @@ extend type Query {
     first: Int
     last: Int
   ): BudgetConnection!
+  budgetPeriods(
+    householdId: ID! @nodeID(of: "Household")
+    from: YearMonth!
+    to: YearMonth!
+  ): [BudgetPeriod!]!
 }

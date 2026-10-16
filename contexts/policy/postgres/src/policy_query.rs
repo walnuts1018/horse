@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
-    BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, dsl::count, pg::Pg,
-    result::Error as DieselError,
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, dsl::count,
+    pg::Pg, result::Error as DieselError,
 };
 use diesel_async::RunQueryDsl as AsyncRunQueryDsl;
 use policy_application::{budget, recurring_expense};
@@ -56,6 +56,20 @@ pub struct BudgetsQuery<'a> {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub struct BudgetPeriodsQuery<'a> {
+    pub actor_id: Uuid,
+    pub household_id: Uuid,
+    pub from: &'a str,
+    pub to: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BudgetPeriodReadModel {
+    pub period: String,
+    pub budgets: Vec<BudgetReadModel>,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct RecurringExpensesQuery {
     pub actor_id: Uuid,
     pub household_id: Uuid,
@@ -105,8 +119,13 @@ pub async fn budgets(
         .await
         .map_err(|error| PolicyQueryError::Pool(error.to_string()))?;
     require_member(&mut conn, household_id, actor_id).await?;
-    use public::budget_versions::dsl as versions;
+    use public::{budget_versions::dsl as versions, budgets::dsl as current_budgets};
     let version_rows = versions::budget_versions
+        .inner_join(
+            current_budgets::budgets.on(versions::budget_id
+                .eq(current_budgets::id)
+                .and(versions::household_id.eq(current_budgets::household_id))),
+        )
         .filter(versions::household_id.eq(household_id))
         .filter(versions::effective_from.le(period_start))
         .order((
@@ -125,6 +144,7 @@ pub async fn budgets(
             versions::archived,
             versions::revision,
             versions::effective_from,
+            current_budgets::revision,
         ))
         .load::<BudgetVersionRow>(&mut conn)
         .await?;
@@ -137,7 +157,7 @@ pub async fn budgets(
         .filter(|row| !row.7 && row.5 < period_end && row.6.is_none_or(|date| date >= period_start))
         .map(|row| {
             (
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8,
+                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.10,
             )
         })
         .collect::<Vec<BudgetRow>>();
@@ -172,9 +192,6 @@ pub async fn budgets(
             rows.truncate(limit as usize);
         }
     }
-    if backwards {
-        rows.reverse();
-    }
     let projections = budget_projections(&mut conn, rows, start_utc, end_utc).await?;
     Ok(Page {
         rows: projections,
@@ -192,11 +209,143 @@ pub async fn budgets(
     })
 }
 
+pub async fn budget_periods(
+    pool: &PgPool,
+    query: BudgetPeriodsQuery<'_>,
+) -> Result<Vec<BudgetPeriodReadModel>, PolicyQueryError> {
+    let from = parse_period(query.from)?;
+    let to = parse_period(query.to)?;
+    let month_count = (to.year() - from.year()) * 12 + to.month() as i32 - from.month() as i32 + 1;
+    if month_count <= 0 || month_count > 24 {
+        return Err(PolicyQueryError::InvalidPeriod);
+    }
+    let mut months = Vec::with_capacity(month_count as usize);
+    let mut month = from;
+    while month <= to {
+        months.push(month);
+        month = month
+            .checked_add_months(chrono::Months::new(1))
+            .ok_or(PolicyQueryError::InvalidPeriod)?;
+    }
+    let mut conn = pool
+        .get()
+        .await
+        .map_err(|error| PolicyQueryError::Pool(error.to_string()))?;
+    require_member(&mut conn, query.household_id, query.actor_id).await?;
+    use public::{budget_versions::dsl as versions, budgets::dsl as current_budgets};
+    let version_rows = versions::budget_versions
+        .inner_join(
+            current_budgets::budgets.on(versions::budget_id
+                .eq(current_budgets::id)
+                .and(versions::household_id.eq(current_budgets::household_id))),
+        )
+        .filter(versions::household_id.eq(query.household_id))
+        .filter(versions::effective_from.le(to))
+        .order((
+            versions::budget_id.asc(),
+            versions::effective_from.desc(),
+            versions::revision.desc(),
+        ))
+        .select((
+            versions::budget_id,
+            versions::household_id,
+            versions::category_id,
+            versions::name,
+            versions::amount_yen,
+            versions::starts_on,
+            versions::ends_on,
+            versions::archived,
+            versions::revision,
+            versions::effective_from,
+            current_budgets::revision,
+        ))
+        .load::<BudgetVersionRow>(&mut conn)
+        .await?;
+    let mut versions_by_budget: HashMap<Uuid, Vec<BudgetVersionRow>> = HashMap::new();
+    for row in version_rows {
+        versions_by_budget.entry(row.0).or_default().push(row);
+    }
+    let month_rows = months
+        .iter()
+        .copied()
+        .map(|period_start| {
+            let period_end = period_start
+                .checked_add_months(chrono::Months::new(1))
+                .ok_or(PolicyQueryError::InvalidPeriod)?;
+            let mut rows = versions_by_budget
+                .values()
+                .filter_map(|versions| {
+                    versions
+                        .iter()
+                        .find(|row| row.9 <= period_start)
+                        .filter(|row| {
+                            !row.7
+                                && row.5 < period_end
+                                && row.6.is_none_or(|date| date >= period_start)
+                        })
+                        .map(|row| {
+                            (
+                                row.0,
+                                row.1,
+                                row.2,
+                                row.3.clone(),
+                                row.4,
+                                row.5,
+                                row.6,
+                                row.7,
+                                row.10,
+                            )
+                        })
+                })
+                .collect::<Vec<BudgetRow>>();
+            rows.sort_by(|left, right| left.3.cmp(&right.3).then_with(|| left.0.cmp(&right.0)));
+            Ok((period_start, rows))
+        })
+        .collect::<Result<Vec<_>, PolicyQueryError>>()?;
+    let from_utc = months[0]
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_local_timezone(tokyo())
+        .single()
+        .unwrap()
+        .with_timezone(&Utc);
+    let end_month = months[months.len() - 1]
+        .checked_add_months(chrono::Months::new(1))
+        .ok_or(PolicyQueryError::InvalidPeriod)?;
+    let to_utc = end_month
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_local_timezone(tokyo())
+        .single()
+        .unwrap()
+        .with_timezone(&Utc);
+    budget_period_projections(&mut conn, month_rows, from_utc, to_utc).await
+}
+
 pub async fn budget(
     pool: &PgPool,
     actor_id: Uuid,
     budget_id: Uuid,
     period: &str,
+) -> Result<BudgetReadModel, PolicyQueryError> {
+    budget_at_period(pool, actor_id, budget_id, period, false).await
+}
+
+pub async fn budget_including_archived(
+    pool: &PgPool,
+    actor_id: Uuid,
+    budget_id: Uuid,
+    period: &str,
+) -> Result<BudgetReadModel, PolicyQueryError> {
+    budget_at_period(pool, actor_id, budget_id, period, true).await
+}
+
+async fn budget_at_period(
+    pool: &PgPool,
+    actor_id: Uuid,
+    budget_id: Uuid,
+    period: &str,
+    include_archived: bool,
 ) -> Result<BudgetReadModel, PolicyQueryError> {
     let period_start = parse_period(period)?;
     let period_end = period_start
@@ -220,8 +369,13 @@ pub async fn budget(
         .get()
         .await
         .map_err(|error| PolicyQueryError::Pool(error.to_string()))?;
-    use public::budget_versions::dsl as versions;
+    use public::{budget_versions::dsl as versions, budgets::dsl as current_budgets};
     let row = versions::budget_versions
+        .inner_join(
+            current_budgets::budgets.on(versions::budget_id
+                .eq(current_budgets::id)
+                .and(versions::household_id.eq(current_budgets::household_id))),
+        )
         .filter(versions::budget_id.eq(budget_id))
         .filter(versions::effective_from.le(period_start))
         .order((versions::effective_from.desc(), versions::revision.desc()))
@@ -235,15 +389,23 @@ pub async fn budget(
             versions::ends_on,
             versions::archived,
             versions::revision,
+            versions::effective_from,
+            current_budgets::revision,
         ))
-        .first::<BudgetRow>(&mut conn)
+        .first::<BudgetVersionRow>(&mut conn)
         .await
         .optional()?
         .ok_or(PolicyQueryError::NotFound)?;
     require_member(&mut conn, row.1, actor_id).await?;
-    if row.7 || row.5 >= period_end || row.6.is_some_and(|date| date < period_start) {
+    if (!include_archived && row.7)
+        || row.5 >= period_end
+        || row.6.is_some_and(|date| date < period_start)
+    {
         return Err(PolicyQueryError::NotFound);
     }
+    let row = (
+        row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.10,
+    );
     budget_projections(&mut conn, vec![row], start_utc, end_utc)
         .await?
         .into_iter()
@@ -261,6 +423,18 @@ pub async fn budget_for_current_period(
         .format("%Y-%m")
         .to_string();
     budget(pool, actor_id, budget_id, &period).await
+}
+
+pub async fn budget_for_current_period_including_archived(
+    pool: &PgPool,
+    actor_id: Uuid,
+    budget_id: Uuid,
+) -> Result<BudgetReadModel, PolicyQueryError> {
+    let period = Utc::now()
+        .with_timezone(&tokyo())
+        .format("%Y-%m")
+        .to_string();
+    budget_including_archived(pool, actor_id, budget_id, &period).await
 }
 
 pub async fn recurring_expenses(
@@ -449,6 +623,7 @@ type BudgetVersionRow = (
     bool,
     i64,
     NaiveDate,
+    i64,
 );
 type RecurringExpenseRow = (
     Uuid,
@@ -542,29 +717,149 @@ async fn budget_projections(
             } else {
                 0
             };
-            let remaining_yen = row
-                .4
-                .checked_sub(actual_yen)
-                .ok_or(PolicyQueryError::AmountOverflow)?;
-            Ok(BudgetReadModel {
-                budget: budget::Budget {
-                    id: budget::BudgetId::from_persisted(row.0),
-                    household_id: budget::BudgetHouseholdId::from_persisted(row.1),
-                    category_id: row.2.map(budget::BudgetCategoryId::from_persisted),
-                    name: row.3,
-                    amount_yen: budget::BudgetAmountYen::try_from(row.4)
-                        .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?,
-                    starts_on: row.5,
-                    ends_on: row.6,
-                    archived: row.7,
-                    revision: budget::BudgetRevision::try_from(row.8)
-                        .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?,
-                },
-                actual_yen,
-                remaining_yen,
+            budget_read_model(row, actual_yen)
+        })
+        .collect()
+}
+
+async fn budget_period_projections(
+    conn: &mut crate::AsyncPgConnection,
+    month_rows: Vec<(NaiveDate, Vec<BudgetRow>)>,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+) -> Result<Vec<BudgetPeriodReadModel>, PolicyQueryError> {
+    let all_rows = month_rows
+        .iter()
+        .flat_map(|(_, rows)| rows.iter())
+        .collect::<Vec<_>>();
+    let mut actuals = HashMap::new();
+    if !all_rows.is_empty() {
+        use public::{
+            purchase_corrections::dsl as corrections, purchase_items::dsl as items,
+            purchases::dsl as purchases,
+        };
+        let household_ids = all_rows
+            .iter()
+            .map(|row| row.1)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let purchases = purchases::purchases
+            .filter(purchases::household_id.eq_any(&household_ids))
+            .filter(purchases::occurred_at.ge(start))
+            .filter(purchases::occurred_at.lt(end))
+            .filter(purchases::status.eq("POSTED"))
+            .select((
+                purchases::id,
+                purchases::household_id,
+                purchases::occurred_at,
+            ))
+            .load::<(Uuid, Uuid, DateTime<Utc>)>(conn)
+            .await?;
+        let purchase_ids = purchases.iter().map(|row| row.0).collect::<Vec<_>>();
+        let household_month_by_purchase = purchases
+            .into_iter()
+            .map(|(id, household, occurred_at)| {
+                let occurred_on = occurred_at.with_timezone(&tokyo()).date_naive();
+                (id, (household, month_start(occurred_on)))
+            })
+            .collect::<HashMap<_, _>>();
+        let mut item_categories = HashMap::new();
+        if !purchase_ids.is_empty() {
+            let purchase_items = items::purchase_items
+                .filter(items::purchase_id.eq_any(&purchase_ids))
+                .select((
+                    items::id,
+                    items::purchase_id,
+                    items::category_id,
+                    items::amount_yen,
+                ))
+                .load::<(Uuid, Uuid, Option<Uuid>, i64)>(conn)
+                .await?;
+            for (item_id, purchase_id, category_id, amount) in purchase_items {
+                let (household, month) = household_month_by_purchase[&purchase_id];
+                add_period_actual(&mut actuals, (month, household, None), amount)?;
+                if let Some(category_id) = category_id {
+                    add_period_actual(&mut actuals, (month, household, Some(category_id)), amount)?;
+                }
+                item_categories.insert(item_id, category_id);
+            }
+            let purchase_corrections = corrections::purchase_corrections
+                .filter(corrections::purchase_id.eq_any(&purchase_ids))
+                .select((
+                    corrections::purchase_id,
+                    corrections::item_id,
+                    corrections::amount_delta_yen,
+                ))
+                .load::<(Uuid, Option<Uuid>, i64)>(conn)
+                .await?;
+            for (purchase_id, item_id, amount) in purchase_corrections {
+                let (household, month) = household_month_by_purchase[&purchase_id];
+                add_period_actual(&mut actuals, (month, household, None), amount)?;
+                if let Some(category_id) =
+                    item_id.and_then(|id| item_categories.get(&id).copied().flatten())
+                {
+                    add_period_actual(&mut actuals, (month, household, Some(category_id)), amount)?;
+                }
+            }
+        }
+    }
+    month_rows
+        .into_iter()
+        .map(|(period_start, rows)| {
+            let budgets = rows
+                .into_iter()
+                .map(|row| {
+                    let actual = *actuals.get(&(period_start, row.1, row.2)).unwrap_or(&0);
+                    budget_read_model(row, actual)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(BudgetPeriodReadModel {
+                period: period_start.format("%Y-%m").to_string(),
+                budgets,
             })
         })
         .collect()
+}
+
+fn budget_read_model(row: BudgetRow, actual_yen: i64) -> Result<BudgetReadModel, PolicyQueryError> {
+    let remaining_yen = row
+        .4
+        .checked_sub(actual_yen)
+        .ok_or(PolicyQueryError::AmountOverflow)?;
+    Ok(BudgetReadModel {
+        budget: budget::Budget {
+            id: budget::BudgetId::from_persisted(row.0),
+            household_id: budget::BudgetHouseholdId::from_persisted(row.1),
+            category_id: row.2.map(budget::BudgetCategoryId::from_persisted),
+            name: row.3,
+            amount_yen: budget::BudgetAmountYen::try_from(row.4)
+                .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?,
+            starts_on: row.5,
+            ends_on: row.6,
+            archived: row.7,
+            revision: budget::BudgetRevision::try_from(row.8)
+                .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?,
+        },
+        actual_yen,
+        remaining_yen,
+    })
+}
+
+fn add_period_actual(
+    totals: &mut HashMap<(NaiveDate, Uuid, Option<Uuid>), i64>,
+    scope: (NaiveDate, Uuid, Option<Uuid>),
+    amount: i64,
+) -> Result<(), PolicyQueryError> {
+    let total = totals.entry(scope).or_default();
+    *total = total
+        .checked_add(amount)
+        .ok_or(PolicyQueryError::AmountOverflow)?;
+    Ok(())
+}
+
+fn month_start(date: NaiveDate) -> NaiveDate {
+    date.with_day(1).expect("first day of month is valid")
 }
 
 fn add_actual(

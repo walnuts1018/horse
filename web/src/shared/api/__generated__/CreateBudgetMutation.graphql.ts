@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<ad60e5219d89835eb58bc6b73d9e0a65>>
+ * @generated SignedSource<<5d9ec176ef8495f82580b54cf931e376>>
  * @lightSyntaxTransform
  */
 
@@ -26,14 +26,12 @@ export type CreateBudgetMutation$data = {
     readonly code?: MutationErrorCode;
     readonly message?: string;
     readonly result?: {
-      readonly actualYen: any;
       readonly amountYen: any;
       readonly archived: boolean;
+      readonly budgetId: string;
       readonly categoryId: string | null | undefined;
       readonly endsOn: string | null | undefined;
-      readonly id: string;
       readonly name: string;
-      readonly remainingYen: any;
       readonly revision: number;
       readonly startsOn: string;
     };
@@ -80,7 +78,7 @@ v1 = [
           {
             "alias": null,
             "args": null,
-            "concreteType": "Budget",
+            "concreteType": "BudgetSettings",
             "kind": "LinkedField",
             "name": "result",
             "plural": false,
@@ -89,7 +87,7 @@ v1 = [
                 "alias": null,
                 "args": null,
                 "kind": "ScalarField",
-                "name": "id",
+                "name": "budgetId",
                 "storageKey": null
               },
               {
@@ -111,20 +109,6 @@ v1 = [
                 "args": null,
                 "kind": "ScalarField",
                 "name": "amountYen",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "actualYen",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "remainingYen",
                 "storageKey": null
               },
               {
@@ -205,16 +189,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "80a8c7be966fbc6484bff68f411f7fd1",
+    "cacheID": "86fab5665e87c79364e4ff79e66c2790",
     "id": null,
     "metadata": {},
     "name": "CreateBudgetMutation",
     "operationKind": "mutation",
-    "text": "mutation CreateBudgetMutation(\n  $input: CreateBudgetInput!\n) {\n  createBudget(input: $input) {\n    __typename\n    ... on CreateBudgetSuccess {\n      result {\n        id\n        categoryId\n        name\n        amountYen\n        actualYen\n        remainingYen\n        startsOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation CreateBudgetMutation(\n  $input: CreateBudgetInput!\n) {\n  createBudget(input: $input) {\n    __typename\n    ... on CreateBudgetSuccess {\n      result {\n        budgetId\n        categoryId\n        name\n        amountYen\n        startsOn\n        endsOn\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "486f6d4b5a416cf4c8516b9be8ece25b";
+(node as any).hash = "12cf39176999e17de8f263ab4ff58a00";
 
 export default node;

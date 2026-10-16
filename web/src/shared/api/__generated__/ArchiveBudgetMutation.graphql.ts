@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8cbe149f8462b0ef4f342a969c8e033b>>
+ * @generated SignedSource<<a5aced483d592a85a5550cb7b3f03d0a>>
  * @lightSyntaxTransform
  */
 
@@ -24,7 +24,7 @@ export type ArchiveBudgetMutation$data = {
     readonly message?: string;
     readonly result?: {
       readonly archived: boolean;
-      readonly id: string;
+      readonly budgetId: string;
       readonly revision: number;
     };
   };
@@ -70,7 +70,7 @@ v1 = [
           {
             "alias": null,
             "args": null,
-            "concreteType": "Budget",
+            "concreteType": "BudgetSettings",
             "kind": "LinkedField",
             "name": "result",
             "plural": false,
@@ -79,7 +79,7 @@ v1 = [
                 "alias": null,
                 "args": null,
                 "kind": "ScalarField",
-                "name": "id",
+                "name": "budgetId",
                 "storageKey": null
               },
               {
@@ -146,16 +146,16 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "91ac3fcc4a453b56a59123328562afb3",
+    "cacheID": "cb6bb538430771e3a4ce371ce48847db",
     "id": null,
     "metadata": {},
     "name": "ArchiveBudgetMutation",
     "operationKind": "mutation",
-    "text": "mutation ArchiveBudgetMutation(\n  $input: ArchiveBudgetInput!\n) {\n  archiveBudget(input: $input) {\n    __typename\n    ... on ArchiveBudgetSuccess {\n      result {\n        id\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation ArchiveBudgetMutation(\n  $input: ArchiveBudgetInput!\n) {\n  archiveBudget(input: $input) {\n    __typename\n    ... on ArchiveBudgetSuccess {\n      result {\n        budgetId\n        archived\n        revision\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "acb03d7434fe1aa084f576ad4515703a";
+(node as any).hash = "234dddfc2a449358ec362ca1a4558658";
 
 export default node;

@@ -136,10 +136,6 @@ export type {
   ProductSuggestionsQuery$data,
 } from "./__generated__/ProductSuggestionsQuery.graphql";
 export type {
-  AnalysisBudgetsFragment$key,
-  AnalysisBudgetsFragment$data,
-} from "./__generated__/AnalysisBudgetsFragment.graphql";
-export type {
   AnalysisRecurringExpensesFragment$key,
   AnalysisRecurringExpensesFragment$data,
 } from "./__generated__/AnalysisRecurringExpensesFragment.graphql";
@@ -159,6 +155,10 @@ export type {
   AnalysisUnmatchedObservationsFragment$key,
   AnalysisUnmatchedObservationsFragment$data,
 } from "./__generated__/AnalysisUnmatchedObservationsFragment.graphql";
+export type {
+  AnalysisUndatedUnmatchedObservationsFragment$key,
+  AnalysisUndatedUnmatchedObservationsFragment$data,
+} from "./__generated__/AnalysisUndatedUnmatchedObservationsFragment.graphql";
 export type {
   AnalysisPurchasePriceObservationsQuery,
   AnalysisPurchasePriceObservationsQuery$data,

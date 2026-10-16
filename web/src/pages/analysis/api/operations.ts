@@ -37,12 +37,7 @@ export const analysisPurchasePriceObservationsQuery = graphql`
 `;
 
 export const analysisDashboardQuery = graphql`
-  query AnalysisDashboardQuery(
-    $householdId: ID!
-    $from: YearMonth!
-    $to: YearMonth!
-    $period: YearMonth!
-  ) {
+  query AnalysisDashboardQuery($householdId: ID!, $from: YearMonth!, $to: YearMonth!) {
     monthlyCategorySpending(householdId: $householdId, from: $from, to: $to) {
       period
       categoryId
@@ -66,7 +61,22 @@ export const analysisDashboardQuery = graphql`
       amountYen
       count
     }
-    ...AnalysisBudgetsFragment @arguments(householdId: $householdId, period: $period)
+    budgetPeriods(householdId: $householdId, from: $from, to: $to) {
+      period
+      budgets {
+        id
+        householdId
+        categoryId
+        name
+        amountYen
+        actualYen
+        remainingYen
+        startsOn
+        endsOn
+        archived
+        revision
+      }
+    }
     ...AnalysisRecurringExpensesFragment @arguments(householdId: $householdId)
   }
 `;
@@ -81,6 +91,7 @@ export const analysisEvidenceQuery = graphql`
     ...AnalysisUnbackedPurchasesFragment @arguments(filter: $purchaseFilter)
     ...AnalysisUnmatchedObservationsFragment
       @arguments(householdId: $householdId, from: $from, to: $to)
+    ...AnalysisUndatedUnmatchedObservationsFragment @arguments(householdId: $householdId)
   }
 `;
 
@@ -156,32 +167,37 @@ export const analysisUnmatchedObservationsFragment = graphql`
   }
 `;
 
-export const analysisBudgetsFragment = graphql`
-  fragment AnalysisBudgetsFragment on Query
+export const analysisUndatedUnmatchedObservationsFragment = graphql`
+  fragment AnalysisUndatedUnmatchedObservationsFragment on Query
   @argumentDefinitions(
     householdId: { type: "ID!" }
-    period: { type: "YearMonth!" }
-    first: { type: "Int", defaultValue: 100 }
+    first: { type: "Int", defaultValue: 8 }
     after: { type: "String" }
   )
-  @refetchable(queryName: "AnalysisBudgetsPaginationQuery") {
-    budgets(householdId: $householdId, period: $period, first: $first, after: $after)
-      @connection(key: "AnalysisBudgetsFragment_budgets", filters: ["householdId", "period"]) {
+  @refetchable(queryName: "AnalysisUndatedUnmatchedObservationsPaginationQuery") {
+    undatedUnmatchedObservations(householdId: $householdId, first: $first, after: $after)
+      @connection(
+        key: "AnalysisUndatedUnmatchedObservationsFragment_undatedUnmatchedObservations"
+        filters: ["householdId"]
+      ) {
       edges {
         node {
+          __typename
           id
-          householdId
-          categoryId
-          name
-          amountYen
-          actualYen
-          remainingYen
-          startsOn
-          endsOn
-          archived
-          revision
+          ... on UnmatchedObservation {
+            sourceKind
+            merchant
+            amountYen
+            orderId
+            transactionId
+          }
         }
       }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      totalCount
     }
   }
 `;

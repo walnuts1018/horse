@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<fd46ab3e718b7885573149cf7d339147>>
+ * @generated SignedSource<<4b2ab2589316401942dfbbd1eed48eb7>>
  * @lightSyntaxTransform
  */
 
@@ -36,7 +36,7 @@ export type AnalysisEvidenceQuery$variables = {
   to: string;
 };
 export type AnalysisEvidenceQuery$data = {
-  readonly " $fragmentSpreads": FragmentRefs<"AnalysisUnbackedPurchasesFragment" | "AnalysisUnmatchedObservationsFragment">;
+  readonly " $fragmentSpreads": FragmentRefs<"AnalysisUnbackedPurchasesFragment" | "AnalysisUndatedUnmatchedObservationsFragment" | "AnalysisUnmatchedObservationsFragment">;
 };
 export type AnalysisEvidenceQuery = {
   response: AnalysisEvidenceQuery$data;
@@ -170,6 +170,38 @@ v17 = [
     "value": "UNMATCHED"
   },
   (v7/*:: as any*/)
+],
+v18 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "sourceKind",
+  "storageKey": null
+},
+v19 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "amountYen",
+  "storageKey": null
+},
+v20 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "orderId",
+  "storageKey": null
+},
+v21 = {
+  "alias": null,
+  "args": null,
+  "kind": "ScalarField",
+  "name": "transactionId",
+  "storageKey": null
+},
+v22 = [
+  (v8/*:: as any*/),
+  (v6/*:: as any*/)
 ];
 return {
   "fragment": {
@@ -198,6 +230,13 @@ return {
         ],
         "kind": "FragmentSpread",
         "name": "AnalysisUnmatchedObservationsFragment"
+      },
+      {
+        "args": [
+          (v6/*:: as any*/)
+        ],
+        "kind": "FragmentSpread",
+        "name": "AnalysisUndatedUnmatchedObservationsFragment"
       }
     ],
     "type": "Query",
@@ -301,36 +340,12 @@ return {
                   {
                     "kind": "InlineFragment",
                     "selections": [
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "sourceKind",
-                        "storageKey": null
-                      },
+                      (v18/*:: as any*/),
                       (v12/*:: as any*/),
                       (v11/*:: as any*/),
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "amountYen",
-                        "storageKey": null
-                      },
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "orderId",
-                        "storageKey": null
-                      },
-                      {
-                        "alias": null,
-                        "args": null,
-                        "kind": "ScalarField",
-                        "name": "transactionId",
-                        "storageKey": null
-                      }
+                      (v19/*:: as any*/),
+                      (v20/*:: as any*/),
+                      (v21/*:: as any*/)
                     ],
                     "type": "UnmatchedObservation",
                     "abstractKey": null
@@ -359,20 +374,81 @@ return {
         "key": "AnalysisUnmatchedObservationsFragment_unmatchedObservations",
         "kind": "LinkedHandle",
         "name": "unmatchedObservations"
+      },
+      {
+        "alias": null,
+        "args": (v22/*:: as any*/),
+        "concreteType": "UnmatchedObservationConnection",
+        "kind": "LinkedField",
+        "name": "undatedUnmatchedObservations",
+        "plural": false,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "UnmatchedObservationEdge",
+            "kind": "LinkedField",
+            "name": "edges",
+            "plural": true,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "concreteType": null,
+                "kind": "LinkedField",
+                "name": "node",
+                "plural": false,
+                "selections": [
+                  (v13/*:: as any*/),
+                  (v10/*:: as any*/),
+                  {
+                    "kind": "InlineFragment",
+                    "selections": [
+                      (v18/*:: as any*/),
+                      (v12/*:: as any*/),
+                      (v19/*:: as any*/),
+                      (v20/*:: as any*/),
+                      (v21/*:: as any*/)
+                    ],
+                    "type": "UnmatchedObservation",
+                    "abstractKey": null
+                  }
+                ],
+                "storageKey": null
+              },
+              (v14/*:: as any*/)
+            ],
+            "storageKey": null
+          },
+          (v15/*:: as any*/),
+          (v16/*:: as any*/)
+        ],
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": (v22/*:: as any*/),
+        "filters": [
+          "householdId"
+        ],
+        "handle": "connection",
+        "key": "AnalysisUndatedUnmatchedObservationsFragment_undatedUnmatchedObservations",
+        "kind": "LinkedHandle",
+        "name": "undatedUnmatchedObservations"
       }
     ]
   },
   "params": {
-    "cacheID": "d5706e2b869f85868fe90055da6a1ae3",
+    "cacheID": "3af0f95a0d64b80e67339eeb5fa556af",
     "id": null,
     "metadata": {},
     "name": "AnalysisEvidenceQuery",
     "operationKind": "query",
-    "text": "query AnalysisEvidenceQuery(\n  $householdId: ID!\n  $from: YearMonth!\n  $to: YearMonth!\n  $purchaseFilter: PurchaseFilter!\n) {\n  ...AnalysisUnbackedPurchasesFragment_i4QhS\n  ...AnalysisUnmatchedObservationsFragment_2M8lQq\n}\n\nfragment AnalysisUnbackedPurchasesFragment_i4QhS on Query {\n  purchases(filter: $purchaseFilter, first: 8) {\n    edges {\n      node {\n        id\n        occurredAt\n        merchant\n        totalYen\n        __typename\n      }\n      cursor\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n\nfragment AnalysisUnmatchedObservationsFragment_2M8lQq on Query {\n  unmatchedObservations(householdId: $householdId, from: $from, to: $to, state: UNMATCHED, first: 8) {\n    edges {\n      node {\n        __typename\n        id\n        ... on UnmatchedObservation {\n          sourceKind\n          merchant\n          occurredAt\n          amountYen\n          orderId\n          transactionId\n        }\n      }\n      cursor\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
+    "text": "query AnalysisEvidenceQuery(\n  $householdId: ID!\n  $from: YearMonth!\n  $to: YearMonth!\n  $purchaseFilter: PurchaseFilter!\n) {\n  ...AnalysisUnbackedPurchasesFragment_i4QhS\n  ...AnalysisUnmatchedObservationsFragment_2M8lQq\n  ...AnalysisUndatedUnmatchedObservationsFragment_2BD5SD\n}\n\nfragment AnalysisUnbackedPurchasesFragment_i4QhS on Query {\n  purchases(filter: $purchaseFilter, first: 8) {\n    edges {\n      node {\n        id\n        occurredAt\n        merchant\n        totalYen\n        __typename\n      }\n      cursor\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n\nfragment AnalysisUndatedUnmatchedObservationsFragment_2BD5SD on Query {\n  undatedUnmatchedObservations(householdId: $householdId, first: 8) {\n    edges {\n      node {\n        __typename\n        id\n        ... on UnmatchedObservation {\n          sourceKind\n          merchant\n          amountYen\n          orderId\n          transactionId\n        }\n      }\n      cursor\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n\nfragment AnalysisUnmatchedObservationsFragment_2M8lQq on Query {\n  unmatchedObservations(householdId: $householdId, from: $from, to: $to, state: UNMATCHED, first: 8) {\n    edges {\n      node {\n        __typename\n        id\n        ... on UnmatchedObservation {\n          sourceKind\n          merchant\n          occurredAt\n          amountYen\n          orderId\n          transactionId\n        }\n      }\n      cursor\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "3885b6c2042999e04aa1a125b3bd31f4";
+(node as any).hash = "6e684206006dcc09afd9826122cfefea";
 
 export default node;

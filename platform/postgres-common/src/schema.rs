@@ -166,7 +166,7 @@ pub mod public {
     }
 
     diesel::table! {
-        budget_versions (budget_id, revision) {
+        budget_versions (budget_id, effective_from, revision) {
             budget_id -> Uuid,
             household_id -> Uuid,
             revision -> Int8,

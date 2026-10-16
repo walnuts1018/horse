@@ -34,12 +34,10 @@ export const createBudgetMutation = graphql`
       __typename
       ... on CreateBudgetSuccess {
         result {
-          id
+          budgetId
           categoryId
           name
           amountYen
-          actualYen
-          remainingYen
           startsOn
           endsOn
           archived
@@ -60,12 +58,10 @@ export const updateBudgetMutation = graphql`
       __typename
       ... on UpdateBudgetSuccess {
         result {
-          id
+          budgetId
           categoryId
           name
           amountYen
-          actualYen
-          remainingYen
           startsOn
           endsOn
           archived
@@ -86,7 +82,7 @@ export const archiveBudgetMutation = graphql`
       __typename
       ... on ArchiveBudgetSuccess {
         result {
-          id
+          budgetId
           archived
           revision
         }

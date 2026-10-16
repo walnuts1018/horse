@@ -314,6 +314,37 @@ pub async fn persist_archive_budget(
             if row.7 != expected.value() {
                 return Err(PolicyPersistenceError::Conflict);
             }
+            let effective_from = current_budget_effective_month();
+            let snapshots = versions::budget_versions
+                .filter(versions::budget_id.eq(id))
+                .filter(versions::household_id.eq(row.0))
+                .order((versions::effective_from.asc(), versions::revision.desc()))
+                .select((
+                    versions::effective_from,
+                    versions::revision,
+                    versions::category_id,
+                    versions::name,
+                    versions::amount_yen,
+                    versions::starts_on,
+                    versions::ends_on,
+                    versions::archived,
+                ))
+                .load::<BudgetSnapshotRow>(conn)
+                .await?;
+            let current_snapshot = snapshots
+                .iter()
+                .filter(|snapshot| snapshot.0 <= effective_from)
+                .max_by_key(|snapshot| (snapshot.0, snapshot.1))
+                .or_else(|| snapshots.iter().next())
+                .cloned()
+                .ok_or(PolicyPersistenceError::BudgetNotFound)?;
+            let mut seen_future_months = std::collections::HashSet::new();
+            let future_snapshots = snapshots
+                .iter()
+                .filter(|snapshot| snapshot.0 > effective_from)
+                .filter(|snapshot| seen_future_months.insert(snapshot.0))
+                .cloned()
+                .collect::<Vec<_>>();
             let archived = decision.archived;
             let revision = expected.next()?.value();
             diesel::update(
@@ -328,21 +359,20 @@ pub async fn persist_archive_budget(
             ))
             .execute(conn)
             .await?;
-            diesel::insert_into(versions::budget_versions)
-                .values((
-                    versions::budget_id.eq(id),
-                    versions::household_id.eq(row.0),
-                    versions::revision.eq(revision),
-                    versions::effective_from.eq(current_budget_effective_month()),
-                    versions::category_id.eq(row.1),
-                    versions::name.eq(&row.2),
-                    versions::amount_yen.eq(row.3),
-                    versions::starts_on.eq(row.4),
-                    versions::ends_on.eq(row.5),
-                    versions::archived.eq(archived),
-                ))
-                .execute(conn)
-                .await?;
+            insert_budget_snapshot(
+                conn,
+                id,
+                row.0,
+                revision,
+                effective_from,
+                &current_snapshot,
+                archived,
+            )
+            .await?;
+            for snapshot in future_snapshots {
+                insert_budget_snapshot(conn, id, row.0, revision, snapshot.0, &snapshot, archived)
+                    .await?;
+            }
             record_event(conn, row.0, id, change, revision, actor).await?;
             Ok(budget::Budget {
                 id: budget::BudgetId::from_persisted(id),
@@ -366,6 +396,45 @@ fn month_start(date: NaiveDate) -> NaiveDate {
 fn current_budget_effective_month() -> NaiveDate {
     let tokyo = FixedOffset::east_opt(9 * 60 * 60).expect("Tokyo offset is valid");
     month_start(Utc::now().with_timezone(&tokyo).date_naive())
+}
+
+type BudgetSnapshotRow = (
+    NaiveDate,
+    i64,
+    Option<Uuid>,
+    String,
+    i64,
+    NaiveDate,
+    Option<NaiveDate>,
+    bool,
+);
+
+async fn insert_budget_snapshot(
+    conn: &mut crate::AsyncPgConnection,
+    budget_id: Uuid,
+    household_id: Uuid,
+    revision: i64,
+    effective_from: NaiveDate,
+    snapshot: &BudgetSnapshotRow,
+    archived: bool,
+) -> Result<(), PolicyPersistenceError> {
+    use public::budget_versions::dsl as versions;
+    diesel::insert_into(versions::budget_versions)
+        .values((
+            versions::budget_id.eq(budget_id),
+            versions::household_id.eq(household_id),
+            versions::revision.eq(revision),
+            versions::effective_from.eq(effective_from),
+            versions::category_id.eq(snapshot.2),
+            versions::name.eq(&snapshot.3),
+            versions::amount_yen.eq(snapshot.4),
+            versions::starts_on.eq(snapshot.5),
+            versions::ends_on.eq(snapshot.6),
+            versions::archived.eq(archived),
+        ))
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 pub async fn persist_create_recurring_expense(

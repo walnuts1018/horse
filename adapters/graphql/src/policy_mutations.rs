@@ -176,6 +176,20 @@ pub struct BudgetObject {
 }
 
 #[derive(Clone, Debug, SimpleObject)]
+#[graphql(name = "BudgetSettings")]
+pub struct BudgetSettingsObject {
+    pub budget_id: ID,
+    pub household_id: ID,
+    pub category_id: Option<ID>,
+    pub name: String,
+    pub amount_yen: Long,
+    pub starts_on: Date,
+    pub ends_on: Option<Date>,
+    pub archived: bool,
+    pub revision: i32,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
 #[graphql(name = "RecurringExpense")]
 pub struct RecurringExpenseObject {
     pub id: ID,
@@ -205,6 +219,13 @@ pub struct BudgetConnection {
     pub edges: Vec<BudgetEdge>,
     pub page_info: PageInfo,
     pub total_count: i32,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+#[graphql(name = "BudgetPeriod")]
+pub struct BudgetPeriodObject {
+    pub period: YearMonth,
+    pub budgets: Vec<BudgetObject>,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -248,9 +269,9 @@ macro_rules! error_type {
     };
 }
 
-success_type!(CreateBudgetSuccess, BudgetObject);
-success_type!(UpdateBudgetSuccess, BudgetObject);
-success_type!(ArchiveBudgetSuccess, BudgetObject);
+success_type!(CreateBudgetSuccess, BudgetSettingsObject);
+success_type!(UpdateBudgetSuccess, BudgetSettingsObject);
+success_type!(ArchiveBudgetSuccess, BudgetSettingsObject);
 success_type!(CreateRecurringExpenseSuccess, RecurringExpenseObject);
 success_type!(UpdateRecurringExpenseSuccess, RecurringExpenseObject);
 success_type!(ArchiveRecurringExpenseSuccess, RecurringExpenseObject);
@@ -664,6 +685,34 @@ pub async fn graphql_budgets(
     })
 }
 
+pub async fn graphql_budget_periods(
+    ctx: &Context<'_>,
+    household_id: ID,
+    from: YearMonth,
+    to: YearMonth,
+) -> Result<Vec<BudgetPeriodObject>> {
+    let actor = crate::actor(ctx)?;
+    let household_id = decode_node_id(&household_id, "Household")
+        .map_err(|_| async_graphql::Error::new("invalid household ID"))?;
+    let periods = ctx
+        .data::<std::sync::Arc<dyn budget::BudgetQuery>>()?
+        .periods(budget::BudgetPeriodsQueryRequest {
+            actor_id: budget::BudgetActorId::from_persisted(actor.0),
+            household_id: budget::BudgetHouseholdId::from_persisted(household_id),
+            from: from.0,
+            to: to.0,
+        })
+        .await
+        .map_err(policy_workflow_graphql_error)?;
+    Ok(periods
+        .into_iter()
+        .map(|value| BudgetPeriodObject {
+            period: YearMonth(value.period),
+            budgets: value.budgets.into_iter().map(Into::into).collect(),
+        })
+        .collect())
+}
+
 pub async fn graphql_recurring_expenses(
     ctx: &Context<'_>,
     household_id: ID,
@@ -712,6 +761,31 @@ pub async fn graphql_recurring_expenses(
         edges,
         total_count,
     })
+}
+
+impl From<budget::Budget> for BudgetSettingsObject {
+    fn from(projection: budget::Budget) -> Self {
+        Self {
+            budget_id: encode_node_id("Budget", &projection.id.value().to_string())
+                .expect("persisted budget id must be a UUID")
+                .into(),
+            household_id: encode_node_id("Household", &projection.household_id.value().to_string())
+                .expect("persisted household id must be a UUID")
+                .into(),
+            category_id: projection
+                .category_id
+                .as_ref()
+                .map(|id| id.value().to_string())
+                .and_then(|id| encode_node_id("Category", &id).ok())
+                .map(Into::into),
+            name: projection.name,
+            amount_yen: Long(projection.amount_yen.value()),
+            starts_on: Date(projection.starts_on),
+            ends_on: projection.ends_on.map(Date),
+            archived: projection.archived,
+            revision: projection.revision.value() as i32,
+        }
+    }
 }
 
 impl From<budget::BudgetReadModel> for BudgetObject {

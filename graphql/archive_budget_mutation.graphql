@@ -11,7 +11,7 @@ input ArchiveBudgetInput {
 union ArchiveBudgetResult = ArchiveBudgetSuccess | ArchiveBudgetUserError
 
 type ArchiveBudgetSuccess {
-  result: Budget!
+  result: BudgetSettings!
 }
 
 type ArchiveBudgetUserError implements MutationError {

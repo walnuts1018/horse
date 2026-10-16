@@ -17,6 +17,12 @@ pub struct BudgetPage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BudgetPeriodReadModel {
+    pub period: String,
+    pub budgets: Vec<BudgetReadModel>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BudgetQueryRequest {
     pub actor_id: BudgetActorId,
     pub household_id: BudgetHouseholdId,
@@ -27,29 +33,47 @@ pub struct BudgetQueryRequest {
     pub last: Option<i32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BudgetPeriodsQueryRequest {
+    pub actor_id: BudgetActorId,
+    pub household_id: BudgetHouseholdId,
+    pub from: String,
+    pub to: String,
+}
+
 pub trait BudgetQuery: Send + Sync {
     fn query<'a>(
         &'a self,
         request: BudgetQueryRequest,
     ) -> Pin<Box<dyn Future<Output = Result<BudgetPage, super::WorkflowFailure>> + Send + 'a>>;
+    fn periods<'a>(
+        &'a self,
+        request: BudgetPeriodsQueryRequest,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<Vec<BudgetPeriodReadModel>, super::WorkflowFailure>>
+                + Send
+                + 'a,
+        >,
+    >;
 }
 
 pub trait BudgetMutationHandler: Send + Sync {
     fn create<'a>(
         &'a self,
         command: CreateBudgetCommand,
-    ) -> Pin<Box<dyn Future<Output = Result<BudgetReadModel, super::WorkflowFailure>> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Budget, super::WorkflowFailure>> + Send + 'a>>;
     fn update<'a>(
         &'a self,
         command: UpdateBudgetCommand,
-    ) -> Pin<Box<dyn Future<Output = Result<BudgetReadModel, super::WorkflowFailure>> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Budget, super::WorkflowFailure>> + Send + 'a>>;
     fn archive<'a>(
         &'a self,
         actor_id: BudgetActorId,
         id: BudgetId,
         expected_revision: i64,
         archived: bool,
-    ) -> Pin<Box<dyn Future<Output = Result<BudgetReadModel, super::WorkflowFailure>> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Budget, super::WorkflowFailure>> + Send + 'a>>;
 }
 
 pub trait BudgetOperations {

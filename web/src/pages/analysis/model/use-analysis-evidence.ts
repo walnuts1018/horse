@@ -5,12 +5,14 @@ import type {
   AnalysisEvidenceQuery,
   AnalysisUnbackedPurchasesFragment$key,
   AnalysisUnmatchedObservationsFragment$key,
+  AnalysisUndatedUnmatchedObservationsFragment$key,
 } from "../../../shared/api";
 
 import {
   analysisEvidenceQuery,
   analysisUnbackedPurchasesFragment,
   analysisUnmatchedObservationsFragment,
+  analysisUndatedUnmatchedObservationsFragment,
 } from "../api/operations";
 import { exclusiveMonthEnd } from "./use-analysis-period";
 
@@ -41,6 +43,10 @@ export function useAnalysisEvidence(householdId: string, fromMonth: string, toMo
     AnalysisEvidenceQuery,
     AnalysisUnmatchedObservationsFragment$key
   >(analysisUnmatchedObservationsFragment, query);
+  const undated = usePaginationFragment<
+    AnalysisEvidenceQuery,
+    AnalysisUndatedUnmatchedObservationsFragment$key
+  >(analysisUndatedUnmatchedObservationsFragment, query);
   const requestKey = JSON.stringify(variables);
   const [errorState, setErrorState] = useState<{ key: string; message: string } | null>(null);
   const error = errorState?.key === requestKey ? errorState.message : "";
@@ -89,6 +95,32 @@ export function useAnalysisEvidence(householdId: string, fromMonth: string, toMo
     hasMoreUnmatched: unmatched.hasNext,
     loadingMoreUnmatched: unmatched.isLoadingNext,
     loadMoreUnmatched: () => loadMore(unmatched.loadNext),
+    undatedUnmatchedObservations: undated.data.undatedUnmatchedObservations.edges.map(
+      ({ node }) => {
+        if (
+          node.__typename !== "UnmatchedObservation" ||
+          node.sourceKind == null ||
+          node.merchant == null ||
+          node.amountYen == null ||
+          node.orderId == null ||
+          node.transactionId == null
+        ) {
+          throw new Error("日付不明の未照合取引の応答が不正です");
+        }
+        return {
+          id: node.id,
+          sourceKind: node.sourceKind,
+          merchant: node.merchant,
+          amountYen: Number(node.amountYen),
+          orderId: node.orderId,
+          transactionId: node.transactionId,
+        };
+      },
+    ),
+    undatedUnmatchedCount: undated.data.undatedUnmatchedObservations.totalCount,
+    hasMoreUndatedUnmatched: undated.hasNext,
+    loadingMoreUndatedUnmatched: undated.isLoadingNext,
+    loadMoreUndatedUnmatched: () => loadMore(undated.loadNext),
     error,
   };
 }

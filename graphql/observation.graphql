@@ -63,4 +63,9 @@ extend type Query {
     first: Int
     last: Int
   ): UnmatchedObservationConnection!
+  undatedUnmatchedObservations(
+    householdId: ID! @nodeID(of: "Household")
+    after: String
+    first: Int
+  ): UnmatchedObservationConnection!
 }

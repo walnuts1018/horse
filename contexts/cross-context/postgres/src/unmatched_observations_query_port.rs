@@ -32,6 +32,7 @@ impl UnmatchedObservationsQuery for PostgresUnmatchedObservationsQuery {
                 to: input.to.as_deref(),
                 source_kind: input.source_kind.as_deref(),
                 state: input.state.as_deref(),
+                undated_only: input.undated_only,
                 after: input
                     .after
                     .map(|cursor| unmatched_observations_query::ObservationCursor {

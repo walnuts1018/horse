@@ -1,3 +1,4 @@
+import { formatTokyoDate } from "../model/format-tokyo-date";
 import { yen } from "../model/format-yen";
 
 type UnbackedPurchase = {
@@ -25,7 +26,7 @@ const sourceKindLabels: Record<string, string> = {
   RECEIPT: "レシート",
 };
 
-const dateLabel = (value: string | null) => (value ? value.slice(0, 10) : "日付不明");
+type UndatedUnmatchedObservation = Omit<UnmatchedObservation, "occurredAt">;
 
 export function AnalysisEvidencePanel({
   unbackedPurchases,
@@ -38,6 +39,11 @@ export function AnalysisEvidencePanel({
   hasMoreUnmatched,
   loadingMoreUnmatched,
   loadMoreUnmatched,
+  undatedUnmatchedObservations,
+  undatedUnmatchedCount,
+  hasMoreUndatedUnmatched,
+  loadingMoreUndatedUnmatched,
+  loadMoreUndatedUnmatched,
   error,
 }: {
   unbackedPurchases: UnbackedPurchase[];
@@ -50,6 +56,11 @@ export function AnalysisEvidencePanel({
   hasMoreUnmatched: boolean;
   loadingMoreUnmatched: boolean;
   loadMoreUnmatched: () => void;
+  undatedUnmatchedObservations: UndatedUnmatchedObservation[];
+  undatedUnmatchedCount: number;
+  hasMoreUndatedUnmatched: boolean;
+  loadingMoreUndatedUnmatched: boolean;
+  loadMoreUndatedUnmatched: () => void;
   error: string;
 }) {
   return (
@@ -65,7 +76,7 @@ export function AnalysisEvidencePanel({
           <ul className="analysis-ledger-list">
             {unbackedPurchases.map((purchase) => (
               <li key={purchase.id}>
-                <time dateTime={purchase.occurredAt}>{dateLabel(purchase.occurredAt)}</time>
+                <time dateTime={purchase.occurredAt}>{formatTokyoDate(purchase.occurredAt)}</time>
                 <span className="analysis-ledger-description">
                   {purchase.merchant || "店舗不明"}
                 </span>
@@ -97,7 +108,7 @@ export function AnalysisEvidencePanel({
             {unmatchedObservations.map((observation) => (
               <li key={observation.id}>
                 <time dateTime={observation.occurredAt ?? undefined}>
-                  {dateLabel(observation.occurredAt)}
+                  {formatTokyoDate(observation.occurredAt)}
                 </time>
                 <span className="analysis-ledger-description">
                   {observation.merchant ||
@@ -119,6 +130,42 @@ export function AnalysisEvidencePanel({
             onClick={loadMoreUnmatched}
           >
             {loadingMoreUnmatched ? "取得中" : "さらに表示"}
+          </button>
+        )}
+      </div>
+      <div className="panel analysis-evidence-panel">
+        <div className="analysis-ledger-heading">
+          <h2>日付不明・期間集計外</h2>
+          <span>{undatedUnmatchedCount}件</span>
+        </div>
+        {undatedUnmatchedObservations.length === 0 ? (
+          <p className="analysis-ledger-empty">該当する取引はありません</p>
+        ) : (
+          <ul className="analysis-ledger-list">
+            {undatedUnmatchedObservations.map((observation) => (
+              <li key={observation.id}>
+                <span className="analysis-ledger-kind">
+                  {sourceKindLabels[observation.sourceKind] || "取引"}
+                </span>
+                <span className="analysis-ledger-description">
+                  {observation.merchant ||
+                    observation.orderId ||
+                    observation.transactionId ||
+                    "取引"}
+                </span>
+                <strong>{yen(observation.amountYen)}</strong>
+              </li>
+            ))}
+          </ul>
+        )}
+        {hasMoreUndatedUnmatched && (
+          <button
+            className="text-button"
+            type="button"
+            disabled={loadingMoreUndatedUnmatched}
+            onClick={loadMoreUndatedUnmatched}
+          >
+            {loadingMoreUndatedUnmatched ? "取得中" : "さらに表示"}
           </button>
         )}
       </div>

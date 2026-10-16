@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<180d4ea02611ad890a6ea6e9d03ea806>>
+ * @generated SignedSource<<92fe8ebbeb6dc6789610c86e6e3bcdc6>>
  * @lightSyntaxTransform
  */
 
@@ -12,10 +12,25 @@ import type { FragmentRefs } from "relay-runtime";
 export type AnalysisDashboardQuery$variables = {
   from: string;
   householdId: string;
-  period: string;
   to: string;
 };
 export type AnalysisDashboardQuery$data = {
+  readonly budgetPeriods: ReadonlyArray<{
+    readonly budgets: ReadonlyArray<{
+      readonly actualYen: any;
+      readonly amountYen: any;
+      readonly archived: boolean;
+      readonly categoryId: string | null | undefined;
+      readonly endsOn: string | null | undefined;
+      readonly householdId: string;
+      readonly id: string;
+      readonly name: string;
+      readonly remainingYen: any;
+      readonly revision: number;
+      readonly startsOn: string;
+    }>;
+    readonly period: string;
+  }>;
   readonly monthlyCategorySpending: ReadonlyArray<{
     readonly amountYen: any;
     readonly categoryId: string | null | undefined;
@@ -39,7 +54,7 @@ export type AnalysisDashboardQuery$data = {
     readonly name: string;
     readonly period: string;
   }>;
-  readonly " $fragmentSpreads": FragmentRefs<"AnalysisBudgetsFragment" | "AnalysisRecurringExpensesFragment">;
+  readonly " $fragmentSpreads": FragmentRefs<"AnalysisRecurringExpensesFragment">;
 };
 export type AnalysisDashboardQuery = {
   response: AnalysisDashboardQuery$data;
@@ -60,62 +75,57 @@ v1 = {
 v2 = {
   "defaultValue": null,
   "kind": "LocalArgument",
-  "name": "period"
-},
-v3 = {
-  "defaultValue": null,
-  "kind": "LocalArgument",
   "name": "to"
 },
-v4 = {
+v3 = {
   "kind": "Variable",
   "name": "householdId",
   "variableName": "householdId"
 },
-v5 = [
+v4 = [
   {
     "kind": "Variable",
     "name": "from",
     "variableName": "from"
   },
-  (v4/*:: as any*/),
+  (v3/*:: as any*/),
   {
     "kind": "Variable",
     "name": "to",
     "variableName": "to"
   }
 ],
-v6 = {
+v5 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "period",
   "storageKey": null
 },
-v7 = {
+v6 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "categoryId",
   "storageKey": null
 },
-v8 = {
+v7 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "amountYen",
   "storageKey": null
 },
-v9 = {
+v8 = {
   "alias": null,
-  "args": (v5/*:: as any*/),
+  "args": (v4/*:: as any*/),
   "concreteType": "MonthlyCategorySpending",
   "kind": "LinkedField",
   "name": "monthlyCategorySpending",
   "plural": true,
   "selections": [
+    (v5/*:: as any*/),
     (v6/*:: as any*/),
-    (v7/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -123,13 +133,13 @@ v9 = {
       "name": "categoryName",
       "storageKey": null
     },
-    (v8/*:: as any*/)
+    (v7/*:: as any*/)
   ],
   "storageKey": null
 },
-v10 = {
+v9 = {
   "alias": null,
-  "args": (v5/*:: as any*/),
+  "args": (v4/*:: as any*/),
   "concreteType": "MonthlyMemberSpendingReport",
   "kind": "LinkedField",
   "name": "monthlyMemberSpending",
@@ -143,7 +153,7 @@ v10 = {
       "name": "items",
       "plural": true,
       "selections": [
-        (v6/*:: as any*/),
+        (v5/*:: as any*/),
         {
           "alias": null,
           "args": null,
@@ -158,7 +168,7 @@ v10 = {
           "name": "memberName",
           "storageKey": null
         },
-        (v8/*:: as any*/)
+        (v7/*:: as any*/)
       ],
       "storageKey": null
     },
@@ -172,23 +182,23 @@ v10 = {
   ],
   "storageKey": null
 },
-v11 = {
+v10 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "id",
   "storageKey": null
 },
-v12 = {
+v11 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "name",
   "storageKey": null
 },
-v13 = {
+v12 = {
   "alias": null,
-  "args": (v5/*:: as any*/),
+  "args": (v4/*:: as any*/),
   "concreteType": "PurchaseAnalyticsEntry",
   "kind": "LinkedField",
   "name": "purchaseAnalytics",
@@ -201,10 +211,10 @@ v13 = {
       "name": "dimension",
       "storageKey": null
     },
+    (v10/*:: as any*/),
     (v11/*:: as any*/),
-    (v12/*:: as any*/),
-    (v6/*:: as any*/),
-    (v8/*:: as any*/),
+    (v5/*:: as any*/),
+    (v7/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -215,98 +225,94 @@ v13 = {
   ],
   "storageKey": null
 },
-v14 = {
-  "kind": "Variable",
-  "name": "period",
-  "variableName": "period"
-},
-v15 = {
-  "kind": "Literal",
-  "name": "first",
-  "value": 100
-},
-v16 = [
-  (v15/*:: as any*/),
-  (v4/*:: as any*/),
-  (v14/*:: as any*/)
-],
-v17 = {
+v13 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "householdId",
   "storageKey": null
 },
-v18 = {
+v14 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "startsOn",
   "storageKey": null
 },
-v19 = {
+v15 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "endsOn",
   "storageKey": null
 },
-v20 = {
+v16 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "archived",
   "storageKey": null
 },
-v21 = {
+v17 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "revision",
   "storageKey": null
 },
-v22 = {
+v18 = {
   "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "__typename",
-  "storageKey": null
-},
-v23 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "cursor",
-  "storageKey": null
-},
-v24 = {
-  "alias": null,
-  "args": null,
-  "concreteType": "PageInfo",
+  "args": (v4/*:: as any*/),
+  "concreteType": "BudgetPeriod",
   "kind": "LinkedField",
-  "name": "pageInfo",
-  "plural": false,
+  "name": "budgetPeriods",
+  "plural": true,
   "selections": [
+    (v5/*:: as any*/),
     {
       "alias": null,
       "args": null,
-      "kind": "ScalarField",
-      "name": "endCursor",
-      "storageKey": null
-    },
-    {
-      "alias": null,
-      "args": null,
-      "kind": "ScalarField",
-      "name": "hasNextPage",
+      "concreteType": "Budget",
+      "kind": "LinkedField",
+      "name": "budgets",
+      "plural": true,
+      "selections": [
+        (v10/*:: as any*/),
+        (v13/*:: as any*/),
+        (v6/*:: as any*/),
+        (v11/*:: as any*/),
+        (v7/*:: as any*/),
+        {
+          "alias": null,
+          "args": null,
+          "kind": "ScalarField",
+          "name": "actualYen",
+          "storageKey": null
+        },
+        {
+          "alias": null,
+          "args": null,
+          "kind": "ScalarField",
+          "name": "remainingYen",
+          "storageKey": null
+        },
+        (v14/*:: as any*/),
+        (v15/*:: as any*/),
+        (v16/*:: as any*/),
+        (v17/*:: as any*/)
+      ],
       "storageKey": null
     }
   ],
   "storageKey": null
 },
-v25 = [
-  (v15/*:: as any*/),
-  (v4/*:: as any*/),
+v19 = [
+  {
+    "kind": "Literal",
+    "name": "first",
+    "value": 100
+  },
+  (v3/*:: as any*/),
   {
     "kind": "Literal",
     "name": "includeArchived",
@@ -318,27 +324,19 @@ return {
     "argumentDefinitions": [
       (v0/*:: as any*/),
       (v1/*:: as any*/),
-      (v2/*:: as any*/),
-      (v3/*:: as any*/)
+      (v2/*:: as any*/)
     ],
     "kind": "Fragment",
     "metadata": null,
     "name": "AnalysisDashboardQuery",
     "selections": [
+      (v8/*:: as any*/),
       (v9/*:: as any*/),
-      (v10/*:: as any*/),
-      (v13/*:: as any*/),
+      (v12/*:: as any*/),
+      (v18/*:: as any*/),
       {
         "args": [
-          (v4/*:: as any*/),
-          (v14/*:: as any*/)
-        ],
-        "kind": "FragmentSpread",
-        "name": "AnalysisBudgetsFragment"
-      },
-      {
-        "args": [
-          (v4/*:: as any*/)
+          (v3/*:: as any*/)
         ],
         "kind": "FragmentSpread",
         "name": "AnalysisRecurringExpensesFragment"
@@ -352,89 +350,18 @@ return {
     "argumentDefinitions": [
       (v1/*:: as any*/),
       (v0/*:: as any*/),
-      (v3/*:: as any*/),
       (v2/*:: as any*/)
     ],
     "kind": "Operation",
     "name": "AnalysisDashboardQuery",
     "selections": [
+      (v8/*:: as any*/),
       (v9/*:: as any*/),
-      (v10/*:: as any*/),
-      (v13/*:: as any*/),
+      (v12/*:: as any*/),
+      (v18/*:: as any*/),
       {
         "alias": null,
-        "args": (v16/*:: as any*/),
-        "concreteType": "BudgetConnection",
-        "kind": "LinkedField",
-        "name": "budgets",
-        "plural": false,
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "concreteType": "BudgetEdge",
-            "kind": "LinkedField",
-            "name": "edges",
-            "plural": true,
-            "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "concreteType": "Budget",
-                "kind": "LinkedField",
-                "name": "node",
-                "plural": false,
-                "selections": [
-                  (v11/*:: as any*/),
-                  (v17/*:: as any*/),
-                  (v7/*:: as any*/),
-                  (v12/*:: as any*/),
-                  (v8/*:: as any*/),
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "actualYen",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "remainingYen",
-                    "storageKey": null
-                  },
-                  (v18/*:: as any*/),
-                  (v19/*:: as any*/),
-                  (v20/*:: as any*/),
-                  (v21/*:: as any*/),
-                  (v22/*:: as any*/)
-                ],
-                "storageKey": null
-              },
-              (v23/*:: as any*/)
-            ],
-            "storageKey": null
-          },
-          (v24/*:: as any*/)
-        ],
-        "storageKey": null
-      },
-      {
-        "alias": null,
-        "args": (v16/*:: as any*/),
-        "filters": [
-          "householdId",
-          "period"
-        ],
-        "handle": "connection",
-        "key": "AnalysisBudgetsFragment_budgets",
-        "kind": "LinkedHandle",
-        "name": "budgets"
-      },
-      {
-        "alias": null,
-        "args": (v25/*:: as any*/),
+        "args": (v19/*:: as any*/),
         "concreteType": "RecurringExpenseConnection",
         "kind": "LinkedField",
         "name": "recurringExpenses",
@@ -456,9 +383,9 @@ return {
                 "name": "node",
                 "plural": false,
                 "selections": [
+                  (v10/*:: as any*/),
+                  (v13/*:: as any*/),
                   (v11/*:: as any*/),
-                  (v17/*:: as any*/),
-                  (v12/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -466,7 +393,7 @@ return {
                     "name": "merchant",
                     "storageKey": null
                   },
-                  (v8/*:: as any*/),
+                  (v7/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -474,7 +401,7 @@ return {
                     "name": "currency",
                     "storageKey": null
                   },
-                  (v7/*:: as any*/),
+                  (v6/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -489,7 +416,7 @@ return {
                     "name": "cadence",
                     "storageKey": null
                   },
-                  (v18/*:: as any*/),
+                  (v14/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -497,24 +424,60 @@ return {
                     "name": "nextDueOn",
                     "storageKey": null
                   },
-                  (v19/*:: as any*/),
-                  (v20/*:: as any*/),
-                  (v21/*:: as any*/),
-                  (v22/*:: as any*/)
+                  (v15/*:: as any*/),
+                  (v16/*:: as any*/),
+                  (v17/*:: as any*/),
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "__typename",
+                    "storageKey": null
+                  }
                 ],
                 "storageKey": null
               },
-              (v23/*:: as any*/)
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "cursor",
+                "storageKey": null
+              }
             ],
             "storageKey": null
           },
-          (v24/*:: as any*/)
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "PageInfo",
+            "kind": "LinkedField",
+            "name": "pageInfo",
+            "plural": false,
+            "selections": [
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "endCursor",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "hasNextPage",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
         ],
         "storageKey": null
       },
       {
         "alias": null,
-        "args": (v25/*:: as any*/),
+        "args": (v19/*:: as any*/),
         "filters": [
           "householdId",
           "includeArchived"
@@ -527,16 +490,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "ca182e00ac374206e617949987c20af5",
+    "cacheID": "c27e50cd752480b548d3771b93228736",
     "id": null,
     "metadata": {},
     "name": "AnalysisDashboardQuery",
     "operationKind": "query",
-    "text": "query AnalysisDashboardQuery(\n  $householdId: ID!\n  $from: YearMonth!\n  $to: YearMonth!\n  $period: YearMonth!\n) {\n  monthlyCategorySpending(householdId: $householdId, from: $from, to: $to) {\n    period\n    categoryId\n    categoryName\n    amountYen\n  }\n  monthlyMemberSpending(householdId: $householdId, from: $from, to: $to) {\n    items {\n      period\n      memberId\n      memberName\n      amountYen\n    }\n    hasUnattributedPurchases\n  }\n  purchaseAnalytics(householdId: $householdId, from: $from, to: $to) {\n    dimension\n    id\n    name\n    period\n    amountYen\n    count\n  }\n  ...AnalysisBudgetsFragment_50vXu\n  ...AnalysisRecurringExpensesFragment_2BD5SD\n}\n\nfragment AnalysisBudgetsFragment_50vXu on Query {\n  budgets(householdId: $householdId, period: $period, first: 100) {\n    edges {\n      node {\n        id\n        householdId\n        categoryId\n        name\n        amountYen\n        actualYen\n        remainingYen\n        startsOn\n        endsOn\n        archived\n        revision\n        __typename\n      }\n      cursor\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n\nfragment AnalysisRecurringExpensesFragment_2BD5SD on Query {\n  recurringExpenses(householdId: $householdId, includeArchived: false, first: 100) {\n    edges {\n      node {\n        id\n        householdId\n        name\n        merchant\n        amountYen\n        currency\n        categoryId\n        paymentAccountId\n        cadence\n        startsOn\n        nextDueOn\n        endsOn\n        archived\n        revision\n        __typename\n      }\n      cursor\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
+    "text": "query AnalysisDashboardQuery(\n  $householdId: ID!\n  $from: YearMonth!\n  $to: YearMonth!\n) {\n  monthlyCategorySpending(householdId: $householdId, from: $from, to: $to) {\n    period\n    categoryId\n    categoryName\n    amountYen\n  }\n  monthlyMemberSpending(householdId: $householdId, from: $from, to: $to) {\n    items {\n      period\n      memberId\n      memberName\n      amountYen\n    }\n    hasUnattributedPurchases\n  }\n  purchaseAnalytics(householdId: $householdId, from: $from, to: $to) {\n    dimension\n    id\n    name\n    period\n    amountYen\n    count\n  }\n  budgetPeriods(householdId: $householdId, from: $from, to: $to) {\n    period\n    budgets {\n      id\n      householdId\n      categoryId\n      name\n      amountYen\n      actualYen\n      remainingYen\n      startsOn\n      endsOn\n      archived\n      revision\n    }\n  }\n  ...AnalysisRecurringExpensesFragment_2BD5SD\n}\n\nfragment AnalysisRecurringExpensesFragment_2BD5SD on Query {\n  recurringExpenses(householdId: $householdId, includeArchived: false, first: 100) {\n    edges {\n      node {\n        id\n        householdId\n        name\n        merchant\n        amountYen\n        currency\n        categoryId\n        paymentAccountId\n        cadence\n        startsOn\n        nextDueOn\n        endsOn\n        archived\n        revision\n        __typename\n      }\n      cursor\n    }\n    pageInfo {\n      endCursor\n      hasNextPage\n    }\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "861c084aa6928baf5df010c8a5a218b3";
+(node as any).hash = "3f1ff75b776ca9207ffd875d5eab6a58";
 
 export default node;
