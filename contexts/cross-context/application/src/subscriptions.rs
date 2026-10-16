@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
@@ -85,16 +86,53 @@ pub trait SubscriptionQuery: Send + Sync {
         cursors: Vec<(Uuid, i64)>,
     ) -> Result<Vec<PurchaseEvent>, String>;
     async fn purchase_id_for_item(&self, item_id: Uuid) -> Result<Option<Uuid>, String>;
+    async fn purchase_ids_for_items(
+        &self,
+        item_ids: Vec<Uuid>,
+    ) -> Result<HashMap<Uuid, Uuid>, String> {
+        let mut purchases = HashMap::new();
+        for item_id in item_ids {
+            if let Some(purchase_id) = self.purchase_id_for_item(item_id).await? {
+                purchases.insert(item_id, purchase_id);
+            }
+        }
+        Ok(purchases)
+    }
     async fn purchase_snapshot(
         &self,
         household_id: Uuid,
         purchase_id: Uuid,
     ) -> Result<Option<PurchaseSnapshot>, String>;
+    async fn purchase_snapshots(
+        &self,
+        household_id: Uuid,
+        purchase_ids: Vec<Uuid>,
+    ) -> Result<HashMap<Uuid, PurchaseSnapshot>, String> {
+        let mut snapshots = HashMap::new();
+        for purchase_id in purchase_ids {
+            if let Some(snapshot) = self.purchase_snapshot(household_id, purchase_id).await? {
+                snapshots.insert(purchase_id, snapshot);
+            }
+        }
+        Ok(snapshots)
+    }
     async fn shared_draft_revision(
         &self,
         draft_id: Uuid,
         after: i64,
     ) -> Result<Option<i64>, String>;
+    async fn shared_draft_revisions(
+        &self,
+        cursors: Vec<(Uuid, i64)>,
+    ) -> Result<HashMap<Uuid, i64>, String> {
+        let mut revisions = HashMap::new();
+        for (draft_id, cursor) in cursors {
+            if let Some(revision) = self.shared_draft_revision(draft_id, cursor).await? {
+                revisions.insert(draft_id, revision);
+            }
+        }
+        Ok(revisions)
+    }
     async fn shared_draft_is_accessible(
         &self,
         actor_id: Uuid,

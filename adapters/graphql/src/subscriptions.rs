@@ -73,6 +73,20 @@ struct Watch<T> {
     tx: mpsc::Sender<T>,
 }
 
+struct PendingPurchaseEvent {
+    cursor: i64,
+    household: Uuid,
+    entity_id: Uuid,
+    revision: i64,
+    created_at: chrono::DateTime<chrono::Utc>,
+    mapped: Option<(
+        PurchaseChangeKind,
+        PurchaseChangeEntity,
+        Vec<PurchaseChangeField>,
+    )>,
+    purchase_id: Option<Uuid>,
+}
+
 #[derive(Default)]
 pub struct SubscriptionHub {
     purchases: Mutex<HashMap<u64, Watch<PurchaseChange>>>,
@@ -96,28 +110,33 @@ impl SubscriptionHub {
         *started = true;
         let hub = Arc::clone(self);
         tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(Duration::from_secs(1));
+            let mut delay = Duration::from_secs(1);
             loop {
-                ticker.tick().await;
+                tokio::time::sleep(delay).await;
                 hub.remove_closed_watches();
                 if hub.is_idle() {
                     *hub.started.lock().unwrap_or_else(|e| e.into_inner()) = false;
                     break;
                 }
-                if let Err(error) = hub.poll(query.as_ref()).await {
-                    tracing::warn!(?error, "GraphQL subscription poll failed");
+                match hub.poll(query.as_ref()).await {
+                    Ok(true) => delay = Duration::from_secs(1),
+                    Ok(false) => delay = (delay * 2).min(Duration::from_secs(5)),
+                    Err(error) => {
+                        tracing::warn!(?error, "GraphQL subscription poll failed");
+                        delay = (delay * 2).min(Duration::from_secs(5));
+                    }
                 }
             }
         });
     }
 
-    async fn poll(&self, query: &dyn SubscriptionQuery) -> Result<()> {
-        self.poll_purchases(query).await?;
-        self.poll_drafts(query).await?;
-        Ok(())
+    async fn poll(&self, query: &dyn SubscriptionQuery) -> Result<bool> {
+        let purchases = self.poll_purchases(query).await?;
+        let drafts = self.poll_drafts(query).await?;
+        Ok(purchases || drafts)
     }
 
-    async fn poll_purchases(&self, query: &dyn SubscriptionQuery) -> Result<()> {
+    async fn poll_purchases(&self, query: &dyn SubscriptionQuery) -> Result<bool> {
         let cursors: Vec<(Uuid, i64)> = {
             let watches = self.purchases.lock().unwrap_or_else(|e| e.into_inner());
             watches
@@ -126,7 +145,7 @@ impl SubscriptionHub {
                 .collect()
         };
         if cursors.is_empty() {
-            return Ok(());
+            return Ok(false);
         }
         let mut minimum_cursors = HashMap::new();
         for (household, cursor) in cursors {
@@ -139,6 +158,23 @@ impl SubscriptionHub {
             .purchase_events(minimum_cursors.into_iter().collect())
             .await
             .map_err(crate::internal_error)?;
+        let item_ids: Vec<_> = rows
+            .iter()
+            .filter(|row| {
+                row.entity_kind == "purchase_item" && row.event_type != "purchase.item.deleted"
+            })
+            .map(|row| row.entity_id)
+            .collect();
+        let item_purchases = if item_ids.is_empty() {
+            HashMap::new()
+        } else {
+            query
+                .purchase_ids_for_items(item_ids)
+                .await
+                .map_err(crate::internal_error)?
+        };
+        let mut pending = Vec::with_capacity(rows.len());
+        let mut purchase_ids_by_household: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
         for row in rows {
             let PurchaseEvent {
                 cursor,
@@ -150,6 +186,67 @@ impl SubscriptionHub {
                 changed_fields: fields,
                 created_at,
                 payload,
+            } = row;
+            let mapped = change_fields(
+                &event_type,
+                &entity_type,
+                fields.iter().flatten().map(String::as_str),
+            );
+            let purchase_id = if event_type == "purchase.item.deleted" {
+                payload
+                    .get("purchaseId")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|value| Uuid::parse_str(value).ok())
+            } else if entity_type == "purchase_item" {
+                item_purchases.get(&entity_id).copied()
+            } else {
+                Some(entity_id)
+            };
+            if mapped.is_some()
+                && let Some(purchase_id) = purchase_id
+            {
+                let ids = purchase_ids_by_household.entry(household).or_default();
+                if !ids.contains(&purchase_id) {
+                    ids.push(purchase_id);
+                }
+            }
+            pending.push(PendingPurchaseEvent {
+                cursor,
+                household,
+                entity_id,
+                revision,
+                created_at,
+                mapped,
+                purchase_id,
+            });
+        }
+        let mut snapshots = HashMap::new();
+        for (household, purchase_ids) in purchase_ids_by_household {
+            snapshots.extend(
+                query
+                    .purchase_snapshots(household, purchase_ids)
+                    .await
+                    .map_err(crate::internal_error)?
+                    .into_iter()
+                    .map(|(purchase_id, snapshot)| ((household, purchase_id), snapshot)),
+            );
+        }
+        let mut purchase_projections = HashMap::new();
+        for ((household, purchase_id), snapshot) in snapshots {
+            let projection =
+                purchase_mutations::purchase_projection(snapshot).map_err(crate::internal_error)?;
+            purchase_projections.insert((household, purchase_id), projection);
+        }
+        let mut delivered = false;
+        for row in pending {
+            let PendingPurchaseEvent {
+                cursor,
+                household,
+                entity_id,
+                revision,
+                created_at,
+                mapped,
+                purchase_id,
             } = row;
             let targets: Vec<u64> = self
                 .purchases
@@ -171,41 +268,19 @@ impl SubscriptionHub {
                 }
             }
             for id in targets {
-                let Some((kind, entity_kind, changed_fields)) = change_fields(
-                    &event_type,
-                    &entity_type,
-                    fields.iter().flatten().map(String::as_str),
-                ) else {
+                let Some((kind, entity_kind, changed_fields)) = mapped.clone() else {
                     self.advance_purchase(id, cursor);
                     continue;
-                };
-                let purchase_id = if event_type == "purchase.item.deleted" {
-                    payload
-                        .get("purchaseId")
-                        .and_then(serde_json::Value::as_str)
-                        .and_then(|value| Uuid::parse_str(value).ok())
-                } else if entity_type == "purchase_item" {
-                    query
-                        .purchase_id_for_item(entity_id)
-                        .await
-                        .map_err(crate::internal_error)?
-                } else {
-                    Some(entity_id)
                 };
                 let Some(purchase_id) = purchase_id else {
                     self.advance_purchase(id, cursor);
                     continue;
                 };
-                let Some(projection) = query
-                    .purchase_snapshot(household, purchase_id)
-                    .await
-                    .map_err(crate::internal_error)?
+                let Some(purchase) = purchase_projections.get(&(household, purchase_id)).cloned()
                 else {
                     self.advance_purchase(id, cursor);
                     continue;
                 };
-                let purchase = purchase_mutations::purchase_projection(projection)
-                    .map_err(crate::internal_error)?;
                 let node_kind = if entity_kind == PurchaseChangeEntity::PurchaseItem {
                     "PurchaseItem"
                 } else {
@@ -226,10 +301,11 @@ impl SubscriptionHub {
                     && watch.tx.try_send(change).is_ok()
                 {
                     watch.cursor = cursor;
+                    delivered = true;
                 }
             }
         }
-        Ok(())
+        Ok(delivered)
     }
 
     fn advance_purchase(&self, id: u64, cursor: i64) {
@@ -243,7 +319,7 @@ impl SubscriptionHub {
         }
     }
 
-    async fn poll_drafts(&self, query: &dyn SubscriptionQuery) -> Result<()> {
+    async fn poll_drafts(&self, query: &dyn SubscriptionQuery) -> Result<bool> {
         let watches: Vec<(u64, Uuid, i64)> = self
             .drafts
             .lock()
@@ -252,14 +328,26 @@ impl SubscriptionHub {
             .map(|(id, watch)| (*id, watch.key, watch.cursor))
             .collect();
         if watches.is_empty() {
-            return Ok(());
+            return Ok(false);
         }
+        let minimum_cursors =
+            watches
+                .iter()
+                .fold(HashMap::new(), |mut minimums, (_, draft_id, cursor)| {
+                    minimums
+                        .entry(*draft_id)
+                        .and_modify(|minimum: &mut i64| *minimum = (*minimum).min(*cursor))
+                        .or_insert(*cursor);
+                    minimums
+                });
+        let revisions = query
+            .shared_draft_revisions(minimum_cursors.into_iter().collect())
+            .await
+            .map_err(crate::internal_error)?;
+        let mut delivered = false;
         for (id, draft_id, cursor) in watches {
-            let revision = query
-                .shared_draft_revision(draft_id, cursor)
-                .await
-                .map_err(crate::internal_error)?;
-            if let Some(revision) = revision {
+            let revision = revisions.get(&draft_id).copied();
+            if let Some(revision) = revision.filter(|revision| *revision > cursor) {
                 let mut watches = self.drafts.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(watch) = watches.get_mut(&id)
                     && watch
@@ -270,10 +358,11 @@ impl SubscriptionHub {
                         .is_ok()
                 {
                     watch.cursor = revision;
+                    delivered = true;
                 }
             }
         }
-        Ok(())
+        Ok(delivered)
     }
 }
 
