@@ -704,12 +704,12 @@ fn validate_decision(
             .journal_lines
             .get(2)
             .map(|line| line.account_id.as_deref())
-            != Some(decision.destination_account_id.as_deref())
+            != decision.destination_account_id.as_deref().map(Some)
         || decision
             .journal_lines
             .get(3)
             .map(|line| line.account_id.as_deref())
-            != Some(decision.source_account_id.as_deref())
+            != decision.source_account_id.as_deref().map(Some)
     {
         return Err(RecordFundingPersistenceError::InvalidDecision);
     }
