@@ -20,17 +20,23 @@ function FailedConversation() {
   const [mountKey, setMountKey] = useState(0);
   const [document, setDocument] = useState<DocumentReview>({
     id: "story-document",
-    status: "queued",
+    jobId: "story-base-job",
+    status: "succeeded",
     model: "gemini-3.8-flash",
     result: { receipt: { merchant: "喫茶店", total: 1200 } },
   });
 
   useEffect(() => {
     const originalFetch = window.fetch;
-    window.fetch = async () =>
-      Response.json({ jobId: "story-interaction", status: "queued" }, { status: 202 });
+    window.fetch = async (_input, init) => {
+      if (init?.method === "POST" && typeof init.body === "string") {
+        window.sessionStorage.setItem("story-interaction-request", init.body);
+      }
+      return Response.json({ jobId: "story-interaction", status: "queued" }, { status: 202 });
+    };
     return () => {
       window.fetch = originalFetch;
+      window.sessionStorage.removeItem("story-interaction-request");
     };
   }, []);
 
@@ -46,6 +52,7 @@ function FailedConversation() {
         onUpdated={() =>
           setDocument((current) => ({
             ...current,
+            jobId: "story-interaction",
             status: "failed",
             errorCode: "rate_limited",
             pendingInteraction: {
@@ -66,18 +73,29 @@ export const FailedInstructionCanBeResent: Story = {
   render: () => <FailedConversation />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await userEvent.selectOptions(canvas.getByLabelText("再確認AIモデル"), "gemini-4-argon");
     await userEvent.type(canvas.getByLabelText("AIに追加指示"), "店名を確認してください");
-    await userEvent.click(canvas.getByRole("button", { name: "このモデルで再確認" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Gemini 4 Argonで再確認" }));
+    await waitFor(async () => {
+      const request = window.sessionStorage.getItem("story-interaction-request");
+      await expect(request).not.toBeNull();
+      await expect(JSON.parse(request ?? "{}")).toMatchObject({
+        message: "店名を確認してください",
+        model: "gemini-4-argon",
+      });
+    });
     await waitFor(async () => {
       await expect(canvas.getByText("店名を確認してください")).toBeTruthy();
-      await expect(canvas.getByRole("button", { name: "同じ指示を再送" })).toBeTruthy();
       await expect(
-        canvas.getByRole("button", { name: "Gemini 3.1 Pro Previewで同じ指示を再送・有料" }),
+        canvas.getByRole("button", { name: "Gemini 3.1 Pro Previewで同じ指示を再送" }),
       ).toBeTruthy();
+      await expect(canvas.getByLabelText("再確認AIモデル")).toHaveValue("gemini-3.1-pro-preview");
     });
     await userEvent.click(canvas.getByRole("button", { name: "画面を再読み込み" }));
     await expect(canvas.getByText("店名を確認してください")).toBeTruthy();
-    await expect(canvas.getByRole("button", { name: "同じ指示を再送" })).toBeTruthy();
+    await expect(
+      canvas.getByRole("button", { name: "Gemini 3.1 Pro Previewで同じ指示を再送" }),
+    ).toBeTruthy();
   },
 };
 

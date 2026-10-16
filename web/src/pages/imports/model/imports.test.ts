@@ -175,7 +175,7 @@ describe("AIモデルの利用上限", () => {
 });
 
 describe("再抽出モデルの初期選択", () => {
-  it("quota超過時はProを選び、spend capでは無料モデルを選ぶ", () => {
+  it("利用制限に達した場合はProを選ぶ", () => {
     expect(
       retryImportModel({
         id: "quota",
@@ -199,7 +199,7 @@ describe("再抽出モデルの初期選択", () => {
         errorCode: "spend_cap_reached",
         model: "gemini-3.1-pro-preview",
       }),
-    ).toBe("gemini-3.8-flash");
+    ).toBe("gemini-3.1-pro-preview");
     expect(
       retryImportModel({
         id: "argon-spend-cap",
@@ -207,7 +207,7 @@ describe("再抽出モデルの初期選択", () => {
         errorCode: "spend_cap_reached",
         model: "gemini-4-argon",
       }),
-    ).toBe("gemini-3.8-flash");
+    ).toBe("gemini-3.1-pro-preview");
     expect(
       retryImportModel({
         id: "paid-unavailable",
@@ -215,7 +215,7 @@ describe("再抽出モデルの初期選択", () => {
         errorCode: "paid_route_unavailable",
         model: "gemini-3.5-flash-lite",
       }),
-    ).toBe("gemini-3.5-flash-lite");
+    ).toBe("gemini-3.1-pro-preview");
   });
 
   it("通常の失敗では既存のモデルIDを維持し、tier値を具体的なモデルIDに解決する", () => {

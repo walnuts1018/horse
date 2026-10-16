@@ -63,6 +63,7 @@ export const importModels = [
 export type ImportModel = (typeof importModels)[number]["value"];
 
 export const defaultImportModel: ImportModel = "gemini-3.8-flash";
+export const proImportModel: ImportModel = "gemini-3.1-pro-preview";
 
 const deferredExtractionMessages = new Map([
   [
@@ -93,30 +94,27 @@ export function importModelCostLabel(model: ImportModel): string {
   return importModelTier(model) === "paid" ? "有料・従量課金" : "無料・利用上限あり";
 }
 
+export function isQuotaLimitedExtraction(document: DocumentReview): boolean {
+  return [
+    "rate_limited",
+    "quota_reservation_deferred",
+    "spend_cap_reached",
+    "paid_route_unavailable",
+  ].includes(document.errorCode ?? "");
+}
+
 export function retryImportModel(document: DocumentReview): ImportModel {
-  const proModel: ImportModel = "gemini-3.1-pro-preview";
   const currentModel = document.model ?? "";
   const resolvedModel = isImportModel(currentModel)
     ? currentModel
     : currentModel === "pro"
-      ? proModel
+      ? proImportModel
       : currentModel === "free"
         ? defaultImportModel
         : undefined;
 
-  if (
-    document.errorCode === "rate_limited" ||
-    document.errorCode === "quota_reservation_deferred"
-  ) {
-    return proModel;
-  }
-  if (
-    document.errorCode === "spend_cap_reached" ||
-    document.errorCode === "paid_route_unavailable"
-  ) {
-    return resolvedModel && importModelTier(resolvedModel) === "free"
-      ? resolvedModel
-      : defaultImportModel;
+  if (isQuotaLimitedExtraction(document)) {
+    return proImportModel;
   }
   return resolvedModel ?? defaultImportModel;
 }

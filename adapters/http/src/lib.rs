@@ -367,9 +367,28 @@ fn is_supported_extraction_model(model: &str) -> bool {
     )
 }
 
+fn interaction_model<'a>(
+    requested: &'a str,
+    base_request_model: Option<&'a str>,
+    stored_model: &'a str,
+) -> &'a str {
+    if !requested.is_empty() {
+        return requested;
+    }
+    base_request_model
+        .filter(|model| is_supported_extraction_model(model))
+        .unwrap_or_else(|| {
+            if is_supported_extraction_model(stored_model) {
+                stored_model
+            } else {
+                ""
+            }
+        })
+}
+
 #[cfg(test)]
 mod extraction_model_tests {
-    use super::is_supported_extraction_model;
+    use super::{interaction_model, is_supported_extraction_model};
 
     #[test]
     fn accepts_import_models_and_legacy_aliases_but_rejects_unknown_ids() {
@@ -387,6 +406,23 @@ mod extraction_model_tests {
             assert!(is_supported_extraction_model(model), "{model}");
         }
         assert!(!is_supported_extraction_model("gemini-unknown-model"));
+    }
+
+    #[test]
+    fn interaction_uses_the_requested_model_and_keeps_legacy_defaults() {
+        assert_eq!(
+            interaction_model("gemini-4-argon", Some("gemini-3.8-flash"), "pro"),
+            "gemini-4-argon"
+        );
+        assert_eq!(
+            interaction_model("", Some("pro"), "gemini-3.8-flash"),
+            "pro"
+        );
+        assert_eq!(
+            interaction_model("", None, "gemini-3.8-flash"),
+            "gemini-3.8-flash"
+        );
+        assert_eq!(interaction_model("", None, "unknown"), "");
     }
 }
 
@@ -2406,7 +2442,9 @@ async fn interact_with_document(
         .get("model")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    if message.trim().is_empty() || message.len() > 8_000 || !matches!(requested_model, "" | "pro")
+    if message.trim().is_empty()
+        || message.len() > 8_000
+        || (!requested_model.is_empty() && !is_supported_extraction_model(requested_model))
     {
         return (
             StatusCode::BAD_REQUEST,
@@ -2571,15 +2609,11 @@ async fn interact_with_document(
         .filter(|_| base_job_id == latest_success_id)
         .map(str::to_owned)
         .unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
-    let model = if requested_model == "pro" {
-        "pro"
-    } else {
-        base_request
-            .get("model")
-            .and_then(Value::as_str)
-            .filter(|value| *value == "pro")
-            .unwrap_or(if stored_model == "pro" { "pro" } else { "" })
-    };
+    let model = interaction_model(
+        requested_model,
+        base_request.get("model").and_then(Value::as_str),
+        &stored_model,
+    );
     drop(pooled);
     let mut current_extraction = serde_json::Map::new();
     for key in ["receipt", "statements", "issues"] {
