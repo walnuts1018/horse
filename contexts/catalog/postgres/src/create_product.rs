@@ -1,6 +1,6 @@
 use catalog_application::create_product::{
-    CreateConceptCommand, CreateProductError, CreateVariantCommand, decide_create_concept,
-    decide_create_variant,
+    CreateConceptCommand, CreateConceptDecision, CreateProductError, CreateProductOperations,
+    CreateVariantCommand, CreateVariantDecision,
 };
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -43,30 +43,84 @@ pub enum CreateProductPersistenceError {
     ConceptNotFound,
 }
 
+pub async fn create_concept(
+    pool: &PgPool,
+    command: CreateConceptCommand,
+) -> Result<(String, CreateConceptDecision), CreateProductPersistenceError> {
+    let mut operations = PostgresCreateProductOperations { pool };
+    catalog_application::create_product::create_concept(&mut operations, command)
+        .await
+        .map_err(|error| match error {
+            catalog_application::create_product::CreateProductWorkflowError::Decision(error) => {
+                CreateProductPersistenceError::InvalidWorkflow(error)
+            }
+            catalog_application::create_product::CreateProductWorkflowError::Operations(error) => {
+                error
+            }
+        })
+}
+
+pub async fn create_variant(
+    pool: &PgPool,
+    command: CreateVariantCommand,
+) -> Result<(String, CreateVariantDecision), CreateProductPersistenceError> {
+    let mut operations = PostgresCreateProductOperations { pool };
+    catalog_application::create_product::create_variant(&mut operations, command)
+        .await
+        .map_err(|error| match error {
+            catalog_application::create_product::CreateProductWorkflowError::Decision(error) => {
+                CreateProductPersistenceError::InvalidWorkflow(error)
+            }
+            catalog_application::create_product::CreateProductWorkflowError::Operations(error) => {
+                error
+            }
+        })
+}
+
+struct PostgresCreateProductOperations<'a> {
+    pool: &'a PgPool,
+}
+
+impl CreateProductOperations for PostgresCreateProductOperations<'_> {
+    type Error = CreateProductPersistenceError;
+
+    async fn persist_concept(
+        &mut self,
+        decision: CreateConceptDecision,
+    ) -> Result<String, Self::Error> {
+        persist_create_concept(self.pool, decision).await
+    }
+
+    async fn persist_variant(
+        &mut self,
+        decision: CreateVariantDecision,
+    ) -> Result<String, Self::Error> {
+        persist_create_variant(self.pool, decision).await
+    }
+}
+
 impl From<DieselError> for CreateProductPersistenceError {
     fn from(error: DieselError) -> Self {
         Self::Database(error)
     }
 }
 
-pub async fn persist_create_concept(
+async fn persist_create_concept(
     pool: &PgPool,
-    command: CreateConceptCommand,
+    decision: CreateConceptDecision,
 ) -> Result<String, CreateProductPersistenceError> {
-    let decision =
-        decide_create_concept(command).map_err(CreateProductPersistenceError::InvalidWorkflow)?;
     let ui_change = decision.ui_change();
-    let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
-    let household_id = parse_uuid(&decision.household_id, "household_id")?;
+    let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+    let household_id = parse_uuid(decision.household_id.as_str(), "household_id")?;
     let concept = PersistedConcept {
         id: Uuid::now_v7(),
         household_id,
-        name: decision.name,
-        normalized_name: decision.normalized_name,
+        name: decision.name.as_str().to_owned(),
+        normalized_name: decision.normalized_name().as_str().to_owned(),
         category_id: decision
             .category_id
-            .as_deref()
-            .map(|value| parse_uuid(value, "category_id"))
+            .as_ref()
+            .map(|value| parse_uuid(value.as_str(), "category_id"))
             .transpose()?,
     };
 
@@ -145,21 +199,19 @@ pub async fn persist_create_concept(
         .await
 }
 
-pub async fn persist_create_variant(
+async fn persist_create_variant(
     pool: &PgPool,
-    command: CreateVariantCommand,
+    decision: CreateVariantDecision,
 ) -> Result<String, CreateProductPersistenceError> {
-    let decision =
-        decide_create_variant(command).map_err(CreateProductPersistenceError::InvalidWorkflow)?;
     let ui_change = decision.ui_change();
-    let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
-    let household_id = parse_uuid(&decision.household_id, "household_id")?;
+    let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+    let household_id = parse_uuid(decision.household_id.as_str(), "household_id")?;
     let variant = PersistedVariant {
         id: Uuid::now_v7(),
         household_id,
-        concept_id: parse_uuid(&decision.concept_id, "concept_id")?,
-        name: decision.name,
-        normalized_name: decision.normalized_name,
+        concept_id: parse_uuid(decision.concept_id.as_str(), "concept_id")?,
+        name: decision.name.as_str().to_owned(),
+        normalized_name: decision.normalized_name().as_str().to_owned(),
         brand: decision.brand.unwrap_or_default(),
         package_size: decision.package_size.unwrap_or_default(),
         barcode: decision.barcode,

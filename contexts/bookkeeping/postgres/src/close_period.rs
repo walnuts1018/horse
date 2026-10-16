@@ -11,6 +11,7 @@ use diesel::{
 };
 use diesel_async::RunQueryDsl;
 use horse_authorization::{Operation, authorize};
+use horse_postgres_common::TransactionError;
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -66,7 +67,8 @@ pub async fn close_period(
     let mut pooled = pool.get().await.map_err(|error| {
         ClosePeriodWorkflowError::Operations(ClosePeriodPersistenceError::Pool(error.to_string()))
     })?;
-    pooled
+    let period = period.to_owned();
+    let transaction_result = pooled
         .build_transaction()
         .serializable()
         .run(async |conn| {
@@ -75,17 +77,26 @@ pub async fn close_period(
                 household_id,
                 period_start,
                 period_end,
-                period: period.to_owned(),
+                period: period.clone(),
                 expected_revision,
                 actor_id,
                 policy,
             };
-            Ok::<_, DieselError>(close_period_workflow(&mut operations).await)
+            close_period_workflow(&mut operations)
+                .await
+                .map_err(TransactionError::Workflow)
         })
-        .await
-        .map_err(|error| {
-            ClosePeriodWorkflowError::Operations(ClosePeriodPersistenceError::Database(error))
-        })?
+        .await;
+    match transaction_result {
+        Ok(result) => Ok(result),
+        Err(TransactionError::Workflow(error)) => Err(error),
+        Err(TransactionError::Database(error)) => Err(ClosePeriodWorkflowError::Operations(
+            ClosePeriodPersistenceError::Database(error),
+        )),
+        Err(TransactionError::Pool(error)) => Err(ClosePeriodWorkflowError::Operations(
+            ClosePeriodPersistenceError::Pool(error.to_string()),
+        )),
+    }
 }
 
 struct PgClosePeriodOperations<'a, P> {

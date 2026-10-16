@@ -69,91 +69,17 @@ BC内で暗黙的なイベントバスを使って工程をつないでいない
 
 | 優先度 | 項目 | 判定 |
 | --- | --------------------------- | ----------- |
-| P0 | Workflow失敗時のDBトランザクション | 明確な実装上の問題 |
-| P1 | ドメイン型・Smart Constructorの一貫性 | DMMFの中核から逸脱 |
-| P1 | Bounded Contextの所有権・境界 | 構造的に再設計すべき |
-| P1 | Workflowの責務と呼び出し経路 | 一貫していない |
-| P1 | 不正状態・不正遷移の型表現 | 改善余地が大きい |
-| P2 | Domain Eventと外部イベント契約 | 分離を徹底したい |
+| P1 | ドメイン型・Smart Constructorの一貫性 | 未解決箇所が残る |
+| P1 | Bounded Contextの所有権・境界 | 再設計が必要 |
+| P1 | 不正状態・不正遷移の型表現 | 改善余地がある |
 | P2 | エラー型と境界変換 | 型の意味を保持したい |
-| P2 | DomainとApplicationの責務 | 整理したい |
+| P2 | DomainとApplicationの責務 | 整理が必要 |
 | P2 | Operations traitと依存性注入 | さらに洗練できる |
 | P2 | アーキテクチャの自動検証 | 導入したい |
 
-P0/P1は優先的に修正したいものです。P2には、DMMFが直接禁止しているわけではなく、Rust上でより忠実に表現するための改善も含めています。
+残っているP1を優先して修正します。P2には、DMMFが直接禁止しているわけではなく、Rust上でより忠実に表現するための改善も含めています。
 
-## 3. P0：トランザクションの失敗境界が間違っている
-
-最優先で修正
-
-DMMFそのものというより、DMMFのWorkflowとEffectの分離を正しく実現するための基礎部分です。
-
-[`contexts/bookkeeping/postgres/src/create_purchase.rs:80–95`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/bookkeeping/postgres/src/create_purchase.rs#L80-L95) に次の構造があります。
-
-```
-.transaction::<
-    Result<_, application::CreatePurchaseWorkflowError<_>>,
-    DieselError,
-    _,
->(async |conn| {
-    let mut operations = PgCreatePurchaseOperations { conn };
-    Ok(application::create_purchase(
-        &mut operations,
-        command,
-    ).await)
-})
-```
-
-これはトランザクションにとって次のような意味になります。
-
-```
-Ok(Ok(value))  // Commit
-Ok(Err(error)) // Commit
-Err(error)     // Rollback
-```
-
-Workflowが失敗しても、外側の `Result` が `Ok` なので、トランザクションはCommitされ得ます。
-
-同様の形が以下にもあります。
-
-- [`post_purchase.rs:54–69`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/bookkeeping/postgres/src/post_purchase.rs#L54-L69)
-- [`close_period.rs:64–85`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/bookkeeping/postgres/src/close_period.rs#L64-L85)
-
-DB自体がエラー状態になった場合は別ですが、業務エラーによる `Err` をトランザクション失敗として扱えない構造になっています。
-
-### 理想形
-
-Transaction Runnerの失敗経路とWorkflowの失敗経路を一致させます。
-
-```
-enum TransactionError<E> {
-    Database(diesel::result::Error),
-    Workflow(E),
-}
-
-// From<DieselError> の実装などを用意
-
-conn.transaction::<_, TransactionError<_>, _>(
-    async |conn| {
-        let mut operations = PgOperations { conn };
-
-        create_purchase(&mut operations, command)
-            .await
-            .map_err(TransactionError::Workflow)
-    },
-)
-.await
-```
-
-重要なのは、Workflowの失敗がTransaction Runnerの `Err` として伝播することです。
-
-一方、[`purchase_create_and_post.rs:55–65`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/bookkeeping/postgres/src/purchase_create_and_post.rs#L55-L65) や `correct_purchase.rs` は、失敗を外側へ伝播させています。
-
-その形へ統一するのが適切です。
-
-DMMF第6章 §6.5、第12章 §12.1・§12.6に関連します。
-
-## 4. P1：Domain ModelがBCによって著しく違う
+## 3. P1：Domain ModelがBCによって著しく違う
 
 これは今回のレビューで最も重要な、純粋なDMMFの問題だと考えています。
 
@@ -171,83 +97,7 @@ pub struct DraftPurchase { /* private fields */ }
 
 それぞれ意味を区別し、重要な不変条件を構築時に検査しています。
 
-しかし、それ以外のBCでは状況が違います。
-
-[`contexts/catalog/application/src/create_product.rs`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/catalog/application/src/create_product.rs#L7-L32)
-
-```
-pub struct CreateConceptDecision {
-    pub actor_id: String,
-    pub household_id: String,
-    pub name: String,
-    pub normalized_name: String,
-    pub category_id: Option<String>,
-}
-```
-
-[`contexts/policy/application/src/budget.rs`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/policy/application/src/budget.rs)
-
-```
-pub struct Budget {
-    pub id: String,
-    pub household_id: String,
-    pub category_id: Option<String>,
-    pub name: String,
-    pub amount_yen: i64,
-    // ...
-}
-```
-
-これらはDecision関数によって一度検証されますが、結果の型自体はその検証済み状態を保証しません。
-
-例えば、`CreateConceptDecision` は公開フィールドから任意の値で直接構築できます。
-
-DMMFで重要なのは単に `validate()` を呼ぶことではありません。
-
-検証済みという事実を型として表現し、その保証が後続の処理にも保持されることです。
-
-### 推奨する改善
-
-例えばCatalogでは、次のような段階を持たせます。
-
-```
-pub struct CreateConceptCommand {
-    pub actor_id: String,
-    pub household_id: String,
-    pub name: String,
-    pub category_id: Option<String>,
-}
-
-pub struct ValidatedCreateConcept {
-    actor_id: ActorId,
-    household_id: HouseholdId,
-    name: ConceptName,
-    category_id: Option<CategoryId>,
-}
-
-pub struct CreateConceptDecision {
-    concept: NewConcept,
-    events: Vec<CatalogEvent>,
-}
-```
-
-処理は次のようになります。
-
-```
-CreateConceptCommand
-    ↓ validate
-ValidatedCreateConcept
-    ↓ decide
-CreateConceptDecision
-    ↓ persist
-CreatedConcept
-```
-
-ここで重要なのは、`ValidatedCreateConcept` と `NewConcept` を好きな場所で直接構築できないようにすることです。
-
-Rustでは非公開フィールド、Smart Constructor、モジュール可視性を使って制御できます。
-
-Bookkeepingにも [`create_purchase.rs`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/bookkeeping/application/src/create_purchase.rs#L83-L211) のように `String` や `i64` を大量に公開しているDecisionが残っています。Bookkeeping全体がすでに完成しているわけでもありません。
+Bookkeepingにも[`create_purchase.rs`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/bookkeeping/application/src/create_purchase.rs#L83-L211)のように`String`や`i64`を公開するDecisionが残っています。各Bounded Contextについて、識別子の取り違え、不変条件、検証済み状態、業務上の意味を型として保証できる値を引き続き確認する必要があります。
 
 DMMFの第4章 §4.3、第5章 §5.3、第6章 §6.1、第7章 §7.2に対応する改善です。
 
@@ -255,49 +105,9 @@ DMMFの第4章 §4.3、第5章 §5.3、第6章 §6.1、第7章 §7.2に対応す
 
 型を増やす基準は、識別子の取り違え、不変条件、検証済み状態、業務上の意味を静的に保証できるかどうかです。
 
-## 5. P1：不正な状態がまだ型として表現可能
+## 4. P1：不正な状態がまだ型として表現可能
 
 Bookkeepingの中でも、より強くDMMFへ寄せられます。
-
-### CorrectionJournalLineの排他的な参照先
-
-[`correct_purchase.rs:74–81`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/bookkeeping/application/src/correct_purchase.rs#L74-L81)
-
-```
-pub struct CorrectionJournalLine {
-    pub line_no: u32,
-    pub side: Side,
-    pub pool_id: Option<PoolId>,
-    pub account_id: Option<AccountId>,
-    pub amount: PositiveYen,
-    pub memo: String,
-}
-```
-
-この構造では、PoolとAccountの両方が存在する状態、どちらも存在しない状態を表現できます。
-
-一方、同じBookkeepingの [`purchase.rs`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/bookkeeping/domain/src/purchase.rs#L499-L503) には、すでに理想的な型があります。
-
-```
-pub enum PostingTarget {
-    Pool(PoolId),
-    Account(AccountId),
-}
-```
-
-これは単純に統一すべきです。
-
-```
-pub struct CorrectionJournalLine {
-    line_no: JournalLineNo,
-    side: Side,
-    target: PostingTarget,
-    amount: PositiveYen,
-    memo: CorrectionMemo,
-}
-```
-
-同様に、`CorrectionFundingRule` の `owner_member_id: Option<String>` と `settlement_policy: Option<...>` の組み合わせも、既存の `MemberFundingBasis` のようなenumで表すほうが整合します。
 
 ### 状態をフラグで渡す設計
 
@@ -322,7 +132,7 @@ AccountingPeriodにも `OpenPeriod` と `ClosedPeriod` を分離する余地が�
 
 根拠はDMMF第6章 §6.3–6.4、第7章 §7.2–7.3です。
 
-## 6. P1：Bounded Contextの境界がディレクトリ上の区別にとどまっている
+## 5. P1：Bounded Contextの境界がディレクトリ上の区別にとどまっている
 
 現在の構成は、
 
@@ -339,27 +149,6 @@ contexts/
 となっています。
 
 BCを主軸にしたこと自体は良いです。しかし、技術的な依存関係を見ると、まだBCとしての自律性が十分ではありません。
-
-### BookkeepingからCatalogとPolicyのDB構造を直接知っている
-
-[`purchase_command_context.rs:77–81`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/bookkeeping/postgres/src/purchase_command_context.rs#L77-L81) では、BookkeepingのPostgreSQL実装が次のテーブルを直接操作します。
-
-```
-allocation_defaults
-allocation_rule_weights
-allocation_rules
-households
-product_concepts
-product_variants
-```
-
-このうち、ProductとAllocation Ruleは別BCとしてディレクトリ分割されています。
-
-共有PostgreSQL自体は問題ではありません。問題なのは、別BCの内部モデルとデータ構造に直接依存していることです。
-
-この場合、Catalogの永続化設計を変えるとBookkeepingも修正しなければならなくなります。
-
-DMMF第3章 §3.3、第12章 §12.3が目指すBCの自律性と緊張関係があります。
 
 ### cross-context/postgresに更新処理が存在する
 
@@ -385,118 +174,7 @@ Household、Catalog、Policy、Bookkeepingの境界を一度再検討します�
 
 これは小さなファイル移動ではなく、設計上の重要な意思決定です。
 
-## 7. P1：Workflowがすべての業務操作を所有していない
-
-こちらも気になる点です。
-
-### CatalogではDecisionをGraphQLとPostgreSQLが直接呼んでいる
-
-[`catalog_mutations.rs:449–453`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/adapters/graphql/src/catalog_mutations.rs#L449-L453) は、
-
-```
-let decision = decide_create_concept(command.clone())?;
-
-persist_create_concept(pool, command).await
-```
-
-という構造です。
-
-さらに、[`catalog/postgres/src/create_product.rs:47–56`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/catalog/postgres/src/create_product.rs#L47-L56) でも `decide_create_concept` を呼んでいます。
-
-同じDecisionを複数の場所で実行しています。
-
-純粋なDecisionなので、計算そのものが二重になることが直接的な問題なのではありません。
-
-業務操作の実行順序と依存関係を、単一のWorkflowが所有していないことが問題です。
-
-理想的には次の形です。
-
-```
-GraphQL Resolver
-    ↓ Decode DTO
-CreateConcept Command
-    ↓
-Catalog Application Workflow
-    ├─ Validate
-    ├─ Load required facts
-    ├─ Decide
-    └─ Persist
-    ↓
-Workflow Result
-    ↓ Encode DTO
-GraphQL Response
-```
-
-`decide_create_concept` はDomain側の公開された純粋関数でも構いません。しかし、その関数を使ってCreateConceptという業務操作を実行する責任はWorkflowへ集中させたいです。
-
-### Bookkeepingにも一部同じ問題がある
-
-[`purchase_mutations.rs:574–648`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/adapters/graphql/src/purchase_mutations.rs#L574-L648) の `post_purchase` では、GraphQL Resolverが直接、
-
-- Household IDのロード
-- Membershipチェック
-- Idempotencyチェック
-- Purchase Projectionのロード
-
-を実行してから、Workflowを呼び出します。
-
-このような業務的な前提条件は、Workflow側で一貫して扱うべきです。
-
-GraphQL側は入力のデコード、認証済みActorの取得、Commandへの変換、結果のDTO化を責務にするのが望ましいです。
-
-DMMF第3章 §3.4、第7章 §7.4、第9章 §9.6に対応します。
-
-## 8. P2：Domain EventとGraphQL更新通知の表現が混在している
-
-Bookkeepingでは、`PurchaseEvent::Posted` のような型付きイベントがDecisionから返されています。これは良いです。
-
-一方、[`catalog/application/src/tag.rs`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/catalog/application/src/tag.rs#L20-L27) では、
-
-```
-pub struct CreateTagDecision {
-    // ...
-    pub event_type: &'static str,
-    pub changed_fields: Vec<String>,
-}
-```
-
-という表現になっています。
-
-さらに [`policy/application/src/set_allocation_rule.rs`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/policy/application/src/set_allocation_rule.rs#L10-L55) の `AllocationRuleTarget::changed_field()` は `"categoryId"` などのフィールド名を返しています。
-
-これはドメインイベントの意味と、GraphQLやUIの差分通知契約が近づきすぎています。
-
-`TagCreated` という業務上の事実と、`changed_fields = ["name"]` という更新通知の表現は別物です。
-
-### 推奨モデル
-
-```
-pub enum CatalogEvent {
-    TagCreated(TagCreated),
-    TagRenamed(TagRenamed),
-    TagArchived(TagArchived),
-}
-```
-
-そして外側で、
-
-```
-CatalogEvent
-   ├─> GraphQL subscription用Change DTO
-   └─> BC間公開Event DTO（必要な場合）
-```
-
-に変換するのが自然です。
-
-現在の `household_events` をGraphQLの更新通知として利用すること自体は否定しません。既存の設計文書も、それをBC間のOutboxとは区別しています。
-
-ただし、その契約に合わせてDomain Decisionを設計しないほうが美しいです。
-
-これは第3章 §3.2–3.4、第11章 §11.3、第13章 §13.3.6に対応します。
-
-なお、Transactional OutboxやイベントソーシングはDMMFの必須要件ではありません。実際にBC間の非同期イベント配送が必要になった場合に、外部契約と配送保証を別途設計するものです。
-
-## 9. P2：Errorの意味が境界を越えると弱くなる
+## 6. P2：Errorの意味が境界を越えると弱くなる
 
 [`household/application/src/ports.rs`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/household/application/src/ports.rs) には、
 
@@ -548,7 +226,7 @@ DMMF第10章 §10.1–10.5は、すべてのエラーをひとつの型に統一
 
 重要なのは、業務上意味のある失敗を型で表し、必要な段階まで意味を保持することです。
 
-## 10. P2：DomainとApplicationの責務をもう一段明確にしたい
+## 7. P2：DomainとApplicationの責務をもう一段明確にしたい
 
 現在は `bookkeeping/domain` と `bookkeeping/application` に純粋なロジックが分散しています。
 
@@ -581,7 +259,7 @@ Application
 
 一方、純粋関数の内部でローカル変数やVecを変更することまで禁止する必要はありません。
 
-## 11. P2：Operations traitをもっと局所的なCapabilityとして考える
+## 8. P2：Operations traitをもっと局所的なCapabilityとして考える
 
 [`create_and_post_purchase.rs`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/bookkeeping/application/src/create_and_post_purchase.rs#L123-L169) の `CreateAndPostPurchaseOperations` は、複数のI/O操作を定義しています。
 
@@ -604,7 +282,7 @@ PersistPurchaseDecision
 
 `trait Repository` を多数作るより、業務操作が実際に必要とする能力を名前付きで表すことのほうが重要です。
 
-## 12. 私が推奨する最終的なディレクトリ構造
+## 9. 私が推奨する最終的なディレクトリ構造
 
 変更コストを無視して理想形を追うなら、現行の構造を少し整理して次の方向へ進めたいです。
 
@@ -696,7 +374,7 @@ DMMFらしさの本質はディレクトリ数ではなく、次の依存構造�
 
 特にSmart Constructorは、後からフィールドや `Default` 実装が追加されたときに不正な構築経路が生まれないことまで確認したいです。
 
-## 13. 変更する順番
+## 10. 変更する順番
 
 私なら、今回の改善を次の順番で行います。
 
@@ -736,7 +414,7 @@ Domainの意味を保ちながら、DB Row・GraphQL型・更新通知・外部�
 
 以後、実装の追加によってDMMFの原則が徐々に崩れていかないようにする。
 
-## 14. 今の設計方針文書も更新したほうがよい
+## 11. 今の設計方針文書も更新したほうがよい
 
 [`docs/decisions/rust.md`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/docs/decisions/rust.md) は、今回の実装よりも厳密なDMMF寄りの方針をすでに表明しています。
 
@@ -761,11 +439,8 @@ Domainの意味を保ちながら、DB Row・GraphQL型・更新通知・外部�
 | 目指すDMMFの状態 | 現在の実装 |
 | ------------------- | ------------------------------------- |
 | 意味を保証するDomain型 | 一部BCではStringと公開structが中心 |
-| Workflowが業務操作を所有 | GraphQL・Postgresに分散する操作がある |
-| BCが内部モデルを所有 | 他BCのDB構造への直接依存がある |
-| 型によって不正状態を排除 | Optionの組み合わせや状態フラグが残る |
-| Domain Eventを値として返す | 一部で更新通知用の文字列がDecisionに混入 |
-| Effectの成功・失敗を正確に合成 | 一部のTransaction RunnerがWorkflow失敗を包み込む |
+| BCが内部モデルを所有 | cross-contextに他Context所有データを更新する処理が残る |
+| 型によって不正状態を排除 | 訂正対象の状態を含む状態フラグが残る |
 
 いちばん優先したいのは、「Pure Decisionを増やす」ことではなく、「そのDecisionが受け取る値と返す値が、型として意味を保証する」状態へ進めることです。
 

@@ -272,3 +272,83 @@ pub fn decide_record_funding(
         },
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        FundingAccount, FundingAccountKind, FundingPoolKind, PostingSide, RecordFundingCommand,
+        decide_record_funding,
+    };
+    use bookkeeping_domain::{AccountingPeriod, YearMonth};
+
+    fn command() -> RecordFundingCommand {
+        RecordFundingCommand {
+            actor_id: "actor-1".into(),
+            member_id: "member-1".into(),
+            pool_id: "pool-1".into(),
+            amount_yen: 12_345,
+            accounting_period: AccountingPeriod::open(YearMonth::new(2026, 10).unwrap(), 1)
+                .unwrap(),
+            source_account: None,
+            destination_account: None,
+        }
+    }
+
+    fn assert_balanced_and_preserves_amount(decision: &super::RecordFundingDecision) {
+        let debits = decision
+            .journal_lines
+            .iter()
+            .filter(|line| line.side == PostingSide::Debit)
+            .map(|line| line.amount_yen)
+            .sum::<i64>();
+        let credits = decision
+            .journal_lines
+            .iter()
+            .filter(|line| line.side == PostingSide::Credit)
+            .map(|line| line.amount_yen)
+            .sum::<i64>();
+        let journal_pairs = i64::try_from(decision.journal_lines.len() / 2).unwrap();
+
+        assert_eq!(decision.amount_yen, 12_345);
+        assert_eq!(debits, credits);
+        assert_eq!(debits, decision.amount_yen * journal_pairs);
+        assert!(
+            decision
+                .journal_lines
+                .iter()
+                .all(|line| line.amount_yen == decision.amount_yen)
+        );
+    }
+
+    #[test]
+    fn funding_without_account_movement_balances_and_preserves_amount() {
+        let decision = decide_record_funding(command()).unwrap();
+
+        assert_eq!(decision.journal_lines.len(), 2);
+        assert_balanced_and_preserves_amount(&decision);
+    }
+
+    #[test]
+    fn funding_with_account_movement_balances_and_preserves_amount() {
+        let mut command = command();
+        command.source_account = Some(FundingAccount {
+            id: "member-account".into(),
+            pool_id: None,
+            kind: FundingAccountKind::Bank,
+            pool_kind: Some(FundingPoolKind::Personal),
+            personal_owner_id: Some("member-1".into()),
+        });
+        command.destination_account = Some(FundingAccount {
+            id: "shared-account".into(),
+            pool_id: Some("pool-1".into()),
+            kind: FundingAccountKind::Bank,
+            pool_kind: Some(FundingPoolKind::Shared),
+            personal_owner_id: None,
+        });
+
+        let decision = decide_record_funding(command).unwrap();
+
+        assert_eq!(decision.journal_lines.len(), 4);
+        assert_balanced_and_preserves_amount(&decision);
+    }
+}

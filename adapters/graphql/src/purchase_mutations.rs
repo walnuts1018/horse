@@ -16,7 +16,6 @@ use cross_context_postgres::{
     purchase_create_and_post,
 };
 use horse_postgres_common::PgPool;
-use household_postgres::household_access as postgres_household_access;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -586,92 +585,73 @@ pub async fn post_purchase(
     if input.expected_revision < 0 || input.idempotency_key.is_empty() {
         return Ok(bad_input().into());
     }
-    let household_id = match purchase_command_result::load_purchase_household_id(
-        ctx.data::<PgPool>()?,
-        purchase_id,
-    )
-    .await
-    {
-        Ok(Some(id)) => id,
-        Ok(None) => return Ok(not_found().into()),
-        Err(error) => return Err(crate::internal_error(error)),
-    };
-    match postgres_household_access::is_active_member(ctx.data::<PgPool>()?, household_id, actor.0)
-        .await
-    {
-        Ok(true) => {}
-        Ok(false) => return Ok(not_found().into()),
-        Err(error) => return Err(crate::internal_error(error)),
-    }
     let fingerprint = post_fingerprint(&purchase_id.to_string(), input.expected_revision)?;
-    match postgres_post::find_idempotent_post_purchase(
-        ctx.data::<PgPool>()?,
-        household_id,
-        &input.idempotency_key,
-        fingerprint,
-    )
-    .await
-    {
-        Ok(Some(value)) => {
-            return Ok(Box::new(PostPurchaseSuccess {
-                result: purchase_result(ctx.data::<PgPool>()?, household_id, &value.purchase_id)
-                    .await?,
-            })
-            .into());
-        }
-        Ok(None) => {}
-        Err(error) => match post_user_error(&error) {
-            Some(error) => return Ok(error.into()),
-            None => return Err(crate::internal_error(error)),
-        },
-    }
-    let projection = purchase_command_result::load_purchase_command_result(
-        ctx.data::<PgPool>()?,
-        household_id,
-        purchase_id,
-    )
-    .await
-    .map_err(crate::internal_error)?;
-    let result = cross_context_postgres::reference_data::post_purchase_workflow(
-        ctx.data::<PgPool>()?,
-        bookkeeping_application::post_purchase::PostPurchaseWorkflowCommand {
-            household_id: household_id.to_string(),
+    let pool = ctx.data::<PgPool>()?;
+    let result = cross_context_postgres::post_purchase_entry::post_purchase_entry(
+        pool,
+        bookkeeping_application::post_purchase_entry::PostPurchaseEntryCommand {
             actor_id: actor.0.to_string(),
             purchase_id: purchase_id.to_string(),
             expected_revision: input.expected_revision as u64,
-            ledger_description: projection.merchant,
             idempotency_key: input.idempotency_key,
             request_fingerprint: fingerprint,
         },
     )
     .await;
     match result {
-        Ok(value) => Ok(Box::new(PostPurchaseSuccess {
-            result: purchase_result(ctx.data::<PgPool>()?, household_id, &value.purchase_id)
-                .await?,
-        })
-        .into()),
+        Ok(output) => match output.result {
+            bookkeeping_application::post_purchase_entry::PostPurchaseEntryResult::NotFound => {
+                Ok(not_found().into())
+            }
+            bookkeeping_application::post_purchase_entry::PostPurchaseEntryResult::AlreadyPosted(
+                value,
+            )
+            | bookkeeping_application::post_purchase_entry::PostPurchaseEntryResult::Posted(
+                value,
+            ) => {
+                let household_id = output
+                    .household_id
+                    .ok_or_else(|| crate::internal_error("purchase household was not loaded"))?;
+                Ok(Box::new(PostPurchaseSuccess {
+                    result: purchase_result(pool, household_id, &value.purchase_id).await?,
+                })
+                .into())
+            }
+        },
         Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Decision(_)) => {
             Ok(conflict().into())
         }
         Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Operations(
-            postgres_post::PostPurchaseWorkflowAdapterError::Load(error),
-        )) => match post_load_user_error(&error) {
-            Some(error) => Ok(error.into()),
-            None => Err(crate::internal_error(error)),
+            error,
+        )) => match error {
+            cross_context_postgres::post_purchase_entry::PostPurchaseEntryAdapterError::HouseholdId(error)
+            | cross_context_postgres::post_purchase_entry::PostPurchaseEntryAdapterError::Projection(error) => Err(crate::internal_error(error)),
+            cross_context_postgres::post_purchase_entry::PostPurchaseEntryAdapterError::Access(error) => Err(crate::internal_error(error)),
+            cross_context_postgres::post_purchase_entry::PostPurchaseEntryAdapterError::Idempotency(error) => match post_user_error(&error) {
+                Some(error) => Ok(error.into()),
+                None => Err(crate::internal_error(error)),
+            },
+            cross_context_postgres::post_purchase_entry::PostPurchaseEntryAdapterError::Post(error) => match error {
+                postgres_post::PostPurchaseWorkflowAdapterError::Load(error) => {
+                    match post_load_user_error(&error) {
+                        Some(error) => Ok(error.into()),
+                        None => Err(crate::internal_error(error)),
+                    }
+                }
+                postgres_post::PostPurchaseWorkflowAdapterError::Persistence(error) => {
+                    match post_user_error(&error) {
+                        Some(error) => Ok(error.into()),
+                        None => Err(crate::internal_error(error)),
+                    }
+                }
+                postgres_post::PostPurchaseWorkflowAdapterError::Pool(error) => {
+                    Err(crate::internal_error(error))
+                }
+                postgres_post::PostPurchaseWorkflowAdapterError::Database(error) => {
+                    Err(crate::internal_error(error))
+                }
+            },
         },
-        Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Operations(
-            postgres_post::PostPurchaseWorkflowAdapterError::Persistence(error),
-        )) => match post_user_error(&error) {
-            Some(error) => Ok(error.into()),
-            None => Err(crate::internal_error(error)),
-        },
-        Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Operations(
-            postgres_post::PostPurchaseWorkflowAdapterError::Pool(error),
-        )) => Err(crate::internal_error(error)),
-        Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Operations(
-            postgres_post::PostPurchaseWorkflowAdapterError::Database(error),
-        )) => Err(crate::internal_error(error)),
     }
 }
 

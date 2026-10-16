@@ -14,6 +14,9 @@ use uuid::Uuid;
 
 use crate::schema::public;
 
+pub type FundingShare = (Uuid, i64);
+pub type FundingRuleSnapshot = (Option<Uuid>, Option<String>, Vec<FundingShare>);
+
 pub trait PostPurchaseReferenceData: Send {
     fn load_funding_rule(
         &mut self,
@@ -21,9 +24,7 @@ pub trait PostPurchaseReferenceData: Send {
         household_id: Uuid,
         pool_id: Uuid,
         version: i32,
-    ) -> impl Future<
-        Output = Result<Option<(Option<Uuid>, Option<String>, Vec<(Uuid, i64)>)>, DieselError>,
-    > + Send;
+    ) -> impl Future<Output = Result<Option<FundingRuleSnapshot>, DieselError>> + Send;
 }
 
 #[derive(Debug)]

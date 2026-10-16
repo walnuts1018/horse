@@ -559,20 +559,40 @@ async fn prepare_statement_transfer<E: EvidenceOperations + ?Sized>(
     let document_id = parse_uuid(document_id, "source_document_id")?;
     let source_account_id = parse_uuid(source_account_id, "source_account_id")?;
     let source_kind = evidence
-        .source_kind(conn, household_id, document_id, true)
+        .source_kind(
+            conn,
+            crate::evidence_port::SourceDocumentQuery {
+                household_id,
+                document_id,
+                lock: true,
+            },
+        )
         .await?
         .ok_or(RecordTransferPersistenceError::SourceDocumentNotFound)?;
     if source_kind != "bank" {
         return Err(RecordTransferPersistenceError::SourceIsNotBankStatement);
     }
     let latest_status = evidence
-        .latest_confirmation_status(conn, household_id, document_id, reference)
+        .latest_confirmation_status(
+            conn,
+            crate::evidence_port::SourceReferenceQuery {
+                household_id,
+                document_id,
+                source_reference: reference,
+            },
+        )
         .await?;
     if latest_status.as_deref() == Some("confirmed") {
         return Err(RecordTransferPersistenceError::StatementAlreadyConfirmed);
     }
     let result = evidence
-        .latest_extraction(conn, household_id, document_id)
+        .latest_extraction(
+            conn,
+            crate::evidence_port::ExtractionQuery {
+                household_id,
+                document_id,
+            },
+        )
         .await?
         .ok_or(RecordTransferPersistenceError::StatementExtractionUnavailable)?;
     let rows = result
@@ -663,7 +683,14 @@ async fn validate_statement_replay<E: EvidenceOperations + ?Sized>(
     };
     let document_id = parse_uuid(document_id, "source_document_id")?;
     let confirmation = evidence
-        .latest_confirmation(conn, household_id, document_id, reference)
+        .latest_confirmation(
+            conn,
+            crate::evidence_port::SourceReferenceQuery {
+                household_id,
+                document_id,
+                source_reference: reference,
+            },
+        )
         .await?;
     if !confirmation.is_some_and(|confirmation| {
         confirmation.status == "confirmed"
@@ -686,14 +713,16 @@ async fn insert_statement_confirmation<E: EvidenceOperations + ?Sized>(
     evidence
         .insert_confirmation(
             conn,
-            household_id,
-            confirmation.source_document_id,
-            &confirmation.source_reference,
-            "transfer",
-            transfer_id,
-            actor_id,
-            format!("transfer-confirmation:{}", Uuid::now_v7()),
-            None,
+            crate::evidence_port::InsertConfirmation {
+                household_id,
+                document_id: confirmation.source_document_id,
+                source_reference: confirmation.source_reference.to_owned(),
+                entity_kind: "transfer".to_owned(),
+                entity_id: transfer_id,
+                changed_by: actor_id,
+                idempotency_key: format!("transfer-confirmation:{}", Uuid::now_v7()),
+                changed_at: None,
+            },
         )
         .await
         .map_err(RecordTransferPersistenceError::from)

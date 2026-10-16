@@ -1,9 +1,7 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use catalog_application::{
-    create_product::{
-        CreateConceptCommand, CreateVariantCommand, decide_create_concept, decide_create_variant,
-    },
+    create_product::{CreateConceptCommand, CreateVariantCommand},
     product_alias::{SetProductAliasCommand, decide_set_product_alias},
     tag::{CreateTagCommand, SetTagArchivedCommand, Tag as DomainTag, UpdateTagCommand},
 };
@@ -446,22 +444,20 @@ pub async fn create_product_concept(
         name: input.name,
         category_id,
     };
-    let decision = match decide_create_concept(command.clone()) {
-        Ok(decision) => decision,
-        Err(_) => return Ok(create_product_concept_error(MutationErrorCode::BadInput).into()),
-    };
-    match postgres_product::persist_create_concept(ctx.data::<PgPool>()?, command).await {
-        Ok(id) => Ok(CreateProductConceptSuccess {
+    match postgres_product::create_concept(ctx.data::<PgPool>()?, command).await {
+        Ok((id, decision)) => Ok(CreateProductConceptSuccess {
             result: ProductConcept {
                 id: encode_node_id("ProductConcept", &id).map_err(crate::internal_error)?,
-                household_id: encode_node_id("Household", &decision.household_id)
+                household_id: encode_node_id("Household", decision.household_id.as_str())
                     .map_err(crate::internal_error)?,
-                name: decision.name,
-                normalized_name: decision.normalized_name,
+                name: decision.name.as_str().to_owned(),
+                normalized_name: decision.normalized_name().as_str().to_owned(),
                 category_id: decision
                     .category_id
-                    .as_deref()
-                    .map(|id| encode_node_id("Category", id).map_err(crate::internal_error))
+                    .as_ref()
+                    .map(|id| {
+                        encode_node_id("Category", id.as_str()).map_err(crate::internal_error)
+                    })
                     .transpose()?,
                 archived: false,
                 revision: 1,
@@ -498,20 +494,16 @@ pub async fn create_product_variant(
         package_size: input.package_size,
         barcode: input.barcode,
     };
-    let decision = match decide_create_variant(command.clone()) {
-        Ok(decision) => decision,
-        Err(_) => return Ok(create_product_variant_error(MutationErrorCode::BadInput).into()),
-    };
-    match postgres_product::persist_create_variant(ctx.data::<PgPool>()?, command).await {
-        Ok(id) => Ok(CreateProductVariantSuccess {
+    match postgres_product::create_variant(ctx.data::<PgPool>()?, command).await {
+        Ok((id, decision)) => Ok(CreateProductVariantSuccess {
             result: ProductVariant {
                 id: encode_node_id("ProductVariant", &id).map_err(crate::internal_error)?,
-                household_id: encode_node_id("Household", &decision.household_id)
+                household_id: encode_node_id("Household", decision.household_id.as_str())
                     .map_err(crate::internal_error)?,
-                concept_id: encode_node_id("ProductConcept", &decision.concept_id)
+                concept_id: encode_node_id("ProductConcept", decision.concept_id.as_str())
                     .map_err(crate::internal_error)?,
-                name: decision.name,
-                normalized_name: decision.normalized_name,
+                name: decision.name.as_str().to_owned(),
+                normalized_name: decision.normalized_name().as_str().to_owned(),
                 brand: decision.brand.filter(|value| !value.is_empty()),
                 package_size: decision.package_size.filter(|value| !value.is_empty()),
                 barcode: decision.barcode,

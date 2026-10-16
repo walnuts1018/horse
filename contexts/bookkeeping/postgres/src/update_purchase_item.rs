@@ -18,6 +18,9 @@ use uuid::Uuid;
 
 use crate::{PgPool, persistence_values, schema::public};
 
+pub type AllocationWeight = (Uuid, i64);
+pub type AutomaticAllocationSnapshot = (Uuid, i64, Vec<AllocationWeight>);
+
 pub trait UpdatePurchaseItemReferenceData:
     Send + crate::post_purchase_loader::PostPurchaseReferenceData
 {
@@ -26,7 +29,7 @@ pub trait UpdatePurchaseItemReferenceData:
         conn: &mut diesel_async::AsyncPgConnection,
         household_id: Uuid,
         version: i64,
-    ) -> impl Future<Output = Result<Vec<(Uuid, i64)>, DieselError>> + Send;
+    ) -> impl Future<Output = Result<Vec<AllocationWeight>, DieselError>> + Send;
 
     fn load_automatic_allocation(
         &mut self,
@@ -35,7 +38,7 @@ pub trait UpdatePurchaseItemReferenceData:
         category_id: Option<Uuid>,
         variant_id: Option<Uuid>,
         merchant: &str,
-    ) -> impl Future<Output = Result<Option<(Uuid, i64, Vec<(Uuid, i64)>)>, DieselError>> + Send;
+    ) -> impl Future<Output = Result<Option<AutomaticAllocationSnapshot>, DieselError>> + Send;
 
     fn active_category(
         &mut self,

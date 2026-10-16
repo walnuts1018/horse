@@ -10,3 +10,7 @@ diesel-async = { workspace = true }
 evidence-application = { path = "../../contexts/evidence/application" }
 horse-household-change = { path = "../household-change" }
 uuid = { workspace = true }
+
+[dev-dependencies]
+horse-test-infra = { path = "../test-infra" }
+tokio = { workspace = true }

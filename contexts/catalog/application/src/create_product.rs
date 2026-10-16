@@ -1,6 +1,54 @@
 use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
 
+macro_rules! product_id {
+    ($name:ident) => {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub struct $name(String);
+
+        impl $name {
+            fn new(value: String) -> Self {
+                Self(value)
+            }
+
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+    };
+}
+
+product_id!(ActorId);
+product_id!(HouseholdId);
+product_id!(CategoryId);
+product_id!(ConceptId);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProductName(String);
+
+impl ProductName {
+    fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NormalizedProductName(String);
+
+impl NormalizedProductName {
+    fn from_name(name: &ProductName) -> Self {
+        Self(normalize_text(name.as_str()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateConceptCommand {
     pub actor_id: String,
@@ -11,14 +59,17 @@ pub struct CreateConceptCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateConceptDecision {
-    pub actor_id: String,
-    pub household_id: String,
-    pub name: String,
-    pub normalized_name: String,
-    pub category_id: Option<String>,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
+    pub name: ProductName,
+    pub category_id: Option<CategoryId>,
 }
 
 impl CreateConceptDecision {
+    pub fn normalized_name(&self) -> NormalizedProductName {
+        NormalizedProductName::from_name(&self.name)
+    }
+
     pub fn ui_change(&self) -> UiChangeDescriptor {
         UiChangeDescriptor::new(
             "product.concept.created",
@@ -41,17 +92,20 @@ pub struct CreateVariantCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateVariantDecision {
-    pub actor_id: String,
-    pub household_id: String,
-    pub concept_id: String,
-    pub name: String,
-    pub normalized_name: String,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
+    pub concept_id: ConceptId,
+    pub name: ProductName,
     pub brand: Option<String>,
     pub package_size: Option<String>,
     pub barcode: Option<String>,
 }
 
 impl CreateVariantDecision {
+    pub fn normalized_name(&self) -> NormalizedProductName {
+        NormalizedProductName::from_name(&self.name)
+    }
+
     pub fn ui_change(&self) -> UiChangeDescriptor {
         UiChangeDescriptor::new(
             "product.variant.created",
@@ -74,31 +128,41 @@ pub enum CreateProductError {
 pub fn decide_create_concept(
     command: CreateConceptCommand,
 ) -> Result<CreateConceptDecision, CreateProductError> {
-    validate_id(&command.actor_id).map_err(|_| CreateProductError::InvalidActorId)?;
-    validate_id(&command.household_id).map_err(|_| CreateProductError::InvalidHouseholdId)?;
-    if command
+    let actor_id = validated_id(command.actor_id)
+        .map(ActorId::new)
+        .map_err(|_| CreateProductError::InvalidActorId)?;
+    let household_id = validated_id(command.household_id)
+        .map(HouseholdId::new)
+        .map_err(|_| CreateProductError::InvalidHouseholdId)?;
+    let category_id = command
         .category_id
-        .as_deref()
-        .is_some_and(|id| validate_id(id).is_err())
-    {
-        return Err(CreateProductError::InvalidCategoryId);
-    }
-    let name = validated_name(command.name)?;
+        .map(|id| {
+            validated_id(id)
+                .map(CategoryId::new)
+                .map_err(|_| CreateProductError::InvalidCategoryId)
+        })
+        .transpose()?;
+    let name = ProductName::new(validated_name(command.name)?);
     Ok(CreateConceptDecision {
-        actor_id: command.actor_id,
-        household_id: command.household_id,
-        normalized_name: normalize_text(&name),
+        actor_id,
+        household_id,
         name,
-        category_id: command.category_id,
+        category_id,
     })
 }
 
 pub fn decide_create_variant(
     command: CreateVariantCommand,
 ) -> Result<CreateVariantDecision, CreateProductError> {
-    validate_id(&command.actor_id).map_err(|_| CreateProductError::InvalidActorId)?;
-    validate_id(&command.household_id).map_err(|_| CreateProductError::InvalidHouseholdId)?;
-    validate_id(&command.concept_id).map_err(|_| CreateProductError::InvalidConceptId)?;
+    let actor_id = validated_id(command.actor_id)
+        .map(ActorId::new)
+        .map_err(|_| CreateProductError::InvalidActorId)?;
+    let household_id = validated_id(command.household_id)
+        .map(HouseholdId::new)
+        .map_err(|_| CreateProductError::InvalidHouseholdId)?;
+    let concept_id = validated_id(command.concept_id)
+        .map(ConceptId::new)
+        .map_err(|_| CreateProductError::InvalidConceptId)?;
     if command
         .barcode
         .as_deref()
@@ -106,17 +170,60 @@ pub fn decide_create_variant(
     {
         return Err(CreateProductError::InvalidBarcode);
     }
-    let name = validated_name(command.name)?;
+    let name = ProductName::new(validated_name(command.name)?);
     Ok(CreateVariantDecision {
-        actor_id: command.actor_id,
-        household_id: command.household_id,
-        concept_id: command.concept_id,
-        normalized_name: normalize_text(&name),
+        actor_id,
+        household_id,
+        concept_id,
         name,
         brand: trim_optional(command.brand),
         package_size: trim_optional(command.package_size),
         barcode: command.barcode.map(|barcode| barcode.trim().to_owned()),
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CreateProductWorkflowError<E> {
+    Decision(CreateProductError),
+    Operations(E),
+}
+
+pub trait CreateProductOperations {
+    type Error;
+
+    async fn persist_concept(
+        &mut self,
+        decision: CreateConceptDecision,
+    ) -> Result<String, Self::Error>;
+
+    async fn persist_variant(
+        &mut self,
+        decision: CreateVariantDecision,
+    ) -> Result<String, Self::Error>;
+}
+
+pub async fn create_concept<O: CreateProductOperations>(
+    operations: &mut O,
+    command: CreateConceptCommand,
+) -> Result<(String, CreateConceptDecision), CreateProductWorkflowError<O::Error>> {
+    let decision = decide_create_concept(command).map_err(CreateProductWorkflowError::Decision)?;
+    let id = operations
+        .persist_concept(decision.clone())
+        .await
+        .map_err(CreateProductWorkflowError::Operations)?;
+    Ok((id, decision))
+}
+
+pub async fn create_variant<O: CreateProductOperations>(
+    operations: &mut O,
+    command: CreateVariantCommand,
+) -> Result<(String, CreateVariantDecision), CreateProductWorkflowError<O::Error>> {
+    let decision = decide_create_variant(command).map_err(CreateProductWorkflowError::Decision)?;
+    let id = operations
+        .persist_variant(decision.clone())
+        .await
+        .map_err(CreateProductWorkflowError::Operations)?;
+    Ok((id, decision))
 }
 
 fn validated_name(value: String) -> Result<String, CreateProductError> {
@@ -139,6 +246,7 @@ fn trim_optional(value: Option<String>) -> Option<String> {
     value.map(|value| value.trim().to_owned())
 }
 
-fn validate_id(value: &str) -> Result<(), ()> {
-    Uuid::parse_str(value).map(|_| ()).map_err(|_| ())
+fn validated_id(value: String) -> Result<String, ()> {
+    Uuid::parse_str(&value).map_err(|_| ())?;
+    Ok(value)
 }

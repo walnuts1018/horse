@@ -16,6 +16,7 @@ pub mod node_query;
 pub mod policy_data;
 pub mod policy_settlement;
 pub mod pool_mutations;
+pub mod post_purchase_entry;
 pub mod purchase_command_context;
 pub mod purchase_command_result;
 pub mod purchase_create_and_post;

@@ -24,13 +24,12 @@ pub struct CreateTagDecision {
     pub tag_id: String,
     pub name: String,
     pub revision: i64,
-    pub event_type: &'static str,
-    pub changed_fields: Vec<String>,
+    pub event: TagEvent,
 }
 
 impl CreateTagDecision {
     pub fn ui_change(&self) -> UiChangeDescriptor {
-        UiChangeDescriptor::new(self.event_type, "tag", self.changed_fields.clone())
+        tag_ui_change(&self.event)
     }
 }
 
@@ -54,13 +53,29 @@ pub struct SetTagArchivedCommand {
 pub struct UpdateTagDecision {
     pub actor_id: String,
     pub tag: Tag,
-    pub event_type: &'static str,
-    pub changed_fields: Vec<String>,
+    pub event: TagEvent,
 }
 
 impl UpdateTagDecision {
     pub fn ui_change(&self) -> UiChangeDescriptor {
-        UiChangeDescriptor::new(self.event_type, "tag", self.changed_fields.clone())
+        tag_ui_change(&self.event)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TagEvent {
+    Created { tag_id: String },
+    NameUpdated { tag_id: String },
+    ArchiveStateChanged { tag_id: String, archived: bool },
+}
+
+fn tag_ui_change(event: &TagEvent) -> UiChangeDescriptor {
+    match event {
+        TagEvent::Created { .. } => UiChangeDescriptor::new("tag.created", "tag", ["name"]),
+        TagEvent::NameUpdated { .. } => UiChangeDescriptor::new("tag.updated", "tag", ["name"]),
+        TagEvent::ArchiveStateChanged { .. } => {
+            UiChangeDescriptor::new("tag.archived", "tag", ["archived"])
+        }
     }
 }
 
@@ -85,11 +100,10 @@ pub fn decide_create_tag(
     Ok(CreateTagDecision {
         actor_id: actor_id.0,
         household_id: household_id.0,
-        tag_id: tag_id.0,
+        tag_id: tag_id.0.clone(),
         name,
         revision: 1,
-        event_type: "tag.created",
-        changed_fields: vec!["name".to_owned()],
+        event: TagEvent::Created { tag_id: tag_id.0 },
     })
 }
 
@@ -117,8 +131,9 @@ pub fn decide_update_tag(
     Ok(UpdateTagDecision {
         actor_id: actor_id.0,
         tag,
-        event_type: "tag.updated",
-        changed_fields: vec!["name".to_owned()],
+        event: TagEvent::NameUpdated {
+            tag_id: current_tag_id.0,
+        },
     })
 }
 
@@ -145,8 +160,10 @@ pub fn decide_set_tag_archived(
     Ok(UpdateTagDecision {
         actor_id: actor_id.0,
         tag,
-        event_type: "tag.archived",
-        changed_fields: vec!["archived".to_owned()],
+        event: TagEvent::ArchiveStateChanged {
+            tag_id: current_tag_id.0,
+            archived: command.archived,
+        },
     })
 }
 

@@ -13,7 +13,9 @@ use bookkeeping_application::{
     },
 };
 
-use crate::evidence_port::EvidenceOperations;
+use crate::evidence_port::{
+    EvidenceOperations, InsertConfirmation, SourceDocumentQuery, SourceReferenceQuery,
+};
 use crate::{PgPool, schema::public};
 
 const OPERATION: &str = "recordExternalIncome";
@@ -207,12 +209,14 @@ pub async fn persist_record_account_income(
                 let statement_document_id = validate_statement_income_source(
                     evidence,
                     &mut *conn,
-                    household_id,
-                    &source.source_document_id,
-                    &source.source_reference,
-                    account_id,
-                    decision.amount.value(),
-                    input.occurred_at,
+                    ValidateStatementIncomeSource {
+                        household_id,
+                        source_document_id: &source.source_document_id,
+                        source_reference: &source.source_reference,
+                        account_id,
+                        amount: decision.amount.value(),
+                        occurred_at: input.occurred_at,
+                    },
                 )
                 .await?;
                 if source.statement_account_id.as_str() != decision.account_id.as_str() {
@@ -407,9 +411,11 @@ pub async fn persist_link_statement_income(
             let entry = load_statement_income_entry(
                 evidence,
                 &mut *conn,
-                household_id,
-                document_id,
-                &decision.source_reference,
+                SourceReferenceQuery {
+                    household_id,
+                    document_id,
+                    source_reference: &decision.source_reference,
+                },
             )
             .await?;
             let statement_occurred_at = DateTime::parse_from_rfc3339(&entry.occurred_at)
@@ -457,33 +463,37 @@ struct StatementIncomeEntry {
 async fn validate_statement_income_source<E: EvidenceOperations + ?Sized>(
     evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
-    household_id: Uuid,
-    source_document_id: &str,
-    source_reference: &str,
-    account_id: Uuid,
-    amount: i64,
-    occurred_at: DateTime<Utc>,
+    input: ValidateStatementIncomeSource<'_>,
 ) -> Result<Uuid, AccountIncomePersistenceError> {
-    let document_id = parse_uuid(source_document_id, "source_document_id")?;
-    let entry =
-        load_statement_income_entry(evidence, conn, household_id, document_id, source_reference)
-            .await?;
+    let document_id = parse_uuid(input.source_document_id, "source_document_id")?;
+    let entry = load_statement_income_entry(
+        evidence,
+        conn,
+        SourceReferenceQuery {
+            household_id: input.household_id,
+            document_id,
+            source_reference: input.source_reference,
+        },
+    )
+    .await?;
     let statement_occurred_at = DateTime::parse_from_rfc3339(&entry.occurred_at)
         .map_err(|_| AccountIncomePersistenceError::StatementIncomeMismatch)?
         .with_timezone(&Utc);
-    let income_amount = bookkeeping_domain::PositiveYen::new(amount)
+    let income_amount = bookkeeping_domain::PositiveYen::new(input.amount)
         .map_err(|_| AccountIncomePersistenceError::InvalidDecision)?;
-    let account_id_value = account_id.to_string();
+    let account_id_value = input.account_id.to_string();
     let account = bookkeeping_application::AccountId::new(account_id_value)
         .map_err(|_| AccountIncomePersistenceError::InvalidDecision)?;
     let workflow_decision = decide_link_statement_income(LinkStatementIncomeCommand {
         source_document_id: document_id.to_string(),
-        source_reference: source_reference.to_owned(),
+        source_reference: input.source_reference.to_owned(),
         statement_account_id: account.clone(),
         income_account_id: account,
         income_amount,
         statement_amount: entry.amount,
-        income_occurred_at: occurred_at.to_rfc3339_opts(SecondsFormat::AutoSi, true),
+        income_occurred_at: input
+            .occurred_at
+            .to_rfc3339_opts(SecondsFormat::AutoSi, true),
         statement_occurred_at: statement_occurred_at.to_rfc3339_opts(SecondsFormat::AutoSi, true),
         statement_kind: entry.kind,
         bank_statement: true,
@@ -491,8 +501,8 @@ async fn validate_statement_income_source<E: EvidenceOperations + ?Sized>(
     })
     .map_err(map_link_workflow_error)?;
     let account_kind = public::accounts::table
-        .filter(public::accounts::household_id.eq(household_id))
-        .filter(public::accounts::id.eq(account_id))
+        .filter(public::accounts::household_id.eq(input.household_id))
+        .filter(public::accounts::id.eq(input.account_id))
         .select(public::accounts::kind)
         .first::<String>(conn)
         .await
@@ -507,28 +517,60 @@ async fn validate_statement_income_source<E: EvidenceOperations + ?Sized>(
     Ok(document_id)
 }
 
+struct ValidateStatementIncomeSource<'a> {
+    household_id: Uuid,
+    source_document_id: &'a str,
+    source_reference: &'a str,
+    account_id: Uuid,
+    amount: i64,
+    occurred_at: DateTime<Utc>,
+}
+
 async fn load_statement_income_entry<E: EvidenceOperations + ?Sized>(
     evidence: &E,
     conn: &mut diesel_async::AsyncPgConnection,
-    household_id: Uuid,
-    document_id: Uuid,
-    source_reference: &str,
+    query: SourceReferenceQuery<'_>,
 ) -> Result<StatementIncomeEntry, AccountIncomePersistenceError> {
+    let SourceReferenceQuery {
+        household_id,
+        document_id,
+        source_reference,
+    } = query;
     let source_kind = evidence
-        .source_kind(conn, household_id, document_id, true)
+        .source_kind(
+            conn,
+            SourceDocumentQuery {
+                household_id,
+                document_id,
+                lock: true,
+            },
+        )
         .await?
         .ok_or(AccountIncomePersistenceError::SourceDocumentNotFound)?;
     if source_kind != "bank" {
         return Err(AccountIncomePersistenceError::StatementIsNotExternalIncome);
     }
     let latest_confirmation = evidence
-        .latest_confirmation(conn, household_id, document_id, source_reference)
+        .latest_confirmation(
+            conn,
+            SourceReferenceQuery {
+                household_id,
+                document_id,
+                source_reference,
+            },
+        )
         .await?;
     if latest_confirmation.is_some_and(|confirmation| confirmation.status == "confirmed") {
         return Err(AccountIncomePersistenceError::StatementAlreadyConfirmed);
     }
     let (_, result) = evidence
-        .latest_extraction_with_id(conn, household_id, document_id)
+        .latest_extraction_with_id(
+            conn,
+            crate::evidence_port::ExtractionQuery {
+                household_id,
+                document_id,
+            },
+        )
         .await?
         .ok_or(AccountIncomePersistenceError::StatementExtractionUnavailable)?;
     let statements = result
@@ -579,7 +621,14 @@ async fn require_statement_income_confirmation<E: EvidenceOperations + ?Sized>(
 ) -> Result<(), AccountIncomePersistenceError> {
     let document_id = parse_uuid(&source.source_document_id, "source_document_id")?;
     let confirmation = evidence
-        .latest_confirmation(conn, household_id, document_id, &source.source_reference)
+        .latest_confirmation(
+            conn,
+            SourceReferenceQuery {
+                household_id,
+                document_id,
+                source_reference: &source.source_reference,
+            },
+        )
         .await?;
     if confirmation.is_some_and(|confirmation| {
         confirmation.entity_kind == "account_income"
@@ -604,14 +653,16 @@ async fn insert_statement_income_confirmation<E: EvidenceOperations + ?Sized>(
     evidence
         .insert_confirmation(
             conn,
-            household_id,
-            document_id,
-            source_reference,
-            "account_income",
-            income_id,
-            actor_id,
-            format!("account-income-confirmation:{}", Uuid::now_v7()),
-            None,
+            InsertConfirmation {
+                household_id,
+                document_id,
+                source_reference: source_reference.to_owned(),
+                entity_kind: "account_income".to_owned(),
+                entity_id: income_id,
+                changed_by: actor_id,
+                idempotency_key: format!("account-income-confirmation:{}", Uuid::now_v7()),
+                changed_at: None,
+            },
         )
         .await
         .map_err(AccountIncomePersistenceError::from)

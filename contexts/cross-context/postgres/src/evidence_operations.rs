@@ -1,10 +1,10 @@
-use chrono::{DateTime, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, dsl::now};
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use uuid::Uuid;
 
 use bookkeeping_postgres::evidence_port::{
-    EvidenceLinkRecord, EvidenceOperations, SourceConfirmation, SourceDocumentMetadata,
+    EvidenceLinkQuery, EvidenceLinkRecord, EvidenceOperations, ExtractionQuery, InsertConfirmation,
+    SourceConfirmation, SourceDocumentMetadata, SourceDocumentQuery, SourceReferenceQuery,
 };
 
 pub struct EvidencePostgresOperations;
@@ -14,14 +14,14 @@ impl EvidenceOperations for EvidencePostgresOperations {
     async fn source_kind(
         &self,
         conn: &mut AsyncPgConnection,
-        household_id: Uuid,
-        document_id: Uuid,
-        lock: bool,
+        query: SourceDocumentQuery,
     ) -> Result<Option<String>, diesel::result::Error> {
-        if lock {
+        if query.lock {
             crate::schema::public::source_documents::table
-                .filter(crate::schema::public::source_documents::household_id.eq(household_id))
-                .filter(crate::schema::public::source_documents::id.eq(document_id))
+                .filter(
+                    crate::schema::public::source_documents::household_id.eq(query.household_id),
+                )
+                .filter(crate::schema::public::source_documents::id.eq(query.document_id))
                 .for_update()
                 .select(crate::schema::public::source_documents::source_kind)
                 .first::<String>(conn)
@@ -29,8 +29,10 @@ impl EvidenceOperations for EvidencePostgresOperations {
                 .optional()
         } else {
             crate::schema::public::source_documents::table
-                .filter(crate::schema::public::source_documents::household_id.eq(household_id))
-                .filter(crate::schema::public::source_documents::id.eq(document_id))
+                .filter(
+                    crate::schema::public::source_documents::household_id.eq(query.household_id),
+                )
+                .filter(crate::schema::public::source_documents::id.eq(query.document_id))
                 .select(crate::schema::public::source_documents::source_kind)
                 .first::<String>(conn)
                 .await
@@ -41,15 +43,19 @@ impl EvidenceOperations for EvidencePostgresOperations {
     async fn latest_confirmation_status(
         &self,
         conn: &mut AsyncPgConnection,
-        household_id: Uuid,
-        document_id: Uuid,
-        source_reference: &str,
+        query: SourceReferenceQuery<'_>,
     ) -> Result<Option<String>, diesel::result::Error> {
         crate::schema::public::source_confirmations::table
-            .filter(crate::schema::public::source_confirmations::household_id.eq(household_id))
-            .filter(crate::schema::public::source_confirmations::source_document_id.eq(document_id))
             .filter(
-                crate::schema::public::source_confirmations::source_reference.eq(source_reference),
+                crate::schema::public::source_confirmations::household_id.eq(query.household_id),
+            )
+            .filter(
+                crate::schema::public::source_confirmations::source_document_id
+                    .eq(query.document_id),
+            )
+            .filter(
+                crate::schema::public::source_confirmations::source_reference
+                    .eq(query.source_reference),
             )
             .order_by(crate::schema::public::source_confirmations::changed_at.desc())
             .select(crate::schema::public::source_confirmations::status)
@@ -61,16 +67,20 @@ impl EvidenceOperations for EvidencePostgresOperations {
     async fn has_confirmation_status(
         &self,
         conn: &mut AsyncPgConnection,
-        household_id: Uuid,
-        document_id: Uuid,
-        source_reference: &str,
+        query: SourceReferenceQuery<'_>,
         status: &str,
     ) -> Result<bool, diesel::result::Error> {
         crate::schema::public::source_confirmations::table
-            .filter(crate::schema::public::source_confirmations::household_id.eq(household_id))
-            .filter(crate::schema::public::source_confirmations::source_document_id.eq(document_id))
             .filter(
-                crate::schema::public::source_confirmations::source_reference.eq(source_reference),
+                crate::schema::public::source_confirmations::household_id.eq(query.household_id),
+            )
+            .filter(
+                crate::schema::public::source_confirmations::source_document_id
+                    .eq(query.document_id),
+            )
+            .filter(
+                crate::schema::public::source_confirmations::source_reference
+                    .eq(query.source_reference),
             )
             .filter(crate::schema::public::source_confirmations::status.eq(status))
             .select(crate::schema::public::source_confirmations::id)
@@ -83,15 +93,19 @@ impl EvidenceOperations for EvidencePostgresOperations {
     async fn latest_confirmation(
         &self,
         conn: &mut AsyncPgConnection,
-        household_id: Uuid,
-        document_id: Uuid,
-        source_reference: &str,
+        query: SourceReferenceQuery<'_>,
     ) -> Result<Option<SourceConfirmation>, diesel::result::Error> {
         crate::schema::public::source_confirmations::table
-            .filter(crate::schema::public::source_confirmations::household_id.eq(household_id))
-            .filter(crate::schema::public::source_confirmations::source_document_id.eq(document_id))
             .filter(
-                crate::schema::public::source_confirmations::source_reference.eq(source_reference),
+                crate::schema::public::source_confirmations::household_id.eq(query.household_id),
+            )
+            .filter(
+                crate::schema::public::source_confirmations::source_document_id
+                    .eq(query.document_id),
+            )
+            .filter(
+                crate::schema::public::source_confirmations::source_reference
+                    .eq(query.source_reference),
             )
             .order_by(crate::schema::public::source_confirmations::changed_at.desc())
             .select((
@@ -114,12 +128,13 @@ impl EvidenceOperations for EvidencePostgresOperations {
     async fn latest_extraction(
         &self,
         conn: &mut AsyncPgConnection,
-        household_id: Uuid,
-        document_id: Uuid,
+        query: ExtractionQuery,
     ) -> Result<Option<serde_json::Value>, diesel::result::Error> {
         crate::schema::public::extraction_jobs::table
-            .filter(crate::schema::public::extraction_jobs::household_id.eq(household_id))
-            .filter(crate::schema::public::extraction_jobs::source_document_id.eq(document_id))
+            .filter(crate::schema::public::extraction_jobs::household_id.eq(query.household_id))
+            .filter(
+                crate::schema::public::extraction_jobs::source_document_id.eq(query.document_id),
+            )
             .filter(crate::schema::public::extraction_jobs::status.eq("succeeded"))
             .order_by(crate::schema::public::extraction_jobs::version.desc())
             .select(crate::schema::public::extraction_jobs::result)
@@ -132,12 +147,13 @@ impl EvidenceOperations for EvidencePostgresOperations {
     async fn latest_extraction_with_id(
         &self,
         conn: &mut AsyncPgConnection,
-        household_id: Uuid,
-        document_id: Uuid,
+        query: ExtractionQuery,
     ) -> Result<Option<(Uuid, serde_json::Value)>, diesel::result::Error> {
         crate::schema::public::extraction_jobs::table
-            .filter(crate::schema::public::extraction_jobs::household_id.eq(household_id))
-            .filter(crate::schema::public::extraction_jobs::source_document_id.eq(document_id))
+            .filter(crate::schema::public::extraction_jobs::household_id.eq(query.household_id))
+            .filter(
+                crate::schema::public::extraction_jobs::source_document_id.eq(query.document_id),
+            )
             .filter(crate::schema::public::extraction_jobs::status.eq("succeeded"))
             .order_by(crate::schema::public::extraction_jobs::version.desc())
             .select((
@@ -153,14 +169,14 @@ impl EvidenceOperations for EvidencePostgresOperations {
     async fn source_document_metadata(
         &self,
         conn: &mut AsyncPgConnection,
-        household_id: Uuid,
-        document_id: Uuid,
-        lock: bool,
+        query: SourceDocumentQuery,
     ) -> Result<Option<SourceDocumentMetadata>, diesel::result::Error> {
-        let row = if lock {
+        let row = if query.lock {
             crate::schema::public::source_documents::table
-                .filter(crate::schema::public::source_documents::household_id.eq(household_id))
-                .filter(crate::schema::public::source_documents::id.eq(document_id))
+                .filter(
+                    crate::schema::public::source_documents::household_id.eq(query.household_id),
+                )
+                .filter(crate::schema::public::source_documents::id.eq(query.document_id))
                 .for_update()
                 .select((
                     crate::schema::public::source_documents::source_kind,
@@ -171,8 +187,10 @@ impl EvidenceOperations for EvidencePostgresOperations {
                 .optional()?
         } else {
             crate::schema::public::source_documents::table
-                .filter(crate::schema::public::source_documents::household_id.eq(household_id))
-                .filter(crate::schema::public::source_documents::id.eq(document_id))
+                .filter(
+                    crate::schema::public::source_documents::household_id.eq(query.household_id),
+                )
+                .filter(crate::schema::public::source_documents::id.eq(query.document_id))
                 .select((
                     crate::schema::public::source_documents::source_kind,
                     crate::schema::public::source_documents::sha256,
@@ -190,16 +208,13 @@ impl EvidenceOperations for EvidencePostgresOperations {
     async fn evidence_link(
         &self,
         conn: &mut AsyncPgConnection,
-        household_id: Uuid,
-        entity_kind: &str,
-        entity_id: Uuid,
-        lock: bool,
+        query: EvidenceLinkQuery<'_>,
     ) -> Result<Option<EvidenceLinkRecord>, diesel::result::Error> {
-        let row = if lock {
+        let row = if query.lock {
             crate::schema::public::evidence_links::table
-                .filter(crate::schema::public::evidence_links::household_id.eq(household_id))
-                .filter(crate::schema::public::evidence_links::entity_kind.eq(entity_kind))
-                .filter(crate::schema::public::evidence_links::entity_id.eq(entity_id))
+                .filter(crate::schema::public::evidence_links::household_id.eq(query.household_id))
+                .filter(crate::schema::public::evidence_links::entity_kind.eq(query.entity_kind))
+                .filter(crate::schema::public::evidence_links::entity_id.eq(query.entity_id))
                 .for_update()
                 .select((
                     crate::schema::public::evidence_links::source_document_id,
@@ -212,9 +227,9 @@ impl EvidenceOperations for EvidencePostgresOperations {
                 .optional()?
         } else {
             crate::schema::public::evidence_links::table
-                .filter(crate::schema::public::evidence_links::household_id.eq(household_id))
-                .filter(crate::schema::public::evidence_links::entity_kind.eq(entity_kind))
-                .filter(crate::schema::public::evidence_links::entity_id.eq(entity_id))
+                .filter(crate::schema::public::evidence_links::household_id.eq(query.household_id))
+                .filter(crate::schema::public::evidence_links::entity_kind.eq(query.entity_kind))
+                .filter(crate::schema::public::evidence_links::entity_id.eq(query.entity_id))
                 .select((
                     crate::schema::public::evidence_links::source_document_id,
                     crate::schema::public::evidence_links::source_reference,
@@ -240,28 +255,24 @@ impl EvidenceOperations for EvidencePostgresOperations {
     async fn insert_confirmation(
         &self,
         conn: &mut AsyncPgConnection,
-        household_id: Uuid,
-        document_id: Uuid,
-        source_reference: &str,
-        entity_kind: &str,
-        entity_id: Uuid,
-        changed_by: Uuid,
-        idempotency_key: String,
-        changed_at: Option<DateTime<Utc>>,
+        confirmation: InsertConfirmation,
     ) -> Result<(), diesel::result::Error> {
         let values = (
             crate::schema::public::source_confirmations::id.eq(Uuid::now_v7()),
-            crate::schema::public::source_confirmations::household_id.eq(household_id),
-            crate::schema::public::source_confirmations::source_document_id.eq(document_id),
+            crate::schema::public::source_confirmations::household_id.eq(confirmation.household_id),
+            crate::schema::public::source_confirmations::source_document_id
+                .eq(confirmation.document_id),
             crate::schema::public::source_confirmations::observation_id.eq(None::<Uuid>),
-            crate::schema::public::source_confirmations::source_reference.eq(source_reference),
-            crate::schema::public::source_confirmations::entity_kind.eq(entity_kind),
-            crate::schema::public::source_confirmations::entity_id.eq(entity_id),
+            crate::schema::public::source_confirmations::source_reference
+                .eq(confirmation.source_reference),
+            crate::schema::public::source_confirmations::entity_kind.eq(confirmation.entity_kind),
+            crate::schema::public::source_confirmations::entity_id.eq(confirmation.entity_id),
             crate::schema::public::source_confirmations::status.eq("confirmed"),
-            crate::schema::public::source_confirmations::idempotency_key.eq(idempotency_key),
-            crate::schema::public::source_confirmations::changed_by.eq(changed_by),
+            crate::schema::public::source_confirmations::idempotency_key
+                .eq(confirmation.idempotency_key),
+            crate::schema::public::source_confirmations::changed_by.eq(confirmation.changed_by),
         );
-        if let Some(changed_at) = changed_at {
+        if let Some(changed_at) = confirmation.changed_at {
             diesel::insert_into(crate::schema::public::source_confirmations::table)
                 .values((
                     values,

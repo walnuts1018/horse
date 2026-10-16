@@ -1,8 +1,12 @@
 use diesel::{ExpressionMethods, insert_into};
 use diesel_async::{
-    RunQueryDsl,
-    pooled_connection::{AsyncDieselConnectionManager, PoolError, bb8::Pool},
+    AsyncConnection, RunQueryDsl,
+    pooled_connection::{
+        AsyncDieselConnectionManager, PoolError,
+        bb8::{Pool, RunError as PoolRunError},
+    },
 };
+use std::{future::Future, pin::Pin};
 use uuid::Uuid;
 
 pub use diesel_async::AsyncPgConnection;
@@ -10,6 +14,57 @@ pub mod household_events;
 pub mod schema;
 
 pub type PgPool = Pool<AsyncPgConnection>;
+
+#[derive(Debug)]
+pub enum TransactionError<E> {
+    Pool(PoolRunError),
+    Database(diesel::result::Error),
+    Workflow(E),
+}
+
+impl<E> From<diesel::result::Error> for TransactionError<E> {
+    fn from(error: diesel::result::Error) -> Self {
+        Self::Database(error)
+    }
+}
+
+pub async fn with_transaction<T, E>(
+    pool: &PgPool,
+    operation: impl for<'connection> FnOnce(
+        &'connection mut AsyncPgConnection,
+    ) -> Pin<
+        Box<dyn Future<Output = Result<T, TransactionError<E>>> + Send + 'connection>,
+    > + Send,
+) -> Result<T, TransactionError<E>>
+where
+    T: Send,
+    E: Send,
+{
+    let mut pooled = pool.get().await.map_err(TransactionError::Pool)?;
+    (*pooled)
+        .transaction::<T, TransactionError<E>, _>(async |conn| operation(conn).await)
+        .await
+}
+
+pub async fn with_serializable_transaction<T, E>(
+    pool: &PgPool,
+    operation: impl for<'connection> FnOnce(
+        &'connection mut AsyncPgConnection,
+    ) -> Pin<
+        Box<dyn Future<Output = Result<T, TransactionError<E>>> + Send + 'connection>,
+    > + Send,
+) -> Result<T, TransactionError<E>>
+where
+    T: Send,
+    E: Send,
+{
+    let mut pooled = pool.get().await.map_err(TransactionError::Pool)?;
+    pooled
+        .build_transaction()
+        .serializable()
+        .run(async |conn| operation(conn).await)
+        .await
+}
 
 pub async fn connect(database_url: impl Into<String>) -> Result<PgPool, PoolError> {
     let manager = AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url.into());

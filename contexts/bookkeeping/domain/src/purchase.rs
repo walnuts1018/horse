@@ -501,6 +501,19 @@ pub enum PostingTarget {
     Account(AccountId),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CorrectionJournalTarget {
+    Pool(PoolId),
+    Account(AccountId),
+    Offset,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CorrectionFundingBasis {
+    Personal { owner_member_id: MemberId },
+    Shared { settlement_policy: SettlementPolicy },
+}
+
 impl JournalLine {
     pub const fn pool_line(
         line_no: u32,

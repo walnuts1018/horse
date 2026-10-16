@@ -22,6 +22,24 @@ pub struct PersistedCreatePurchase {
     pub created: bool,
 }
 
+pub struct PersistPurchaseSourceEvidence<'a> {
+    pub household_id: Uuid,
+    pub source_document_id: Uuid,
+    pub source_reference: &'a str,
+    pub purchase_id: Uuid,
+    pub actor_id: Uuid,
+    pub decision: &'a CreatePurchaseDecision,
+}
+
+pub struct PersistPurchaseSourceConfirmation<'a> {
+    pub household_id: Uuid,
+    pub actor_id: Uuid,
+    pub idempotency_key: &'a str,
+    pub source_document_id: Uuid,
+    pub source_reference: &'a str,
+    pub purchase_id: Uuid,
+}
+
 #[derive(Debug)]
 pub enum CreatePurchasePersistenceError {
     Pool(String),
@@ -77,22 +95,12 @@ pub trait PurchaseCreationCrossContext {
     async fn persist_source_evidence(
         &mut self,
         conn: &mut diesel_async::AsyncPgConnection,
-        household_id: Uuid,
-        source_document_id: Uuid,
-        source_reference: &str,
-        purchase_id: Uuid,
-        actor_id: Uuid,
-        decision: &CreatePurchaseDecision,
+        input: PersistPurchaseSourceEvidence<'_>,
     ) -> Result<(), CreatePurchasePersistenceError>;
     async fn persist_source_confirmation(
         &mut self,
         conn: &mut diesel_async::AsyncPgConnection,
-        household_id: Uuid,
-        actor_id: Uuid,
-        idempotency_key: &str,
-        source_document_id: Uuid,
-        source_reference: &str,
-        purchase_id: Uuid,
+        input: PersistPurchaseSourceConfirmation<'_>,
     ) -> Result<(), CreatePurchasePersistenceError>;
     async fn publish_purchase_created(
         &mut self,
@@ -366,23 +374,27 @@ pub async fn persist_create_purchase_in_transaction<C: PurchaseCreationCrossCont
         cross_context
             .persist_source_confirmation(
                 conn,
-                household_id,
-                actor_id,
-                &input.idempotency_key,
-                source_document_id,
-                source_reference,
-                purchase_id,
+                PersistPurchaseSourceConfirmation {
+                    household_id,
+                    actor_id,
+                    idempotency_key: &input.idempotency_key,
+                    source_document_id,
+                    source_reference,
+                    purchase_id,
+                },
             )
             .await?;
         cross_context
             .persist_source_evidence(
                 conn,
-                household_id,
-                source_document_id,
-                source_reference,
-                purchase_id,
-                actor_id,
-                &decision,
+                PersistPurchaseSourceEvidence {
+                    household_id,
+                    source_document_id,
+                    source_reference,
+                    purchase_id,
+                    actor_id,
+                    decision: &decision,
+                },
             )
             .await?;
     }

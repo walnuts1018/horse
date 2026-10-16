@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, HashSet};
 
 use bookkeeping_domain::{
     AccountingPeriod, AccountingPeriodStatus, AllocationShares, AllocationWeight,
-    PoolId as AllocationPoolId, PositiveYen, PurchaseLifecycle, Yen, allocate,
+    CorrectionFundingBasis, CorrectionJournalTarget, PoolId as AllocationPoolId, PositiveYen,
+    PurchaseLifecycle, Yen, allocate,
 };
 
 use crate::{AccountId, ItemId, PoolId, PurchaseId, Side};
@@ -74,8 +75,7 @@ pub struct CorrectPurchaseDecision {
 pub struct CorrectionJournalLine {
     pub line_no: u32,
     pub side: Side,
-    pub pool_id: Option<PoolId>,
-    pub account_id: Option<AccountId>,
+    pub target: CorrectionJournalTarget,
     pub amount: PositiveYen,
     pub memo: String,
 }
@@ -93,18 +93,13 @@ pub struct CorrectionEvent {
     pub changed_fields: Vec<&'static str>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CorrectionSettlementPolicy {
-    BalanceToStandard,
-    ReimbursePersonal,
-}
+pub use bookkeeping_domain::SettlementPolicy as CorrectionSettlementPolicy;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorrectionFundingRule {
     pub pool_id: String,
     pub version: u32,
-    pub owner_member_id: Option<String>,
-    pub settlement_policy: Option<CorrectionSettlementPolicy>,
+    pub basis: CorrectionFundingBasis,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -350,8 +345,7 @@ pub fn decide_correct_purchase(
         journal_lines.push(CorrectionJournalLine {
             line_no: next_line_no(journal_lines.len())?,
             side: pool_side,
-            pool_id: Some(allocation.pool_id.clone()),
-            account_id: None,
+            target: CorrectionJournalTarget::Pool(allocation.pool_id.clone()),
             amount: PositiveYen::new(allocation.amount.value()).expect("nonzero allocation"),
             memo: command.reason.clone(),
         });
@@ -360,8 +354,7 @@ pub fn decide_correct_purchase(
         journal_lines.push(CorrectionJournalLine {
             line_no: next_line_no(journal_lines.len())?,
             side: payment_side,
-            pool_id: None,
-            account_id: None,
+            target: CorrectionJournalTarget::Offset,
             amount: PositiveYen::new(correction_amount.value()).expect("correction is nonzero"),
             memo: "Correction offset".into(),
         });
@@ -370,8 +363,7 @@ pub fn decide_correct_purchase(
             journal_lines.push(CorrectionJournalLine {
                 line_no: next_line_no(journal_lines.len())?,
                 side: payment_side,
-                pool_id: None,
-                account_id: Some(payment.account_id.clone()),
+                target: CorrectionJournalTarget::Account(payment.account_id.clone()),
                 amount: payment.amount,
                 memo: "Correction payment".into(),
             });
@@ -796,20 +788,24 @@ fn make_funding_rule(
     if weights.is_empty() || weights.values().any(|weight| *weight == 0) {
         return Err(CorrectionFundingError::InvalidSnapshot);
     }
-    if let Some(owner) = &historical.owner_member_id {
-        if historical.settlement_policy.is_some()
+    let (owner_member_id, settlement_policy) = match &historical.basis {
+        CorrectionFundingBasis::Personal { owner_member_id } => (Some(owner_member_id), None),
+        CorrectionFundingBasis::Shared { settlement_policy } => (None, Some(*settlement_policy)),
+    };
+    if let Some(owner) = owner_member_id {
+        if settlement_policy.is_some()
             || snapshot_policy.is_some()
             || weights.len() != 1
-            || weights.get(owner) != Some(&1)
+            || weights.get(owner.as_str()) != Some(&1)
         {
             return Err(CorrectionFundingError::InvalidSnapshot);
         }
-    } else if historical.settlement_policy != snapshot_policy || snapshot_policy.is_none() {
+    } else if settlement_policy != snapshot_policy || snapshot_policy.is_none() {
         return Err(CorrectionFundingError::InvalidSnapshot);
     }
     Ok(ResolvedFundingRule {
-        owner_member_id: historical.owner_member_id.clone(),
-        settlement_policy: historical.settlement_policy,
+        owner_member_id: owner_member_id.map(|owner| owner.as_str().to_owned()),
+        settlement_policy,
         weights,
     })
 }
@@ -1049,8 +1045,9 @@ mod tests {
             .map(|pool_id| CorrectionFundingRule {
                 pool_id: pool_id.into(),
                 version: 1,
-                owner_member_id: None,
-                settlement_policy: Some(CorrectionSettlementPolicy::BalanceToStandard),
+                basis: CorrectionFundingBasis::Shared {
+                    settlement_policy: CorrectionSettlementPolicy::BalanceToStandard,
+                },
             })
             .collect::<Vec<_>>();
 

@@ -1,3 +1,5 @@
+use horse_household_change::UiChangeDescriptor;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetFundingScheduleCommand {
     pub actor_id: String,
@@ -283,5 +285,3 @@ mod tests {
         );
     }
 }
-
-use horse_household_change::UiChangeDescriptor;

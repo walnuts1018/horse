@@ -1,7 +1,8 @@
 use crate::schema::public;
 use bookkeeping_application::create_purchase::CreatePurchaseDecision;
 use bookkeeping_postgres::create_purchase::{
-    CreatePurchasePersistenceError, PurchaseCreationCrossContext,
+    CreatePurchasePersistenceError, PersistPurchaseSourceConfirmation,
+    PersistPurchaseSourceEvidence, PurchaseCreationCrossContext,
 };
 use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, dsl::now};
 use diesel_async::RunQueryDsl;
@@ -335,13 +336,16 @@ async fn resolve_source_confirmation(
 
 async fn persist_source_evidence(
     conn: &mut diesel_async::AsyncPgConnection,
-    household_id: Uuid,
-    source_document_id: Uuid,
-    source_reference: &str,
-    purchase_id: Uuid,
-    actor_id: Uuid,
-    decision: &CreatePurchaseDecision,
+    input: PersistPurchaseSourceEvidence<'_>,
 ) -> Result<(), CreatePurchasePersistenceError> {
+    let PersistPurchaseSourceEvidence {
+        household_id,
+        source_document_id,
+        source_reference,
+        purchase_id,
+        actor_id,
+        decision,
+    } = input;
     use public::extraction_jobs::dsl as jobs;
 
     let mut observation = serde_json::json!({});
@@ -671,34 +675,23 @@ impl PurchaseCreationCrossContext for PurchaseCreationContext {
     async fn persist_source_evidence(
         &mut self,
         conn: &mut diesel_async::AsyncPgConnection,
-        household_id: Uuid,
-        source_document_id: Uuid,
-        source_reference: &str,
-        purchase_id: Uuid,
-        actor_id: Uuid,
-        decision: &CreatePurchaseDecision,
+        input: PersistPurchaseSourceEvidence<'_>,
     ) -> Result<(), CreatePurchasePersistenceError> {
-        persist_source_evidence(
-            conn,
-            household_id,
-            source_document_id,
-            source_reference,
-            purchase_id,
-            actor_id,
-            decision,
-        )
-        .await
+        persist_source_evidence(conn, input).await
     }
     async fn persist_source_confirmation(
         &mut self,
         conn: &mut diesel_async::AsyncPgConnection,
-        household_id: Uuid,
-        actor_id: Uuid,
-        idempotency_key: &str,
-        source_document_id: Uuid,
-        source_reference: &str,
-        purchase_id: Uuid,
+        input: PersistPurchaseSourceConfirmation<'_>,
     ) -> Result<(), CreatePurchasePersistenceError> {
+        let PersistPurchaseSourceConfirmation {
+            household_id,
+            actor_id,
+            idempotency_key,
+            source_document_id,
+            source_reference,
+            purchase_id,
+        } = input;
         diesel::insert_into(public::source_confirmations::table)
             .values((
                 public::source_confirmations::id.eq(Uuid::new_v4()),

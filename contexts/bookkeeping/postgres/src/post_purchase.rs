@@ -8,6 +8,7 @@ use diesel::{
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_authorization::{Operation, authorize};
+use horse_postgres_common::TransactionError;
 use uuid::Uuid;
 
 use crate::{PgPool, post_purchase_loader::ResolvedPostPurchasePayment, schema::public};
@@ -53,24 +54,34 @@ pub async fn post_purchase_workflow<C: crate::post_purchase_loader::PostPurchase
             error.to_string(),
         ))
     })?;
-    (*pooled)
-        .transaction::<
-            Result<_, application::PostPurchaseWorkflowError<PostPurchaseWorkflowAdapterError>>,
-            DieselError,
-            _,
-        >(async |conn| {
-            let mut operations = PurchasePostOperations {
-                conn,
-                reference_data,
-            };
-            Ok(application::post_purchase(&mut operations, command).await)
-        })
-        .await
-        .map_err(|error| {
-            application::PostPurchaseWorkflowError::Operations(
+    let transaction_result =
+        (*pooled)
+            .transaction::<application::PostPurchaseWorkflowResult, TransactionError<
+                application::PostPurchaseWorkflowError<PostPurchaseWorkflowAdapterError>,
+            >, _>(async |conn| {
+                let mut operations = PurchasePostOperations {
+                    conn,
+                    reference_data,
+                };
+                application::post_purchase(&mut operations, command)
+                    .await
+                    .map_err(TransactionError::Workflow)
+            })
+            .await;
+    match transaction_result {
+        Ok(result) => Ok(result),
+        Err(TransactionError::Workflow(error)) => Err(error),
+        Err(TransactionError::Database(error)) => {
+            Err(application::PostPurchaseWorkflowError::Operations(
                 PostPurchaseWorkflowAdapterError::Database(error),
-            )
-        })?
+            ))
+        }
+        Err(TransactionError::Pool(error)) => {
+            Err(application::PostPurchaseWorkflowError::Operations(
+                PostPurchaseWorkflowAdapterError::Pool(error.to_string()),
+            ))
+        }
+    }
 }
 
 struct PurchasePostOperations<'a, C> {

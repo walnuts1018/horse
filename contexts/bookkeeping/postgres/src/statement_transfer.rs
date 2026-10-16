@@ -238,20 +238,40 @@ async fn load_statement<E: EvidenceOperations + ?Sized>(
         return Err(StatementTransferPersistenceError::InvalidSource);
     }
     let source_kind = evidence
-        .source_kind(conn, household_id, document_id, true)
+        .source_kind(
+            conn,
+            crate::evidence_port::SourceDocumentQuery {
+                household_id,
+                document_id,
+                lock: true,
+            },
+        )
         .await?
         .ok_or(StatementTransferPersistenceError::SourceDocumentNotFound)?;
     if source_kind != "bank" {
         return Err(StatementTransferPersistenceError::SourceIsNotBankStatement);
     }
     let already_confirmed = evidence
-        .latest_confirmation_status(conn, household_id, document_id, source_reference)
+        .latest_confirmation_status(
+            conn,
+            crate::evidence_port::SourceReferenceQuery {
+                household_id,
+                document_id,
+                source_reference,
+            },
+        )
         .await?;
     if already_confirmed.as_deref() == Some("confirmed") {
         return Err(StatementTransferPersistenceError::StatementAlreadyConfirmed);
     }
     let result = evidence
-        .latest_extraction(conn, household_id, document_id)
+        .latest_extraction(
+            conn,
+            crate::evidence_port::ExtractionQuery {
+                household_id,
+                document_id,
+            },
+        )
         .await?
         .ok_or(StatementTransferPersistenceError::StatementExtractionUnavailable)?;
     let rows = result
@@ -308,14 +328,16 @@ async fn insert_confirmation<E: EvidenceOperations + ?Sized>(
     evidence
         .insert_confirmation(
             conn,
-            household_id,
-            document_id,
-            source_reference,
-            "transfer",
-            transfer_id,
-            actor_id,
-            format!("transfer-confirmation:{}", Uuid::now_v7()),
-            None,
+            crate::evidence_port::InsertConfirmation {
+                household_id,
+                document_id,
+                source_reference: source_reference.to_owned(),
+                entity_kind: "transfer".to_owned(),
+                entity_id: transfer_id,
+                changed_by: actor_id,
+                idempotency_key: format!("transfer-confirmation:{}", Uuid::now_v7()),
+                changed_at: None,
+            },
         )
         .await
         .map_err(StatementTransferPersistenceError::from)

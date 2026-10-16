@@ -545,20 +545,40 @@ async fn load_statement_movement_entry<E: EvidenceOperations + ?Sized>(
         return Err(AccountMovementPersistenceError::InvalidDecision);
     }
     let source_kind = evidence
-        .source_kind(conn, household_id, document_id, true)
+        .source_kind(
+            conn,
+            crate::evidence_port::SourceDocumentQuery {
+                household_id,
+                document_id,
+                lock: true,
+            },
+        )
         .await?
         .ok_or(AccountMovementPersistenceError::SourceDocumentNotFound)?;
     if source_kind != "bank" {
         return Err(AccountMovementPersistenceError::StatementIsNotBankMovement);
     }
     let has_confirmation = evidence
-        .latest_confirmation_status(conn, household_id, document_id, source_reference)
+        .latest_confirmation_status(
+            conn,
+            crate::evidence_port::SourceReferenceQuery {
+                household_id,
+                document_id,
+                source_reference,
+            },
+        )
         .await?;
     if has_confirmation.as_deref() == Some("confirmed") {
         return Err(AccountMovementPersistenceError::StatementAlreadyConfirmed);
     }
     let result = evidence
-        .latest_extraction(conn, household_id, document_id)
+        .latest_extraction(
+            conn,
+            crate::evidence_port::ExtractionQuery {
+                household_id,
+                document_id,
+            },
+        )
         .await?
         .ok_or(AccountMovementPersistenceError::StatementExtractionUnavailable)?;
     let statements = result
@@ -608,7 +628,14 @@ async fn require_statement_movement_confirmation<E: EvidenceOperations + ?Sized>
 ) -> Result<(), AccountMovementPersistenceError> {
     let document_id = parse_uuid(&source.source_document_id, "source_document_id")?;
     let confirmation = evidence
-        .latest_confirmation(conn, household_id, document_id, &source.source_reference)
+        .latest_confirmation(
+            conn,
+            crate::evidence_port::SourceReferenceQuery {
+                household_id,
+                document_id,
+                source_reference: &source.source_reference,
+            },
+        )
         .await?;
     if confirmation.is_some_and(|confirmation| {
         confirmation.entity_kind == "account_movement"
@@ -633,14 +660,16 @@ async fn insert_statement_movement_confirmation<E: EvidenceOperations + ?Sized>(
     evidence
         .insert_confirmation(
             conn,
-            household_id,
-            document_id,
-            source_reference,
-            "account_movement",
-            movement_id,
-            actor_id,
-            format!("account-movement-confirmation:{}", Uuid::now_v7()),
-            None,
+            crate::evidence_port::InsertConfirmation {
+                household_id,
+                document_id,
+                source_reference: source_reference.to_owned(),
+                entity_kind: "account_movement".to_owned(),
+                entity_id: movement_id,
+                changed_by: actor_id,
+                idempotency_key: format!("account-movement-confirmation:{}", Uuid::now_v7()),
+                changed_at: None,
+            },
         )
         .await
         .map_err(AccountMovementPersistenceError::from)

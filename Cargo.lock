@@ -2938,6 +2938,8 @@ dependencies = [
  "diesel-async",
  "evidence-application",
  "horse-household-change",
+ "horse-test-infra",
+ "tokio",
  "uuid",
 ]
 

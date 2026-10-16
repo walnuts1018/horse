@@ -4,7 +4,8 @@ use bookkeeping_application::create_and_post_purchase::{
 };
 use bookkeeping_application::create_purchase_workflow as application;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
-use diesel_async::{AsyncConnection, RunQueryDsl};
+use diesel_async::RunQueryDsl;
+use horse_postgres_common::{TransactionError, with_transaction};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -28,28 +29,31 @@ pub async fn create_purchase_workflow(
     CreatedPurchase,
     application::CreatePurchaseWorkflowError<CreatePurchaseWorkflowAdapterError>,
 > {
-    let mut pooled = pool.get().await.map_err(|error| {
-        application::CreatePurchaseWorkflowError::Operations(
-            CreatePurchaseWorkflowAdapterError::Persistence(CreatePurchasePersistenceError::Pool(
-                error.to_string(),
-            )),
-        )
-    })?;
-    (*pooled)
-        .transaction::<
-            Result<_, application::CreatePurchaseWorkflowError<CreatePurchaseWorkflowAdapterError>>,
-            DieselError,
-            _,
-        >(async |conn| {
+    match with_transaction(pool, |conn| {
+        Box::pin(async move {
             let mut operations = PgCreatePurchaseOperations { conn };
-            Ok(application::create_purchase(&mut operations, command).await)
+            application::create_purchase(&mut operations, command)
+                .await
+                .map_err(TransactionError::Workflow)
         })
-        .await
-        .map_err(|error| {
-            application::CreatePurchaseWorkflowError::Operations(
+    })
+    .await
+    {
+        Ok(result) => Ok(result),
+        Err(TransactionError::Workflow(error)) => Err(error),
+        Err(TransactionError::Pool(error)) => {
+            Err(application::CreatePurchaseWorkflowError::Operations(
+                CreatePurchaseWorkflowAdapterError::Persistence(
+                    CreatePurchasePersistenceError::Pool(error.to_string()),
+                ),
+            ))
+        }
+        Err(TransactionError::Database(error)) => {
+            Err(application::CreatePurchaseWorkflowError::Operations(
                 CreatePurchaseWorkflowAdapterError::Database(error),
-            )
-        })?
+            ))
+        }
+    }
 }
 
 struct PgCreatePurchaseOperations<'a> {

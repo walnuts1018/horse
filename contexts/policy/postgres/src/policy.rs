@@ -70,8 +70,8 @@ pub async fn persist_create_budget(
         .as_deref()
         .map(|value| parse_uuid(value, "category_id"))
         .transpose()?;
-    let name = decision.name;
-    let amount = decision.amount_yen;
+    let name = decision.name.as_str().to_owned();
+    let amount = decision.amount_yen.value();
     let starts = decision.starts_on;
     let ends = decision.ends_on;
     let mut pooled = pool
@@ -202,8 +202,8 @@ pub async fn persist_update_budget(
                     return Err(PolicyPersistenceError::CategoryNotFound);
                 }
             }
-            let name = decision.name;
-            let amount = decision.amount_yen;
+            let name = decision.name.as_str().to_owned();
+            let amount = decision.amount_yen.value();
             let starts = decision.starts_on;
             let ends = match decision.ends_on {
                 budget::EndDateChange::Unchanged => row.5,

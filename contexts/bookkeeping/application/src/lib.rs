@@ -17,6 +17,7 @@ pub mod create_purchase;
 pub mod create_purchase_workflow;
 pub mod funding_record;
 pub mod post_purchase;
+pub mod post_purchase_entry;
 pub mod record_repayment;
 pub mod record_transfer;
 pub mod save_purchase_item_edits;

@@ -4,6 +4,24 @@ use horse_household_change::UiChangeDescriptor;
 const MAX_AMOUNT_YEN: i64 = 1_000_000_000_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BudgetName(String);
+
+impl BudgetName {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BudgetAmountYen(i64);
+
+impl BudgetAmountYen {
+    pub fn value(self) -> i64 {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Budget {
     pub id: String,
     pub household_id: String,
@@ -56,8 +74,8 @@ pub struct CreateBudgetDecision {
     pub id: String,
     pub household_id: String,
     pub category_id: Option<String>,
-    pub name: String,
-    pub amount_yen: i64,
+    pub name: BudgetName,
+    pub amount_yen: BudgetAmountYen,
     pub starts_on: NaiveDate,
     pub ends_on: Option<NaiveDate>,
 }
@@ -84,8 +102,8 @@ pub struct UpdateBudgetDecision {
     pub household_id: String,
     pub expected_revision: i64,
     pub category_id: Option<String>,
-    pub name: String,
-    pub amount_yen: i64,
+    pub name: BudgetName,
+    pub amount_yen: BudgetAmountYen,
     pub starts_on: NaiveDate,
     pub ends_on: EndDateChange,
 }
@@ -174,8 +192,8 @@ pub async fn archive_budget<O: BudgetOperations>(
 pub fn decide_create(command: CreateBudgetCommand) -> Result<CreateBudgetDecision, BudgetError> {
     validate_identity(&command.actor_id, &command.household_id, &command.id)?;
     let category_id = validate_optional_id(command.category_id)?;
-    let name = validate_name(command.name)?;
-    validate_amount(command.amount_yen)?;
+    let name = BudgetName(validate_name(command.name)?);
+    let amount_yen = BudgetAmountYen::try_from(command.amount_yen)?;
     validate_dates(command.starts_on, command.ends_on)?;
     Ok(CreateBudgetDecision {
         actor_id: command.actor_id,
@@ -183,7 +201,7 @@ pub fn decide_create(command: CreateBudgetCommand) -> Result<CreateBudgetDecisio
         household_id: command.household_id,
         category_id,
         name,
-        amount_yen: command.amount_yen,
+        amount_yen,
         starts_on: command.starts_on,
         ends_on: command.ends_on,
     })
@@ -193,8 +211,8 @@ pub fn decide_update(command: UpdateBudgetCommand) -> Result<UpdateBudgetDecisio
     validate_identity(&command.actor_id, &command.household_id, &command.id)?;
     validate_revision(command.expected_revision)?;
     let category_id = validate_optional_id(command.category_id)?;
-    let name = validate_name(command.name)?;
-    validate_amount(command.amount_yen)?;
+    let name = BudgetName(validate_name(command.name)?);
+    let amount_yen = BudgetAmountYen::try_from(command.amount_yen)?;
     if let Some(ends_on) = command.ends_on {
         validate_dates(command.starts_on, ends_on)?;
     }
@@ -205,7 +223,7 @@ pub fn decide_update(command: UpdateBudgetCommand) -> Result<UpdateBudgetDecisio
         expected_revision: command.expected_revision,
         category_id,
         name,
-        amount_yen: command.amount_yen,
+        amount_yen,
         starts_on: command.starts_on,
         ends_on: command
             .ends_on
@@ -265,11 +283,15 @@ fn validate_name(value: String) -> Result<String, BudgetError> {
         Ok(value)
     }
 }
-fn validate_amount(value: i64) -> Result<(), BudgetError> {
-    if (1..=MAX_AMOUNT_YEN).contains(&value) {
-        Ok(())
-    } else {
-        Err(BudgetError::InvalidAmount)
+impl TryFrom<i64> for BudgetAmountYen {
+    type Error = BudgetError;
+
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        if (1..=MAX_AMOUNT_YEN).contains(&value) {
+            Ok(Self(value))
+        } else {
+            Err(BudgetError::InvalidAmount)
+        }
     }
 }
 fn validate_dates(starts: NaiveDate, ends: Option<NaiveDate>) -> Result<(), BudgetError> {

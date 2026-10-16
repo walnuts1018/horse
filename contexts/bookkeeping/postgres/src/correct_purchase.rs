@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bookkeeping_application::{
-    AccountId, ItemId, PurchaseId, PurchaseLifecycle, Side,
+    AccountId, ItemId, MemberId, PurchaseId, PurchaseLifecycle, Side,
     correct_purchase::{
         CorrectPurchaseDecision, CorrectionCommand, CorrectionFundingEffects,
         CorrectionFundingRule, CorrectionMemberBurdenSnapshot, CorrectionPaymentFundingSnapshot,
@@ -14,7 +14,8 @@ use bookkeeping_application::{
 };
 use bookkeeping_domain::{
     AccountingPeriod, AccountingPeriodStatus, AllocationShares, AllocationWeight,
-    PoolId as WorkflowPoolId, PositiveYen, YearMonth, Yen,
+    CorrectionFundingBasis, CorrectionJournalTarget, PoolId as WorkflowPoolId, PositiveYen,
+    YearMonth, Yen,
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
@@ -634,17 +635,19 @@ impl<E: EvidenceOperations, P: super::settlement_preview::PolicySettlementData>
             persist_statement_refund_confirmation(
                 self.evidence,
                 &mut *self.conn,
-                self.household_id,
-                self.actor_id,
-                parse_uuid(source_document_id, "source_document_id")?,
-                source_reference,
-                Uuid::parse_str(&persisted.correction_id)
-                    .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
-                &self
-                    .source_observation
-                    .as_ref()
-                    .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?
-                    .evidence,
+                StatementRefundConfirmation {
+                    household_id: self.household_id,
+                    actor_id: self.actor_id,
+                    source_document_id: parse_uuid(source_document_id, "source_document_id")?,
+                    source_reference,
+                    correction_id: Uuid::parse_str(&persisted.correction_id)
+                        .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
+                    observation: &self
+                        .source_observation
+                        .as_ref()
+                        .ok_or(CorrectPurchasePersistenceError::InvalidDecision)?
+                        .evidence,
+                },
             )
             .await?;
         }
@@ -713,19 +716,23 @@ pub async fn link_statement_refund_correction(
             let linked = evidence
                 .evidence_link(
                     &mut *conn,
-                    household_id,
-                    "purchase_correction",
-                    correction_id,
-                    true,
+                    crate::evidence_port::EvidenceLinkQuery {
+                        household_id,
+                        entity_kind: "purchase_correction",
+                        entity_id: correction_id,
+                        lock: true,
+                    },
                 )
                 .await?
                 .ok_or(CorrectPurchasePersistenceError::RefundDoesNotMatchCorrection)?;
             let linked_document_exists = evidence
                 .source_document_metadata(
                     &mut *conn,
-                    household_id,
-                    linked.source_document_id,
-                    false,
+                    crate::evidence_port::SourceDocumentQuery {
+                        household_id,
+                        document_id: linked.source_document_id,
+                        lock: false,
+                    },
                 )
                 .await?
                 .is_some();
@@ -735,9 +742,11 @@ pub async fn link_statement_refund_correction(
             let linked_confirmation = evidence
                 .latest_confirmation(
                     &mut *conn,
-                    household_id,
-                    linked.source_document_id,
-                    &linked.source_reference,
+                    crate::evidence_port::SourceReferenceQuery {
+                        household_id,
+                        document_id: linked.source_document_id,
+                        source_reference: &linked.source_reference,
+                    },
                 )
                 .await?;
             if !linked_confirmation.is_some_and(|confirmation| {
@@ -763,9 +772,11 @@ pub async fn link_statement_refund_correction(
             let already_confirmed = evidence
                 .has_confirmation_status(
                     &mut *conn,
-                    household_id,
-                    source_document_id,
-                    &decision.source_reference,
+                    crate::evidence_port::SourceReferenceQuery {
+                        household_id,
+                        document_id: source_document_id,
+                        source_reference: &decision.source_reference,
+                    },
                     "confirmed",
                 )
                 .await?;
@@ -775,14 +786,19 @@ pub async fn link_statement_refund_correction(
             evidence
                 .insert_confirmation(
                     &mut *conn,
-                    household_id,
-                    source_document_id,
-                    &decision.source_reference,
-                    "purchase_correction",
-                    correction_id,
-                    actor_id,
-                    format!("purchase-correction-confirmation:{}", Uuid::now_v7()),
-                    None,
+                    crate::evidence_port::InsertConfirmation {
+                        household_id,
+                        document_id: source_document_id,
+                        source_reference: decision.source_reference.clone(),
+                        entity_kind: "purchase_correction".to_owned(),
+                        entity_id: correction_id,
+                        changed_by: actor_id,
+                        idempotency_key: format!(
+                            "purchase-correction-confirmation:{}",
+                            Uuid::now_v7()
+                        ),
+                        changed_at: None,
+                    },
                 )
                 .await
                 .map_err(map_confirmation_insert_error)?;
@@ -835,16 +851,28 @@ async fn find_correct_purchase_replay(
     }))
 }
 
-async fn persist_statement_refund_confirmation<E: EvidenceOperations + ?Sized>(
-    evidence: &E,
-    conn: &mut diesel_async::AsyncPgConnection,
+struct StatementRefundConfirmation<'a> {
     household_id: Uuid,
     actor_id: Uuid,
     source_document_id: Uuid,
-    source_reference: &str,
+    source_reference: &'a str,
     correction_id: Uuid,
-    observation: &serde_json::Value,
+    observation: &'a serde_json::Value,
+}
+
+async fn persist_statement_refund_confirmation<E: EvidenceOperations + ?Sized>(
+    evidence: &E,
+    conn: &mut diesel_async::AsyncPgConnection,
+    confirmation: StatementRefundConfirmation<'_>,
 ) -> Result<(), CorrectPurchasePersistenceError> {
+    let StatementRefundConfirmation {
+        household_id,
+        actor_id,
+        source_document_id,
+        source_reference,
+        correction_id,
+        observation,
+    } = confirmation;
     let region = observation
         .get("statement")
         .and_then(|statement| statement.get("region"))
@@ -852,14 +880,16 @@ async fn persist_statement_refund_confirmation<E: EvidenceOperations + ?Sized>(
     evidence
         .insert_confirmation(
             &mut *conn,
-            household_id,
-            source_document_id,
-            source_reference,
-            "purchase_correction",
-            correction_id,
-            actor_id,
-            format!("purchase-correction-confirmation:{}", Uuid::now_v7()),
-            None,
+            crate::evidence_port::InsertConfirmation {
+                household_id,
+                document_id: source_document_id,
+                source_reference: source_reference.to_owned(),
+                entity_kind: "purchase_correction".to_owned(),
+                entity_id: correction_id,
+                changed_by: actor_id,
+                idempotency_key: format!("purchase-correction-confirmation:{}", Uuid::now_v7()),
+                changed_at: None,
+            },
         )
         .await
         .map_err(map_confirmation_insert_error)?;
@@ -1075,21 +1105,20 @@ async fn persist_correct_purchase_in_transaction(
         let line_no = i32::try_from(line.line_no)
             .map_err(|_| CorrectPurchasePersistenceError::NumericOutOfRange("journal line_no"))?;
         let amount = line.amount.value();
+        let (account_id, pool_id) = match &line.target {
+            CorrectionJournalTarget::Pool(id) => (None, Some(parse_uuid(id.as_str(), "pool_id")?)),
+            CorrectionJournalTarget::Account(id) => {
+                (Some(parse_uuid(id.as_str(), "account_id")?), None)
+            }
+            CorrectionJournalTarget::Offset => (None, None),
+        };
         diesel::insert_into(public::journal_entries::table)
             .values((
                 public::journal_entries::household_id.eq(household_id),
                 public::journal_entries::journal_id.eq(journal_id),
                 public::journal_entries::line_no.eq(line_no),
-                public::journal_entries::account_id.eq(line
-                    .account_id
-                    .as_ref()
-                    .map(|id| parse_uuid(id.as_str(), "account_id"))
-                    .transpose()?),
-                public::journal_entries::pool_id.eq(line
-                    .pool_id
-                    .as_ref()
-                    .map(|id| parse_uuid(id.as_str(), "pool_id"))
-                    .transpose()?),
+                public::journal_entries::account_id.eq(account_id),
+                public::journal_entries::pool_id.eq(pool_id),
                 public::journal_entries::member_id.eq::<Option<Uuid>>(None),
                 public::journal_entries::debit_yen.eq(if line.side == Side::Debit {
                     amount
@@ -1163,7 +1192,7 @@ async fn persist_correct_purchase_in_transaction(
 
     let mut payment_line_no = 0_i32;
     for line in &decision.journal_lines {
-        let Some(account_id) = &line.account_id else {
+        let CorrectionJournalTarget::Account(account_id) = &line.target else {
             continue;
         };
         payment_line_no = payment_line_no.checked_add(1).ok_or(
@@ -1243,7 +1272,14 @@ async fn load_statement_refund_entry<E: EvidenceOperations + ?Sized>(
     source_reference: &str,
 ) -> Result<LoadedStatementRefund, CorrectPurchasePersistenceError> {
     let source_kind = evidence
-        .source_document_metadata(conn, household_id, document_id, true)
+        .source_document_metadata(
+            conn,
+            crate::evidence_port::SourceDocumentQuery {
+                household_id,
+                document_id,
+                lock: true,
+            },
+        )
         .await?
         .ok_or(CorrectPurchasePersistenceError::SourceDocumentNotFound)?;
     if source_kind.source_kind != "bank" && source_kind.source_kind != "card" {
@@ -1252,9 +1288,11 @@ async fn load_statement_refund_entry<E: EvidenceOperations + ?Sized>(
     let confirmed = evidence
         .has_confirmation_status(
             conn,
-            household_id,
-            document_id,
-            source_reference,
+            crate::evidence_port::SourceReferenceQuery {
+                household_id,
+                document_id,
+                source_reference,
+            },
             "confirmed",
         )
         .await?;
@@ -1262,7 +1300,13 @@ async fn load_statement_refund_entry<E: EvidenceOperations + ?Sized>(
         return Err(CorrectPurchasePersistenceError::StatementAlreadyConfirmed);
     }
     let (job_id, result) = evidence
-        .latest_extraction_with_id(conn, household_id, document_id)
+        .latest_extraction_with_id(
+            conn,
+            crate::evidence_port::ExtractionQuery {
+                household_id,
+                document_id,
+            },
+        )
         .await?
         .ok_or(CorrectPurchasePersistenceError::StatementExtractionUnavailable)?;
     let statements = result
@@ -1532,11 +1576,14 @@ async fn validate_references(
     let mut account_ids = BTreeSet::new();
     let mut pool_ids = BTreeSet::new();
     for line in &decision.journal_lines {
-        if let Some(id) = &line.account_id {
-            account_ids.insert(parse_uuid(id.as_str(), "account_id")?);
-        }
-        if let Some(id) = &line.pool_id {
-            pool_ids.insert(parse_uuid(id.as_str(), "pool_id")?);
+        match &line.target {
+            CorrectionJournalTarget::Account(id) => {
+                account_ids.insert(parse_uuid(id.as_str(), "account_id")?);
+            }
+            CorrectionJournalTarget::Pool(id) => {
+                pool_ids.insert(parse_uuid(id.as_str(), "pool_id")?);
+            }
+            CorrectionJournalTarget::Offset => {}
         }
     }
     for allocation in &decision.allocations {
@@ -1735,12 +1782,22 @@ async fn load_correction_funding_effects(
     let historical_rules = rule_rows
         .into_iter()
         .map(|(pool_id, version, owner_id, policy)| {
+            let policy = parse_funding_policy(policy.as_deref())?;
+            let basis = match (owner_id, policy) {
+                (Some(owner_member_id), None) => CorrectionFundingBasis::Personal {
+                    owner_member_id: MemberId::new(owner_member_id.to_string())
+                        .map_err(|_| CorrectPurchasePersistenceError::InvalidFundingSnapshot)?,
+                },
+                (None, Some(settlement_policy)) => {
+                    CorrectionFundingBasis::Shared { settlement_policy }
+                }
+                _ => return Err(CorrectPurchasePersistenceError::InvalidFundingSnapshot),
+            };
             Ok(CorrectionFundingRule {
                 pool_id: pool_id.to_string(),
                 version: u32::try_from(version)
                     .map_err(|_| CorrectPurchasePersistenceError::InvalidFundingSnapshot)?,
-                owner_member_id: owner_id.map(|id| id.to_string()),
-                settlement_policy: parse_funding_policy(policy.as_deref())?,
+                basis,
             })
         })
         .collect::<Result<Vec<_>, CorrectPurchasePersistenceError>>()?;
