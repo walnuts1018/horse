@@ -87,13 +87,7 @@ impl budget::BudgetMutationHandler for PostgresBudgetMutationHandler {
 impl budget::BudgetQuery for PostgresBudgetMutationHandler {
     fn query<'a>(
         &'a self,
-        actor_id: budget::BudgetActorId,
-        household_id: budget::BudgetHouseholdId,
-        period: String,
-        after_id: Option<Uuid>,
-        before_id: Option<Uuid>,
-        first: Option<i32>,
-        last: Option<i32>,
+        request: budget::BudgetQueryRequest,
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<
@@ -103,6 +97,15 @@ impl budget::BudgetQuery for PostgresBudgetMutationHandler {
         >,
     > {
         Box::pin(async move {
+            let budget::BudgetQueryRequest {
+                actor_id,
+                household_id,
+                period,
+                after_id,
+                before_id,
+                first,
+                last,
+            } = request;
             let page = policy_query::budgets(
                 &self.pool,
                 policy_query::BudgetsQuery {
@@ -247,13 +250,7 @@ impl recurring_expense::RecurringExpenseMutationHandler
 impl recurring_expense::RecurringExpenseQuery for PostgresRecurringExpenseMutationHandler {
     fn query<'a>(
         &'a self,
-        actor_id: recurring_expense::RecurringExpenseActorId,
-        household_id: recurring_expense::RecurringExpenseHouseholdId,
-        include_archived: bool,
-        after_id: Option<Uuid>,
-        before_id: Option<Uuid>,
-        first: Option<i32>,
-        last: Option<i32>,
+        request: recurring_expense::RecurringExpenseQueryRequest,
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<
@@ -266,6 +263,15 @@ impl recurring_expense::RecurringExpenseQuery for PostgresRecurringExpenseMutati
         >,
     > {
         Box::pin(async move {
+            let recurring_expense::RecurringExpenseQueryRequest {
+                actor_id,
+                household_id,
+                include_archived,
+                after_id,
+                before_id,
+                first,
+                last,
+            } = request;
             let page = policy_query::recurring_expenses(
                 &self.pool,
                 policy_query::RecurringExpensesQuery {

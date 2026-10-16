@@ -32,16 +32,21 @@ pub struct RecurringExpensePage {
     pub has_previous_page: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecurringExpenseQueryRequest {
+    pub actor_id: RecurringExpenseActorId,
+    pub household_id: RecurringExpenseHouseholdId,
+    pub include_archived: bool,
+    pub after_id: Option<uuid::Uuid>,
+    pub before_id: Option<uuid::Uuid>,
+    pub first: Option<i32>,
+    pub last: Option<i32>,
+}
+
 pub trait RecurringExpenseQuery: Send + Sync {
     fn query<'a>(
         &'a self,
-        actor_id: RecurringExpenseActorId,
-        household_id: RecurringExpenseHouseholdId,
-        include_archived: bool,
-        after_id: Option<uuid::Uuid>,
-        before_id: Option<uuid::Uuid>,
-        first: Option<i32>,
-        last: Option<i32>,
+        request: RecurringExpenseQueryRequest,
     ) -> Pin<
         Box<dyn Future<Output = Result<RecurringExpensePage, super::WorkflowFailure>> + Send + 'a>,
     >;

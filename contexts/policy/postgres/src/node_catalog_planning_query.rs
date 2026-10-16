@@ -215,7 +215,7 @@ impl PolicyNodeBatchQuery for PostgresPolicyNodeBatchQuery {
                         )| {
                             let category = category_id.and_then(|id| categories.get(&id));
                             if category_id.is_some() && category.is_none() {
-                                return Err(format!("allocation rule category is missing"));
+                                return Err("allocation rule category is missing".to_owned());
                             }
                             Ok(AllocationRuleProjection {
                                 id,

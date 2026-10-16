@@ -1,5 +1,5 @@
 use bookkeeping_application::create_account::{
-    CreateAccountHandler, CreateAccountRequest, CreatedAccount,
+    CreateAccountFuture, CreateAccountHandler, CreateAccountRequest, CreatedAccount,
 };
 use bookkeeping_application::workflow_failure::WorkflowFailure;
 use bookkeeping_domain::create_account::{
@@ -24,17 +24,7 @@ impl PostgresCreateAccountHandler {
 }
 
 impl CreateAccountHandler for PostgresCreateAccountHandler {
-    fn handle<'a>(
-        &'a self,
-        request: CreateAccountRequest,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<
-                    Output = Result<CreatedAccount, WorkflowFailure<CreateAccountError, String>>,
-                > + Send
-                + 'a,
-        >,
-    > {
+    fn handle<'a>(&'a self, request: CreateAccountRequest) -> CreateAccountFuture<'a> {
         Box::pin(async move {
             let account = persist_create_account(
                 &self.pool,

@@ -16,16 +16,21 @@ pub struct BudgetPage {
     pub has_previous_page: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BudgetQueryRequest {
+    pub actor_id: BudgetActorId,
+    pub household_id: BudgetHouseholdId,
+    pub period: String,
+    pub after_id: Option<uuid::Uuid>,
+    pub before_id: Option<uuid::Uuid>,
+    pub first: Option<i32>,
+    pub last: Option<i32>,
+}
+
 pub trait BudgetQuery: Send + Sync {
     fn query<'a>(
         &'a self,
-        actor_id: BudgetActorId,
-        household_id: BudgetHouseholdId,
-        period: String,
-        after_id: Option<uuid::Uuid>,
-        before_id: Option<uuid::Uuid>,
-        first: Option<i32>,
-        last: Option<i32>,
+        request: BudgetQueryRequest,
     ) -> Pin<Box<dyn Future<Output = Result<BudgetPage, super::WorkflowFailure>> + Send + 'a>>;
 }
 

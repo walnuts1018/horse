@@ -1,5 +1,5 @@
 use bookkeeping_application::account_card_last4::{
-    AccountCardLast4Projection, SetCardLast4Handler, SetCardLast4Request,
+    AccountCardLast4Projection, SetCardLast4Future, SetCardLast4Handler, SetCardLast4Request,
 };
 use bookkeeping_application::workflow_failure::WorkflowFailure;
 use bookkeeping_domain::account_card_last4::{
@@ -22,20 +22,7 @@ impl PostgresSetCardLast4Handler {
 }
 
 impl SetCardLast4Handler for PostgresSetCardLast4Handler {
-    fn handle<'a>(
-        &'a self,
-        request: SetCardLast4Request,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<
-                    Output = Result<
-                        AccountCardLast4Projection,
-                        WorkflowFailure<SetCardLast4Error, String>,
-                    >,
-                > + Send
-                + 'a,
-        >,
-    > {
+    fn handle<'a>(&'a self, request: SetCardLast4Request) -> SetCardLast4Future<'a> {
         Box::pin(async move {
             let account = persist_set_card_last4(
                 &self.pool,

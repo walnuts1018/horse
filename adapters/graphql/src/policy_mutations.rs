@@ -623,15 +623,15 @@ pub async fn graphql_budgets(
     let before_id = decode_cursor(before.as_deref(), "Budget")?;
     let page = ctx
         .data::<std::sync::Arc<dyn budget::BudgetQuery>>()?
-        .query(
-            budget::BudgetActorId::from_persisted(actor.0),
-            budget::BudgetHouseholdId::from_persisted(household_id),
-            period.0,
+        .query(budget::BudgetQueryRequest {
+            actor_id: budget::BudgetActorId::from_persisted(actor.0),
+            household_id: budget::BudgetHouseholdId::from_persisted(household_id),
+            period: period.0,
             after_id,
             before_id,
             first,
             last,
-        )
+        })
         .await
         .map_err(policy_workflow_graphql_error)?;
     let edges = page
@@ -674,15 +674,17 @@ pub async fn graphql_recurring_expenses(
     let before_id = decode_cursor(before.as_deref(), "RecurringExpense")?;
     let page = ctx
         .data::<std::sync::Arc<dyn recurring_expense::RecurringExpenseQuery>>()?
-        .query(
-            recurring_expense::RecurringExpenseActorId::from_persisted(actor.0),
-            recurring_expense::RecurringExpenseHouseholdId::from_persisted(household_id),
+        .query(recurring_expense::RecurringExpenseQueryRequest {
+            actor_id: recurring_expense::RecurringExpenseActorId::from_persisted(actor.0),
+            household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(
+                household_id,
+            ),
             include_archived,
             after_id,
             before_id,
             first,
             last,
-        )
+        })
         .await
         .map_err(policy_workflow_graphql_error)?;
     let edges = page

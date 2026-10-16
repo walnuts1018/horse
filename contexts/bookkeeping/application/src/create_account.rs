@@ -32,15 +32,14 @@ pub struct CreatedAccount {
     pub pool_id: Option<Uuid>,
 }
 
+pub type CreateAccountFuture<'a> = Pin<
+    Box<
+        dyn Future<Output = Result<CreatedAccount, WorkflowFailure<CreateAccountError, String>>>
+            + Send
+            + 'a,
+    >,
+>;
+
 pub trait CreateAccountHandler: Send + Sync {
-    fn handle<'a>(
-        &'a self,
-        request: CreateAccountRequest,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<CreatedAccount, WorkflowFailure<CreateAccountError, String>>>
-                + Send
-                + 'a,
-        >,
-    >;
+    fn handle<'a>(&'a self, request: CreateAccountRequest) -> CreateAccountFuture<'a>;
 }

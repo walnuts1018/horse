@@ -22,19 +22,18 @@ pub struct AccountCardLast4Projection {
     pub pool_id: Option<Uuid>,
 }
 
+pub type SetCardLast4Future<'a> = Pin<
+    Box<
+        dyn Future<
+                Output = Result<
+                    AccountCardLast4Projection,
+                    WorkflowFailure<SetCardLast4Error, String>,
+                >,
+            > + Send
+            + 'a,
+    >,
+>;
+
 pub trait SetCardLast4Handler: Send + Sync {
-    fn handle<'a>(
-        &'a self,
-        request: SetCardLast4Request,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        AccountCardLast4Projection,
-                        WorkflowFailure<SetCardLast4Error, String>,
-                    >,
-                > + Send
-                + 'a,
-        >,
-    >;
+    fn handle<'a>(&'a self, request: SetCardLast4Request) -> SetCardLast4Future<'a>;
 }

@@ -365,12 +365,8 @@ pub async fn set_default_allocation(
         .await
     {
         Ok(_) => Ok(Box::new(SetDefaultAllocationSuccess {
-            result: crate::household_lifecycle::load_household_graphql(
-                ctx,
-                actor.0,
-                household_id,
-            )
-            .await?,
+            result: crate::household_lifecycle::load_household_graphql(ctx, actor.0, household_id)
+                .await?,
         })
         .into()),
         Err(error) => set_default_allocation_persistence_error(error),
@@ -453,10 +449,7 @@ pub async fn set_allocation_rule(
     else {
         return Ok(set_allocation_rule_error(MutationErrorCode::NotFound).into());
     };
-    Ok(Box::new(SetAllocationRuleSuccess {
-        result: projection,
-    })
-    .into())
+    Ok(Box::new(SetAllocationRuleSuccess { result: projection }).into())
 }
 
 pub async fn set_funding_schedule(
