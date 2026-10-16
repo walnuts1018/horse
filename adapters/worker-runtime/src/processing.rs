@@ -540,6 +540,8 @@ async fn process_inner(
             tracing::debug!(
                 model = %candidate_model,
                 route = candidate_route,
+                input_mime_type = mime_type,
+                input_bytes = document.data.len(),
                 estimated_input_tokens = estimate,
                 reservation_latency_ms = elapsed_ms,
                 succeeded = matches!(&reservation_result, Ok(Ok(_))),
@@ -841,6 +843,8 @@ async fn process_inner(
             tracing::info!(
                 model = %model,
                 route,
+                input_mime_type = mime_type,
+                input_bytes = document.data.len(),
                 estimated_input_tokens = estimate,
                 actual_input_tokens = input_tokens,
                 input_token_delta = input_tokens.saturating_sub(estimate),
