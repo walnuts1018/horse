@@ -506,9 +506,17 @@ pub async fn create_product_variant(
                     .map_err(crate::internal_error)?,
                 name: decision.name.as_str().to_owned(),
                 normalized_name: decision.normalized_name().as_str().to_owned(),
-                brand: decision.brand.filter(|value| !value.is_empty()),
-                package_size: decision.package_size.filter(|value| !value.is_empty()),
-                barcode: decision.barcode,
+                brand: decision
+                    .brand
+                    .map(|value| value.as_str().to_owned())
+                    .filter(|value| !value.is_empty()),
+                package_size: decision
+                    .package_size
+                    .map(|value| value.as_str().to_owned())
+                    .filter(|value| !value.is_empty()),
+                barcode: decision
+                    .barcode
+                    .map(|value| value.as_str().to_owned()),
                 archived: false,
                 revision: 1,
                 aliases: Vec::new(),
@@ -556,13 +564,13 @@ pub async fn set_product_alias(
             Ok(SetProductAliasSuccess {
                 result: ProductAlias {
                     id: encode_node_id("ProductAlias", &alias.id).map_err(crate::internal_error)?,
-                    household_id: encode_node_id("Household", &decision.household_id)
+                    household_id: encode_node_id("Household", decision.household_id.as_str())
                         .map_err(crate::internal_error)?,
-                    variant_id: encode_node_id("ProductVariant", &decision.variant_id)
+                    variant_id: encode_node_id("ProductVariant", decision.variant_id.as_str())
                         .map_err(crate::internal_error)?,
-                    merchant_key: decision.merchant_key,
-                    alias: decision.alias_text,
-                    normalized_alias: decision.normalized_alias,
+                    merchant_key: decision.merchant_key.as_str().to_owned(),
+                    alias: decision.alias_text.as_str().to_owned(),
+                    normalized_alias: decision.normalized_alias.as_str().to_owned(),
                     revision,
                 },
             }

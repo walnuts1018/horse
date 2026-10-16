@@ -2798,6 +2798,7 @@ name = "horse-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "catalog-postgres",
  "horse-auth",
  "horse-extraction-queue",
  "horse-graphql-api",

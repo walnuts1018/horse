@@ -68,9 +68,14 @@ pub struct Config {
 #[derive(Clone, Copy, Debug)]
 pub struct Actor(pub Uuid);
 
-pub fn schema(pool: PgPool, config: Config) -> Schema {
+pub fn schema(
+    pool: PgPool,
+    config: Config,
+    tag_query: std::sync::Arc<dyn catalog_application::tag_query::TagQuery>,
+) -> Schema {
     GraphqlSchema::build(QueryRoot, MutationRoot, subscriptions::SubscriptionRoot)
         .data(pool)
+        .data(tag_query)
         .data(config)
         .data(subscriptions::SubscriptionHub::new())
         .register_output_type::<MutationError>()

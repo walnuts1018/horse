@@ -19,8 +19,8 @@ pub async fn persist_product_learning_in_transaction(
                 .filter(public::product_variants::id.eq(decision.variant_id)),
         )
         .set((
-            public::product_variants::name.eq(name),
-            public::product_variants::normalized_name.eq(normalized_name),
+            public::product_variants::name.eq(name.as_str()),
+            public::product_variants::normalized_name.eq(normalized_name.as_str()),
             public::product_variants::revision.eq(public::product_variants::revision + 1),
             public::product_variants::updated_at.eq(now),
         ))
@@ -48,7 +48,7 @@ pub async fn persist_product_learning_in_transaction(
                 public::product_aliases::id.eq(Uuid::now_v7()),
                 public::product_aliases::household_id.eq(decision.household_id),
                 public::product_aliases::variant_id.eq(decision.variant_id),
-                public::product_aliases::merchant_key.eq(&decision.merchant_key),
+                public::product_aliases::merchant_key.eq(decision.merchant_key.as_str()),
                 public::product_aliases::alias_text.eq(alias_text),
                 public::product_aliases::normalized_alias.eq(normalized_alias),
             ))
@@ -92,8 +92,8 @@ pub async fn persist_product_learning_in_transaction(
             public::product_corrections::previous_product_variant_id
                 .eq(decision.previous_variant_id),
             public::product_corrections::product_variant_id.eq(decision.variant_id),
-            public::product_corrections::learning_scope.eq(decision.learning_scope),
-            public::product_corrections::merchant_key.eq(decision.merchant_key),
+            public::product_corrections::learning_scope.eq(decision.learning_scope.as_str()),
+            public::product_corrections::merchant_key.eq(decision.merchant_key.as_str()),
             public::product_corrections::actor_id.eq(decision.actor_id),
         ))
         .execute(conn)

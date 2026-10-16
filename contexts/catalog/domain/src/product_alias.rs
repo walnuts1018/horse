@@ -1,6 +1,30 @@
 use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
 
+macro_rules! alias_value {
+    ($name:ident) => {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub struct $name(String);
+
+        impl $name {
+            fn new(value: String) -> Self {
+                Self(value)
+            }
+
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+    };
+}
+
+alias_value!(ActorId);
+alias_value!(HouseholdId);
+alias_value!(VariantId);
+alias_value!(MerchantKey);
+alias_value!(AliasText);
+alias_value!(NormalizedAlias);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetProductAliasCommand {
     pub actor_id: String,
@@ -12,12 +36,12 @@ pub struct SetProductAliasCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetProductAliasDecision {
-    pub actor_id: String,
-    pub household_id: String,
-    pub variant_id: String,
-    pub merchant_key: String,
-    pub alias_text: String,
-    pub normalized_alias: String,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
+    pub variant_id: VariantId,
+    pub merchant_key: MerchantKey,
+    pub alias_text: AliasText,
+    pub normalized_alias: NormalizedAlias,
 }
 
 impl SetProductAliasDecision {
@@ -63,12 +87,12 @@ pub fn decide_set_product_alias(
     let normalized_alias = normalize_text(&alias_text);
 
     Ok(SetProductAliasDecision {
-        actor_id: command.actor_id,
-        household_id: command.household_id,
-        variant_id: command.variant_id,
-        merchant_key,
-        alias_text,
-        normalized_alias,
+        actor_id: ActorId::new(command.actor_id),
+        household_id: HouseholdId::new(command.household_id),
+        variant_id: VariantId::new(command.variant_id),
+        merchant_key: MerchantKey::new(merchant_key),
+        alias_text: AliasText::new(alias_text),
+        normalized_alias: NormalizedAlias::new(normalized_alias),
     })
 }
 
@@ -95,8 +119,8 @@ mod tests {
         })
         .expect("valid alias");
 
-        assert_eq!(decision.merchant_key, "shop name");
-        assert_eq!(decision.alias_text, "Product   Name");
-        assert_eq!(decision.normalized_alias, "product name");
+        assert_eq!(decision.merchant_key.as_str(), "shop name");
+        assert_eq!(decision.alias_text.as_str(), "Product   Name");
+        assert_eq!(decision.normalized_alias.as_str(), "product name");
     }
 }

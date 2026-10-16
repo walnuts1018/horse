@@ -237,9 +237,15 @@ async fn persist_create_variant(
         concept_id: parse_uuid(decision.concept_id.as_str(), "concept_id")?,
         name: decision.name.as_str().to_owned(),
         normalized_name: decision.normalized_name().as_str().to_owned(),
-        brand: decision.brand.unwrap_or_default(),
-        package_size: decision.package_size.unwrap_or_default(),
-        barcode: decision.barcode,
+        brand: decision
+            .brand
+            .map(|value| value.as_str().to_owned())
+            .unwrap_or_default(),
+        package_size: decision
+            .package_size
+            .map(|value| value.as_str().to_owned())
+            .unwrap_or_default(),
+        barcode: decision.barcode.map(|value| value.as_str().to_owned()),
     };
 
     let mut pooled = pool

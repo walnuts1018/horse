@@ -64,6 +64,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             mailbox_domain,
             local_part_prefix,
         },
+        Arc::new(catalog_postgres::tag_query::PostgresTagQuery::new(
+            pool.clone(),
+        )),
     );
     let object_store = match ObjectStore::from_env().await {
         Ok(store) => Some(Arc::new(store)),

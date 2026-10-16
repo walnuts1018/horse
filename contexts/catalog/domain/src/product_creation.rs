@@ -23,6 +23,27 @@ product_id!(HouseholdId);
 product_id!(CategoryId);
 product_id!(ConceptId);
 
+macro_rules! product_text {
+    ($name:ident) => {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub struct $name(String);
+
+        impl $name {
+            fn new(value: String) -> Self {
+                Self(value)
+            }
+
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+    };
+}
+
+product_text!(Brand);
+product_text!(PackageSize);
+product_text!(Barcode);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProductName(String);
 
@@ -96,9 +117,9 @@ pub struct CreateVariantDecision {
     pub household_id: HouseholdId,
     pub concept_id: ConceptId,
     pub name: ProductName,
-    pub brand: Option<String>,
-    pub package_size: Option<String>,
-    pub barcode: Option<String>,
+    pub brand: Option<Brand>,
+    pub package_size: Option<PackageSize>,
+    pub barcode: Option<Barcode>,
 }
 
 impl CreateVariantDecision {
@@ -176,9 +197,11 @@ pub fn decide_create_variant(
         household_id,
         concept_id,
         name,
-        brand: trim_optional(command.brand),
-        package_size: trim_optional(command.package_size),
-        barcode: command.barcode.map(|barcode| barcode.trim().to_owned()),
+        brand: trim_optional(command.brand).map(Brand::new),
+        package_size: trim_optional(command.package_size).map(PackageSize::new),
+        barcode: command
+            .barcode
+            .map(|barcode| Barcode::new(barcode.trim().to_owned())),
     })
 }
 

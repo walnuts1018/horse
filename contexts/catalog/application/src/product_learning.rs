@@ -1,5 +1,6 @@
 pub use catalog_domain::product_learning::{
-    ProductLearningCommand, ProductLearningDecision, ProductLearningError, ProductLearningKind,
+    LearningScope, MerchantKey, NormalizedVariantName, ProductLearningCommand,
+    ProductLearningDecision, ProductLearningError, ProductLearningKind, VariantName,
     decide_product_learning,
 };
 use horse_household_change::UiChangeDescriptor;

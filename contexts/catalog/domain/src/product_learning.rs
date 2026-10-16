@@ -1,6 +1,62 @@
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariantName(String);
+
+impl VariantName {
+    fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NormalizedVariantName(String);
+
+impl NormalizedVariantName {
+    fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MerchantKey(String);
+
+impl MerchantKey {
+    fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LearningScope {
+    VariantName,
+    MerchantAlias,
+    ItemOnly,
+}
+
+impl LearningScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::VariantName => "VARIANT_NAME",
+            Self::MerchantAlias => "MERCHANT_ALIAS",
+            Self::ItemOnly => "ITEM_ONLY",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProductLearningKind {
     VariantName(String),
     MerchantAlias,
@@ -30,10 +86,10 @@ pub struct ProductLearningDecision {
     pub raw_name: String,
     pub previous_variant_id: Option<Uuid>,
     pub variant_id: Uuid,
-    pub merchant_key: String,
-    pub learning_scope: &'static str,
+    pub merchant_key: MerchantKey,
+    pub learning_scope: LearningScope,
     pub record_correction: bool,
-    pub variant_name: Option<(String, String)>,
+    pub variant_name: Option<(VariantName, NormalizedVariantName)>,
     pub alias: Option<(String, String)>,
 }
 
@@ -50,9 +106,9 @@ pub fn decide_product_learning(
         return Ok(None);
     };
     let learning_scope = match &command.learning {
-        Some(ProductLearningKind::VariantName(_)) => "VARIANT_NAME",
-        Some(ProductLearningKind::MerchantAlias) => "MERCHANT_ALIAS",
-        Some(ProductLearningKind::ItemOnly) | None => "ITEM_ONLY",
+        Some(ProductLearningKind::VariantName(_)) => LearningScope::VariantName,
+        Some(ProductLearningKind::MerchantAlias) => LearningScope::MerchantAlias,
+        Some(ProductLearningKind::ItemOnly) | None => LearningScope::ItemOnly,
     };
     let variant_name = match &command.learning {
         Some(ProductLearningKind::VariantName(name)) => {
@@ -61,7 +117,10 @@ pub fn decide_product_learning(
             if normalized_name.is_empty() || name.len() > 240 {
                 return Err(ProductLearningError::InvalidVariantName);
             }
-            Some((name.to_owned(), normalized_name))
+            Some((
+                VariantName::new(name.to_owned()),
+                NormalizedVariantName::new(normalized_name),
+            ))
         }
         _ => None,
     };
@@ -85,7 +144,7 @@ pub fn decide_product_learning(
         raw_name: command.raw_name,
         previous_variant_id: command.previous_variant_id,
         variant_id,
-        merchant_key,
+        merchant_key: MerchantKey::new(merchant_key),
         learning_scope,
         record_correction: command.variant_changed,
         variant_name,

@@ -47,9 +47,9 @@ pub async fn persist_set_product_alias(
     let decision = decide_set_product_alias(command)
         .map_err(SetProductAliasPersistenceError::InvalidWorkflow)?;
     let ui_change = decision.ui_change();
-    let household_id = parse_uuid(&decision.household_id, "household_id")?;
-    let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
-    let variant_id = parse_uuid(&decision.variant_id, "variant_id")?;
+    let household_id = parse_uuid(decision.household_id.as_str(), "household_id")?;
+    let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+    let variant_id = parse_uuid(decision.variant_id.as_str(), "variant_id")?;
 
     let mut pooled = pool
         .get()
@@ -104,9 +104,9 @@ pub async fn persist_set_product_alias(
                         aliases::id.eq(proposed_id),
                         aliases::household_id.eq(household_id),
                         aliases::variant_id.eq(variant_id),
-                        aliases::merchant_key.eq(&decision.merchant_key),
-                        aliases::alias_text.eq(&decision.alias_text),
-                        aliases::normalized_alias.eq(&decision.normalized_alias),
+                        aliases::merchant_key.eq(decision.merchant_key.as_str()),
+                        aliases::alias_text.eq(decision.alias_text.as_str()),
+                        aliases::normalized_alias.eq(decision.normalized_alias.as_str()),
                     ))
                     .on_conflict((
                         aliases::household_id,
@@ -116,7 +116,7 @@ pub async fn persist_set_product_alias(
                     .do_update()
                     .set((
                         aliases::variant_id.eq(variant_id),
-                        aliases::alias_text.eq(&decision.alias_text),
+                        aliases::alias_text.eq(decision.alias_text.as_str()),
                         aliases::revision.eq(aliases::revision + 1),
                         aliases::updated_at.eq(now),
                     ))
@@ -179,14 +179,14 @@ fn validate_decision(
     household_id: Uuid,
     variant_id: Uuid,
 ) -> Result<(), SetProductAliasPersistenceError> {
-    if parse_uuid(&decision.actor_id, "actor_id")? != actor_id
-        || parse_uuid(&decision.household_id, "household_id")? != household_id
-        || parse_uuid(&decision.variant_id, "variant_id")? != variant_id
-        || decision.merchant_key.is_empty()
-        || decision.merchant_key.chars().count() > 240
-        || decision.alias_text.trim().is_empty()
-        || decision.alias_text.chars().count() > 240
-        || decision.normalized_alias.is_empty()
+    if parse_uuid(decision.actor_id.as_str(), "actor_id")? != actor_id
+        || parse_uuid(decision.household_id.as_str(), "household_id")? != household_id
+        || parse_uuid(decision.variant_id.as_str(), "variant_id")? != variant_id
+        || decision.merchant_key.as_str().is_empty()
+        || decision.merchant_key.as_str().chars().count() > 240
+        || decision.alias_text.as_str().trim().is_empty()
+        || decision.alias_text.as_str().chars().count() > 240
+        || decision.normalized_alias.as_str().is_empty()
     {
         return Err(SetProductAliasPersistenceError::InvalidDecision);
     }

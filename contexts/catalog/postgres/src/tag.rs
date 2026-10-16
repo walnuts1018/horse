@@ -58,8 +58,8 @@ pub async fn persist_create_tag(
     let tag_id = Uuid::now_v7();
     let decision = decide_create_tag(command, tag_id.to_string())
         .map_err(TagPersistenceError::InvalidWorkflow)?;
-    let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
-    let household_id = parse_uuid(&decision.household_id, "household_id")?;
+    let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
+    let household_id = parse_uuid(decision.household_id.as_str(), "household_id")?;
 
     let mut pooled = pool
         .get()
@@ -84,7 +84,7 @@ pub async fn persist_create_tag(
                 .values((
                     tags::id.eq(tag_id),
                     tags::household_id.eq(household_id),
-                    tags::name.eq(&decision.name),
+                    tags::name.eq(decision.name.as_str()),
                     tags::revision.eq(decision.revision),
                 ))
                 .execute(&mut *conn)
@@ -104,7 +104,7 @@ pub async fn persist_create_tag(
             Ok(PersistedTag {
                 id: tag_id,
                 household_id,
-                name: decision.name,
+                name: decision.name.as_str().to_owned(),
                 archived: false,
                 revision: decision.revision,
             }

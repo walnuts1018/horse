@@ -19,10 +19,10 @@ pub struct CreateTagCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateTagDecision {
-    pub actor_id: String,
-    pub household_id: String,
-    pub tag_id: String,
-    pub name: String,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
+    pub tag_id: TagId,
+    pub name: TagName,
     pub revision: i64,
     pub event: TagEvent,
 }
@@ -51,7 +51,7 @@ pub struct SetTagArchivedCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateTagDecision {
-    pub actor_id: String,
+    pub actor_id: ActorId,
     pub tag: Tag,
     pub event: TagEvent,
 }
@@ -70,9 +70,9 @@ impl UpdateTagDecision {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TagEvent {
-    Created { tag_id: String },
-    NameUpdated { tag_id: String },
-    ArchiveStateChanged { tag_id: String, archived: bool },
+    Created { tag_id: TagId },
+    NameUpdated { tag_id: TagId },
+    ArchiveStateChanged { tag_id: TagId, archived: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,12 +94,12 @@ pub fn decide_create_tag(
     let name = validated_name(command.name)?;
 
     Ok(CreateTagDecision {
-        actor_id: actor_id.0,
-        household_id: household_id.0,
-        tag_id: tag_id.0.clone(),
-        name,
+        actor_id,
+        household_id,
+        tag_id: tag_id.clone(),
+        name: TagName(name),
         revision: 1,
-        event: TagEvent::Created { tag_id: tag_id.0 },
+        event: TagEvent::Created { tag_id },
     })
 }
 
@@ -125,10 +125,10 @@ pub fn decide_update_tag(
     };
 
     Ok(UpdateTagDecision {
-        actor_id: actor_id.0,
+        actor_id,
         tag,
         event: TagEvent::NameUpdated {
-            tag_id: current_tag_id.0,
+            tag_id: current_tag_id,
         },
     })
 }
@@ -154,10 +154,10 @@ pub fn decide_set_tag_archived(
     };
 
     Ok(UpdateTagDecision {
-        actor_id: actor_id.0,
+        actor_id,
         tag,
         event: TagEvent::ArchiveStateChanged {
-            tag_id: current_tag_id.0,
+            tag_id: current_tag_id,
             archived: command.archived,
         },
     })
@@ -176,31 +176,52 @@ fn validated_name(value: String) -> Result<String, TagError> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ActorId(String);
+pub struct TagName(String);
+
+impl TagName {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActorId(String);
 
 impl ActorId {
     fn new(value: &str) -> Result<Self, TagError> {
         Uuid::parse_str(value).map_err(|_| TagError::InvalidActorId)?;
         Ok(Self(value.to_owned()))
     }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct HouseholdId(String);
+pub struct HouseholdId(String);
 
 impl HouseholdId {
     fn new(value: &str) -> Result<Self, TagError> {
         Uuid::parse_str(value).map_err(|_| TagError::InvalidHouseholdId)?;
         Ok(Self(value.to_owned()))
     }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct TagId(String);
+pub struct TagId(String);
 
 impl TagId {
     fn new(value: &str) -> Result<Self, TagError> {
         Uuid::parse_str(value).map_err(|_| TagError::InvalidTagId)?;
         Ok(Self(value.to_owned()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }

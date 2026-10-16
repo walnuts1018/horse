@@ -1,5 +1,6 @@
 use async_graphql::{Context, Error, ID, Result, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use catalog_application::tag_query::{TagCursor, TagQuery, TagQueryError, TagQueryInput};
 use catalog_postgres::catalog_query as postgres_query;
 use horse_postgres_common::PgPool;
 use uuid::Uuid;
@@ -50,22 +51,29 @@ pub async fn graphql_tags(
 ) -> Result<TagConnection> {
     let actor = actor(ctx)?;
     let household_id = crate::decode_household_id(&household_id)?;
-    let after_cursor = decode_cursor(after.as_deref(), "Tag")?;
-    let before_cursor = decode_cursor(before.as_deref(), "Tag")?;
-    let page = postgres_query::tags(
-        ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        postgres_query::TagQueryArgs {
-            include_archived,
-            after: after_cursor,
-            before: before_cursor,
-            first,
-            last,
-        },
-    )
-    .await
-    .map_err(map_query_error)?;
+    let after_cursor = decode_cursor(after.as_deref(), "Tag")?.map(|cursor| TagCursor {
+        sort_key: cursor.sort_key,
+        id: cursor.id,
+    });
+    let before_cursor = decode_cursor(before.as_deref(), "Tag")?.map(|cursor| TagCursor {
+        sort_key: cursor.sort_key,
+        id: cursor.id,
+    });
+    let page = ctx
+        .data::<std::sync::Arc<dyn TagQuery>>()?
+        .query(
+            actor.0,
+            household_id,
+            TagQueryInput {
+                include_archived,
+                after: after_cursor,
+                before: before_cursor,
+                first,
+                last,
+            },
+        )
+        .await
+        .map_err(map_tag_query_error)?;
     let edges = page
         .rows
         .into_iter()
@@ -100,8 +108,18 @@ pub async fn graphql_product_catalog(
 ) -> Result<ProductConceptConnection> {
     let actor = actor(ctx)?;
     let household_id = crate::decode_household_id(&household_id)?;
-    let after_cursor = decode_cursor(after.as_deref(), "ProductConcept")?;
-    let before_cursor = decode_cursor(before.as_deref(), "ProductConcept")?;
+    let after_cursor = decode_cursor(after.as_deref(), "ProductConcept")?.map(|cursor| {
+        postgres_query::CatalogCursor {
+            sort_key: cursor.sort_key,
+            id: cursor.id,
+        }
+    });
+    let before_cursor = decode_cursor(before.as_deref(), "ProductConcept")?.map(|cursor| {
+        postgres_query::CatalogCursor {
+            sort_key: cursor.sort_key,
+            id: cursor.id,
+        }
+    });
     let page = postgres_query::product_catalog(
         ctx.data::<PgPool>()?,
         actor.0,
@@ -251,7 +269,12 @@ impl EdgeCursor for ProductConceptEdge {
     }
 }
 
-fn decode_cursor(value: Option<&str>, kind: &str) -> Result<Option<postgres_query::CatalogCursor>> {
+struct DecodedCursor {
+    sort_key: String,
+    id: Uuid,
+}
+
+fn decode_cursor(value: Option<&str>, kind: &str) -> Result<Option<DecodedCursor>> {
     let Some(value) = value.filter(|value| !value.is_empty()) else {
         return Ok(None);
     };
@@ -272,7 +295,7 @@ fn decode_cursor(value: Option<&str>, kind: &str) -> Result<Option<postgres_quer
     if id.is_nil() {
         return Err(Error::new("invalid cursor"));
     }
-    Ok(Some(postgres_query::CatalogCursor {
+    Ok(Some(DecodedCursor {
         sort_key: sort_key.to_owned(),
         id,
     }))
@@ -305,5 +328,14 @@ fn map_query_error(error: postgres_query::CatalogQueryError) -> Error {
         error @ (QueryError::Pool(_)
         | QueryError::Database(_)
         | QueryError::InvalidPersistedData) => crate::internal_error(error),
+    }
+}
+
+fn map_tag_query_error(error: TagQueryError) -> Error {
+    match error {
+        TagQueryError::HouseholdNotFound => Error::new("household not found"),
+        TagQueryError::InvalidPagination => Error::new("invalid pagination"),
+        TagQueryError::InvalidCursor => Error::new("invalid cursor"),
+        TagQueryError::Infrastructure(error) => crate::internal_error(error),
     }
 }
