@@ -4316,7 +4316,7 @@ mod reconciliation_tests {
         assert!(!super::reconcilable_pair(&receipt, &refund));
         assert!(!super::reconcilable_pair(&refund, &card_purchase));
         assert!(super::reconcilable_pair(&refund, &receipt_refund));
-        assert!(reconcile_observation(&receipt, &[refund.clone()]).is_empty());
+        assert!(reconcile_observation(&receipt, std::slice::from_ref(&refund)).is_empty());
         assert_eq!(reconcile_observation(&receipt_refund, &[refund]).len(), 1);
     }
 
