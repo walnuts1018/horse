@@ -924,11 +924,44 @@ async fn list_documents(
     }
     if let Some(confirmed) = confirmed {
         use horse_postgres_common::schema::public::source_confirmations;
+        let later_confirmation = diesel::alias!(source_confirmations as later_confirmation);
         let has_confirmation = diesel::dsl::exists(
             source_confirmations::table
                 .filter(source_confirmations::household_id.eq(household_id))
                 .filter(source_confirmations::source_document_id.eq(source_documents::id))
-                .filter(source_confirmations::status.eq("confirmed")),
+                .filter(source_confirmations::status.eq("confirmed"))
+                .filter(diesel::dsl::not(diesel::dsl::exists(
+                    later_confirmation
+                        .filter(
+                            later_confirmation
+                                .field(source_confirmations::household_id)
+                                .eq(source_confirmations::household_id),
+                        )
+                        .filter(
+                            later_confirmation
+                                .field(source_confirmations::source_document_id)
+                                .eq(source_confirmations::source_document_id),
+                        )
+                        .filter(
+                            later_confirmation
+                                .field(source_confirmations::source_reference)
+                                .eq(source_confirmations::source_reference),
+                        )
+                        .filter(
+                            later_confirmation
+                                .field(source_confirmations::changed_at)
+                                .gt(source_confirmations::changed_at)
+                                .or(later_confirmation
+                                    .field(source_confirmations::changed_at)
+                                    .eq(source_confirmations::changed_at)
+                                    .and(
+                                        later_confirmation
+                                            .field(source_confirmations::id)
+                                            .gt(source_confirmations::id),
+                                    )),
+                        )
+                        .select(later_confirmation.field(source_confirmations::id)),
+                ))),
         );
         documents_query = if confirmed {
             documents_query.filter(has_confirmation)
