@@ -110,5 +110,6 @@ async fn purchase_events_and_multiple_purchase_snapshots_use_bounded_queries() {
     assert_eq!(snapshots.len(), 2);
     assert_eq!(snapshots[&purchase_ids[0]].merchant, "Market 0");
     assert_eq!(snapshots[&purchase_ids[1]].merchant, "Market 1");
-    assert!(AtomicUsize::load(&QUERY_COUNT, Ordering::Relaxed) <= 8);
+    let query_count = AtomicUsize::load(&QUERY_COUNT, Ordering::Relaxed);
+    assert!(query_count <= 8, "query count was {query_count}");
 }
