@@ -108,10 +108,11 @@ jobs:
           - name: Build frontend
             run: mise run web:build
 
-          - name: Run browser end-to-end tests
-            run: |
-              mise run web:e2e:install
-              mise run web:e2e
+      - name: Run browser end-to-end tests
+        run: |
+          mise exec -- cargo build -p horse-api -p horse-e2e-fixture
+          mise run web:e2e:install
+          mise run web:e2e
 
   publish:
     if: github.event_name == 'push'
