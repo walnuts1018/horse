@@ -1,6 +1,8 @@
 use diesel::{ExpressionMethods, QueryDsl, insert_into};
 use diesel_async::RunQueryDsl;
-use horse_postgres_common::schema::public::{allocation_defaults, households, members, pools};
+use horse_postgres_common::schema::public::{
+    allocation_defaults, household_members, households, members, pools,
+};
 use household_application::create_household::CreateHouseholdCommand;
 use policy_application::create_pool::{CreatePoolCommand, NewPoolId, PoolActorId, PoolHouseholdId};
 use uuid::Uuid;
@@ -104,6 +106,90 @@ async fn pool_creation_updates_household_defaults_atomically() {
             .unwrap()
     };
     assert_eq!(defaults_after_failure, current_defaults);
+
+    postgres.terminate().await.unwrap();
+}
+
+#[tokio::test]
+async fn pool_creation_rejects_household_members() {
+    let postgres = horse_test_infra::TestPostgres::start().await.unwrap();
+    horse_test_infra::apply_migrations(postgres.connection_url()).unwrap();
+    let pool = horse_postgres_common::connect(postgres.connection_url())
+        .await
+        .unwrap();
+    let owner_id = Uuid::now_v7();
+    let member_id = Uuid::now_v7();
+    {
+        let mut conn = pool.get().await.unwrap();
+        insert_into(members::table)
+            .values((
+                members::id.eq(owner_id),
+                members::oidc_subject.eq("pool-creation-owner"),
+                members::display_name.eq("Pool owner"),
+            ))
+            .execute(&mut conn)
+            .await
+            .unwrap();
+        insert_into(members::table)
+            .values((
+                members::id.eq(member_id),
+                members::oidc_subject.eq("pool-creation-member"),
+                members::display_name.eq("Pool member"),
+            ))
+            .execute(&mut conn)
+            .await
+            .unwrap();
+    }
+    let household = household_postgres::create_household::persist_create_household(
+        &pool,
+        CreateHouseholdCommand {
+            actor_id: owner_id.into(),
+            name: "Pool authorization household".to_owned(),
+            member_names: Vec::new(),
+        },
+    )
+    .await
+    .unwrap();
+    let household_id = Uuid::parse_str(&household.household_id).unwrap();
+    {
+        let mut conn = pool.get().await.unwrap();
+        insert_into(household_members::table)
+            .values((
+                household_members::household_id.eq(household_id),
+                household_members::member_id.eq(member_id),
+                household_members::role.eq("MEMBER"),
+            ))
+            .execute(&mut conn)
+            .await
+            .unwrap();
+    }
+
+    let attempted_pool_id = Uuid::now_v7();
+    let result = policy_postgres::pool_mutations::persist_create_pool(
+        &pool,
+        CreatePoolCommand {
+            actor_id: PoolActorId::from_uuid(member_id),
+            household_id: PoolHouseholdId::from_uuid(household_id),
+            pool_id: NewPoolId::from_uuid(attempted_pool_id),
+            name: "Member-created pool".to_owned(),
+            kind: "SHARED".to_owned(),
+        },
+    )
+    .await;
+
+    assert!(matches!(
+        result,
+        Err(policy_postgres::pool_mutations::CreatePoolMutationError::MemberNotFound)
+    ));
+    let persisted_pool = {
+        let mut conn = pool.get().await.unwrap();
+        pools::table
+            .filter(pools::id.eq(attempted_pool_id))
+            .select(pools::id)
+            .first::<Uuid>(&mut conn)
+            .await
+    };
+    assert!(persisted_pool.is_err());
 
     postgres.terminate().await.unwrap();
 }

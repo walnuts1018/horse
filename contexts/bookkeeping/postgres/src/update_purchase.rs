@@ -109,22 +109,6 @@ pub async fn persist_update_purchase_in_transaction<
     reference_data: &mut C,
 ) -> Result<PersistedUpdatePurchase, UpdatePurchasePersistenceError> {
     let purchase_id = parse_uuid(&command.purchase_id, "purchase_id")?;
-    let revision = i64::try_from(decision.revision)
-        .map_err(|_| UpdatePurchasePersistenceError::NumericOutOfRange("revision"))?;
-    let changed_fields_json = serde_json::Value::Object(
-        decision
-            .field_revisions
-            .iter()
-            .map(|(field, revision)| {
-                let value = i64::try_from(*revision)
-                    .map(serde_json::Value::from)
-                    .map_err(|_| {
-                        UpdatePurchasePersistenceError::NumericOutOfRange("field_revision")
-                    })?;
-                Ok((field.clone(), value))
-            })
-            .collect::<Result<serde_json::Map<_, _>, UpdatePurchasePersistenceError>>()?,
-    );
     let occurred_at = decision
         .occurred_at
         .as_deref()
@@ -254,11 +238,34 @@ pub async fn persist_update_purchase_in_transaction<
     };
     let decided = decide_update_purchase(command.clone(), current)
         .map_err(UpdatePurchasePersistenceError::InvalidDecision)?;
-    if decided != decision {
+    if decided.occurred_at != decision.occurred_at
+        || decided.date_precision != decision.date_precision
+        || decided.merchant != decision.merchant
+        || decided.payment_allocations != decision.payment_allocations
+        || decided.changed_fields != decision.changed_fields
+    {
         return Err(UpdatePurchasePersistenceError::InvalidDecision(
             UpdatePurchaseError::Conflict,
         ));
     }
+    // 別フィールドの先行更新はロック取得後の状態へ再適用し、同一フィールドの競合はドメイン判定で拒否する。
+    let decision = decided;
+    let revision = i64::try_from(decision.revision)
+        .map_err(|_| UpdatePurchasePersistenceError::NumericOutOfRange("revision"))?;
+    let changed_fields_json = serde_json::Value::Object(
+        decision
+            .field_revisions
+            .iter()
+            .map(|(field, revision)| {
+                let value = i64::try_from(*revision)
+                    .map(serde_json::Value::from)
+                    .map_err(|_| {
+                        UpdatePurchasePersistenceError::NumericOutOfRange("field_revision")
+                    })?;
+                Ok((field.clone(), value))
+            })
+            .collect::<Result<serde_json::Map<_, _>, UpdatePurchasePersistenceError>>()?,
+    );
 
     let mut previous_payment_accounts =
         if locked.2 == "POSTED" && decision.payment_allocations.is_some() {

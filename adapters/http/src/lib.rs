@@ -2961,6 +2961,7 @@ struct ReconciliationObservation {
     source_kind: String,
     transaction_kind: String,
     order_id: String,
+    transaction_id: String,
     merchant: String,
     occurred_at: Option<chrono::DateTime<chrono::Utc>>,
     amount: i64,
@@ -3035,6 +3036,7 @@ async fn document_matches(
             source_observations::source_kind,
             source_observations::transaction_kind,
             source_observations::external_order_id,
+            source_observations::external_transaction_id,
             source_observations::merchant,
             source_observations::occurred_at,
             source_observations::amount_yen,
@@ -3042,6 +3044,7 @@ async fn document_matches(
         ))
         .load::<(
             uuid::Uuid,
+            String,
             String,
             String,
             String,
@@ -3078,6 +3081,7 @@ async fn document_matches(
             source_observations::source_kind,
             source_observations::transaction_kind,
             source_observations::external_order_id,
+            source_observations::external_transaction_id,
             source_observations::merchant,
             source_observations::occurred_at,
             source_observations::amount_yen,
@@ -3085,6 +3089,7 @@ async fn document_matches(
         ))
         .load::<(
             uuid::Uuid,
+            String,
             String,
             String,
             String,
@@ -3128,6 +3133,7 @@ type ReconciliationObservationRow = (
     String,
     String,
     String,
+    String,
     Option<chrono::DateTime<chrono::Utc>>,
     Option<i64>,
     String,
@@ -3141,6 +3147,7 @@ fn reconciliation_observation(row: ReconciliationObservationRow) -> Reconciliati
         source_kind,
         transaction_kind,
         order_id,
+        transaction_id,
         merchant,
         occurred_at,
         amount,
@@ -3153,6 +3160,7 @@ fn reconciliation_observation(row: ReconciliationObservationRow) -> Reconciliati
         source_kind,
         transaction_kind,
         order_id,
+        transaction_id,
         merchant,
         occurred_at,
         amount: amount.unwrap_or_default(),
@@ -3185,12 +3193,18 @@ fn reconcile_observation(
             continue;
         }
         let order_match = !incoming.order_id.is_empty() && incoming.order_id == old.order_id;
+        let transaction_id_match = !incoming.transaction_id.is_empty()
+            && incoming.transaction_id == old.transaction_id
+            && incoming.source_kind != old.source_kind;
         let amount_match = reconciliation_amounts_equal(incoming, old);
         let incoming_merchant = normalize_reconciliation_merchant(&incoming.merchant);
         let old_merchant = normalize_reconciliation_merchant(&old.merchant);
         let merchant_match = !incoming_merchant.is_empty() && incoming_merchant == old_merchant;
         let merchant_conflict =
             !incoming_merchant.is_empty() && !old_merchant.is_empty() && !merchant_match;
+        let card_conflict = !incoming.card_last4.is_empty()
+            && !old.card_last4.is_empty()
+            && incoming.card_last4 != old.card_last4;
         let near = incoming
             .occurred_at
             .zip(old.occurred_at)
@@ -3202,6 +3216,18 @@ fn reconcile_observation(
                 candidate
                     .reasons
                     .push("分割発送・分割決済または金額相違".to_owned());
+            }
+        } else if transaction_id_match {
+            candidate.reasons.push("同じ取引ID".to_owned());
+            if !amount_match {
+                candidate.state = "CONFLICT".to_owned();
+                candidate.reasons.push("金額相違".to_owned());
+            }
+            if merchant_conflict {
+                candidate.state = "CONFLICT".to_owned();
+            }
+            if card_conflict {
+                candidate.state = "CONFLICT".to_owned();
             }
         } else if !amount_match || !merchant_match || !near {
             continue;
@@ -3231,15 +3257,37 @@ fn reconcile_observation(
 }
 
 fn reconcilable_pair(left: &ReconciliationObservation, right: &ReconciliationObservation) -> bool {
-    if left.source_kind != "bank" && right.source_kind != "bank" {
-        return true;
+    let left_is_bank = left.source_kind == "bank";
+    let right_is_bank = right.source_kind == "bank";
+    if left_is_bank && right_is_bank {
+        return false;
     }
-    (left.source_kind == "bank"
-        && left.transaction_kind == "PURCHASE_PAYMENT"
-        && right.transaction_kind == "RECEIPT")
-        || (right.source_kind == "bank"
-            && right.transaction_kind == "PURCHASE_PAYMENT"
-            && left.transaction_kind == "RECEIPT")
+    if left_is_bank {
+        (left.transaction_kind == "PURCHASE_PAYMENT"
+            && is_purchase_transaction_kind(&right.transaction_kind))
+            || (left.transaction_kind == "REFUND" && right.transaction_kind == "REFUND")
+    } else if right_is_bank {
+        (right.transaction_kind == "PURCHASE_PAYMENT"
+            && is_purchase_transaction_kind(&left.transaction_kind))
+            || (right.transaction_kind == "REFUND" && left.transaction_kind == "REFUND")
+    } else {
+        let left_is_purchase = is_purchase_transaction_kind(&left.transaction_kind);
+        let right_is_purchase = is_purchase_transaction_kind(&right.transaction_kind);
+        let left_is_refund = left.transaction_kind == "REFUND";
+        let right_is_refund = right.transaction_kind == "REFUND";
+        if left_is_purchase || right_is_purchase || left_is_refund || right_is_refund {
+            (left_is_purchase && right_is_purchase) || (left_is_refund && right_is_refund)
+        } else {
+            true
+        }
+    }
+}
+
+fn is_purchase_transaction_kind(transaction_kind: &str) -> bool {
+    matches!(
+        transaction_kind,
+        "RECEIPT_PURCHASE" | "CARD_PURCHASE" | "PURCHASE_PAYMENT"
+    )
 }
 
 fn reconciliation_amounts_equal(
@@ -3248,15 +3296,27 @@ fn reconciliation_amounts_equal(
 ) -> bool {
     if left.source_kind == "bank"
         && left.transaction_kind == "PURCHASE_PAYMENT"
-        && right.transaction_kind == "RECEIPT"
+        && is_purchase_transaction_kind(&right.transaction_kind)
     {
         return left.amount < 0 && right.amount > 0 && left.amount == -right.amount;
     }
     if right.source_kind == "bank"
         && right.transaction_kind == "PURCHASE_PAYMENT"
-        && left.transaction_kind == "RECEIPT"
+        && is_purchase_transaction_kind(&left.transaction_kind)
     {
         return right.amount < 0 && left.amount > 0 && right.amount == -left.amount;
+    }
+    if left.source_kind == "bank"
+        && left.transaction_kind == "REFUND"
+        && right.transaction_kind == "REFUND"
+    {
+        return left.amount > 0 && right.amount < 0 && left.amount == -right.amount;
+    }
+    if right.source_kind == "bank"
+        && right.transaction_kind == "REFUND"
+        && left.transaction_kind == "REFUND"
+    {
+        return right.amount > 0 && left.amount < 0 && right.amount == -left.amount;
     }
     left.amount == right.amount
 }
@@ -4072,4 +4132,221 @@ fn same_origin(headers: &HeaderMap, config: &Config) -> bool {
     [&config.public_origin, &config.frontend_origin]
         .into_iter()
         .any(|expected| origins_match(origin, expected))
+}
+
+#[cfg(test)]
+mod reconciliation_tests {
+    use super::{ReconciliationObservation, reconcile_observation};
+
+    fn observation(
+        document_id: u128,
+        source_kind: &str,
+        transaction_kind: &str,
+        transaction_id: &str,
+        merchant: &str,
+        amount: i64,
+    ) -> ReconciliationObservation {
+        ReconciliationObservation {
+            document_id: uuid::Uuid::from_u128(document_id),
+            source_reference: "row:1".to_owned(),
+            hash: format!("hash-{document_id}"),
+            source_kind: source_kind.to_owned(),
+            transaction_kind: transaction_kind.to_owned(),
+            order_id: String::new(),
+            transaction_id: transaction_id.to_owned(),
+            merchant: merchant.to_owned(),
+            occurred_at: None,
+            amount,
+            card_last4: String::new(),
+        }
+    }
+
+    #[test]
+    fn exact_transaction_id_adds_a_candidate_with_matching_amount() {
+        let mut incoming = observation(1, "card", "CARD_PURCHASE", "txn-1", "Amazon", 4980);
+        incoming.card_last4 = "1234".to_owned();
+        let existing = [observation(
+            2,
+            "receipt",
+            "RECEIPT_PURCHASE",
+            "txn-1",
+            "Amazon",
+            4980,
+        )];
+
+        let matches = reconcile_observation(&incoming, &existing);
+
+        assert_eq!(matches.len(), 1);
+        assert!(
+            matches[0]
+                .reasons
+                .iter()
+                .any(|reason| reason == "同じ取引ID")
+        );
+        assert_eq!(matches[0].state, "POSSIBLE");
+    }
+
+    #[test]
+    fn exact_transaction_id_surfaces_amount_and_merchant_conflicts() {
+        let incoming = observation(1, "card", "CARD_PURCHASE", "txn-1", "Amazon", 4980);
+        let different_amount = [observation(
+            2,
+            "receipt",
+            "RECEIPT_PURCHASE",
+            "txn-1",
+            "Amazon",
+            3980,
+        )];
+        let different_merchant = [observation(
+            3,
+            "receipt",
+            "RECEIPT_PURCHASE",
+            "txn-1",
+            "Different Store",
+            4980,
+        )];
+
+        let amount_matches = reconcile_observation(&incoming, &different_amount);
+        assert_eq!(amount_matches.len(), 1);
+        assert_eq!(amount_matches[0].state, "CONFLICT");
+        assert!(
+            amount_matches[0]
+                .reasons
+                .iter()
+                .any(|reason| reason == "同じ取引ID")
+        );
+        assert!(
+            amount_matches[0]
+                .reasons
+                .iter()
+                .any(|reason| reason == "金額相違")
+        );
+
+        let merchant_matches = reconcile_observation(&incoming, &different_merchant);
+        assert_eq!(merchant_matches.len(), 1);
+        assert_eq!(merchant_matches[0].state, "CONFLICT");
+        assert!(
+            merchant_matches[0]
+                .reasons
+                .iter()
+                .any(|reason| reason == "同じ取引ID")
+        );
+        assert!(
+            merchant_matches[0]
+                .reasons
+                .iter()
+                .any(|reason| reason == "店舗名相違")
+        );
+    }
+
+    #[test]
+    fn exact_transaction_id_preserves_source_and_transaction_compatibility() {
+        let same_source = [observation(
+            2,
+            "card",
+            "CARD_PURCHASE",
+            "txn-1",
+            "Amazon",
+            4980,
+        )];
+        let bank_card_payment = [observation(
+            3,
+            "bank",
+            "CARD_BILL_PAYMENT",
+            "txn-1",
+            "Amazon",
+            -4980,
+        )];
+        let mut incoming = observation(1, "card", "CARD_PURCHASE", "txn-1", "Amazon", 4980);
+        incoming.card_last4 = "1234".to_owned();
+        let mut different_card =
+            observation(4, "receipt", "RECEIPT_PURCHASE", "txn-1", "Amazon", 4980);
+        different_card.card_last4 = "9999".to_owned();
+
+        assert!(reconcile_observation(&incoming, &same_source).is_empty());
+        assert!(reconcile_observation(&incoming, &bank_card_payment).is_empty());
+        let card_matches = reconcile_observation(&incoming, &[different_card]);
+        assert_eq!(card_matches.len(), 1);
+        assert_eq!(card_matches[0].state, "CONFLICT");
+        assert!(
+            card_matches[0]
+                .reasons
+                .iter()
+                .any(|reason| reason == "同じ取引ID")
+        );
+        assert!(
+            card_matches[0]
+                .reasons
+                .iter()
+                .any(|reason| reason == "カード末尾相違")
+        );
+    }
+
+    #[test]
+    fn exact_transaction_id_matches_bank_purchase_payment_to_receipt() {
+        let incoming = observation(1, "bank", "PURCHASE_PAYMENT", "txn-1", "Amazon", -4980);
+        let existing = [observation(
+            2,
+            "receipt",
+            "RECEIPT_PURCHASE",
+            "txn-1",
+            "Amazon",
+            4980,
+        )];
+
+        let matches = reconcile_observation(&incoming, &existing);
+
+        assert_eq!(matches.len(), 1);
+        assert!(
+            matches[0]
+                .reasons
+                .iter()
+                .any(|reason| reason == "同じ取引ID")
+        );
+    }
+
+    #[test]
+    fn purchases_and_refunds_only_reconcile_with_their_own_kind() {
+        let receipt = observation(1, "receipt", "RECEIPT_PURCHASE", "", "Amazon", 4980);
+        let card_purchase = observation(2, "card", "CARD_PURCHASE", "", "Amazon", 4980);
+        let refund = observation(3, "card", "REFUND", "txn-1", "Amazon", -4980);
+        let receipt_refund = observation(4, "receipt", "REFUND", "txn-1", "Amazon", -4980);
+
+        assert!(super::reconcilable_pair(&receipt, &card_purchase));
+        assert!(!super::reconcilable_pair(&receipt, &refund));
+        assert!(!super::reconcilable_pair(&refund, &card_purchase));
+        assert!(super::reconcilable_pair(&refund, &receipt_refund));
+        assert!(reconcile_observation(&receipt, &[refund.clone()]).is_empty());
+        assert_eq!(reconcile_observation(&receipt_refund, &[refund]).len(), 1);
+    }
+
+    #[test]
+    fn bank_purchase_payment_reconciles_with_receipt_and_card_purchase() {
+        let bank_purchase = observation(1, "bank", "PURCHASE_PAYMENT", "", "Amazon", -4980);
+        let receipt = observation(2, "receipt", "RECEIPT_PURCHASE", "", "Amazon", 4980);
+        let card_purchase = observation(3, "card", "CARD_PURCHASE", "", "Amazon", 4980);
+        let bank_refund = observation(4, "bank", "REFUND", "", "Amazon", 4980);
+        let receipt_refund = observation(5, "receipt", "REFUND", "", "Amazon", -4980);
+
+        assert!(super::reconcilable_pair(&bank_purchase, &receipt));
+        assert!(super::reconcilable_pair(&bank_purchase, &card_purchase));
+        assert!(!super::reconcilable_pair(&bank_refund, &receipt));
+        assert!(super::reconcilable_pair(&bank_refund, &receipt_refund));
+        assert!(super::reconciliation_amounts_equal(
+            &bank_purchase,
+            &receipt
+        ));
+        assert!(super::reconciliation_amounts_equal(
+            &bank_purchase,
+            &card_purchase
+        ));
+        assert!(super::reconciliation_amounts_equal(
+            &bank_refund,
+            &receipt_refund
+        ));
+        assert!(super::reconciliation_amounts_equal(
+            &receipt_refund,
+            &bank_refund
+        ));
+    }
 }

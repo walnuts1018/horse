@@ -1,0 +1,60 @@
+{
+  "receipt": {
+    "currency": "JPY",
+    "total": 1640,
+    "discount": 0,
+    "taxGroups": [
+      {
+        "id": "standard",
+        "numerator": 10,
+        "denominator": 100,
+        "basis": "TAX_EXCLUDED",
+        "rounding": "FLOOR",
+        "printedTax": 100,
+        "printedSubtotal": 1000
+      },
+      {
+        "id": "reduced",
+        "numerator": 8,
+        "denominator": 100,
+        "basis": "TAX_EXCLUDED",
+        "rounding": "FLOOR",
+        "printedTax": 40,
+        "printedSubtotal": 500
+      }
+    ],
+    "items": [
+      {
+        "printedName": "りんご",
+        "printedAmount": 1000,
+        "discount": 0,
+        "priceBasis": "TAX_EXCLUDED",
+        "taxGroup": "standard",
+        "confidence": 0.99,
+        "region": { "page": 0, "top": 0.125, "left": 0.125, "bottom": 0.25, "right": 0.375 }
+      },
+      {
+        "printedName": "茶",
+        "printedAmount": 500,
+        "discount": 0,
+        "priceBasis": "TAX_EXCLUDED",
+        "taxGroup": "reduced",
+        "confidence": 0.98,
+        "region": { "page": 0, "top": 0.125, "left": 0.5, "bottom": 0.25, "right": 0.75 }
+      }
+    ],
+    "payments": [{ "amount": 1640 }]
+  },
+  "ocrLines": [
+    {
+      "text": "りんご 1,000",
+      "confidence": 0.99,
+      "region": { "page": 0, "top": 0.125, "left": 0.125, "bottom": 0.25, "right": 0.375 }
+    },
+    {
+      "text": "茶 500",
+      "confidence": 0.98,
+      "region": { "page": 0, "top": 0.125, "left": 0.5, "bottom": 0.25, "right": 0.75 }
+    }
+  ]
+}

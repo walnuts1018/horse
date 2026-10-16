@@ -3242,9 +3242,9 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        Failure, ModelPriceTable, ProcessConfig, ProcessErrorKind, apply_cost_snapshot,
-        model_prices, needs_pro_review, parse_model_price_table, process_with_timeout,
-        truncate_to_byte_limit, verify_receipt,
+        Failure, ModelPriceTable, OcrLine, ProcessConfig, ProcessErrorKind, apply_cost_snapshot,
+        compare_receipt_ocr, map_extraction_regions, model_prices, needs_pro_review,
+        parse_model_price_table, process_with_timeout, truncate_to_byte_limit, verify_receipt,
     };
     use std::collections::HashMap;
     use tokio::time::Duration;
@@ -3308,6 +3308,67 @@ mod tests {
             serde_json::to_value(codes).unwrap(),
             json!(["TOTAL_MISMATCH"])
         );
+    }
+
+    #[test]
+    fn fictional_receipt_fixture_keeps_tax_totals_and_evidence_regions_consistent() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../fixtures/receipt-postprocessing.json")).unwrap();
+        let mut receipt = fixture["receipt"].clone();
+        let mut lines: Vec<OcrLine> = serde_json::from_value(fixture["ocrLines"].clone()).unwrap();
+        let transform = [1.0, 0.0, 0.125, 0.0, 1.0, 0.25, 0.0, 0.0, 1.0];
+        let mut issues = Vec::new();
+
+        assert!(map_extraction_regions(
+            &mut receipt,
+            &mut lines,
+            transform,
+            2
+        ));
+        let (computed_total, total_matches, issue_codes) =
+            verify_receipt(&mut receipt, &mut issues);
+        issues.extend(compare_receipt_ocr(&receipt, &lines));
+
+        assert_eq!(computed_total, 1_640);
+        assert!(total_matches);
+        assert!(issue_codes.is_empty());
+        assert!(issues.is_empty());
+        assert_eq!(receipt["items"][0]["grossAmount"], json!(1_100));
+        assert_eq!(receipt["items"][1]["grossAmount"], json!(540));
+        assert_eq!(
+            receipt["items"][0]["region"],
+            json!({"page": 2, "top": 0.375, "left": 0.25, "bottom": 0.5, "right": 0.5})
+        );
+        assert_eq!(lines[0].region.page, 2);
+    }
+
+    #[test]
+    fn fictional_receipt_fixture_detects_an_omitted_item_and_unmatched_ocr_region() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../fixtures/receipt-postprocessing.json")).unwrap();
+        let mut receipt = fixture["receipt"].clone();
+        receipt["items"].as_array_mut().unwrap().remove(1);
+        let mut lines: Vec<OcrLine> = serde_json::from_value(fixture["ocrLines"].clone()).unwrap();
+        let mut issues = Vec::new();
+
+        assert!(map_extraction_regions(
+            &mut receipt,
+            &mut lines,
+            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            0
+        ));
+        let (_, total_matches, issue_codes) = verify_receipt(&mut receipt, &mut issues);
+        issues.extend(compare_receipt_ocr(&receipt, &lines));
+
+        assert!(!total_matches);
+        assert!(
+            serde_json::to_value(issue_codes)
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .contains(&json!("TOTAL_MISMATCH"))
+        );
+        assert!(issues.contains(&"OCRにのみ読み取られた明細候補を確認してください。".to_owned()));
     }
 
     #[test]
