@@ -46,6 +46,9 @@ pub fn calculate_settlement(input: SettlementInput) -> Result<SettlementAmounts,
         .and_then(|amount| amount.checked_sub(input.paid_yen))
         .and_then(|amount| amount.checked_sub(input.advance_credit_yen))
         .ok_or(SettlementError::AmountOverflow)?;
+    if !(-MAX_YEN..=MAX_YEN).contains(&amount_due_yen) {
+        return Err(SettlementError::AmountOutOfRange);
+    }
 
     Ok(SettlementAmounts {
         carry_yen: input.previous_owed_yen,
@@ -84,6 +87,30 @@ mod tests {
                 paid_yen: 0,
                 previous_owed_yen: 0,
                 monthly_adjustment_yen: 0,
+                advance_credit_yen: 0,
+            }),
+            Err(super::SettlementError::AmountOutOfRange)
+        );
+    }
+
+    #[test]
+    fn settlement_rejects_results_outside_the_supported_yen_range() {
+        assert_eq!(
+            calculate_settlement(SettlementInput {
+                scheduled_yen: crate::MAX_YEN,
+                paid_yen: 0,
+                previous_owed_yen: crate::MAX_YEN,
+                monthly_adjustment_yen: 0,
+                advance_credit_yen: 0,
+            }),
+            Err(super::SettlementError::AmountOutOfRange)
+        );
+        assert_eq!(
+            calculate_settlement(SettlementInput {
+                scheduled_yen: 0,
+                paid_yen: 0,
+                previous_owed_yen: -crate::MAX_YEN,
+                monthly_adjustment_yen: -crate::MAX_YEN,
                 advance_credit_yen: 0,
             }),
             Err(super::SettlementError::AmountOutOfRange)
