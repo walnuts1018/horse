@@ -91,6 +91,7 @@ export function usePurchaseItemRows({
     setInvalidEntryField,
     setFocused,
     nameRef,
+    amountRef,
   ]);
 
   const onItemGridKey = useCallback(

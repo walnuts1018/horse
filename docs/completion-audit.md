@@ -17,7 +17,7 @@ CLI以外のGo実行コードはRustへ移行済みで、リポジトリに`.go`
 
 | 要件 | 完成を確認する証拠 | 過去を含む検証記録（旧Go実装の記録はRust検証の根拠ではない） |
 | --- | --- | --- |
-| 複数家庭、所属と権限 | 別家庭の全API・原本アクセス拒否、招待処理、既存仕訳の家庭ID移行に関する統合テスト | GraphQL・原本・証拠の所属検証と招待処理はRustコードに実装済み。`household_member_cannot_read_or_modify_another_household`で別家計ID一覧の除外、読み込み拒否、Pool作成拒否、永続化なしをTestcontainers PostgreSQLで検証するコードを追加した。既存仕訳のmigration backfillと全API・原本権限は未確認。過去の公開環境検証では旧版でOIDCログイン後の家庭作成と再表示を確認。2026年10月16日に既定配賦、Pool作成、負担配賦・資金拠出設定をOWNER限定へ変更し、入金予定・締めなどの家計データ更新はOWNER/MEMBERのまま維持した。追加テストの実行結果は未確認 |
+| 複数家庭、所属と権限 | 別家庭の全API・原本アクセス拒否、招待処理、既存仕訳の家庭ID移行に関する統合テスト | GraphQL・原本・証拠の所属検証と招待処理はRustコードに実装済み。`household_member_cannot_read_or_modify_another_household`はTestcontainers PostgreSQL上で、所属していない家庭がactorの一覧に含まれないこと、家庭を読み込めないこと、Pool作成が拒否され永続化されないことを検証し、対象テストの実行に成功した。GraphQL全API・原本権限、招待処理の境界テスト、既存仕訳のmigration backfillは未確認。過去の公開環境検証では旧版でOIDCログイン後の家庭作成と再表示を確認。2026年10月16日に既定配賦、Pool作成、負担配賦・資金拠出設定をOWNER限定へ変更し、入金予定・締めなどの家計データ更新はOWNER/MEMBERのまま維持した。 |
 | 複数のプール、実口座、決済手段 | 個人・共用プールと口座、複数決済を含む購入の統合テスト | 旧版の公開環境検証で合成家庭に銀行50円・現金51円の複数決済による101円の購入を登録し、再読み込み後に両決済額、合計、品目、共用プール配賦が残ることを確認した。これはRust版の検証根拠ではない |
 | 負担と決済の分離 | 共用口座で個人購入、個人カードで共用購入の台帳と精算の期待値 | `personal_card_payment_of_shared_purchase_persists_balanced_journal_balance_and_settlement`で個人カード残高、貸借一致仕訳、60:40の負担額、精算previewを確認するTestcontainers PostgreSQLテストを追加した。`TestPersonalCardPaysSharedPoolPurchase`は旧Goテストであり、Rustテストはまだ実行していない |
 | 整数円と端数保存 | 最大剰余配賦、同率端数、整数上限、合計保存のテスト | Rust版の`allocation_conserves_yen_and_breaks_equal_remainders_by_pool_id`と`allocation_is_input_order_independent_and_handles_maximum_yen_with_large_weights`で合計保存、同率端数、入力順非依存、整数上限を検証するテストコードを確認。精算入力と計算結果が対応可能な円の上限を超えない検証を追加した。旧Go版の`FuzzAllocateProperties`は現行Rustコードに存在しない。全会計経路を対象にした自動テストは未完了 |

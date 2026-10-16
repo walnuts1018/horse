@@ -263,11 +263,7 @@ export function PurchaseItemEntry({
             </button>
           )}
         </div>
-        <button
-          type="button"
-          className="button button-add"
-          onClick={onAdd}
-        >
+        <button type="button" className="button button-add" onClick={onAdd}>
           <Plus size={16} />
           <span>品目を追加</span>
         </button>
