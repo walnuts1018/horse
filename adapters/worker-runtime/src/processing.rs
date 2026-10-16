@@ -477,19 +477,13 @@ async fn process_inner(
     let mut previous_model = String::new();
     let mut previous_kind = ProcessErrorKind::Permanent;
     for (candidate_model, candidate_route, candidate_reason, condition) in candidates {
-        let should_run = match condition {
-            "always" => true,
-            "after_temporary" => {
-                previous_kind == ProcessErrorKind::Retryable && previous_code != "rate_limited"
-            }
-            "after_quota" => previous_model == config.lite_model && previous_code == "rate_limited",
-            "after_flash_temporary" => {
-                previous_model == config.flash_model
-                    && previous_kind == ProcessErrorKind::Retryable
-                    && previous_code != "rate_limited"
-            }
-            _ => false,
-        };
+        let should_run = candidate_should_run(
+            condition,
+            &previous_model,
+            &previous_code,
+            previous_kind,
+            config,
+        );
         if !should_run {
             continue;
         }
@@ -1652,12 +1646,6 @@ fn model_candidates(
         ));
         candidates.push((
             config.flash_model.clone(),
-            "free",
-            "free_quota_model_fallback",
-            "after_quota",
-        ));
-        candidates.push((
-            config.flash_model.clone(),
             "paid",
             "free_temporary_fallback",
             "after_flash_temporary",
@@ -1671,6 +1659,27 @@ fn model_candidates(
         ));
     }
     candidates
+}
+
+fn candidate_should_run(
+    condition: &str,
+    previous_model: &str,
+    previous_code: &str,
+    previous_kind: ProcessErrorKind,
+    config: &ProcessConfig,
+) -> bool {
+    match condition {
+        "always" => true,
+        "after_temporary" => {
+            previous_kind == ProcessErrorKind::Retryable && previous_code != "rate_limited"
+        }
+        "after_flash_temporary" => {
+            previous_model == config.flash_model
+                && previous_kind == ProcessErrorKind::Retryable
+                && previous_code != "rate_limited"
+        }
+        _ => false,
+    }
 }
 
 fn parse_quota_limits(raw: &str) -> Result<HashMap<(String, String), QuotaLimit>, String> {
@@ -3247,8 +3256,9 @@ mod tests {
 
     use super::{
         Failure, ModelPriceTable, OcrLine, ProcessConfig, ProcessErrorKind, apply_cost_snapshot,
-        compare_receipt_ocr, map_extraction_regions, model_prices, needs_pro_review,
-        parse_model_price_table, process_with_timeout, truncate_to_byte_limit, verify_receipt,
+        candidate_should_run, compare_receipt_ocr, map_extraction_regions, model_candidates,
+        model_prices, needs_pro_review, parse_model_price_table, process_with_timeout,
+        truncate_to_byte_limit, verify_receipt,
     };
     use std::collections::HashMap;
     use tokio::time::Duration;
@@ -3386,6 +3396,47 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn quota_limited_email_model_does_not_fall_back_to_another_free_model() {
+        let config = ProcessConfig {
+            gemini_enabled: true,
+            free_api_key: "free-key".to_owned(),
+            paid_api_key: "paid-key".to_owned(),
+            free_project: "free-project".to_owned(),
+            paid_project: "paid-project".to_owned(),
+            flash_model: "flash-model".to_owned(),
+            lite_model: "lite-model".to_owned(),
+            pro_model: "pro-model".to_owned(),
+            usd_jpy_rate: 150.0,
+            usd_jpy_rate_source: "test".to_owned(),
+            usd_jpy_rate_as_of: "2026-10-16".to_owned(),
+            model_price_table: ModelPriceTable::defaults(),
+            quota_limits: HashMap::new(),
+            ocr_url: String::new(),
+        };
+        let candidates = model_candidates(&config, "email", "lite-model", "free");
+
+        assert!(
+            !candidates
+                .iter()
+                .any(|(model, route, _, _)| model == "flash-model" && *route == "free")
+        );
+        assert!(!candidate_should_run(
+            "after_temporary",
+            "lite-model",
+            "rate_limited",
+            ProcessErrorKind::Retryable,
+            &config,
+        ));
+        assert!(candidate_should_run(
+            "after_temporary",
+            "lite-model",
+            "upstream_unavailable",
+            ProcessErrorKind::Retryable,
+            &config,
+        ));
     }
 
     #[test]
