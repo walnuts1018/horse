@@ -107,7 +107,7 @@ async fn purchase_events_and_multiple_purchase_snapshots_use_bounded_queries() {
     }
 
     QUERY_COUNT.store(0, Ordering::Relaxed);
-    let query = PostgresSubscriptionQuery::new(pool);
+    let query = PostgresSubscriptionQuery::new(pool.clone());
     let events = query
         .purchase_events(vec![(household_id, 0)])
         .await
