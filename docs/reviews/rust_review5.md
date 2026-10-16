@@ -10,7 +10,7 @@ Pool、Allocation Rule、Funding Rule、Household Defaultsの業務ルールと�
 
 ## GraphQLとPostgreSQLの依存境界
 
-`adapters/graphql`は複数の`*-postgres` crateに直接依存している。Query ProjectionとMutation Workflowの境界を定義し、GraphQLからPostgreSQL実装への依存をApplicationの契約を通る構造へ整理する。
+`adapters/graphql`は複数の`*-postgres` crate、`diesel`、`diesel-async`、`PgPool`に直接依存している。Catalogのタグ一覧QueryはApplicationの`TagQuery`契約を経由する構成に移行した。商品Queryと他ContextのQuery・MutationはPostgreSQL実装へ直接依存するため、Applicationの契約とWorkflowへの移行が残っている。
 
 ## Pool設定MutationのError境界
 
