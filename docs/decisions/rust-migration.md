@@ -6,7 +6,7 @@ Rust移行は本番へ反映済み。CLIを除くGoの実行コードをRustへ�
 
 ## 決定
 
-BackendをGoからRustへ移行する。GraphQL Schemaと既存の公開契約を維持し、クライアントに移行を要求しない。Rust API、Worker、GraphQL契約、デプロイ定義の検証が完了した後、Go実装をRust実装へ一括で置き換える。切り替え段階で本番DBをリセットし、新しいschemaを作成する。
+CLIを除くBackendの実行コードをGoからRustへ移行する。Rust API、Worker、GraphQL契約、デプロイ定義をRust実装へ揃え、既存Go実装とのGraphQL互換性を移行条件にしない。Rust実装への切り替えで本番DBをリセットし、新しいschemaを作成する。
 
 PostgreSQLのスキーマとmigrationの正本にはAtlasを使う。RustからのDBアクセスにはDiesel 2.3と`diesel-async` 0.9.2を使い、Atlas適用後のスキーマから生成した型定義を基に、型付きQuery DSLで実装する。Dieselのmigration機能と`sql_query`による生SQLは使わない。DSLで表現できない要件はクエリやスキーマを見直して解決する。
 
@@ -28,7 +28,7 @@ GraphQL境界ではApplication Decisionの業務エラーを入力・状態エ�
 
 ## 理由
 
-GraphQLとHTTPの公開契約を維持し、既存クライアントへの変更を避ける。Rustで全機能の置き換えと業務動作を検証した後にGo実装を一括で置き換え、本番DBを承認済みの新schemaで再作成した。
+Goの実行コードをRustで一括置換し、GraphQL契約をRustの業務モデルとFrontendに合わせて設計する。Rustへの切り替え時に本番DBを承認済みの新schemaで再作成した。
 
 Atlasを正本にしてDB変更の適用履歴とスキーマを一元管理する。Dieselの型付きDSLはDBアクセスの型検査を提供し、pure DecisionとI/Oの分離は業務判断を外部状態から独立して表現する。
 
