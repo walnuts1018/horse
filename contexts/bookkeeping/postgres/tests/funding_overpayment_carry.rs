@@ -69,19 +69,18 @@ impl PolicySettlementData for FundingPolicy {
         _: &mut AsyncPgConnection,
         _household_id: Uuid,
         start: NaiveDate,
-        end: NaiveDate,
+        _end: NaiveDate,
     ) -> Result<Vec<FundingScheduleRow>, diesel::result::Error> {
-        if start == NaiveDate::from_ymd_opt(2026, 9, 1).unwrap()
-            || start == NaiveDate::from_ymd_opt(2026, 10, 1).unwrap()
-        {
+        let schedule_start = NaiveDate::from_ymd_opt(2026, 9, 1).unwrap();
+        if start >= schedule_start {
             Ok(vec![(
                 self.schedule_id,
                 self.member_id,
                 self.pool_id,
                 10_000,
                 "MONTHLY".to_owned(),
-                start,
-                Some(end - chrono::Duration::days(1)),
+                schedule_start,
+                None,
                 true,
                 Utc.with_ymd_and_hms(2026, 8, 1, 0, 0, 0).unwrap(),
             )])
