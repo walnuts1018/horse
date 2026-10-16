@@ -827,17 +827,17 @@ fn budget_read_model(row: BudgetRow, actual_yen: i64) -> Result<BudgetReadModel,
         .4
         .checked_sub(actual_yen)
         .ok_or(PolicyQueryError::AmountOverflow)?;
-    let budget = budget::Budget::reconstitute(
-        budget::BudgetId::from_persisted(row.0),
-        budget::BudgetHouseholdId::from_persisted(row.1),
-        row.2.map(budget::BudgetCategoryId::from_persisted),
-        row.3,
-        row.4,
-        row.5,
-        row.6,
-        row.7,
-        row.8,
-    )
+    let budget = budget::Budget::reconstitute(budget::BudgetReconstitution {
+        id: budget::BudgetId::from_persisted(row.0),
+        household_id: budget::BudgetHouseholdId::from_persisted(row.1),
+        category_id: row.2.map(budget::BudgetCategoryId::from_persisted),
+        name: row.3,
+        amount_yen: row.4,
+        starts_on: row.5,
+        ends_on: row.6,
+        archived: row.7,
+        revision: row.8,
+    })
     .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?;
     Ok(BudgetReadModel {
         budget,

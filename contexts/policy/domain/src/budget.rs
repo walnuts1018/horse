@@ -88,29 +88,32 @@ pub struct Budget {
     revision: BudgetRevision,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BudgetReconstitution {
+    pub id: BudgetId,
+    pub household_id: BudgetHouseholdId,
+    pub category_id: Option<BudgetCategoryId>,
+    pub name: String,
+    pub amount_yen: i64,
+    pub starts_on: NaiveDate,
+    pub ends_on: Option<NaiveDate>,
+    pub archived: bool,
+    pub revision: i64,
+}
+
 impl Budget {
-    pub fn reconstitute(
-        id: BudgetId,
-        household_id: BudgetHouseholdId,
-        category_id: Option<BudgetCategoryId>,
-        name: impl Into<String>,
-        amount_yen: i64,
-        starts_on: NaiveDate,
-        ends_on: Option<NaiveDate>,
-        archived: bool,
-        revision: i64,
-    ) -> Result<Self, BudgetError> {
-        validate_dates(starts_on, ends_on)?;
+    pub fn reconstitute(value: BudgetReconstitution) -> Result<Self, BudgetError> {
+        validate_dates(value.starts_on, value.ends_on)?;
         Ok(Self {
-            id,
-            household_id,
-            category_id,
-            name: BudgetName(validate_name(name.into())?),
-            amount_yen: BudgetAmountYen::try_from(amount_yen)?,
-            starts_on,
-            ends_on,
-            archived,
-            revision: BudgetRevision::try_from(revision)?,
+            id: value.id,
+            household_id: value.household_id,
+            category_id: value.category_id,
+            name: BudgetName(validate_name(value.name)?),
+            amount_yen: BudgetAmountYen::try_from(value.amount_yen)?,
+            starts_on: value.starts_on,
+            ends_on: value.ends_on,
+            archived: value.archived,
+            revision: BudgetRevision::try_from(value.revision)?,
         })
     }
 

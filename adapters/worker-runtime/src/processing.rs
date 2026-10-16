@@ -524,29 +524,138 @@ async fn process_inner(
             ));
             break;
         }
+        let candidate_client = GeminiDeveloperApi::new(candidate_key).map_err(|_| {
+            Failure::new(
+                ProcessErrorKind::Permanent,
+                "invalid_configuration",
+                "Gemini Developer API configuration is invalid",
+                empty_partial(),
+            )
+        })?;
         let mut reservation_estimate = None;
         let mut reservation_latency_ms = None;
         let reservation_id = if let Some(limit) = config
             .quota_limits
             .get(&(candidate_route.to_owned(), candidate_model.clone()))
         {
-            let estimate = estimate_input_tokens(
-                document.data.len(),
-                input_text_bytes,
-                if document.mime_type == "text/plain" {
-                    document.data.len()
-                } else {
-                    0
-                },
-                schema_bytes,
-            );
+            let count_reservation = gemini_quota::reserve(
+                pool,
+                candidate_route,
+                &candidate_model,
+                1,
+                *limit,
+                Utc::now(),
+            )
+            .await;
+            let count_reservation_id = match count_reservation {
+                Ok(Ok(id)) => id,
+                Ok(Err(delay)) => {
+                    let mut failure = Failure::new(
+                        ProcessErrorKind::Retryable,
+                        "quota_reservation_deferred",
+                        "Gemini Developer API quota is temporarily unavailable",
+                        partial_result(
+                            &lines,
+                            &issues,
+                            Value::Null,
+                            "rate_limited",
+                            &candidate_model,
+                            candidate_route,
+                            candidate_project,
+                        ),
+                    );
+                    failure.retry_after = delay.to_std().ok();
+                    last_error = Some(failure);
+                    break;
+                }
+                Err(_) => {
+                    last_error = Some(Failure::new(
+                        ProcessErrorKind::Retryable,
+                        "quota_reservation_failed",
+                        "Gemini Developer API quota reservation failed",
+                        empty_partial(),
+                    ));
+                    break;
+                }
+            };
+            let count_result = candidate_client
+                .count_tokens_with_schema(
+                    &candidate_model,
+                    &input,
+                    SYSTEM_INSTRUCTION,
+                    &extraction_schema(&job.source_kind, is_csv_statement),
+                )
+                .await;
+            if gemini_quota::settle(pool, count_reservation_id, 0, Utc::now())
+                .await
+                .is_err()
+            {
+                last_error = Some(Failure::new(
+                    ProcessErrorKind::Retryable,
+                    "quota_settlement_failed",
+                    "Gemini Developer API usage could not be recorded",
+                    empty_partial(),
+                ));
+                break;
+            }
+            let (estimate, count_was_exact) = match count_result {
+                Ok(tokens) => (tokens, true),
+                Err(error)
+                    if matches!(
+                        &error,
+                        GeminiError::RateLimited { .. }
+                            | GeminiError::UsageQuotaExceeded { .. }
+                            | GeminiError::SpendCapExceeded
+                    ) =>
+                {
+                    let failure = map_gemini_error(
+                        error,
+                        &lines,
+                        &issues,
+                        &candidate_model,
+                        candidate_route,
+                        candidate_project,
+                    );
+                    if failure.code == "rate_limited" {
+                        let now = Utc::now();
+                        let delay =
+                            failure.retry_after.unwrap_or_else(|| {
+                                Duration::from_millis(
+                                    failure.retry_delay_ms(job.attempt_no, now) as u64
+                                )
+                            });
+                        if let Ok(delay) = chrono::Duration::from_std(delay) {
+                            let _ = gemini_quota::record_cooldown(
+                                pool,
+                                candidate_route,
+                                &candidate_model,
+                                delay,
+                                now,
+                            )
+                            .await;
+                        }
+                    }
+                    last_error = Some(failure);
+                    break;
+                }
+                Err(_) => (
+                    estimate_input_tokens(
+                        input_text_bytes,
+                        schema_bytes,
+                        is_image_or_pdf(&document.mime_type),
+                    ),
+                    false,
+                ),
+            };
             reservation_estimate = Some(estimate);
+            let reserved_tokens =
+                reservation_tokens(estimate, count_was_exact, limit.input_tokens_minute);
             let reservation_started = Instant::now();
             let reservation_result = gemini_quota::reserve(
                 pool,
                 candidate_route,
                 &candidate_model,
-                estimate,
+                reserved_tokens,
                 *limit,
                 Utc::now(),
             )
@@ -559,6 +668,7 @@ async fn process_inner(
                 input_mime_type = mime_type,
                 input_bytes = document.data.len(),
                 estimated_input_tokens = estimate,
+                reserved_input_tokens = reserved_tokens,
                 reservation_latency_ms = elapsed_ms,
                 succeeded = matches!(&reservation_result, Ok(Ok(_))),
                 "Gemini quota reservation measured"
@@ -584,16 +694,33 @@ async fn process_inner(
                     last_error = Some(failure);
                     break;
                 }
-                Err(gemini_quota::QuotaError::InputTooLarge) => {
+                Err(gemini_quota::QuotaError::InputTooLarge) if count_was_exact => {
                     last_error = Some(Failure::new(
                         ProcessErrorKind::Permanent,
                         "input_exceeds_quota",
-                        "Extraction input exceeds the configured token quota",
+                        "Selected Gemini model cannot accept this input within its configured quota",
                         partial_result(
                             &lines,
                             &issues,
                             Value::Null,
                             "input_exceeds_quota",
+                            &candidate_model,
+                            candidate_route,
+                            candidate_project,
+                        ),
+                    ));
+                    break;
+                }
+                Err(gemini_quota::QuotaError::InputTooLarge) => {
+                    last_error = Some(Failure::new(
+                        ProcessErrorKind::Retryable,
+                        "quota_reservation_deferred",
+                        "Gemini Developer API quota is temporarily unavailable",
+                        partial_result(
+                            &lines,
+                            &issues,
+                            Value::Null,
+                            "rate_limited",
                             &candidate_model,
                             candidate_route,
                             candidate_project,
@@ -614,14 +741,6 @@ async fn process_inner(
         } else {
             None
         };
-        let candidate_client = GeminiDeveloperApi::new(candidate_key).map_err(|_| {
-            Failure::new(
-                ProcessErrorKind::Permanent,
-                "invalid_configuration",
-                "Gemini Developer API configuration is invalid",
-                empty_partial(),
-            )
-        })?;
         match candidate_client
             .create_stream_with_schema(
                 &candidate_model,
@@ -2233,19 +2352,21 @@ fn is_image_or_pdf(mime_type: &str) -> bool {
     mime_type.starts_with("image/") || mime_type == "application/pdf"
 }
 
-fn estimate_input_tokens(
-    document_bytes: usize,
-    prompt_bytes: usize,
-    embedded_document_bytes: usize,
-    schema_bytes: usize,
-) -> i64 {
-    let document_estimate = i64::try_from((document_bytes / 4).max(256)).unwrap_or(i64::MAX);
+fn estimate_input_tokens(prompt_bytes: usize, schema_bytes: usize, has_media: bool) -> i64 {
+    let document_estimate: i64 = if has_media { 258 } else { 0 };
     let text_bytes = prompt_bytes
-        .saturating_sub(embedded_document_bytes)
         .saturating_add(SYSTEM_INSTRUCTION.len())
         .saturating_add(schema_bytes);
     let text_estimate = i64::try_from(text_bytes.div_ceil(4)).unwrap_or(i64::MAX);
     document_estimate.saturating_add(text_estimate)
+}
+
+fn reservation_tokens(tokens: i64, exact: bool, tokens_per_minute: i64) -> i64 {
+    if exact {
+        tokens
+    } else {
+        tokens.min(tokens_per_minute).max(1)
+    }
 }
 
 fn valid_region(region: &OcrRegion) -> bool {
@@ -2592,18 +2713,27 @@ fn verify_receipt(
         .get("payments")
         .and_then(Value::as_array)
         .filter(|payments| !payments.is_empty())
+        && sum_payment_amounts(payments) != Some(total)
     {
-        if sum_payment_amounts(payments) != Some(total) {
-            issues.push("決済額の合計と印字合計が一致しません。".to_owned());
-            issue_codes.push(VerificationIssueCode::TotalMismatch);
-        }
+        issues.push("決済額の合計と印字合計が一致しません。".to_owned());
+        issue_codes.push(VerificationIssueCode::TotalMismatch);
     }
     (computed_total, computed_total == total, issue_codes)
 }
 
 fn sum_payment_amounts(payments: &[Value]) -> Option<i64> {
+    let mut sign = None;
     payments.iter().try_fold(0_i64, |sum, payment| {
-        sum.checked_add(payment.get("amount")?.as_i64()?)
+        let amount = payment.get("amount")?.as_i64()?;
+        if amount == 0 || amount.unsigned_abs() > 1_000_000_000_000 {
+            return None;
+        }
+        let current_sign = amount.is_positive();
+        if sign.is_some_and(|sign| sign != current_sign) {
+            return None;
+        }
+        sign = Some(current_sign);
+        sum.checked_add(amount)
     })
 }
 
@@ -2891,7 +3021,7 @@ fn verify_statement_rows(
             || merchant.trim() != merchant
             || merchant.is_empty()
             || merchant.len() > 1024
-            || amount.is_none_or(|amount| amount.unsigned_abs() > 1_000_000_000_000)
+            || amount.is_none_or(|amount| amount == 0 || amount.unsigned_abs() > 1_000_000_000_000)
             || chrono::DateTime::parse_from_rfc3339(occurred_at).is_err()
             || !card_last4.is_empty()
                 && (card_last4.len() != 4
@@ -2914,7 +3044,16 @@ fn verify_statement_rows(
                     | "UNCLASSIFIED"
             )
         };
-        if !allowed || kind == "EXTERNAL_INCOME" && amount.is_some_and(|amount| amount <= 0) {
+        if !allowed
+            || amount.is_some_and(|amount| {
+                amount == 0
+                    || match kind {
+                        "EXTERNAL_INCOME" => amount < 0,
+                        "REFUND" | "CARD_BILL_PAYMENT" => amount > 0,
+                        _ => false,
+                    }
+            })
+        {
             return false;
         }
         if let Some(region) = &region {
@@ -3299,19 +3438,25 @@ mod tests {
         Failure, ModelPriceTable, OcrLine, ProcessConfig, ProcessErrorKind, apply_cost_snapshot,
         candidate_should_run, compare_receipt_ocr, estimate_input_tokens, interaction_token_usage,
         map_extraction_regions, model_candidates, model_prices, needs_pro_review,
-        parse_model_price_table, process_with_timeout, sum_payment_amounts, truncate_to_byte_limit,
-        verify_receipt,
+        parse_model_price_table, process_with_timeout, reservation_tokens, sum_payment_amounts,
+        truncate_to_byte_limit, verify_receipt,
     };
     use std::collections::HashMap;
     use tokio::time::Duration;
 
     #[test]
     fn quota_estimate_includes_prompt_and_schema_tokens() {
-        let document_only = estimate_input_tokens(4_000, 0, 0, 0);
-        let with_request_context = estimate_input_tokens(4_000, 4_000, 0, 8_000);
+        let document_only = estimate_input_tokens(0, 0, false);
+        let with_request_context = estimate_input_tokens(4_000, 8_000, false);
 
         assert!(with_request_context > document_only);
         assert_eq!(with_request_context - document_only, 3_000);
+        assert_eq!(
+            estimate_input_tokens(4_000, 8_000, true),
+            with_request_context + 258
+        );
+        assert_eq!(reservation_tokens(1_500, true, 1_000), 1_500);
+        assert_eq!(reservation_tokens(1_500, false, 1_000), 1_000);
     }
 
     #[test]
@@ -3417,6 +3562,19 @@ mod tests {
         );
         assert_eq!(
             sum_payment_amounts(&[json!({"amount": 1}), json!({"amount": "invalid"})]),
+            None
+        );
+        assert_eq!(
+            sum_payment_amounts(&[json!({"amount": 150}), json!({"amount": -50})]),
+            None
+        );
+        assert_eq!(
+            sum_payment_amounts(&[json!({"amount": -150}), json!({"amount": -50})]),
+            Some(-200)
+        );
+        assert_eq!(sum_payment_amounts(&[json!({"amount": 0})]), None);
+        assert_eq!(
+            sum_payment_amounts(&[json!({"amount": 1_000_000_000_001_i64})]),
             None
         );
     }

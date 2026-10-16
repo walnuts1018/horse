@@ -134,15 +134,17 @@ pub async fn persist_create_budget(
                 .await?;
             record_event(conn, household, id, change, 1, actor).await?;
             Ok(budget::Budget::reconstitute(
-                budget::BudgetId::from_persisted(id),
-                budget::BudgetHouseholdId::from_persisted(household),
-                category.map(budget::BudgetCategoryId::from_persisted),
-                name,
-                amount,
-                starts,
-                ends,
-                false,
-                1,
+                budget::BudgetReconstitution {
+                    id: budget::BudgetId::from_persisted(id),
+                    household_id: budget::BudgetHouseholdId::from_persisted(household),
+                    category_id: category.map(budget::BudgetCategoryId::from_persisted),
+                    name,
+                    amount_yen: amount,
+                    starts_on: starts,
+                    ends_on: ends,
+                    archived: false,
+                    revision: 1,
+                },
             )?)
         })
         .await
@@ -253,15 +255,17 @@ pub async fn persist_update_budget(
                 .await?;
             record_event(conn, row.0, id, change, revision, actor).await?;
             Ok(budget::Budget::reconstitute(
-                budget::BudgetId::from_persisted(id),
-                budget::BudgetHouseholdId::from_persisted(row.0),
-                category.map(budget::BudgetCategoryId::from_persisted),
-                name,
-                amount,
-                starts,
-                ends,
-                row.6,
-                revision,
+                budget::BudgetReconstitution {
+                    id: budget::BudgetId::from_persisted(id),
+                    household_id: budget::BudgetHouseholdId::from_persisted(row.0),
+                    category_id: category.map(budget::BudgetCategoryId::from_persisted),
+                    name,
+                    amount_yen: amount,
+                    starts_on: starts,
+                    ends_on: ends,
+                    archived: row.6,
+                    revision,
+                },
             )?)
         })
         .await
@@ -375,15 +379,17 @@ pub async fn persist_archive_budget(
             }
             record_event(conn, row.0, id, change, revision, actor).await?;
             Ok(budget::Budget::reconstitute(
-                budget::BudgetId::from_persisted(id),
-                budget::BudgetHouseholdId::from_persisted(row.0),
-                row.1.map(budget::BudgetCategoryId::from_persisted),
-                row.2,
-                row.3,
-                row.4,
-                row.5,
-                archived,
-                revision,
+                budget::BudgetReconstitution {
+                    id: budget::BudgetId::from_persisted(id),
+                    household_id: budget::BudgetHouseholdId::from_persisted(row.0),
+                    category_id: row.1.map(budget::BudgetCategoryId::from_persisted),
+                    name: row.2,
+                    amount_yen: row.3,
+                    starts_on: row.4,
+                    ends_on: row.5,
+                    archived,
+                    revision,
+                },
             )?)
         })
         .await

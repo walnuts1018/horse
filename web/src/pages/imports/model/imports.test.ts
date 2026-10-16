@@ -129,6 +129,8 @@ describe("AIモデルの利用上限", () => {
       }),
     ).toBe(true);
     expect(deferredExtractionMessage("quota_reservation_deferred")).toContain("利用枠");
+    expect(deferredExtractionMessage("input_exceeds_quota")).toContain("別のモデルを選んで");
+    expect(deferredExtractionMessage("input_exceeds_quota")).toContain("別のモデルを選んで");
     expect(
       isExtractionDeferred({
         id: "document-6",
@@ -190,6 +192,14 @@ describe("再抽出モデルの初期選択", () => {
         status: "FAILED",
         errorCode: "quota_reservation_deferred",
         model: "free",
+      }),
+    ).toBe("gemini-3.1-pro-preview");
+    expect(
+      retryImportModel({
+        id: "input-too-large",
+        status: "FAILED",
+        errorCode: "input_exceeds_quota",
+        model: "gemini-3.8-flash",
       }),
     ).toBe("gemini-3.1-pro-preview");
     expect(

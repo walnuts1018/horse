@@ -36,11 +36,11 @@ impl PurchaseAllocationRulesRead<horse_postgres_common::AsyncPgConnection>
                 query = query.or_filter(rules::category_id.eq(Some(id)));
                 has_target = true;
             }
-            if let Some(merchant) = &target.merchant_key {
-                if !merchant.is_empty() {
-                    query = query.or_filter(rules::merchant_key.eq(Some(merchant.clone())));
-                    has_target = true;
-                }
+            if let Some(merchant) = &target.merchant_key
+                && !merchant.is_empty()
+            {
+                query = query.or_filter(rules::merchant_key.eq(Some(merchant.clone())));
+                has_target = true;
             }
         }
         if !has_target {

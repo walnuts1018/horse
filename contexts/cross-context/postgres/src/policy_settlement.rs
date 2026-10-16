@@ -29,6 +29,12 @@ impl PolicySettlementReferences {
     }
 }
 
+impl Default for PolicySettlementReferences {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub async fn close_period(
     pool: &horse_postgres_common::PgPool,
     household_id: &str,

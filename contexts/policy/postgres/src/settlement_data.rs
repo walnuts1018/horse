@@ -25,6 +25,12 @@ type FundingShareRow = (Uuid, i32, Uuid, i64);
 
 pub struct PostgresSettlementDataRead;
 
+impl Default for PostgresSettlementDataRead {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PostgresSettlementDataRead {
     pub const fn new() -> Self {
         Self

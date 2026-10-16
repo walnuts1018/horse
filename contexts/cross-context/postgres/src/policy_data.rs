@@ -17,6 +17,12 @@ impl PolicyQueries {
     }
 }
 
+impl Default for PolicyQueries {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl PolicyData for PolicyQueries {
     async fn pool_funding_owner(

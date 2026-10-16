@@ -148,6 +148,47 @@ impl GeminiDeveloperApi {
         event_stream(response).await
     }
 
+    pub async fn count_tokens_with_schema(
+        &self,
+        model: &str,
+        input: &InteractionsInput,
+        system_instruction: &str,
+        response_schema: &serde_json::Value,
+    ) -> Result<i64, Error> {
+        let request = serde_json::json!({
+            "generateContentRequest": {
+                "contents": count_token_contents(input),
+                "systemInstruction": {"parts": [{"text": system_instruction}]},
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "responseSchema": response_schema,
+                }
+            }
+        });
+        let response = self
+            .http
+            .post(format!(
+                "{API_ROOT}/models/{}:countTokens",
+                encode_path_segment(model)
+            ))
+            .header("x-goog-api-key", self.api_key.0.clone())
+            .json(&request)
+            .send()
+            .await
+            .map_err(classify_transport)?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(classify_status(status, response).await);
+        }
+        let response: serde_json::Value =
+            response.json().await.map_err(|_| Error::InvalidResponse)?;
+        response
+            .get("totalTokens")
+            .and_then(serde_json::Value::as_i64)
+            .filter(|tokens| *tokens > 0)
+            .ok_or(Error::InvalidResponse)
+    }
+
     /// 既存InteractionのSSEを、指定したevent IDの次から再開する。
     pub async fn resume_stream(
         &self,
@@ -442,6 +483,46 @@ fn parse_interaction_event(event: eventsource_stream::Event) -> Result<Interacti
         event_id,
         payload,
     })
+}
+
+fn count_token_contents(input: &InteractionsInput) -> Vec<serde_json::Value> {
+    match input {
+        InteractionsInput::Text(text) => vec![serde_json::json!({
+            "role": "user",
+            "parts": [{"text": text}],
+        })],
+        InteractionsInput::Content(content) => vec![serde_json::json!({
+            "role": "user",
+            "parts": content.iter().map(count_token_part).collect::<Vec<_>>(),
+        })],
+        InteractionsInput::History(history) => history
+            .iter()
+            .map(|step| {
+                let role = match &step.role {
+                    HistoryRole::UserInput => "user",
+                    HistoryRole::ModelOutput => "model",
+                };
+                serde_json::json!({
+                    "role": role,
+                    "parts": step.content.iter().map(count_token_part).collect::<Vec<_>>(),
+                })
+            })
+            .collect(),
+    }
+}
+
+fn count_token_part(content: &InputContent) -> serde_json::Value {
+    match content {
+        InputContent::Text(text) => serde_json::json!({"text": text}),
+        InputContent::Image { bytes, mime_type } | InputContent::Document { bytes, mime_type } => {
+            serde_json::json!({
+                "inlineData": {
+                    "mimeType": mime_type,
+                    "data": STANDARD.encode(bytes),
+                }
+            })
+        }
+    }
 }
 
 async fn classify_status(status: StatusCode, response: reqwest::Response) -> Error {

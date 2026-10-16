@@ -3161,7 +3161,12 @@ struct ReconciliationMatch {
     source_reference: String,
     state: String,
     reasons: Vec<String>,
+    #[serde(skip)]
+    rank: (u8, u8, i64),
 }
+
+const RECONCILIATION_CANDIDATE_LIMIT: i64 = 500;
+const RECONCILIATION_MATCH_LIMIT: usize = 20;
 
 async fn document_matches(
     State(state): State<ApiState>,
@@ -3255,59 +3260,203 @@ async fn document_matches(
     if incoming.is_empty() {
         return Json(json!({"observations": [], "truncated": truncated})).into_response();
     }
-    let existing_rows = source_observations::table
-        .filter(source_observations::household_id.eq(household_id))
-        .order_by(source_observations::source_document_id.asc())
-        .then_order_by(source_observations::source_reference.asc())
-        .limit(5001)
-        .select((
-            source_observations::source_document_id,
-            source_observations::source_reference,
-            source_observations::source_hash,
-            source_observations::source_kind,
-            source_observations::transaction_kind,
-            source_observations::external_order_id,
-            source_observations::external_transaction_id,
-            source_observations::merchant,
-            source_observations::occurred_at,
-            source_observations::amount_yen,
-            source_observations::card_last4,
-        ))
-        .load::<(
-            uuid::Uuid,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            Option<chrono::DateTime<chrono::Utc>>,
-            Option<i64>,
-            String,
-        )>(&mut *pooled)
-        .await;
-    let existing_rows = match existing_rows {
-        Ok(rows) => rows,
-        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
-    };
-    truncated |= existing_rows.len() > 5000;
-    let existing = existing_rows
-        .into_iter()
-        .take(5000)
-        .map(reconciliation_observation)
-        .collect::<Vec<_>>();
     let observations = incoming
         .iter()
-        .map(|candidate| {
-            let mut matches = reconcile_observation(candidate, &existing);
-            if matches.len() > 20 {
-                matches.truncate(20);
-                truncated = true;
-            }
-            json!({"sourceReference": candidate.source_reference, "matches": matches})
-        })
+        .map(|candidate| json!({"sourceReference": candidate.source_reference, "matches": []}))
         .collect::<Vec<_>>();
+    let mut observations = observations;
+    for (candidate, result) in incoming.iter().zip(&mut observations) {
+        let mut candidate_rows = Vec::new();
+        let mut candidate_keys = std::collections::HashSet::new();
+        let mut exact_query = source_observations::table.into_boxed();
+        let mut has_exact_condition = false;
+        if !candidate.hash.is_empty() {
+            exact_query = exact_query.filter(source_observations::source_hash.eq(&candidate.hash));
+            has_exact_condition = true;
+        }
+        if !candidate.order_id.is_empty() {
+            exact_query = if has_exact_condition {
+                exact_query
+                    .or_filter(source_observations::external_order_id.eq(&candidate.order_id))
+            } else {
+                exact_query.filter(source_observations::external_order_id.eq(&candidate.order_id))
+            };
+            has_exact_condition = true;
+        }
+        if !candidate.transaction_id.is_empty() {
+            exact_query = if has_exact_condition {
+                exact_query.or_filter(
+                    source_observations::external_transaction_id.eq(&candidate.transaction_id),
+                )
+            } else {
+                exact_query.filter(
+                    source_observations::external_transaction_id.eq(&candidate.transaction_id),
+                )
+            };
+            has_exact_condition = true;
+        }
+        if has_exact_condition {
+            let rows = exact_query
+                .filter(source_observations::household_id.eq(household_id))
+                .filter(source_observations::source_document_id.ne(candidate.document_id))
+                .order_by((
+                    source_observations::source_hash.eq(&candidate.hash).desc(),
+                    source_observations::external_order_id
+                        .eq(&candidate.order_id)
+                        .desc(),
+                    source_observations::external_transaction_id
+                        .eq(&candidate.transaction_id)
+                        .desc(),
+                ))
+                .limit(RECONCILIATION_CANDIDATE_LIMIT + 1)
+                .select((
+                    source_observations::source_document_id,
+                    source_observations::source_reference,
+                    source_observations::source_hash,
+                    source_observations::source_kind,
+                    source_observations::transaction_kind,
+                    source_observations::external_order_id,
+                    source_observations::external_transaction_id,
+                    source_observations::merchant,
+                    source_observations::occurred_at,
+                    source_observations::amount_yen,
+                    source_observations::card_last4,
+                ))
+                .load::<ReconciliationObservationRow>(&mut *pooled)
+                .await;
+            let rows = match rows {
+                Ok(rows) => rows,
+                Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+            };
+            let (rows, candidates_truncated) =
+                cap_reconciliation_candidates(rows, RECONCILIATION_CANDIDATE_LIMIT as usize);
+            truncated |= candidates_truncated;
+            for row in rows {
+                let key = (row.0, row.1.clone());
+                if candidate_keys.insert(key) {
+                    candidate_rows.push(row);
+                }
+            }
+        }
+        if let Some(occurred_at) = candidate
+            .occurred_at
+            .filter(|_| !normalize_reconciliation_merchant(&candidate.merchant).is_empty())
+        {
+            let nearby_query = || {
+                let opposite_amount = candidate.amount.checked_neg().unwrap_or(candidate.amount);
+                let amount_matches = source_observations::amount_yen
+                    .eq(Some(candidate.amount))
+                    .or(source_observations::amount_yen.eq(Some(opposite_amount)))
+                    .or(source_observations::amount_yen.is_null());
+                source_observations::table
+                    .filter(source_observations::household_id.eq(household_id))
+                    .filter(source_observations::source_document_id.ne(candidate.document_id))
+                    .filter(amount_matches)
+                    .filter(
+                        source_observations::occurred_at
+                            .gt(occurred_at - chrono::Duration::hours(73)),
+                    )
+                    .filter(
+                        source_observations::occurred_at
+                            .lt(occurred_at + chrono::Duration::hours(73)),
+                    )
+                    .into_boxed()
+            };
+            let card_match_or_missing = source_observations::card_last4
+                .eq(&candidate.card_last4)
+                .or(source_observations::card_last4.eq(""))
+                .desc();
+            let merchant_match = source_observations::merchant.eq(&candidate.merchant).desc();
+            let future_rows = nearby_query()
+                .filter(source_observations::occurred_at.ge(occurred_at))
+                .order_by((
+                    card_match_or_missing,
+                    merchant_match,
+                    source_observations::occurred_at.asc(),
+                ))
+                .limit(RECONCILIATION_CANDIDATE_LIMIT + 1)
+                .select((
+                    source_observations::source_document_id,
+                    source_observations::source_reference,
+                    source_observations::source_hash,
+                    source_observations::source_kind,
+                    source_observations::transaction_kind,
+                    source_observations::external_order_id,
+                    source_observations::external_transaction_id,
+                    source_observations::merchant,
+                    source_observations::occurred_at,
+                    source_observations::amount_yen,
+                    source_observations::card_last4,
+                ))
+                .load::<ReconciliationObservationRow>(&mut *pooled)
+                .await;
+            let future_rows = match future_rows {
+                Ok(rows) => rows,
+                Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+            };
+            let past_rows = nearby_query()
+                .filter(source_observations::occurred_at.lt(occurred_at))
+                .order_by((
+                    card_match_or_missing,
+                    merchant_match,
+                    source_observations::occurred_at.desc(),
+                ))
+                .limit(RECONCILIATION_CANDIDATE_LIMIT + 1)
+                .select((
+                    source_observations::source_document_id,
+                    source_observations::source_reference,
+                    source_observations::source_hash,
+                    source_observations::source_kind,
+                    source_observations::transaction_kind,
+                    source_observations::external_order_id,
+                    source_observations::external_transaction_id,
+                    source_observations::merchant,
+                    source_observations::occurred_at,
+                    source_observations::amount_yen,
+                    source_observations::card_last4,
+                ))
+                .load::<ReconciliationObservationRow>(&mut *pooled)
+                .await;
+            let past_rows = match past_rows {
+                Ok(rows) => rows,
+                Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+            };
+            let (future_rows, future_truncated) =
+                cap_reconciliation_candidates(future_rows, RECONCILIATION_CANDIDATE_LIMIT as usize);
+            let (past_rows, past_truncated) =
+                cap_reconciliation_candidates(past_rows, RECONCILIATION_CANDIDATE_LIMIT as usize);
+            truncated |= future_truncated || past_truncated;
+            for row in future_rows.into_iter().chain(past_rows) {
+                let key = (row.0, row.1.clone());
+                if candidate_keys.insert(key) {
+                    candidate_rows.push(row);
+                }
+            }
+        }
+        let existing = candidate_rows
+            .into_iter()
+            .map(reconciliation_observation)
+            .collect::<Vec<_>>();
+        let (existing, candidates_truncated) = rank_reconciliation_candidates(
+            candidate,
+            existing,
+            RECONCILIATION_CANDIDATE_LIMIT as usize,
+        );
+        truncated |= candidates_truncated;
+        let mut matches = reconcile_observation(candidate, &existing);
+        matches.sort_by(|left, right| {
+            right
+                .rank
+                .cmp(&left.rank)
+                .then_with(|| left.document_id.cmp(&right.document_id))
+                .then_with(|| left.source_reference.cmp(&right.source_reference))
+        });
+        if matches.len() > RECONCILIATION_MATCH_LIMIT {
+            matches.truncate(RECONCILIATION_MATCH_LIMIT);
+            truncated = true;
+        }
+        result["matches"] = json!(matches);
+    }
     Json(json!({"observations": observations, "truncated": truncated})).into_response()
 }
 
@@ -3368,10 +3517,12 @@ fn reconcile_observation(
             source_reference: old.source_reference.clone(),
             state: "POSSIBLE".to_owned(),
             reasons: Vec::new(),
+            rank: (0, 0, 0),
         };
         if !incoming.hash.is_empty() && incoming.hash == old.hash {
             candidate.state = "DUPLICATE".to_owned();
             candidate.reasons.push("同じ原本".to_owned());
+            candidate.rank = (5, 0, 0);
             matches.push(candidate);
             continue;
         }
@@ -3394,7 +3545,7 @@ fn reconcile_observation(
         let near = incoming
             .occurred_at
             .zip(old.occurred_at)
-            .is_some_and(|(left, right)| left.signed_duration_since(right).num_hours().abs() <= 72);
+            .is_some_and(|(left, right)| reconciliation_times_are_near(left, right));
         let card_match = !incoming.card_last4.is_empty() && incoming.card_last4 == old.card_last4;
         if order_match {
             candidate.reasons.push("同じ注文番号".to_owned());
@@ -3437,9 +3588,83 @@ fn reconcile_observation(
             candidate.state = "CONFLICT".to_owned();
             candidate.reasons.push("カード末尾相違".to_owned());
         }
+        candidate.rank = reconciliation_match_rank(&candidate, incoming, old);
         matches.push(candidate);
     }
     matches
+}
+
+fn reconciliation_times_are_near(
+    left: chrono::DateTime<chrono::Utc>,
+    right: chrono::DateTime<chrono::Utc>,
+) -> bool {
+    left.signed_duration_since(right).num_hours().abs() <= 72
+}
+
+fn cap_reconciliation_candidates<T>(rows: Vec<T>, limit: usize) -> (Vec<T>, bool) {
+    let truncated = rows.len() > limit;
+    (rows.into_iter().take(limit).collect(), truncated)
+}
+
+fn rank_reconciliation_candidates(
+    incoming: &ReconciliationObservation,
+    mut candidates: Vec<ReconciliationObservation>,
+    limit: usize,
+) -> (Vec<ReconciliationObservation>, bool) {
+    candidates.sort_by(|left, right| {
+        let left_rank = reconcile_observation(incoming, std::slice::from_ref(left))
+            .into_iter()
+            .next()
+            .map(|candidate| candidate.rank)
+            .unwrap_or((0, 0, 0));
+        let right_rank = reconcile_observation(incoming, std::slice::from_ref(right))
+            .into_iter()
+            .next()
+            .map(|candidate| candidate.rank)
+            .unwrap_or((0, 0, 0));
+        right_rank
+            .cmp(&left_rank)
+            .then_with(|| left.document_id.cmp(&right.document_id))
+            .then_with(|| left.source_reference.cmp(&right.source_reference))
+    });
+    let truncated = candidates.len() > limit;
+    candidates.truncate(limit);
+    (candidates, truncated)
+}
+
+fn reconciliation_match_rank(
+    candidate: &ReconciliationMatch,
+    incoming: &ReconciliationObservation,
+    existing: &ReconciliationObservation,
+) -> (u8, u8, i64) {
+    if candidate.reasons.iter().any(|reason| reason == "同じ原本") {
+        (5, 0, 0)
+    } else if candidate
+        .reasons
+        .iter()
+        .any(|reason| reason == "同じ注文番号")
+    {
+        (4, 0, 0)
+    } else if candidate
+        .reasons
+        .iter()
+        .any(|reason| reason == "同じ取引ID")
+    {
+        (3, 0, 0)
+    } else if candidate.state == "CONFLICT" {
+        (0, 0, 0)
+    } else {
+        let card_match = candidate
+            .reasons
+            .iter()
+            .any(|reason| reason == "カード末尾一致");
+        let distance_seconds = incoming
+            .occurred_at
+            .zip(existing.occurred_at)
+            .map(|(left, right)| left.signed_duration_since(right).num_seconds().abs())
+            .unwrap_or(i64::MAX);
+        (if card_match { 2 } else { 1 }, 0, -distance_seconds)
+    }
 }
 
 fn reconcilable_pair(left: &ReconciliationObservation, right: &ReconciliationObservation) -> bool {
@@ -4322,7 +4547,10 @@ fn same_origin(headers: &HeaderMap, config: &Config) -> bool {
 
 #[cfg(test)]
 mod reconciliation_tests {
-    use super::{ReconciliationObservation, reconcile_observation};
+    use super::{
+        ReconciliationObservation, cap_reconciliation_candidates, rank_reconciliation_candidates,
+        reconcile_observation, reconciliation_times_are_near,
+    };
 
     fn observation(
         document_id: u128,
@@ -4534,6 +4762,93 @@ mod reconciliation_tests {
             &receipt_refund,
             &bank_refund
         ));
+    }
+
+    #[test]
+    fn reconciliation_time_window_matches_hour_bucket_boundaries() {
+        let occurred_at = chrono::DateTime::parse_from_rfc3339("2026-10-17T12:00:00Z")
+            .unwrap()
+            .to_utc();
+
+        assert!(reconciliation_times_are_near(
+            occurred_at,
+            occurred_at - chrono::Duration::hours(72) - chrono::Duration::minutes(59)
+        ));
+        assert!(!reconciliation_times_are_near(
+            occurred_at,
+            occurred_at - chrono::Duration::hours(73)
+        ));
+    }
+
+    #[test]
+    fn reconciliation_matches_rank_exact_ids_cards_and_time_proximity() {
+        let occurred_at = chrono::DateTime::parse_from_rfc3339("2026-10-17T12:00:00Z")
+            .unwrap()
+            .to_utc();
+        let mut incoming = observation(1, "card", "CARD_PURCHASE", "txn-1", "Amazon", 4980);
+        incoming.card_last4 = "1234".to_owned();
+        incoming.occurred_at = Some(occurred_at);
+
+        let mut exact_transaction = observation(
+            2,
+            "receipt",
+            "RECEIPT_PURCHASE",
+            "txn-1",
+            "Different Store",
+            3980,
+        );
+        exact_transaction.occurred_at = Some(occurred_at - chrono::Duration::days(4));
+        let mut close_card_match =
+            observation(3, "receipt", "RECEIPT_PURCHASE", "", "Amazon", 4980);
+        close_card_match.card_last4 = "1234".to_owned();
+        close_card_match.occurred_at = Some(occurred_at - chrono::Duration::hours(1));
+        let mut distant_card_match = close_card_match.clone();
+        distant_card_match.document_id = uuid::Uuid::from_u128(4);
+        distant_card_match.occurred_at = Some(occurred_at - chrono::Duration::hours(60));
+        let mut card_conflict = close_card_match.clone();
+        card_conflict.document_id = uuid::Uuid::from_u128(5);
+        card_conflict.card_last4 = "9999".to_owned();
+        let existing = [
+            close_card_match,
+            distant_card_match,
+            card_conflict,
+            exact_transaction,
+        ];
+
+        let mut matches = reconcile_observation(&incoming, &existing);
+        matches.sort_by_key(|candidate| std::cmp::Reverse(candidate.rank));
+
+        assert_eq!(
+            matches
+                .iter()
+                .map(|candidate| candidate.document_id.as_u128())
+                .collect::<Vec<_>>(),
+            vec![2, 3, 4, 5]
+        );
+
+        let (top_candidates, truncated) =
+            rank_reconciliation_candidates(&incoming, existing.to_vec(), 2);
+        assert!(truncated);
+        assert_eq!(
+            top_candidates
+                .iter()
+                .map(|candidate| candidate.document_id.as_u128())
+                .collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+    }
+
+    #[test]
+    fn reconciliation_candidate_limit_reports_truncation() {
+        let (limited, truncated) = cap_reconciliation_candidates((0..501).collect(), 500);
+
+        assert_eq!(limited.len(), 500);
+        assert!(truncated);
+
+        let (within_limit, truncated) = cap_reconciliation_candidates((0..500).collect(), 500);
+
+        assert_eq!(within_limit.len(), 500);
+        assert!(!truncated);
     }
 }
 

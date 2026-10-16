@@ -7,8 +7,8 @@ pub mod set_pool_funding_rule;
 
 pub use budget::{
     ArchiveBudgetCommand, ArchiveBudgetDecision, Budget, BudgetActorId, BudgetAmountYen,
-    BudgetCategoryId, BudgetError, BudgetHouseholdId, BudgetId, BudgetName, BudgetRevision,
-    CreateBudgetCommand, CreateBudgetDecision, EndDateChange, UpdateBudgetCommand,
+    BudgetCategoryId, BudgetError, BudgetHouseholdId, BudgetId, BudgetName, BudgetReconstitution,
+    BudgetRevision, CreateBudgetCommand, CreateBudgetDecision, EndDateChange, UpdateBudgetCommand,
     UpdateBudgetDecision,
 };
 use chrono::NaiveDate;

@@ -82,7 +82,7 @@ pub fn parse_and_verify(
             || !card_last4.is_empty()
                 && (card_last4.len() != 4 || !card_last4.bytes().all(|byte| byte.is_ascii_digit()))
             || !valid_statement_kind(source_kind, &kind)
-            || kind == "EXTERNAL_INCOME" && amount <= 0
+            || !valid_statement_amount(&kind, amount)
         {
             return Err("invalid_statement_row");
         }
@@ -194,6 +194,15 @@ fn bank_transaction_kind(value: &str) -> String {
     }
 }
 
+fn valid_statement_amount(kind: &str, amount: i64) -> bool {
+    amount != 0
+        && match kind {
+            "EXTERNAL_INCOME" => amount > 0,
+            "REFUND" | "CARD_BILL_PAYMENT" => amount < 0,
+            _ => true,
+        }
+}
+
 fn valid_statement_kind(source_kind: &str, kind: &str) -> bool {
     if source_kind == "card" {
         matches!(kind, "CARD_PURCHASE" | "REFUND")
@@ -209,5 +218,28 @@ fn valid_statement_kind(source_kind: &str, kind: &str) -> bool {
                 | "REFUND"
                 | "UNCLASSIFIED"
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_and_verify;
+
+    #[test]
+    fn transaction_amount_signs_follow_statement_kind() {
+        let refund = b"date,merchant,amount,transactionKind\n2026-01-01,Shop,-100,REFUND\n";
+        assert!(parse_and_verify(refund, "bank").is_ok());
+
+        let invalid_refund = b"date,merchant,amount,transactionKind\n2026-01-01,Shop,100,REFUND\n";
+        assert!(matches!(
+            parse_and_verify(invalid_refund, "bank"),
+            Err("invalid_statement_row")
+        ));
+
+        let invalid_zero = b"date,merchant,amount,transactionKind\n2026-01-01,Shop,0,TRANSFER\n";
+        assert!(matches!(
+            parse_and_verify(invalid_zero, "bank"),
+            Err("invalid_statement_row")
+        ));
     }
 }

@@ -72,6 +72,10 @@ const deferredExtractionMessages = new Map([
   ],
   ["quota_reservation_deferred", "Geminiの利用枠の回復待ちです。別モデルを選んで再抽出できます。"],
   [
+    "input_exceeds_quota",
+    "このモデルでは入力が利用枠を超えます。別のモデルを選んで再抽出してください。",
+  ],
+  [
     "spend_cap_reached",
     "有料利用の月500円上限に達しました。無料モデルを選んで再抽出してください。",
   ],
@@ -98,6 +102,7 @@ export function isQuotaLimitedExtraction(document: DocumentReview): boolean {
   return [
     "rate_limited",
     "quota_reservation_deferred",
+    "input_exceeds_quota",
     "spend_cap_reached",
     "paid_route_unavailable",
   ].includes(document.errorCode ?? "");
