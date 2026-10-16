@@ -269,7 +269,7 @@ impl AuthService {
                     OidcError::TransientProvider(error.to_string())
                 } else {
                     tracing::warn!(
-                        reason = "id_token_claims_verification",
+                        reason = claims_error_reason(&error),
                         "OIDC callback rejected"
                     );
                     OidcError::AuthenticationFailed
@@ -399,6 +399,24 @@ fn is_transient_claims_error(error: &openidconnect::ClaimsVerificationError) -> 
         ) if message.to_ascii_lowercase().contains("fetch")
             || message.to_ascii_lowercase().contains("jwks")
     )
+}
+
+fn claims_error_reason(error: &openidconnect::ClaimsVerificationError) -> &'static str {
+    use openidconnect::ClaimsVerificationError;
+
+    match error {
+        ClaimsVerificationError::Expired(_) => "expired_claims",
+        ClaimsVerificationError::InvalidAudience(_) => "invalid_audience",
+        ClaimsVerificationError::InvalidAuthContext(_) => "invalid_auth_context",
+        ClaimsVerificationError::InvalidAuthTime(_) => "invalid_auth_time",
+        ClaimsVerificationError::InvalidIssuer(_) => "invalid_issuer",
+        ClaimsVerificationError::InvalidNonce(_) => "invalid_nonce",
+        ClaimsVerificationError::InvalidSubject(_) => "invalid_subject",
+        ClaimsVerificationError::Other(_) => "other_claims_error",
+        ClaimsVerificationError::SignatureVerification(_) => "signature_verification",
+        ClaimsVerificationError::Unsupported(_) => "unsupported_claims",
+        _ => "unknown_claims_error",
+    }
 }
 
 fn hash(value: &str) -> Vec<u8> {
