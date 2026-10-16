@@ -262,19 +262,32 @@ impl AuthService {
             OidcError::AuthenticationFailed
         })?;
         let nonce = Nonce::new(nonce);
-        let claims = id_token
-            .claims(&self.client.id_token_verifier(), &nonce)
-            .map_err(|error| {
-                if is_transient_claims_error(&error) {
-                    OidcError::TransientProvider(error.to_string())
-                } else {
-                    tracing::warn!(
-                        reason = claims_error_reason(&error),
-                        "OIDC callback rejected"
-                    );
-                    OidcError::AuthenticationFailed
-                }
-            })?;
+        let verifier = self
+            .client
+            .id_token_verifier()
+            .set_other_audience_verifier_fn(|_| true);
+        let claims = id_token.claims(&verifier, &nonce).map_err(|error| {
+            if is_transient_claims_error(&error) {
+                OidcError::TransientProvider(error.to_string())
+            } else {
+                tracing::warn!(
+                    reason = claims_error_reason(&error),
+                    "OIDC callback rejected"
+                );
+                OidcError::AuthenticationFailed
+            }
+        })?;
+        let authorized_party_is_invalid = claims
+            .authorized_party()
+            .is_some_and(|authorized_party| authorized_party.as_str() != self.config.client_id)
+            || (claims.audiences().len() > 1 && claims.authorized_party().is_none());
+        if authorized_party_is_invalid {
+            tracing::warn!(
+                reason = "invalid_authorized_party",
+                "OIDC callback rejected"
+            );
+            return Err(OidcError::AuthenticationFailed);
+        }
         let subject = claims.subject().as_str().to_owned();
         if subject.is_empty() {
             tracing::warn!(reason = "empty_subject", "OIDC callback rejected");
