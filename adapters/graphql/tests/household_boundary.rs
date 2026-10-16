@@ -29,11 +29,13 @@ async fn graphql_member_cannot_read_or_create_resources_in_another_household() {
         );
     let target_owner = Uuid::now_v7();
     let actor = Uuid::now_v7();
+    let target_member = Uuid::now_v7();
     {
         let mut conn = pool.get().await.unwrap();
         for (id, subject) in [
             (target_owner, "graphql-boundary-target"),
             (actor, "graphql-boundary-actor"),
+            (target_member, "graphql-boundary-member"),
         ] {
             insert_into(horse_postgres_common::schema::public::members::table)
                 .values((
@@ -64,6 +66,21 @@ async fn graphql_member_cannot_read_or_create_resources_in_another_household() {
         .await
         .unwrap();
     let target_id = Uuid::parse_str(&target.household_id).unwrap();
+    {
+        let mut conn = pool.get().await.unwrap();
+        insert_into(horse_postgres_common::schema::public::household_members::table)
+            .values((
+                horse_postgres_common::schema::public::household_members::household_id
+                    .eq(target_id),
+                horse_postgres_common::schema::public::household_members::member_id
+                    .eq(target_member),
+                horse_postgres_common::schema::public::household_members::role.eq("MEMBER"),
+                horse_postgres_common::schema::public::household_members::joined_at.eq(Utc::now()),
+            ))
+            .execute(&mut conn)
+            .await
+            .unwrap();
+    }
     let schema = Schema::build(QueryRoot, MutationRoot, SubscriptionRoot)
         .data(std::sync::Arc::new(
             household_postgres::household_query::PostgresHouseholdQuery::new(pool.clone()),
@@ -115,6 +132,56 @@ async fn graphql_member_cannot_read_or_create_resources_in_another_household() {
         .await
         .unwrap();
     assert_eq!(pool_count, 0);
+
+    let member_query = Executor::execute(
+        &schema,
+        Request::new(format!(
+            "{{ household(id: \"{household_id}\") {{ id name }} }}"
+        ))
+        .data(Actor(target_member)),
+    )
+    .await;
+    assert!(member_query.errors.is_empty());
+    assert_eq!(
+        member_query.data.into_json().unwrap()["household"]["id"],
+        household_id
+    );
+
+    let member_mutation = Executor::execute(
+        &schema,
+        Request::new(format!(
+            "mutation {{ createPool(input: {{ householdId: \"{household_id}\", name: \"Member pool\", kind: PERSONAL }}) {{ __typename ... on CreatePoolUserError {{ code }} }} }}"
+        ))
+        .data(Actor(target_member)),
+    )
+    .await;
+    assert!(member_mutation.errors.is_empty());
+    assert_eq!(
+        member_mutation.data.into_json().unwrap()["createPool"]["code"],
+        "NOT_FOUND"
+    );
+
+    let owner_mutation = Executor::execute(
+        &schema,
+        Request::new(format!(
+            "mutation {{ createPool(input: {{ householdId: \"{household_id}\", name: \"Owner pool\", kind: PERSONAL }}) {{ __typename ... on CreatePoolSuccess {{ result {{ name }} }} }} }}"
+        ))
+        .data(Actor(target_owner)),
+    )
+    .await;
+    assert!(owner_mutation.errors.is_empty());
+    assert_eq!(
+        owner_mutation.data.into_json().unwrap()["createPool"]["result"]["name"],
+        "Owner pool"
+    );
+    let mut conn = pool.get().await.unwrap();
+    let pool_count = horse_postgres_common::schema::public::pools::table
+        .filter(horse_postgres_common::schema::public::pools::household_id.eq(target_id))
+        .select(count_star())
+        .first::<i64>(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(pool_count, 1);
 
     postgres.terminate().await.unwrap();
 }
