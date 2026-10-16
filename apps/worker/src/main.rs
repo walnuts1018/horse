@@ -7,6 +7,9 @@ use horse_worker_runtime::Worker;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
+const QUEUE_RETRY_INITIAL: std::time::Duration = std::time::Duration::from_secs(5);
+const QUEUE_RETRY_MAX: std::time::Duration = std::time::Duration::from_secs(60);
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let log_filter = EnvFilter::try_from_default_env()
@@ -43,11 +46,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 
 async fn run_queue(worker: Arc<Worker>, mut shutdown: tokio::sync::watch::Receiver<bool>) {
+    let mut retry_delay = QUEUE_RETRY_INITIAL;
     loop {
         if *shutdown.borrow() {
             return;
         }
-        match ExtractionQueue::from_env().await {
+        let queue_result = tokio::select! {
+            changed = shutdown.changed() => {
+                if changed.is_err() || *shutdown.borrow() {
+                    return;
+                }
+                continue;
+            }
+            result = ExtractionQueue::from_env() => result,
+        };
+        match queue_result {
             Ok(None) => {
                 if wait_for_shutdown(&mut shutdown, std::time::Duration::from_secs(10)).await {
                     return;
@@ -55,13 +68,25 @@ async fn run_queue(worker: Arc<Worker>, mut shutdown: tokio::sync::watch::Receiv
             }
             Err(error) => {
                 tracing::warn!(error = %error, "Extraction queue unavailable; database polling remains active");
-                if wait_for_shutdown(&mut shutdown, std::time::Duration::from_secs(5)).await {
+                if wait_for_shutdown(&mut shutdown, retry_delay).await {
                     return;
                 }
+                retry_delay = next_retry_delay(retry_delay);
             }
             Ok(Some(queue)) => {
-                match queue.consume().await {
+                let consumer_result = tokio::select! {
+                    changed = shutdown.changed() => {
+                        if changed.is_err() || *shutdown.borrow() {
+                            queue.close().await;
+                            return;
+                        }
+                        continue;
+                    }
+                    result = queue.consume() => result,
+                };
+                match consumer_result {
                     Ok(mut consumer) => loop {
+                        retry_delay = QUEUE_RETRY_INITIAL;
                         tokio::select! {
                             changed = shutdown.changed() => {
                                 if changed.is_err() || *shutdown.borrow() {
@@ -116,12 +141,17 @@ async fn run_queue(worker: Arc<Worker>, mut shutdown: tokio::sync::watch::Receiv
                     }
                 }
                 queue.close().await;
-                if wait_for_shutdown(&mut shutdown, std::time::Duration::from_secs(5)).await {
+                if wait_for_shutdown(&mut shutdown, retry_delay).await {
                     return;
                 }
+                retry_delay = next_retry_delay(retry_delay);
             }
         }
     }
+}
+
+fn next_retry_delay(current: std::time::Duration) -> std::time::Duration {
+    current.saturating_mul(2).min(QUEUE_RETRY_MAX)
 }
 
 async fn wait_for_shutdown(
