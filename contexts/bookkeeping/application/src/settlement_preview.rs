@@ -618,4 +618,30 @@ mod tests {
         assert_eq!(result[0].carry_yen, 2_000);
         assert_eq!(result[0].amount_due_yen, 4_000);
     }
+
+    #[test]
+    fn preview_carries_departed_members_unsettled_balance_without_new_scheduled_funding() {
+        let input = PreviewInput {
+            period: "2026-10".to_owned(),
+            members: vec![PreviewMember {
+                id: "member-1".to_owned(),
+                name: "Member".to_owned(),
+                left_at_micros: Some(0),
+            }],
+            obligations: vec![],
+            schedules: vec![],
+            adjustments: vec![],
+            purchase_adjustments: vec![],
+            funding_rules: vec![],
+            purchases: vec![],
+        };
+        let previous_due = BTreeMap::from([("member-1".to_owned(), 2_000)]);
+
+        let result = calculate_settlement_preview(input, &previous_due).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].member_id, "member-1");
+        assert_eq!(result[0].scheduled_yen, 0);
+        assert_eq!(result[0].amount_due_yen, 2_000);
+    }
 }
