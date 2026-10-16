@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import type { Household } from "../../../shared/api";
 import type { AnalyticsRow } from "../model/purchase-analytics";
 
+import { useHouseholdLedger } from "../../../entities/ledger";
 import { InlineError } from "../../../shared/ui";
 import { useAnalysisData } from "../model/use-analysis-data";
 import { useAnalysisPeriod } from "../model/use-analysis-period";
 import { AnalysisBreakdown } from "./analysis-breakdown";
 import { AnalysisBudgetPanel } from "./analysis-budget-panel";
 import { AnalysisControls } from "./analysis-controls";
+import { AnalysisLedgerPanel } from "./analysis-ledger-panel";
 import { AnalysisSummary } from "./analysis-summary";
 import { ItemPricePanel } from "./item-price-panel";
 import { RecurringExpensePanel } from "./recurring-expense-panel";
@@ -31,6 +33,7 @@ const sorted = <T,>(values: T[], compare: (left: T, right: T) => number): T[] =>
 };
 export function AnalysisPage({ household }: { household: Household }) {
   const period = useAnalysisPeriod();
+  const ledger = useHouseholdLedger(household.id, 100);
   const {
     annual,
     setAnnual,
@@ -221,6 +224,7 @@ export function AnalysisPage({ household }: { household: Household }) {
         expenses={activeRecurringExpenses}
         monthlyAmount={recurringMonthlyAmount}
       />
+      <AnalysisLedgerPanel entries={ledger.entries} months={months} />
       {aggregateReady && (
         <AnalysisBreakdown
           dimension={dimension}

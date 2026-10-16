@@ -389,6 +389,63 @@
   padding: 18px 20px;
 }
 
+.analysis-page .analysis-ledger-panel {
+  margin-top: 14px;
+  padding: 18px 20px;
+}
+
+.analysis-page .analysis-ledger-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.analysis-page .analysis-ledger-heading h2 {
+  margin: 0;
+  color: #43554a;
+  font-size: 15px;
+}
+
+.analysis-page .analysis-ledger-heading span,
+.analysis-page .analysis-ledger-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.analysis-page .analysis-ledger-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.analysis-page .analysis-ledger-list li {
+  display: grid;
+  grid-template-columns: 90px 70px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  border-top: 1px solid var(--line);
+  color: #5f6d65;
+  font-size: 12px;
+}
+
+.analysis-page .analysis-ledger-list time,
+.analysis-page .analysis-ledger-list strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-page .analysis-ledger-list strong {
+  color: #516258;
+  font-weight: 600;
+}
+
+.analysis-page .analysis-ledger-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .analysis-page .analysis-budget-row {
   display: grid;
   grid-template-columns: minmax(110px, 1fr) minmax(100px, 2fr) auto;
@@ -463,8 +520,14 @@
   .analysis-page .analysis-chart-panel,
   .analysis-page .category-panel,
   .analysis-page .burden-panel,
-  .analysis-page .analysis-price-panel {
+  .analysis-page .analysis-price-panel,
+  .analysis-page .analysis-ledger-panel {
     padding: 15px;
+  }
+
+  .analysis-page .analysis-ledger-list li {
+    grid-template-columns: 72px 58px minmax(0, 1fr) auto;
+    gap: 7px;
   }
 
   .analysis-page .monthly-chart {
