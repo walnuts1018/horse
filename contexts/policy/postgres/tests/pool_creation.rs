@@ -4,6 +4,8 @@ use horse_postgres_common::schema::public::{
     allocation_defaults, household_members, households, members, pools,
 };
 use household_application::create_household::CreateHouseholdCommand;
+use household_application::household_query::{HouseholdQuery, HouseholdQueryError};
+use household_postgres::household_query::PostgresHouseholdQuery;
 use policy_application::create_pool::{CreatePoolCommand, NewPoolId, PoolActorId, PoolHouseholdId};
 use uuid::Uuid;
 
@@ -190,6 +192,95 @@ async fn pool_creation_rejects_household_members() {
             .await
     };
     assert!(persisted_pool.is_err());
+
+    postgres.terminate().await.unwrap();
+}
+
+#[tokio::test]
+async fn household_member_cannot_read_or_modify_another_household() {
+    let postgres = horse_test_infra::TestPostgres::start().await.unwrap();
+    horse_test_infra::apply_migrations(postgres.connection_url()).unwrap();
+    let pool = horse_postgres_common::connect(postgres.connection_url())
+        .await
+        .unwrap();
+    let actor_id = Uuid::now_v7();
+    let other_owner_id = Uuid::now_v7();
+    {
+        let mut conn = pool.get().await.unwrap();
+        for (id, subject, name) in [
+            (actor_id, "household-isolation-actor", "Actor"),
+            (other_owner_id, "household-isolation-other", "Other owner"),
+        ] {
+            insert_into(members::table)
+                .values((
+                    members::id.eq(id),
+                    members::oidc_subject.eq(subject),
+                    members::display_name.eq(name),
+                ))
+                .execute(&mut conn)
+                .await
+                .unwrap();
+        }
+    }
+
+    let actor_household = household_postgres::create_household::persist_create_household(
+        &pool,
+        CreateHouseholdCommand {
+            actor_id: actor_id.into(),
+            name: "Actor household".to_owned(),
+            member_names: Vec::new(),
+        },
+    )
+    .await
+    .unwrap();
+    let other_household = household_postgres::create_household::persist_create_household(
+        &pool,
+        CreateHouseholdCommand {
+            actor_id: other_owner_id.into(),
+            name: "Other household".to_owned(),
+            member_names: Vec::new(),
+        },
+    )
+    .await
+    .unwrap();
+    let actor_household_id = Uuid::parse_str(&actor_household.household_id).unwrap();
+    let other_household_id = Uuid::parse_str(&other_household.household_id).unwrap();
+
+    let query = PostgresHouseholdQuery::new(pool.clone());
+    assert_eq!(
+        query.list_household_ids(actor_id).await.unwrap(),
+        vec![actor_household_id]
+    );
+    assert!(matches!(
+        query.load_household(actor_id, other_household_id).await,
+        Err(HouseholdQueryError::HouseholdNotFound)
+    ));
+
+    let attempted_pool_id = Uuid::now_v7();
+    let result = policy_postgres::pool_mutations::persist_create_pool(
+        &pool,
+        CreatePoolCommand {
+            actor_id: PoolActorId::from_uuid(actor_id),
+            household_id: PoolHouseholdId::from_uuid(other_household_id),
+            pool_id: NewPoolId::from_uuid(attempted_pool_id),
+            name: "Unauthorized pool".to_owned(),
+            kind: "SHARED".to_owned(),
+        },
+    )
+    .await;
+    assert!(matches!(
+        result,
+        Err(policy_postgres::pool_mutations::CreatePoolMutationError::MemberNotFound)
+    ));
+
+    let mut conn = pool.get().await.unwrap();
+    let pool_count = pools::table
+        .filter(pools::household_id.eq(other_household_id))
+        .count()
+        .get_result::<i64>(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(pool_count, 0);
 
     postgres.terminate().await.unwrap();
 }
