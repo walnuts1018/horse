@@ -92,9 +92,6 @@ pub async fn insert_evidence_link(
         evidence_links::observation.eq(link.observation),
         evidence_links::created_by.eq(link.actor_id),
         evidence_links::created_at.eq(link.created_at),
-        evidence_links::purchase_id.eq(link.purchase_id),
-        evidence_links::correction_id.eq(link.correction_id),
-        evidence_links::transfer_id.eq(link.transfer_id),
     ));
     if link.ignore_duplicate {
         query.on_conflict_do_nothing().execute(conn).await
