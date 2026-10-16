@@ -8,7 +8,7 @@ use bookkeeping_postgres::{
     schema::public,
     settlement_preview::{
         FundingRuleRow, FundingScheduleRow, FundingShareRow, HouseholdFundingScheduleRow,
-        PolicySettlementData,
+        PolicySettlementData, calculate_preview,
     },
 };
 use chrono::{Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
@@ -19,6 +19,482 @@ use uuid::Uuid;
 
 struct TestEvidence {
     fail_after_confirmation_insert: bool,
+}
+
+struct SharedPurchasePolicy {
+    first_member: Uuid,
+    second_member: Uuid,
+    shared_pool: Uuid,
+    personal_pool: Uuid,
+}
+
+#[async_trait::async_trait]
+impl PolicySettlementData for SharedPurchasePolicy {
+    async fn household_members_for_settlement(
+        &mut self,
+        _: &mut AsyncPgConnection,
+        _: Uuid,
+    ) -> Result<Vec<(Uuid, String, Option<chrono::DateTime<Utc>>)>, diesel::result::Error> {
+        Ok(vec![
+            (self.first_member, "A".into(), None),
+            (self.second_member, "B".into(), None),
+        ])
+    }
+
+    async fn household_members_present_after(
+        &mut self,
+        _: &mut AsyncPgConnection,
+        _: Uuid,
+        _: chrono::DateTime<Utc>,
+    ) -> Result<Vec<(Uuid, String)>, diesel::result::Error> {
+        Ok(vec![
+            (self.first_member, "A".into()),
+            (self.second_member, "B".into()),
+        ])
+    }
+
+    async fn schedules_for_period(
+        &mut self,
+        _: &mut AsyncPgConnection,
+        _: Uuid,
+        _: NaiveDate,
+        _: NaiveDate,
+    ) -> Result<Vec<FundingScheduleRow>, diesel::result::Error> {
+        Ok(Vec::new())
+    }
+
+    async fn schedules_overlapping(
+        &mut self,
+        _: &mut AsyncPgConnection,
+        _: &[Uuid],
+        _: NaiveDate,
+        _: NaiveDate,
+    ) -> Result<Vec<HouseholdFundingScheduleRow>, diesel::result::Error> {
+        Ok(Vec::new())
+    }
+
+    async fn earliest_schedule_start(
+        &mut self,
+        _: &mut AsyncPgConnection,
+        _: Uuid,
+    ) -> Result<Option<NaiveDate>, diesel::result::Error> {
+        Ok(None)
+    }
+
+    async fn rules_and_shares(
+        &mut self,
+        _: &mut AsyncPgConnection,
+        _: Uuid,
+    ) -> Result<(Vec<FundingRuleRow>, Vec<FundingShareRow>), diesel::result::Error> {
+        Ok((
+            vec![
+                (
+                    self.shared_pool,
+                    1,
+                    None,
+                    Some("BALANCE_TO_STANDARD".into()),
+                ),
+                (self.personal_pool, 1, Some(self.first_member), None),
+            ],
+            vec![
+                (self.shared_pool, 1, self.first_member, 60),
+                (self.shared_pool, 1, self.second_member, 40),
+            ],
+        ))
+    }
+
+    async fn historical_rules(
+        &mut self,
+        conn: &mut AsyncPgConnection,
+        household_id: Uuid,
+        pool_ids: &[Uuid],
+        versions: &[i32],
+    ) -> Result<Vec<FundingRuleRow>, diesel::result::Error> {
+        self.rules_and_shares(conn, household_id)
+            .await
+            .map(|(rules, _)| {
+                rules
+                    .into_iter()
+                    .filter(|(pool, version, _, _)| {
+                        pool_ids.contains(pool) && versions.contains(version)
+                    })
+                    .collect()
+            })
+    }
+
+    async fn rule_owner(
+        &mut self,
+        _: &mut AsyncPgConnection,
+        _: Uuid,
+        pool_id: Uuid,
+        _: i32,
+    ) -> Result<Option<Uuid>, diesel::result::Error> {
+        Ok((pool_id == self.personal_pool).then_some(self.first_member))
+    }
+}
+
+#[tokio::test]
+async fn correction_after_closed_period_is_included_in_next_settlement_preview() {
+    use diesel::insert_into;
+    use horse_test_infra::{TestPostgres, apply_migrations};
+
+    let postgres = TestPostgres::start().await.unwrap();
+    apply_migrations(postgres.connection_url()).unwrap();
+    let pool = connect(postgres.connection_url()).await.unwrap();
+    let household_id = Uuid::now_v7();
+    let first_member = Uuid::now_v7();
+    let second_member = Uuid::now_v7();
+    let shared_pool = Uuid::now_v7();
+    let personal_pool = Uuid::now_v7();
+    let account_id = Uuid::now_v7();
+    let purchase_id = Uuid::now_v7();
+    let item_id = Uuid::now_v7();
+    let run_id = Uuid::now_v7();
+    let now = Utc::now();
+    let japan = FixedOffset::east_opt(9 * 60 * 60).unwrap();
+    let next_period = now.with_timezone(&japan).date_naive().with_day(1).unwrap();
+    let closed_period = next_period.pred_opt().unwrap().with_day(1).unwrap();
+    let occurred_at = japan
+        .from_local_datetime(&closed_period.and_hms_opt(12, 0, 0).unwrap())
+        .single()
+        .unwrap()
+        .with_timezone(&Utc);
+
+    {
+        let mut conn = pool.get().await.unwrap();
+        use public::{
+            accounting_periods, accounts, household_members, households, members,
+            pool_funding_rules, pool_funding_shares, pools, purchase_allocations, purchase_items,
+            purchase_member_burdens, purchase_payment_funding_snapshots, purchase_payments,
+            purchases, settlement_run_lines, settlement_runs,
+        };
+
+        insert_into(households::table)
+            .values((
+                households::id.eq(household_id),
+                households::name.eq("Correction"),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        for (member_id, name) in [(first_member, "A"), (second_member, "B")] {
+            insert_into(members::table)
+                .values((
+                    members::id.eq(member_id),
+                    members::oidc_subject.eq(format!("correction-{member_id}")),
+                    members::display_name.eq(name),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+            insert_into(household_members::table)
+                .values((
+                    household_members::household_id.eq(household_id),
+                    household_members::member_id.eq(member_id),
+                    household_members::role.eq("OWNER"),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+        }
+        insert_into(accounting_periods::table)
+            .values((
+                accounting_periods::household_id.eq(household_id),
+                accounting_periods::period_start.eq(closed_period),
+                accounting_periods::status.eq("CLOSED"),
+                accounting_periods::revision.eq(1_i64),
+                accounting_periods::closed_by.eq(Some(first_member)),
+                accounting_periods::closed_at.eq(Some(now)),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(settlement_runs::table)
+            .values((
+                settlement_runs::id.eq(run_id),
+                settlement_runs::household_id.eq(household_id),
+                settlement_runs::period_start.eq(closed_period),
+                settlement_runs::revision.eq(1_i64),
+                settlement_runs::status.eq("CLOSED"),
+                settlement_runs::funding_snapshot.eq(serde_json::json!({})),
+                settlement_runs::actor_id.eq(first_member),
+                settlement_runs::created_at.eq(now),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(settlement_run_lines::table)
+            .values(vec![
+                (
+                    settlement_run_lines::household_id.eq(household_id),
+                    settlement_run_lines::settlement_run_id.eq(run_id),
+                    settlement_run_lines::member_id.eq(first_member),
+                    settlement_run_lines::member_name.eq("A"),
+                    settlement_run_lines::scheduled_yen.eq(0_i64),
+                    settlement_run_lines::paid_yen.eq(0_i64),
+                    settlement_run_lines::carry_yen.eq(0_i64),
+                    settlement_run_lines::monthly_adjustment_yen.eq(0_i64),
+                    settlement_run_lines::advance_credit_yen.eq(0_i64),
+                    settlement_run_lines::amount_due_yen.eq(0_i64),
+                ),
+                (
+                    settlement_run_lines::household_id.eq(household_id),
+                    settlement_run_lines::settlement_run_id.eq(run_id),
+                    settlement_run_lines::member_id.eq(second_member),
+                    settlement_run_lines::member_name.eq("B"),
+                    settlement_run_lines::scheduled_yen.eq(0_i64),
+                    settlement_run_lines::paid_yen.eq(0_i64),
+                    settlement_run_lines::carry_yen.eq(0_i64),
+                    settlement_run_lines::monthly_adjustment_yen.eq(0_i64),
+                    settlement_run_lines::advance_credit_yen.eq(0_i64),
+                    settlement_run_lines::amount_due_yen.eq(0_i64),
+                ),
+            ])
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        for (pool_id, name, kind, owner, policy) in [
+            (
+                shared_pool,
+                "Shared",
+                "SHARED",
+                None,
+                Some("BALANCE_TO_STANDARD"),
+            ),
+            (
+                personal_pool,
+                "A personal",
+                "PERSONAL",
+                Some(first_member),
+                None,
+            ),
+        ] {
+            insert_into(pools::table)
+                .values((
+                    pools::id.eq(pool_id),
+                    pools::household_id.eq(household_id),
+                    pools::name.eq(name),
+                    pools::kind.eq(kind),
+                    pools::current_funding_version.eq(None::<i32>),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+            insert_into(pool_funding_rules::table)
+                .values((
+                    pool_funding_rules::household_id.eq(household_id),
+                    pool_funding_rules::pool_id.eq(pool_id),
+                    pool_funding_rules::version.eq(1_i32),
+                    pool_funding_rules::owner_member_id.eq(owner),
+                    pool_funding_rules::settlement_policy.eq(policy),
+                    pool_funding_rules::created_by.eq(first_member),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+            diesel::update(pools::table.filter(pools::id.eq(pool_id)))
+                .set(pools::current_funding_version.eq(Some(1)))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+        }
+        insert_into(pool_funding_shares::table)
+            .values(vec![
+                (
+                    pool_funding_shares::household_id.eq(household_id),
+                    pool_funding_shares::pool_id.eq(shared_pool),
+                    pool_funding_shares::version.eq(1_i32),
+                    pool_funding_shares::member_id.eq(first_member),
+                    pool_funding_shares::weight.eq(60_i64),
+                ),
+                (
+                    pool_funding_shares::household_id.eq(household_id),
+                    pool_funding_shares::pool_id.eq(shared_pool),
+                    pool_funding_shares::version.eq(1_i32),
+                    pool_funding_shares::member_id.eq(second_member),
+                    pool_funding_shares::weight.eq(40_i64),
+                ),
+            ])
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(accounts::table)
+            .values((
+                accounts::id.eq(account_id),
+                accounts::household_id.eq(household_id),
+                accounts::pool_id.eq(Some(personal_pool)),
+                accounts::name.eq("A card"),
+                accounts::kind.eq("CARD"),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(purchases::table)
+            .values((
+                purchases::id.eq(purchase_id),
+                purchases::household_id.eq(household_id),
+                purchases::occurred_at.eq(occurred_at),
+                purchases::merchant.eq("Market"),
+                purchases::status.eq("POSTED"),
+                purchases::revision.eq(1_i64),
+                purchases::created_by.eq(first_member),
+                purchases::allocation_rule_version.eq(1_i64),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(purchase_items::table)
+            .values((
+                purchase_items::id.eq(item_id),
+                purchase_items::household_id.eq(household_id),
+                purchase_items::purchase_id.eq(purchase_id),
+                purchase_items::name.eq("Groceries"),
+                purchase_items::amount_yen.eq(1_000_i64),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(purchase_allocations::table)
+            .values((
+                purchase_allocations::household_id.eq(household_id),
+                purchase_allocations::purchase_id.eq(purchase_id),
+                purchase_allocations::item_id.eq(item_id),
+                purchase_allocations::pool_id.eq(shared_pool),
+                purchase_allocations::amount_yen.eq(1_000_i64),
+                purchase_allocations::weight.eq(1_i64),
+                purchase_allocations::rule_version.eq(1_i64),
+                purchase_allocations::rule_id.eq(None::<Uuid>),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(purchase_payments::table)
+            .values((
+                purchase_payments::household_id.eq(household_id),
+                purchase_payments::purchase_id.eq(purchase_id),
+                purchase_payments::line_no.eq(1_i32),
+                purchase_payments::account_id.eq(account_id),
+                purchase_payments::amount_yen.eq(1_000_i64),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(purchase_member_burdens::table)
+            .values(vec![
+                (
+                    purchase_member_burdens::household_id.eq(household_id),
+                    purchase_member_burdens::purchase_id.eq(purchase_id),
+                    purchase_member_burdens::item_id.eq(item_id),
+                    purchase_member_burdens::pool_id.eq(shared_pool),
+                    purchase_member_burdens::member_id.eq(first_member),
+                    purchase_member_burdens::amount_yen.eq(600_i64),
+                    purchase_member_burdens::funding_rule_version.eq(1_i32),
+                    purchase_member_burdens::funding_weight.eq(60_i64),
+                    purchase_member_burdens::settlement_policy.eq(Some("BALANCE_TO_STANDARD")),
+                    purchase_member_burdens::snapshot_source.eq("POSTED"),
+                ),
+                (
+                    purchase_member_burdens::household_id.eq(household_id),
+                    purchase_member_burdens::purchase_id.eq(purchase_id),
+                    purchase_member_burdens::item_id.eq(item_id),
+                    purchase_member_burdens::pool_id.eq(shared_pool),
+                    purchase_member_burdens::member_id.eq(second_member),
+                    purchase_member_burdens::amount_yen.eq(400_i64),
+                    purchase_member_burdens::funding_rule_version.eq(1_i32),
+                    purchase_member_burdens::funding_weight.eq(40_i64),
+                    purchase_member_burdens::settlement_policy.eq(Some("BALANCE_TO_STANDARD")),
+                    purchase_member_burdens::snapshot_source.eq("POSTED"),
+                ),
+            ])
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(purchase_payment_funding_snapshots::table)
+            .values((
+                purchase_payment_funding_snapshots::household_id.eq(household_id),
+                purchase_payment_funding_snapshots::purchase_id.eq(purchase_id),
+                purchase_payment_funding_snapshots::payment_line_no.eq(1_i32),
+                purchase_payment_funding_snapshots::account_id.eq(account_id),
+                purchase_payment_funding_snapshots::pool_id.eq(personal_pool),
+                purchase_payment_funding_snapshots::member_id.eq(first_member),
+                purchase_payment_funding_snapshots::funding_rule_version.eq(1_i32),
+                purchase_payment_funding_snapshots::funding_weight.eq(1_i64),
+                purchase_payment_funding_snapshots::settlement_policy.eq(None::<&str>),
+                purchase_payment_funding_snapshots::snapshot_source.eq("POSTED"),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+    }
+
+    let mut policy = SharedPurchasePolicy {
+        first_member,
+        second_member,
+        shared_pool,
+        personal_pool,
+    };
+    let correction = correct_purchase(
+        &pool,
+        CorrectPurchaseRequest {
+            household_id: household_id.to_string(),
+            actor_id: first_member.to_string(),
+            purchase_id: purchase_id.to_string(),
+            item_id: None,
+            amount_delta_yen: Some(-100),
+            reason: "Card refund".into(),
+            allocations: Vec::new(),
+            payments: Vec::new(),
+            idempotency_key: "closed-period-refund".into(),
+            request_fingerprint: [9; 32],
+            source_document_id: None,
+            source_reference: None,
+        },
+        &TestEvidence {
+            fail_after_confirmation_insert: false,
+        },
+        &mut policy,
+    )
+    .await
+    .unwrap();
+
+    let mut conn = pool.get().await.unwrap();
+    let effective_period = public::purchase_corrections::table
+        .filter(public::purchase_corrections::household_id.eq(household_id))
+        .filter(
+            public::purchase_corrections::id
+                .eq(Uuid::parse_str(&correction.correction_id).unwrap()),
+        )
+        .select(public::purchase_corrections::effective_period_start)
+        .first::<NaiveDate>(&mut *conn)
+        .await
+        .unwrap();
+    assert_eq!(effective_period, next_period);
+    assert_eq!(
+        public::settlement_run_lines::table
+            .filter(public::settlement_run_lines::household_id.eq(household_id))
+            .filter(public::settlement_run_lines::settlement_run_id.eq(run_id))
+            .order(public::settlement_run_lines::member_id)
+            .select(public::settlement_run_lines::amount_due_yen)
+            .load::<i64>(&mut *conn)
+            .await
+            .unwrap(),
+        vec![0, 0]
+    );
+    drop(conn);
+
+    let preview = calculate_preview(
+        &pool,
+        &household_id.to_string(),
+        &format!("{:04}-{:02}", next_period.year(), next_period.month()),
+        &mut policy,
+    )
+    .await
+    .unwrap();
+    assert_eq!(preview.len(), 2);
+    assert_eq!(preview[0].member_id, first_member.to_string());
+    assert_eq!(preview[0].monthly_adjustment_yen, 40);
+    assert_eq!(preview[1].member_id, second_member.to_string());
+    assert_eq!(preview[1].monthly_adjustment_yen, -40);
 }
 
 struct PersonalPoolPolicy {
