@@ -108,6 +108,45 @@ jobs:
           - name: Build frontend
             run: mise run web:build
 
+  browser-e2e:
+    needs: quality
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_USER: horse_test
+          POSTGRES_PASSWORD: horse_test_ci_only
+          POSTGRES_DB: horse_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U horse_test -d horse_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://horse_test:horse_test_ci_only@localhost:5432/horse_test?sslmode=disable
+      RUST_DATABASE_URL: postgres://horse_test:horse_test_ci_only@localhost:5432/horse_test?sslmode=disable
+      HORSE_TEST_DATABASE_URL: postgres://horse_test:horse_test_ci_only@localhost:5432/horse_test?sslmode=disable
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install tools
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+
+      - name: Install Rust components
+        run: rustup component add --toolchain 1.99.1 rustfmt clippy
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
       - name: Run browser end-to-end tests
         run: |
           mise exec -- cargo build -p horse-api -p horse-e2e-fixture
