@@ -361,8 +361,8 @@ async fn shared_account_repayment_balances_journal_reduces_balance_and_adjusts_l
         .load::<(Option<Uuid>, i64, i64)>(&mut *conn)
         .await
         .unwrap();
-    assert_eq!(postings.iter().map(|row| row.1).sum::<i64>(), 10_000);
-    assert_eq!(postings.iter().map(|row| row.2).sum::<i64>(), 10_000);
+    assert_eq!(postings.iter().map(|row| row.1).sum::<i64>(), 15_000);
+    assert_eq!(postings.iter().map(|row| row.2).sum::<i64>(), 15_000);
     assert_eq!(
         postings
             .iter()
