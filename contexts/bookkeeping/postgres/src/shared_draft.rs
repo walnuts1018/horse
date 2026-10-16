@@ -17,6 +17,7 @@ use bookkeeping_application::shared_draft::{
 };
 
 use crate::{PgPool, schema::public};
+use household_postgres::household_access;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SharedPurchaseDraft {
@@ -235,14 +236,7 @@ async fn validate_household_and_membership(
     household_id: Uuid,
     actor_id: Uuid,
 ) -> Result<(), SharedPurchaseDraftPersistenceError> {
-    use public::households::dsl as households;
-    let exists = households::households
-        .filter(households::id.eq(household_id))
-        .select(households::id)
-        .first::<Uuid>(conn)
-        .await
-        .optional()?;
-    if exists.is_none() {
+    if !household_access::household_exists(conn, household_id).await? {
         return Err(SharedPurchaseDraftPersistenceError::HouseholdNotFound);
     }
     validate_membership(conn, household_id, actor_id).await
@@ -253,16 +247,7 @@ async fn validate_membership(
     household_id: Uuid,
     actor_id: Uuid,
 ) -> Result<(), SharedPurchaseDraftPersistenceError> {
-    use public::household_members::dsl as members;
-    let role = members::household_members
-        .filter(members::household_id.eq(household_id))
-        .filter(members::member_id.eq(actor_id))
-        .filter(members::left_at.is_null())
-        .for_share()
-        .select(members::role)
-        .first::<String>(conn)
-        .await
-        .optional()?;
+    let role = household_access::active_member_role(conn, household_id, actor_id).await?;
     if authorize(role.as_deref(), Operation::FinancialData).is_err() {
         return Err(SharedPurchaseDraftPersistenceError::DraftNotFound);
     }

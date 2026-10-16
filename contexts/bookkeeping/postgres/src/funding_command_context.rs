@@ -36,6 +36,7 @@ pub(crate) async fn load_funding_command_context_in_transaction(
     source_account_id: Option<Uuid>,
     destination_account_id: Option<Uuid>,
     occurred_at: DateTime<Utc>,
+    policy: &mut impl crate::policy_data::PolicyData,
 ) -> Result<FundingCommandContext, FundingCommandContextError> {
     let tokyo_offset =
         FixedOffset::east_opt(9 * 60 * 60).ok_or(FundingCommandContextError::InvalidTokyoOffset)?;
@@ -47,13 +48,9 @@ pub(crate) async fn load_funding_command_context_in_transaction(
     use public::accounting_periods::dsl as periods;
     use public::pools::dsl as pools;
 
-    public::households::table
-        .filter(public::households::id.eq(household_id))
-        .select(public::households::id)
-        .first::<Uuid>(&mut *conn)
-        .await
-        .optional()?
-        .ok_or(FundingCommandContextError::HouseholdNotFound)?;
+    if !household_postgres::household_access::household_exists(&mut *conn, household_id).await? {
+        return Err(FundingCommandContextError::HouseholdNotFound);
+    }
 
     diesel::insert_into(periods::accounting_periods)
         .values((
@@ -117,9 +114,9 @@ pub(crate) async fn load_funding_command_context_in_transaction(
         .ok_or(FundingCommandContextError::PoolNotFound)
         .and_then(parse_pool_kind)?;
 
-    let source_account = load_account(&mut *conn, household_id, source_account_id).await?;
+    let source_account = load_account(&mut *conn, household_id, source_account_id, policy).await?;
     let destination_account =
-        load_account(&mut *conn, household_id, destination_account_id).await?;
+        load_account(&mut *conn, household_id, destination_account_id, policy).await?;
 
     Ok(FundingCommandContext {
         accounting_period,
@@ -133,6 +130,7 @@ async fn load_account(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     account_id: Option<Uuid>,
+    policy: &mut impl crate::policy_data::PolicyData,
 ) -> Result<Option<FundingAccount>, FundingCommandContextError> {
     let Some(account_id) = account_id else {
         return Ok(None);
@@ -165,15 +163,9 @@ async fn load_account(
             let pool_kind = parse_pool_kind(pool_details.0)?;
             let personal_owner_id = if pool_kind == FundingPoolKind::Personal {
                 if let Some(version) = pool_details.1 {
-                    public::pool_funding_rules::table
-                        .filter(public::pool_funding_rules::household_id.eq(household_id))
-                        .filter(public::pool_funding_rules::pool_id.eq(account_pool_id))
-                        .filter(public::pool_funding_rules::version.eq(version))
-                        .select(public::pool_funding_rules::owner_member_id)
-                        .first::<Option<Uuid>>(conn)
-                        .await
-                        .optional()?
-                        .flatten()
+                    policy
+                        .pool_funding_owner(conn, household_id, account_pool_id, version)
+                        .await?
                 } else {
                     None
                 }

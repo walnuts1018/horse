@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, Utc};
-use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl};
+use diesel::{ExpressionMethods, JoinOnDsl, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
@@ -103,16 +103,10 @@ async fn require_member(
     actor_id: Uuid,
     household_id: Uuid,
 ) -> Result<(), PurchaseDefaultsQueryError> {
-    use public::household_members;
-    let member = household_members::table
-        .filter(household_members::household_id.eq(household_id))
-        .filter(household_members::member_id.eq(actor_id))
-        .filter(household_members::left_at.is_null())
-        .select(household_members::member_id)
-        .first::<Uuid>(conn)
-        .await
-        .optional()?;
-    if member.is_some() {
+    if household_postgres::household_access::active_member_role(conn, household_id, actor_id)
+        .await?
+        .is_some()
+    {
         Ok(())
     } else {
         Err(PurchaseDefaultsQueryError::HouseholdNotFound)

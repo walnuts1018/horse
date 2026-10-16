@@ -9,11 +9,13 @@ use bookkeeping_application::{
 };
 use bookkeeping_domain::PositiveYen;
 use bookkeeping_postgres::{
-    financial_command_context as postgres_context, financial_command_result as postgres_result,
     record_repayment as postgres_repayment, record_transfer as postgres_transfer,
 };
 use chrono::{DateTime as ChronoDateTime, Utc};
-use cross_context_postgres::evidence_workflows;
+use cross_context_postgres::{
+    evidence_workflows, financial_command_result as postgres_result,
+    policy_data as postgres_context,
+};
 use horse_postgres_common::PgPool;
 use serde::Serialize;
 use sha2::{Digest, Sha256};

@@ -7,8 +7,7 @@ use bookkeeping_application::close_period::{
 use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, YearMonth};
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
 use diesel::{
-    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, dsl::now,
-    result::Error as DieselError,
+    ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::RunQueryDsl;
 use horse_authorization::{Operation, authorize};
@@ -53,6 +52,7 @@ pub async fn close_period(
     actor_id: &str,
     period: &str,
     expected_revision: u64,
+    policy: &mut impl super::settlement_preview::PolicySettlementData,
 ) -> Result<PersistedClosePeriod, ClosePeriodWorkflowError<ClosePeriodPersistenceError>> {
     let household_id =
         parse_uuid(household_id, "household_id").map_err(ClosePeriodWorkflowError::Operations)?;
@@ -78,6 +78,7 @@ pub async fn close_period(
                 period: period.to_owned(),
                 expected_revision,
                 actor_id,
+                policy,
             };
             Ok::<_, DieselError>(close_period_workflow(&mut operations).await)
         })
@@ -87,7 +88,7 @@ pub async fn close_period(
         })?
 }
 
-struct PgClosePeriodOperations<'a> {
+struct PgClosePeriodOperations<'a, P> {
     conn: &'a mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     period_start: NaiveDate,
@@ -95,33 +96,33 @@ struct PgClosePeriodOperations<'a> {
     period: String,
     expected_revision: u64,
     actor_id: Uuid,
+    policy: &'a mut P,
 }
 
-impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePeriodOperations<'_> {
+impl<P: super::settlement_preview::PolicySettlementData>
+    bookkeeping_application::close_period::ClosePeriodOperations
+    for PgClosePeriodOperations<'_, P>
+{
     type Error = ClosePeriodPersistenceError;
     type Result = PersistedClosePeriod;
 
     async fn load(&mut self) -> Result<ClosePeriodCommand, Self::Error> {
-        use public::{accounting_periods, household_members, households, purchases};
+        use public::{accounting_periods, purchases};
 
-        let household_exists = households::table
-            .filter(households::id.eq(self.household_id))
-            .select(households::id)
-            .first::<Uuid>(&mut *self.conn)
-            .await
-            .optional()?
-            .is_some();
+        let household_exists = household_postgres::household_access::household_exists(
+            &mut *self.conn,
+            self.household_id,
+        )
+        .await?;
         if !household_exists {
             return Err(ClosePeriodPersistenceError::HouseholdNotFound);
         }
-        let actor_role = household_members::table
-            .filter(household_members::household_id.eq(self.household_id))
-            .filter(household_members::member_id.eq(self.actor_id))
-            .filter(household_members::left_at.is_null())
-            .select(household_members::role)
-            .first::<String>(&mut *self.conn)
-            .await
-            .optional()?;
+        let actor_role = household_postgres::household_access::active_member_role(
+            &mut *self.conn,
+            self.household_id,
+            self.actor_id,
+        )
+        .await?;
         if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
             return Err(ClosePeriodPersistenceError::HouseholdNotFound);
         }
@@ -191,6 +192,7 @@ impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePer
             &mut *self.conn,
             &self.household_id.to_string(),
             &self.period,
+            self.policy,
         )
         .await
         .map_err(|_| ClosePeriodPersistenceError::SettlementPreview)?;
@@ -214,41 +216,14 @@ impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePer
                 })
             })
             .collect::<Result<Vec<_>, ClosePeriodPersistenceError>>()?;
-        let schedules = public::funding_schedules::table
-            .filter(public::funding_schedules::household_id.eq(self.household_id))
-            .filter(public::funding_schedules::starts_on.lt(self.period_end))
-            .filter(
-                public::funding_schedules::ends_on
-                    .is_null()
-                    .or(public::funding_schedules::ends_on.ge(self.period_start)),
+        let schedules = self
+            .policy
+            .schedules_for_period(
+                &mut *self.conn,
+                self.household_id,
+                self.period_start,
+                self.period_end,
             )
-            .filter(
-                public::funding_schedules::active
-                    .eq(true)
-                    .or(public::funding_schedules::ends_on.is_not_null()),
-            )
-            .select((
-                public::funding_schedules::id,
-                public::funding_schedules::member_id,
-                public::funding_schedules::pool_id,
-                public::funding_schedules::amount_yen,
-                public::funding_schedules::cadence,
-                public::funding_schedules::starts_on,
-                public::funding_schedules::ends_on,
-                public::funding_schedules::active,
-                public::funding_schedules::created_at,
-            ))
-            .load::<(
-                Uuid,
-                Uuid,
-                Uuid,
-                i64,
-                String,
-                NaiveDate,
-                Option<NaiveDate>,
-                bool,
-                DateTime<Utc>,
-            )>(&mut *self.conn)
             .await?;
         let funding_schedules = schedules
             .into_iter()
@@ -324,6 +299,7 @@ impl bookkeeping_application::close_period::ClosePeriodOperations for PgClosePer
         validate_decision(&decision, self.period_start, revision, self.actor_id)?;
         persist_close_period_in_transaction(
             self.conn,
+            self.policy,
             PersistClosePeriodInput {
                 household_id: self.household_id,
                 decision,
@@ -352,6 +328,7 @@ struct PersistClosePeriodInput {
 
 async fn persist_close_period_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
+    policy: &mut impl super::settlement_preview::PolicySettlementData,
     input: PersistClosePeriodInput,
 ) -> Result<PersistedClosePeriod, ClosePeriodPersistenceError> {
     let PersistClosePeriodInput {
@@ -365,17 +342,11 @@ async fn persist_close_period_in_transaction(
         settlement_run_id,
     } = input;
     use public::accounting_periods::dsl as periods;
-    use public::households::dsl as households;
     use public::purchases::dsl as purchases;
     use public::settlement_runs::dsl as runs;
 
-    let household_exists = households::households
-        .filter(households::id.eq(household_id))
-        .select(households::id)
-        .first::<Uuid>(&mut *conn)
-        .await
-        .optional()?
-        .is_some();
+    let household_exists =
+        household_postgres::household_access::household_exists(&mut *conn, household_id).await?;
     if !household_exists {
         return Err(ClosePeriodPersistenceError::HouseholdNotFound);
     }
@@ -509,21 +480,8 @@ async fn persist_close_period_in_transaction(
         return Err(ClosePeriodPersistenceError::InvalidDecision);
     }
 
-    let active_members = public::household_members::table
-        .inner_join(
-            public::members::table.on(public::members::id.eq(public::household_members::member_id)),
-        )
-        .filter(public::household_members::household_id.eq(household_id))
-        .filter(
-            public::household_members::left_at
-                .is_null()
-                .or(public::household_members::left_at.gt(period_start_utc(period_start)?)),
-        )
-        .select((
-            public::household_members::member_id,
-            public::members::display_name,
-        ))
-        .load::<(Uuid, String)>(&mut *conn)
+    let active_members = policy
+        .household_members_present_after(&mut *conn, household_id, period_start_utc(period_start)?)
         .await?;
     let active_members = active_members.into_iter().collect::<BTreeMap<_, _>>();
     if active_members.len() != decision.settlements.len()
@@ -562,37 +520,13 @@ async fn persist_close_period_in_transaction(
         .iter()
         .filter_map(|(pool_id, _, version)| version.map(|version| (*pool_id, version)))
         .collect::<BTreeMap<_, _>>();
-    let rules = public::pool_funding_rules::table
-        .filter(public::pool_funding_rules::household_id.eq(household_id))
-        .select((
-            public::pool_funding_rules::pool_id,
-            public::pool_funding_rules::version,
-            public::pool_funding_rules::owner_member_id,
-            public::pool_funding_rules::settlement_policy,
-        ))
-        .load::<(Uuid, i32, Option<Uuid>, Option<String>)>(&mut *conn)
-        .await?;
+    let (rules, shares) = policy.rules_and_shares(&mut *conn, household_id).await?;
     let rules = rules
         .into_iter()
         .map(|(pool_id, version, owner_member_id, settlement_policy)| {
             ((pool_id, version), (owner_member_id, settlement_policy))
         })
         .collect::<BTreeMap<_, _>>();
-    let shares = public::pool_funding_shares::table
-        .filter(public::pool_funding_shares::household_id.eq(household_id))
-        .order_by((
-            public::pool_funding_shares::pool_id.asc(),
-            public::pool_funding_shares::version.asc(),
-            public::pool_funding_shares::member_id.asc(),
-        ))
-        .select((
-            public::pool_funding_shares::pool_id,
-            public::pool_funding_shares::version,
-            public::pool_funding_shares::member_id,
-            public::pool_funding_shares::weight,
-        ))
-        .load::<(Uuid, i32, Uuid, i64)>(&mut *conn)
-        .await?;
     let mut shares_by_pool = BTreeMap::<(Uuid, i32), Vec<serde_json::Value>>::new();
     for (pool_id, version, member_id, weight) in shares {
         if current_versions.get(&pool_id) != Some(&version) {

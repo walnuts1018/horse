@@ -234,26 +234,12 @@ pub async fn load_transfer_ledger_entry_results(
     loan_ids.sort_unstable();
     loan_ids.dedup();
 
-    let members = public::members::table
-        .filter(public::members::id.eq_any(&member_ids))
-        .select((public::members::id, public::members::display_name))
-        .load::<(Uuid, String)>(&mut *conn)
-        .await?
-        .into_iter()
-        .collect::<HashMap<_, _>>();
-    let roles = public::household_members::table
-        .filter(public::household_members::household_id.eq_any(household_ids))
-        .filter(public::household_members::member_id.eq_any(&member_ids))
-        .select((
-            public::household_members::household_id,
-            public::household_members::member_id,
-            public::household_members::role,
-        ))
-        .load::<(Uuid, Uuid, String)>(&mut *conn)
-        .await?
-        .into_iter()
-        .map(|(household_id, member_id, role)| ((household_id, member_id), role))
-        .collect::<HashMap<_, _>>();
+    let (members, roles) = crate::household_identity_query::transfer_members_for_households(
+        &mut conn,
+        household_ids,
+        &member_ids,
+    )
+    .await?;
     let loan_rows = if loan_ids.is_empty() {
         Vec::new()
     } else {
@@ -419,20 +405,19 @@ async fn load_member_projection(
     household_id: Uuid,
     member_id: Uuid,
 ) -> Result<TransferMemberProjection, FinancialCommandResultError> {
-    let member = public::members::table
-        .filter(public::members::id.eq(member_id))
-        .select(public::members::display_name)
-        .first::<String>(conn)
-        .await
-        .optional()?
+    let (members, roles) = crate::household_identity_query::transfer_members_for_households(
+        conn,
+        &[household_id],
+        &[member_id],
+    )
+    .await?;
+    let member = members
+        .get(&member_id)
+        .cloned()
         .ok_or(FinancialCommandResultError::MissingMember)?;
-    let role = public::household_members::table
-        .filter(public::household_members::household_id.eq(household_id))
-        .filter(public::household_members::member_id.eq(member_id))
-        .select(public::household_members::role)
-        .first::<String>(conn)
-        .await
-        .optional()?
+    let role = roles
+        .get(&(household_id, member_id))
+        .cloned()
         .unwrap_or_else(|| "MEMBER".to_owned());
     Ok(TransferMemberProjection {
         id: member_id,

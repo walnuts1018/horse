@@ -62,20 +62,46 @@ pub struct RepaymentCommandContextInput {
     pub occurred_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransferCommandContextInput {
+    pub household_id: Uuid,
+    pub from_member_id: Uuid,
+    pub payment_account_id: Option<Uuid>,
+    pub to_member_id: Uuid,
+    pub destination_account_id: Option<Uuid>,
+    pub occurred_at: DateTime<Utc>,
+}
+
 pub async fn load_transfer_command_context(
     pool: &PgPool,
-    household_id: Uuid,
-    from_member_id: Uuid,
-    payment_account_id: Option<Uuid>,
-    to_member_id: Uuid,
-    destination_account_id: Option<Uuid>,
-    occurred_at: DateTime<Utc>,
+    input: TransferCommandContextInput,
+    policy: &mut impl crate::policy_data::PolicyData,
 ) -> Result<TransferCommandContext, FinancialCommandContextError> {
+    let TransferCommandContextInput {
+        household_id,
+        from_member_id,
+        payment_account_id,
+        to_member_id,
+        destination_account_id,
+        occurred_at,
+    } = input;
     let (_, accounting_period) = load_period(pool, household_id, occurred_at).await?;
-    let payment_account =
-        load_transfer_account(pool, household_id, from_member_id, payment_account_id).await?;
-    let destination_account =
-        load_transfer_account(pool, household_id, to_member_id, destination_account_id).await?;
+    let payment_account = load_transfer_account(
+        pool,
+        household_id,
+        from_member_id,
+        payment_account_id,
+        policy,
+    )
+    .await?;
+    let destination_account = load_transfer_account(
+        pool,
+        household_id,
+        to_member_id,
+        destination_account_id,
+        policy,
+    )
+    .await?;
     Ok(TransferCommandContext {
         accounting_period,
         payment_account,
@@ -86,6 +112,7 @@ pub async fn load_transfer_command_context(
 pub async fn load_repayment_command_context(
     pool: &PgPool,
     input: RepaymentCommandContextInput,
+    policy: &mut impl crate::policy_data::PolicyData,
 ) -> Result<RepaymentCommandContext, FinancialCommandContextError> {
     let RepaymentCommandContextInput {
         household_id,
@@ -138,10 +165,22 @@ pub async fn load_repayment_command_context(
             .map_err(|_| FinancialCommandContextError::InvalidLoan)?,
         principal,
     };
-    let source_account =
-        load_account_details(pool, household_id, from_member_id, payment_account_id).await?;
-    let destination_account =
-        load_account_details(pool, household_id, to_member_id, destination_account_id).await?;
+    let source_account = load_account_details(
+        pool,
+        household_id,
+        from_member_id,
+        payment_account_id,
+        policy,
+    )
+    .await?;
+    let destination_account = load_account_details(
+        pool,
+        household_id,
+        to_member_id,
+        destination_account_id,
+        policy,
+    )
+    .await?;
     let source: Option<RepaymentSource> = source_account
         .map(
             |(account_id, pool_id, kind)| -> Result<RepaymentSource, FinancialCommandContextError> {
@@ -189,13 +228,9 @@ async fn load_period(
         .get()
         .await
         .map_err(|error| FinancialCommandContextError::Pool(error.to_string()))?;
-    public::households::table
-        .filter(public::households::id.eq(household_id))
-        .select(public::households::id)
-        .first::<Uuid>(&mut *conn)
-        .await
-        .optional()?
-        .ok_or(FinancialCommandContextError::HouseholdNotFound)?;
+    if !household_postgres::household_access::household_exists(&mut conn, household_id).await? {
+        return Err(FinancialCommandContextError::HouseholdNotFound);
+    }
     let persisted_period = public::accounting_periods::table
         .filter(public::accounting_periods::household_id.eq(household_id))
         .filter(public::accounting_periods::period_start.eq(period_start))
@@ -241,9 +276,10 @@ async fn load_transfer_account(
     household_id: Uuid,
     owner_member_id: Uuid,
     account_id: Option<Uuid>,
+    policy: &mut impl crate::policy_data::PolicyData,
 ) -> Result<Option<TransferAccount>, FinancialCommandContextError> {
     let Some((id, pool_id, kind)) =
-        load_account_details(pool, household_id, owner_member_id, account_id).await?
+        load_account_details(pool, household_id, owner_member_id, account_id, policy).await?
     else {
         return Ok(None);
     };
@@ -267,6 +303,7 @@ async fn load_account_details(
     household_id: Uuid,
     owner_member_id: Uuid,
     account_id: Option<Uuid>,
+    policy: &mut impl crate::policy_data::PolicyData,
 ) -> Result<Option<(Uuid, Uuid, String)>, FinancialCommandContextError> {
     let Some(account_id) = account_id else {
         return Ok(None);
@@ -297,15 +334,9 @@ async fn load_account_details(
         .ok_or(FinancialCommandContextError::AccountNotFound)?;
     if pool_kind == "PERSONAL" {
         let owner = if let Some(version) = funding_version {
-            public::pool_funding_rules::table
-                .filter(public::pool_funding_rules::household_id.eq(household_id))
-                .filter(public::pool_funding_rules::pool_id.eq(pool_id))
-                .filter(public::pool_funding_rules::version.eq(version))
-                .select(public::pool_funding_rules::owner_member_id)
-                .first::<Option<Uuid>>(&mut *conn)
-                .await
-                .optional()?
-                .flatten()
+            policy
+                .pool_funding_owner(&mut conn, household_id, pool_id, version)
+                .await?
         } else {
             None
         };

@@ -1,7 +1,7 @@
 use async_graphql::{Context, Error, ID, Result};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_postgres::financial_command_result;
 use chrono::NaiveDate;
+use cross_context_postgres::financial_command_result;
 use cross_context_postgres::node_query as postgres_query;
 use horse_postgres_common::PgPool;
 use std::collections::HashMap;

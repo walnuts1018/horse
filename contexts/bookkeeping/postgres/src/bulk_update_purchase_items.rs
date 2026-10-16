@@ -79,8 +79,6 @@ pub async fn persist_bulk_update_purchase_items<
         .transaction::<PersistedBulkUpdatePurchaseItems, BulkUpdatePurchaseItemsPersistenceError, _>(
             async move |conn| {
                 use public::accounting_periods::dsl as periods;
-                use public::household_members::dsl as members;
-                use public::households::dsl as households;
                 use public::purchase_items::dsl as items;
                 use public::purchases::dsl as purchases;
 
@@ -129,14 +127,7 @@ pub async fn persist_bulk_update_purchase_items<
                 if observed_purchases.iter().any(|row| row.1 != household_id) {
                     return Err(BulkUpdatePurchaseItemsPersistenceError::HouseholdMismatch);
                 }
-                let actor_role = members::household_members
-                    .filter(members::household_id.eq(household_id))
-                    .filter(members::member_id.eq(actor_id))
-                    .filter(members::left_at.is_null())
-                    .select(members::role)
-                    .first::<String>(conn)
-                    .await
-                    .optional()?;
+                let actor_role = household_postgres::household_access::active_member_role(&mut *conn, household_id, actor_id).await?;
                 if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                     return Err(BulkUpdatePurchaseItemsPersistenceError::MemberNotFound);
                 }
@@ -172,14 +163,12 @@ pub async fn persist_bulk_update_purchase_items<
                 {
                     return Err(BulkUpdatePurchaseItemsPersistenceError::AccountingPeriodClosed);
                 }
-                let default_version = households::households
-                    .filter(households::id.eq(household_id))
-                    .for_share()
-                    .select(households::default_allocation_version)
-                    .first::<i64>(&mut *conn)
-                    .await
-                    .optional()?
-                    .ok_or(BulkUpdatePurchaseItemsPersistenceError::HouseholdMismatch)?;
+                let default_version = household_postgres::household_access::default_allocation_version_for_share(
+                    &mut *conn,
+                    household_id,
+                )
+                .await?
+                .ok_or(BulkUpdatePurchaseItemsPersistenceError::HouseholdMismatch)?;
                 let mut locked_purchases = BTreeMap::new();
                 for (id, _, occurred_at, _, _, merchant) in &observed_purchases {
                     let row = purchases::purchases

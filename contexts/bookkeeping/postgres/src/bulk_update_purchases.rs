@@ -5,7 +5,7 @@ use bookkeeping_application::bulk_update_purchases::{
 };
 use bookkeeping_application::update_purchase::{UpdatePurchaseCommand, UpdatePurchaseDraft};
 use chrono::{DateTime, Utc};
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
+use diesel::{ExpressionMethods, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
@@ -55,8 +55,6 @@ pub async fn persist_bulk_update_purchases<
     (*pooled)
         .transaction::<Vec<String>, BulkUpdatePurchasesPersistenceError, _>(async move |conn| {
             use public::accounting_periods::dsl as periods;
-            use public::household_members::dsl as members;
-            use public::households::dsl as households;
             use public::purchases::dsl as purchases;
 
             if commands.is_empty() || commands.len() > 100 {
@@ -94,14 +92,7 @@ pub async fn persist_bulk_update_purchases<
             if observed.iter().any(|(_, owner, _)| *owner != household_id) {
                 return Err(BulkUpdatePurchasesPersistenceError::HouseholdMismatch);
             }
-            let actor_role = members::household_members
-                .filter(members::household_id.eq(household_id))
-                .filter(members::member_id.eq(actor_id))
-                .filter(members::left_at.is_null())
-                .select(members::role)
-                .first::<String>(conn)
-                .await
-                .optional()?;
+            let actor_role = household_postgres::household_access::active_member_role(&mut *conn, household_id, actor_id).await?;
             if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                 return Err(BulkUpdatePurchasesPersistenceError::MemberNotFound);
             }
@@ -147,14 +138,7 @@ pub async fn persist_bulk_update_purchases<
                     return Err(BulkUpdatePurchasesPersistenceError::AccountingPeriodClosed);
                 }
             }
-            let household_exists = households::households
-                .filter(households::id.eq(household_id))
-                .for_share()
-                .select(households::id)
-                .first::<Uuid>(&mut *conn)
-                .await
-                .optional()?
-                .is_some();
+            let household_exists = household_postgres::household_access::lock_household_for_share(&mut *conn, household_id).await?;
             if !household_exists {
                 return Err(BulkUpdatePurchasesPersistenceError::HouseholdMismatch);
             }

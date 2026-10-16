@@ -5,7 +5,7 @@ use bookkeeping_application::settlement_query::{
     SettlementQueryResult, distinct_queries, validate_queries,
 };
 use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
-use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl};
+use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
@@ -31,6 +31,7 @@ impl From<diesel::result::Error> for SettlementQueryPersistenceError {
 pub async fn get_many(
     pool: &PgPool,
     queries: &[GetSettlementQuery],
+    policy: &mut impl super::settlement_preview::PolicySettlementData,
 ) -> Result<Vec<SettlementQueryResult>, SettlementQueryPersistenceError> {
     validate_queries(queries).map_err(SettlementQueryPersistenceError::InvalidQuery)?;
     if queries.is_empty() {
@@ -149,7 +150,7 @@ pub async fn get_many(
                     });
             }
 
-            let evidence = load_evidence(conn, &ids, &starts, min_start, max_end).await?;
+            let evidence = load_evidence(conn, &ids, &starts, min_start, max_end, policy).await?;
             let mut unique_results = BTreeMap::new();
             for query in &unique {
                 let household = Uuid::parse_str(&query.household_id)
@@ -170,6 +171,7 @@ pub async fn get_many(
                         conn,
                         &query.household_id,
                         &query.period,
+                        policy,
                     )
                     .await
                     .map_err(|error| {
@@ -220,10 +222,10 @@ async fn load_evidence(
     starts: &BTreeMap<(Uuid, String), NaiveDate>,
     min_start: NaiveDate,
     max_end: NaiveDate,
+    policy: &mut impl super::settlement_preview::PolicySettlementData,
 ) -> Result<BTreeMap<(Uuid, String), Vec<SettlementEvidence>>, SettlementQueryPersistenceError> {
     use public::accounting_periods::dsl as accounting_periods;
     use public::funding_obligations::dsl as obligations;
-    use public::funding_schedules::dsl as schedules;
     use public::ledger_entries::dsl as ledger;
     use public::purchase_items::dsl as items;
     use public::purchase_member_burdens::dsl as burdens;
@@ -269,41 +271,8 @@ async fn load_evidence(
         .filter(|row| row.2 == "CLOSED")
         .map(|row| (row.0, period_string(row.1)))
         .collect::<BTreeSet<_>>();
-    let schedule_rows = schedules::funding_schedules
-        .filter(schedules::household_id.eq_any(households))
-        .filter(schedules::starts_on.lt(max_end))
-        .filter(
-            schedules::ends_on
-                .is_null()
-                .or(schedules::ends_on.ge(min_start)),
-        )
-        .filter(
-            schedules::active
-                .eq(true)
-                .or(schedules::ends_on.is_not_null()),
-        )
-        .select((
-            schedules::household_id,
-            schedules::id,
-            schedules::member_id,
-            schedules::pool_id,
-            schedules::amount_yen,
-            schedules::cadence,
-            schedules::starts_on,
-            schedules::ends_on,
-            schedules::active,
-        ))
-        .load::<(
-            Uuid,
-            Uuid,
-            Uuid,
-            Uuid,
-            i64,
-            String,
-            NaiveDate,
-            Option<NaiveDate>,
-            bool,
-        )>(conn)
+    let schedule_rows = policy
+        .schedules_overlapping(conn, households, min_start, max_end)
         .await?;
     let mut schedule_totals = BTreeMap::<((Uuid, String), Uuid, Uuid), i64>::new();
     for ((household, period), start) in starts {

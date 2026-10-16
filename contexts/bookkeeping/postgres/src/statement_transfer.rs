@@ -71,26 +71,22 @@ pub async fn persist_link_statement_transfer(
     (*pooled)
         .transaction::<PersistedStatementTransfer, StatementTransferPersistenceError, _>(
             async |conn| {
-                let household_exists = public::households::table
-                    .filter(public::households::id.eq(household_id))
-                    .for_update()
-                    .select(public::households::id)
-                    .first::<Uuid>(&mut *conn)
-                    .await
-                    .optional()?
-                    .is_some();
+                let household_exists =
+                    household_postgres::household_access::lock_household_for_update(
+                        &mut *conn,
+                        household_id,
+                    )
+                    .await?;
                 if !household_exists {
                     return Err(StatementTransferPersistenceError::HouseholdNotFound);
                 }
-                let role = public::household_members::table
-                    .filter(public::household_members::household_id.eq(household_id))
-                    .filter(public::household_members::member_id.eq(actor_id))
-                    .filter(public::household_members::left_at.is_null())
-                    .select(public::household_members::role)
-                    .first::<String>(&mut *conn)
-                    .await
-                    .optional()?
-                    .ok_or(StatementTransferPersistenceError::MemberNotFound)?;
+                let role = household_postgres::household_access::active_member_role(
+                    &mut *conn,
+                    household_id,
+                    actor_id,
+                )
+                .await?
+                .ok_or(StatementTransferPersistenceError::MemberNotFound)?;
                 horse_authorization::authorize(
                     Some(&role),
                     horse_authorization::Operation::FinancialData,

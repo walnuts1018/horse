@@ -42,13 +42,9 @@ async fn replay_record_funding_in_transaction(
     }
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
-    public::households::table
-        .filter(public::households::id.eq(household_id))
-        .select(public::households::id)
-        .first::<Uuid>(&mut *conn)
-        .await
-        .optional()?
-        .ok_or(RecordFundingPersistenceError::HouseholdNotFound)?;
+    if !household_postgres::household_access::household_exists(&mut *conn, household_id).await? {
+        return Err(RecordFundingPersistenceError::HouseholdNotFound);
+    }
     let tokyo_offset = FixedOffset::east_opt(9 * 60 * 60)
         .ok_or(RecordFundingPersistenceError::InvalidOccurredAt)?;
     let period_start = input
@@ -60,26 +56,21 @@ async fn replay_record_funding_in_transaction(
     lock_accounting_period(conn, household_id, period_start).await?;
     use public::idempotency_records::dsl as idem;
 
-    let actor_role = public::household_members::table
-        .filter(public::household_members::household_id.eq(household_id))
-        .filter(public::household_members::member_id.eq(actor_id))
-        .filter(public::household_members::left_at.is_null())
-        .select(public::household_members::role)
-        .first::<String>(&mut *conn)
-        .await
-        .optional()?;
+    let actor_role = household_postgres::household_access::active_member_role(
+        &mut *conn,
+        household_id,
+        actor_id,
+    )
+    .await?;
     if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
         return Err(RecordFundingPersistenceError::MemberNotFound);
     }
-    public::household_members::table
-        .filter(public::household_members::household_id.eq(household_id))
-        .filter(public::household_members::member_id.eq(member_id))
-        .filter(public::household_members::left_at.is_null())
-        .select(public::household_members::member_id)
-        .first::<Uuid>(&mut *conn)
-        .await
-        .optional()?
-        .ok_or(RecordFundingPersistenceError::MemberNotFound)?;
+    if household_postgres::household_access::active_member_role(&mut *conn, household_id, member_id)
+        .await?
+        .is_none()
+    {
+        return Err(RecordFundingPersistenceError::MemberNotFound);
+    }
     public::pools::table
         .filter(public::pools::household_id.eq(household_id))
         .filter(public::pools::id.eq(pool_id))
@@ -155,9 +146,10 @@ pub enum RecordFundingWorkflowAdapterError {
     Persistence(RecordFundingPersistenceError),
 }
 
-pub async fn record_funding_workflow(
+pub async fn record_funding_workflow<P: crate::policy_data::PolicyData>(
     pool: &PgPool,
     command: application::RecordFundingWorkflowCommand,
+    policy: P,
 ) -> Result<
     application::RecordedFunding,
     application::RecordFundingWorkflowError<RecordFundingWorkflowAdapterError>,
@@ -175,7 +167,7 @@ pub async fn record_funding_workflow(
             DieselError,
             _,
         >(async |conn| {
-            let mut operations = PgRecordFundingOperations { conn };
+            let mut operations = PgRecordFundingOperations { conn, policy };
             Ok(application::record_funding(&mut operations, command).await)
         })
         .await
@@ -188,11 +180,14 @@ pub async fn record_funding_workflow(
         })?
 }
 
-struct PgRecordFundingOperations<'a> {
+struct PgRecordFundingOperations<'a, P> {
     conn: &'a mut diesel_async::AsyncPgConnection,
+    policy: P,
 }
 
-impl application::RecordFundingOperations for PgRecordFundingOperations<'_> {
+impl<P: crate::policy_data::PolicyData> application::RecordFundingOperations
+    for PgRecordFundingOperations<'_, P>
+{
     type Error = RecordFundingWorkflowAdapterError;
 
     async fn replay(
@@ -252,6 +247,7 @@ impl application::RecordFundingOperations for PgRecordFundingOperations<'_> {
             source_account_id,
             destination_account_id,
             command.occurred_at,
+            &mut self.policy,
         )
         .await
         .map_err(RecordFundingWorkflowAdapterError::Context)
@@ -272,6 +268,7 @@ impl application::RecordFundingOperations for PgRecordFundingOperations<'_> {
                 request_fingerprint: command.request_fingerprint,
             },
             decision,
+            &mut self.policy,
         )
         .await
         .map(|value| application::RecordedFunding {
@@ -286,6 +283,7 @@ async fn persist_record_funding_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
     input: PersistRecordFunding,
     decision: RecordFundingDecision,
+    policy: &mut impl crate::policy_data::PolicyData,
 ) -> Result<PersistedFunding, RecordFundingPersistenceError> {
     if input.idempotency_key.trim().is_empty() || input.idempotency_key.len() > 200 {
         return Err(RecordFundingPersistenceError::InvalidIdempotencyKey);
@@ -342,12 +340,12 @@ async fn persist_record_funding_in_transaction(
     let source_account_id = decision
         .source_account_id
         .as_deref()
-        .map(|id| parse_decision_uuid(id))
+        .map(parse_decision_uuid)
         .transpose()?;
     let destination_account_id = decision
         .destination_account_id
         .as_deref()
-        .map(|id| parse_decision_uuid(id))
+        .map(parse_decision_uuid)
         .transpose()?;
 
     use public::idempotency_records::dsl as idem;
@@ -359,33 +357,24 @@ async fn persist_record_funding_in_transaction(
     if status != "OPEN" || revision != expected_revision {
         return Err(RecordFundingPersistenceError::AccountingPeriodClosed);
     }
-    public::households::table
-        .filter(public::households::id.eq(household_id))
-        .select(public::households::id)
-        .first::<Uuid>(&mut *conn)
-        .await
-        .optional()?
-        .ok_or(RecordFundingPersistenceError::HouseholdNotFound)?;
-    let actor_role = public::household_members::table
-        .filter(public::household_members::household_id.eq(household_id))
-        .filter(public::household_members::member_id.eq(actor_id))
-        .filter(public::household_members::left_at.is_null())
-        .select(public::household_members::role)
-        .first::<String>(&mut *conn)
-        .await
-        .optional()?;
+    if !household_postgres::household_access::household_exists(&mut *conn, household_id).await? {
+        return Err(RecordFundingPersistenceError::HouseholdNotFound);
+    }
+    let actor_role = household_postgres::household_access::active_member_role(
+        &mut *conn,
+        household_id,
+        actor_id,
+    )
+    .await?;
     if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
         return Err(RecordFundingPersistenceError::MemberNotFound);
     }
-    public::household_members::table
-        .filter(public::household_members::household_id.eq(household_id))
-        .filter(public::household_members::member_id.eq(member_id))
-        .filter(public::household_members::left_at.is_null())
-        .select(public::household_members::member_id)
-        .first::<Uuid>(&mut *conn)
-        .await
-        .optional()?
-        .ok_or(RecordFundingPersistenceError::MemberNotFound)?;
+    if household_postgres::household_access::active_member_role(&mut *conn, household_id, member_id)
+        .await?
+        .is_none()
+    {
+        return Err(RecordFundingPersistenceError::MemberNotFound);
+    }
     let inserted = diesel::insert_into(idem::idempotency_records)
         .values((
             idem::household_id.eq(household_id),
@@ -451,6 +440,7 @@ async fn persist_record_funding_in_transaction(
         source_account_id,
         true,
         pool_id,
+        policy,
     )
     .await?;
     validate_account(
@@ -460,19 +450,13 @@ async fn persist_record_funding_in_transaction(
         destination_account_id,
         false,
         pool_id,
+        policy,
     )
     .await?;
 
-    let schedule_id = public::funding_schedules::table
-        .filter(public::funding_schedules::household_id.eq(household_id))
-        .filter(public::funding_schedules::member_id.eq(member_id))
-        .filter(public::funding_schedules::pool_id.eq(pool_id))
-        .filter(public::funding_schedules::active.eq(true))
-        .order(public::funding_schedules::created_at.desc())
-        .select(public::funding_schedules::id)
-        .first::<Uuid>(&mut *conn)
-        .await
-        .optional()?;
+    let schedule_id = policy
+        .active_funding_schedule(&mut *conn, household_id, member_id, pool_id)
+        .await?;
     diesel::insert_into(public::funding_obligations::table)
         .values((
             public::funding_obligations::id.eq(Uuid::now_v7()),
@@ -523,12 +507,12 @@ async fn persist_record_funding_in_transaction(
                 public::journal_entries::account_id.eq(line
                     .account_id
                     .as_deref()
-                    .map(|id| parse_decision_uuid(id))
+                    .map(parse_decision_uuid)
                     .transpose()?),
                 public::journal_entries::pool_id.eq(line
                     .pool_id
                     .as_deref()
-                    .map(|id| parse_decision_uuid(id))
+                    .map(parse_decision_uuid)
                     .transpose()?),
                 public::journal_entries::member_id.eq(None::<Uuid>),
                 public::journal_entries::debit_yen.eq(if line.side == PostingSide::Debit {
@@ -619,6 +603,7 @@ async fn validate_account(
     account_id: Option<Uuid>,
     source: bool,
     funded_pool_id: Uuid,
+    policy: &mut impl crate::policy_data::PolicyData,
 ) -> Result<(), RecordFundingPersistenceError> {
     let Some(account_id) = account_id else {
         return Ok(());
@@ -649,15 +634,9 @@ async fn validate_account(
         if source && account_pool_kind == "PERSONAL" {
             let version =
                 funding_version.ok_or(RecordFundingPersistenceError::AccountOwnershipMismatch)?;
-            let owner = public::pool_funding_rules::table
-                .filter(public::pool_funding_rules::household_id.eq(household_id))
-                .filter(public::pool_funding_rules::pool_id.eq(account_pool_id))
-                .filter(public::pool_funding_rules::version.eq(version))
-                .select(public::pool_funding_rules::owner_member_id)
-                .first::<Option<Uuid>>(conn)
-                .await
-                .optional()?
-                .flatten();
+            let owner = policy
+                .pool_funding_owner(conn, household_id, account_pool_id, version)
+                .await?;
             if owner != Some(member_id) {
                 return Err(RecordFundingPersistenceError::AccountOwnershipMismatch);
             }

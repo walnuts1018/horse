@@ -37,8 +37,14 @@ pub async fn persist_record_transfer(
     input: record_transfer::PersistRecordTransfer,
     decision: bookkeeping_application::record_transfer::RecordTransferDecision,
 ) -> Result<record_transfer::PersistedTransfer, record_transfer::RecordTransferPersistenceError> {
-    record_transfer::persist_record_transfer(pool, input, decision, &EvidencePostgresOperations)
-        .await
+    record_transfer::persist_record_transfer(
+        pool,
+        input,
+        decision,
+        &EvidencePostgresOperations,
+        &mut crate::policy_settlement::PolicySettlementReferences,
+    )
+    .await
 }
 
 pub async fn find_record_transfer_replay(
@@ -106,7 +112,13 @@ pub async fn correct_purchase(
     correct_purchase::PersistedCorrectPurchase,
     correct_purchase::CorrectPurchasePersistenceError,
 > {
-    correct_purchase::correct_purchase(pool, request, &EvidencePostgresOperations).await
+    correct_purchase::correct_purchase(
+        pool,
+        request,
+        &EvidencePostgresOperations,
+        &mut crate::policy_settlement::PolicySettlementReferences,
+    )
+    .await
 }
 
 pub async fn link_statement_refund_correction(

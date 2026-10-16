@@ -75,7 +75,6 @@ pub async fn load_post_purchase_command<C: PostPurchaseReferenceData>(
 ) -> Result<LoadedPostPurchaseCommand, PostPurchaseLoadError> {
     use public::accounting_periods::dsl as periods;
     use public::accounts::dsl as accounts;
-    use public::household_members::dsl as household_members;
     use public::pools::dsl as pools;
     use public::purchase_allocations::dsl as allocations;
     use public::purchase_items::dsl as items;
@@ -465,16 +464,18 @@ pub async fn load_post_purchase_command<C: PostPurchaseReferenceData>(
 
     // funding ruleの外部キー制約でmembershipを保証するが、commandを返す前にhouseholdとの関連を確認する。
     if !referenced_members.is_empty() {
-        let found = household_members::household_members
-            .filter(household_members::household_id.eq(household_id))
-            .filter(household_members::member_id.eq_any(referenced_members.iter().copied()))
-            .for_update()
-            .select(household_members::member_id)
-            .load::<Uuid>(conn)
-            .await?
-            .into_iter()
-            .collect::<BTreeSet<_>>();
-        if found != referenced_members {
+        let referenced_members = referenced_members.iter().copied().collect::<Vec<_>>();
+        let found = household_postgres::household_access::member_ids_for_household(
+            conn,
+            household_id,
+            &referenced_members,
+            false,
+            true,
+        )
+        .await?;
+        if found.into_iter().collect::<BTreeSet<_>>()
+            != referenced_members.into_iter().collect::<BTreeSet<_>>()
+        {
             return Err(PostPurchaseLoadError::HouseholdMismatch(
                 "funding rule member",
             ));

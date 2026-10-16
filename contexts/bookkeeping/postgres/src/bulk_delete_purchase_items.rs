@@ -124,8 +124,6 @@ pub async fn persist_bulk_delete_purchase_items<
         .transaction::<PersistedBulkDeletePurchaseItems, BulkDeletePurchaseItemsPersistenceError, _>(
             async move |conn| {
                 use public::accounting_periods::dsl as periods;
-                use public::household_members::dsl as members;
-                use public::households::dsl as households;
                 use public::purchase_items::dsl as items;
                 use public::purchases::dsl as purchases;
 
@@ -168,14 +166,7 @@ pub async fn persist_bulk_delete_purchase_items<
                     .iter()
                     .map(|purchase| period_start(purchase.2))
                     .collect::<Result<BTreeSet<_>, _>>()?;
-                let actor_role = members::household_members
-                    .filter(members::household_id.eq(household_id))
-                    .filter(members::member_id.eq(actor_id))
-                    .filter(members::left_at.is_null())
-                    .select(members::role)
-                    .first::<String>(conn)
-                    .await
-                    .optional()?;
+                let actor_role = household_postgres::household_access::active_member_role(&mut *conn, household_id, actor_id).await?;
                 if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                     return Err(BulkDeletePurchaseItemsPersistenceError::MemberNotFound);
                 }
@@ -199,14 +190,14 @@ pub async fn persist_bulk_delete_purchase_items<
                 if locked_periods.len() != period_dates.len() || locked_periods.iter().any(|(_, status)| status != "OPEN") {
                     return Err(BulkDeletePurchaseItemsPersistenceError::AccountingPeriodClosed);
                 }
-                let _household = households::households
-                    .filter(households::id.eq(household_id))
-                    .for_share()
-                    .select(households::id)
-                    .first::<Uuid>(&mut *conn)
-                    .await
-                    .optional()?
-                    .ok_or(BulkDeletePurchaseItemsPersistenceError::HouseholdMismatch)?;
+                if !household_postgres::household_access::lock_household_for_share(
+                    &mut *conn,
+                    household_id,
+                )
+                .await?
+                {
+                    return Err(BulkDeletePurchaseItemsPersistenceError::HouseholdMismatch);
+                }
 
                 let mut locked_purchases = BTreeMap::new();
                 for (id, _, occurred_at, _, _, _, _) in &observed_purchases {

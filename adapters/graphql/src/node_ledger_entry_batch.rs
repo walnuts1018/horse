@@ -98,7 +98,7 @@ pub(crate) async fn load(
     let transfer_by_id = if transfer_ids.is_empty() {
         HashMap::new()
     } else {
-        bookkeeping_postgres::financial_command_result::load_transfer_ledger_entry_results(
+        cross_context_postgres::financial_command_result::load_transfer_ledger_entry_results(
             pool,
             household_ids,
             &transfer_ids,

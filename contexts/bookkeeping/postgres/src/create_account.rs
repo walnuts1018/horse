@@ -75,32 +75,25 @@ pub async fn persist_create_account(
         .transaction::<PersistedCreateAccount, CreateAccountPersistenceError, _>(async |conn| {
             use public::accounting_periods::dsl as periods;
             use public::accounts::dsl as accounts;
-            use public::household_members::dsl as members;
-            use public::households::dsl as households;
             use public::journal_entries::dsl as entries;
             use public::journals::dsl as journals;
             use public::pools::dsl as pools;
 
-            let household_exists = households::households
-                .filter(households::id.eq(household_id))
-                .for_update()
-                .select(households::id)
-                .first::<Uuid>(conn)
-                .await
-                .optional()?
-                .is_some();
+            let household_exists = household_postgres::household_access::lock_household_for_update(
+                &mut *conn,
+                household_id,
+            )
+            .await?;
             if !household_exists {
                 return Err(CreateAccountPersistenceError::HouseholdNotFound);
             }
 
-            let actor_role = members::household_members
-                .filter(members::household_id.eq(household_id))
-                .filter(members::member_id.eq(actor_id))
-                .filter(members::left_at.is_null())
-                .select(members::role)
-                .first::<String>(conn)
-                .await
-                .optional()?;
+            let actor_role = household_postgres::household_access::active_member_role(
+                &mut *conn,
+                household_id,
+                actor_id,
+            )
+            .await?;
             if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                 return Err(CreateAccountPersistenceError::MemberNotFound);
             }

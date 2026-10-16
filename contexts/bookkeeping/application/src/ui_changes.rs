@@ -88,18 +88,6 @@ pub fn purchase_item_deleted(purchase_id: String) -> UiChangeDescriptor {
         .with_payload(json!({ "purchaseId": purchase_id }))
 }
 
-pub fn product_variant_renamed() -> UiChangeDescriptor {
-    UiChangeDescriptor::new("product.variant.renamed", "product_variant", ["name"])
-}
-
-pub fn product_alias_learned() -> UiChangeDescriptor {
-    UiChangeDescriptor::new(
-        "product.alias.learned",
-        "product_alias",
-        ["alias", "variantId", "merchant"],
-    )
-}
-
 pub fn period_closed(
     changed_fields: impl IntoIterator<Item = impl Into<String>>,
 ) -> UiChangeDescriptor {

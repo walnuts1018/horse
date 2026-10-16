@@ -4,11 +4,12 @@ use bookkeeping_application::funding_record::{
     RecordFundingCommand, RecordFundingError, RecordFundingWorkflowCommand,
 };
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
-use bookkeeping_postgres::{
-    funding_command_context as postgres_funding_context, funding_record as postgres_funding,
-};
+use bookkeeping_postgres::funding_command_context as postgres_funding_context;
+use bookkeeping_postgres::funding_record::{PersistRecordFunding, RecordFundingPersistenceError};
 use chrono::{Datelike, FixedOffset};
-use cross_context_postgres::funding_command_result as postgres_funding_result;
+use cross_context_postgres::{
+    funding_command_result as postgres_funding_result, policy_data as postgres_funding,
+};
 use horse_postgres_common::PgPool;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -92,13 +93,15 @@ pub async fn record_funding(
             error,
         )) => Ok(workflow_error(error).into()),
         Err(bookkeeping_application::funding_record::RecordFundingWorkflowError::Operations(
-            postgres_funding::RecordFundingWorkflowAdapterError::Context(error),
+            bookkeeping_postgres::funding_record::RecordFundingWorkflowAdapterError::Context(error),
         )) => match command_context_error(&error) {
             Some(error) => Ok(error.into()),
             None => Err(internal_error(error)),
         },
         Err(bookkeeping_application::funding_record::RecordFundingWorkflowError::Operations(
-            postgres_funding::RecordFundingWorkflowAdapterError::Persistence(error),
+            bookkeeping_postgres::funding_record::RecordFundingWorkflowAdapterError::Persistence(
+                error,
+            ),
         )) => match persistence_error(&error) {
             Some(error) => Ok(error.into()),
             None => Err(internal_error(error)),
@@ -128,7 +131,7 @@ async fn funding_success(
 
 struct ParsedRecordFunding {
     command: RecordFundingCommand,
-    persistence: postgres_funding::PersistRecordFunding,
+    persistence: PersistRecordFunding,
     household_id: Uuid,
     source_account_id: Option<Uuid>,
     destination_account_id: Option<Uuid>,
@@ -186,7 +189,7 @@ fn parse_input(
             source_account: None,
             destination_account: None,
         },
-        persistence: postgres_funding::PersistRecordFunding {
+        persistence: PersistRecordFunding {
             household_id: household_id.to_string(),
             actor_id: actor.0.to_string(),
             occurred_at,
@@ -229,10 +232,8 @@ fn workflow_error(error: RecordFundingError) -> RecordFundingUserError {
     }
 }
 
-fn persistence_error(
-    error: &postgres_funding::RecordFundingPersistenceError,
-) -> Option<RecordFundingUserError> {
-    use postgres_funding::RecordFundingPersistenceError as E;
+fn persistence_error(error: &RecordFundingPersistenceError) -> Option<RecordFundingUserError> {
+    use RecordFundingPersistenceError as E;
     match error {
         E::InvalidUuid(_)
         | E::InvalidIdempotencyKey

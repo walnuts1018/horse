@@ -1,6 +1,6 @@
 use async_graphql::{ID, Interface, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_postgres::financial_command_result::TransferLedgerEntryResult;
+use cross_context_postgres::financial_command_result::TransferLedgerEntryResult;
 use cross_context_postgres::funding_command_result::FundingLedgerEntryResult;
 use uuid::Uuid;
 
@@ -365,7 +365,7 @@ impl TryFrom<TransferLedgerEntryResult> for LedgerEntry {
 }
 
 fn member_projection(
-    value: bookkeeping_postgres::financial_command_result::TransferMemberProjection,
+    value: cross_context_postgres::financial_command_result::TransferMemberProjection,
 ) -> Result<crate::member_pool::Member, FundingLedgerEntryMappingError> {
     use crate::member_pool::{MemberProjection, MemberRole};
     let role = match value.role.as_str() {
@@ -382,7 +382,7 @@ fn member_projection(
 }
 
 fn loan_balance(
-    value: bookkeeping_postgres::financial_command_result::LoanBalanceProjection,
+    value: cross_context_postgres::financial_command_result::LoanBalanceProjection,
 ) -> Result<LoanBalance, FundingLedgerEntryMappingError> {
     if value.principal_yen < 0 || value.repaid_yen < 0 || value.balance_yen < 0 {
         return Err(FundingLedgerEntryMappingError::InvalidLoanBalance);

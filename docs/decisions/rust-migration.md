@@ -24,7 +24,6 @@ GraphQL境界ではApplication Decisionの業務エラーを入力・状態エ�
 
 ## 残作業
 
-- Context横断Workflowをcross-context Adapterへ整理し、各Contextのテーブル所有権を維持する。
 - 作業ツリーの変更をまとめて検証し、必要なHorseとinfraの更新をデプロイして稼働状態を確認する。
 
 ## 理由

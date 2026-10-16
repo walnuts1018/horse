@@ -17,8 +17,8 @@ use bookkeeping_postgres::{
         PersistUpdatePurchase, PersistedUpdatePurchase, UpdatePurchasePersistenceError,
     },
     update_purchase_item::{
-        PersistUpdatePurchaseItem, PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError,
-        UpdatePurchaseItemReferenceData,
+        PersistUpdatePurchaseItem, PersistedUpdatePurchaseItem, ProductLearningRequest,
+        UpdatePurchaseItemPersistenceError, UpdatePurchaseItemReferenceData,
     },
 };
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
@@ -190,7 +190,7 @@ impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
         household_id: Uuid,
         version: i64,
     ) -> Result<Vec<(Uuid, i64)>, DieselError> {
-        Ok(public::allocation_defaults::table
+        public::allocation_defaults::table
             .filter(public::allocation_defaults::household_id.eq(household_id))
             .filter(public::allocation_defaults::version.eq(version))
             .order(public::allocation_defaults::pool_id)
@@ -199,7 +199,7 @@ impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
                 public::allocation_defaults::weight,
             ))
             .load::<(Uuid, i64)>(conn)
-            .await?)
+            .await
     }
 
     async fn load_automatic_allocation(
@@ -328,6 +328,54 @@ impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
             .select(public::tags::id)
             .load::<Uuid>(conn)
             .await
+    }
+
+    async fn persist_product_learning(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        context: ProductLearningRequest,
+    ) -> Result<(), UpdatePurchaseItemPersistenceError> {
+        use catalog_application::product_learning::{
+            ProductLearningCommand, ProductLearningKind, decide_product_learning,
+        };
+        let learning = context.learning.map(|learning| match learning {
+            bookkeeping_application::update_purchase_item::ProductLearning::VariantName(name) => {
+                ProductLearningKind::VariantName(name)
+            }
+            bookkeeping_application::update_purchase_item::ProductLearning::MerchantAlias => {
+                ProductLearningKind::MerchantAlias
+            }
+            bookkeeping_application::update_purchase_item::ProductLearning::ItemOnly => {
+                ProductLearningKind::ItemOnly
+            }
+        });
+        let decision = decide_product_learning(ProductLearningCommand {
+            household_id: context.household_id,
+            actor_id: context.actor_id,
+            purchase_id: context.purchase_id,
+            item_id: context.item_id,
+            raw_name: context.raw_name,
+            previous_variant_id: context.previous_variant_id,
+            variant_id: context.variant_id,
+            variant_changed: context.variant_changed,
+            merchant: context.merchant,
+            learning,
+        })
+        .map_err(|error| match error {
+            catalog_application::product_learning::ProductLearningError::MerchantRequired => {
+                UpdatePurchaseItemPersistenceError::MerchantRequired
+            }
+            catalog_application::product_learning::ProductLearningError::InvalidVariantName => {
+                UpdatePurchaseItemPersistenceError::InvalidDecision
+            }
+        })?;
+        if let Some(decision) = decision {
+            catalog_postgres::product_learning::persist_product_learning_in_transaction(
+                conn, decision,
+            )
+            .await?;
+        }
+        Ok(())
     }
 }
 

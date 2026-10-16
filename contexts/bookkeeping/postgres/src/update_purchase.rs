@@ -131,7 +131,6 @@ pub async fn persist_update_purchase_in_transaction<
         .map(parse_occurred_at)
         .transpose()?;
     use public::accounting_periods::dsl as periods;
-    use public::households::dsl as households;
     use public::purchase_payments::dsl as payments;
     use public::purchases::dsl as purchases;
 
@@ -223,14 +222,9 @@ pub async fn persist_update_purchase_in_transaction<
         return Err(UpdatePurchasePersistenceError::HouseholdMismatch);
     }
     require_member(&mut *conn, household_id, actor_id).await?;
-    let household_exists = households::households
-        .filter(households::id.eq(household_id))
-        .for_share()
-        .select(households::id)
-        .first::<Uuid>(&mut *conn)
-        .await
-        .optional()?
-        .is_some();
+    let household_exists =
+        household_postgres::household_access::lock_household_for_share(&mut *conn, household_id)
+            .await?;
     if !household_exists {
         return Err(UpdatePurchasePersistenceError::HouseholdMismatch);
     }
@@ -434,14 +428,9 @@ async fn require_member(
     household_id: Uuid,
     actor_id: Uuid,
 ) -> Result<(), UpdatePurchasePersistenceError> {
-    let role = public::household_members::dsl::household_members
-        .filter(public::household_members::dsl::household_id.eq(household_id))
-        .filter(public::household_members::dsl::member_id.eq(actor_id))
-        .filter(public::household_members::dsl::left_at.is_null())
-        .select(public::household_members::dsl::role)
-        .first::<String>(conn)
-        .await
-        .optional()?;
+    let role =
+        household_postgres::household_access::active_member_role(conn, household_id, actor_id)
+            .await?;
     if authorize(role.as_deref(), Operation::FinancialData).is_err() {
         return Err(UpdatePurchasePersistenceError::MemberNotFound);
     }

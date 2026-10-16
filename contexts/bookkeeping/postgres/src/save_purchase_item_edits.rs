@@ -13,6 +13,7 @@ use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public, update_purchase, update_purchase_item};
+use household_postgres::household_access;
 
 #[derive(Debug, Clone)]
 pub struct PersistSavePurchaseItemEdits {
@@ -79,7 +80,6 @@ pub async fn persist_save_purchase_item_edits<
     (*pooled)
         .transaction::<Vec<String>, SavePurchaseItemEditsPersistenceError, _>(async move |conn| {
             use public::accounting_periods::dsl as periods;
-            use public::household_members::dsl as members;
             use public::purchase_items::dsl as items_table;
             use public::purchase_member_burdens::dsl as burdens;
             use public::purchase_payment_funding_snapshots::dsl as payment_snapshots;
@@ -97,14 +97,8 @@ pub async fn persist_save_purchase_item_edits<
             if purchase_owner != household_id {
                 return Err(SavePurchaseItemEditsPersistenceError::HouseholdMismatch);
             }
-            let actor_role = members::household_members
-                .filter(members::household_id.eq(household_id))
-                .filter(members::member_id.eq(actor_id))
-                .filter(members::left_at.is_null())
-                .select(members::role)
-                .first::<String>(conn)
-                .await
-                .optional()?;
+            let actor_role =
+                household_access::active_member_role(conn, household_id, actor_id).await?;
             if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                 return Err(SavePurchaseItemEditsPersistenceError::MemberNotFound);
             }

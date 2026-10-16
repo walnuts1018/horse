@@ -2,11 +2,10 @@ use async_graphql::{Context, ID, InputObject, Interface, Result, SimpleObject, U
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_application::close_period::{ClosePeriodError, ClosePeriodWorkflowError};
 use bookkeeping_application::settlement_query::GetSettlementQuery;
-use bookkeeping_postgres::{
-    close_period as postgres_close_period, loan_balance_query as postgres_loan_balances,
-    settlement_query as postgres_settlement,
-};
+use bookkeeping_postgres::close_period as postgres_close_period;
+use bookkeeping_postgres::loan_balance_query as postgres_loan_balances;
 use chrono::{DateTime as ChronoDateTime, Utc};
+use cross_context_postgres::policy_settlement as postgres_settlement;
 use horse_postgres_common::PgPool;
 use household_postgres::household_access;
 use uuid::Uuid;
@@ -114,7 +113,7 @@ pub async fn close_period(ctx: &Context<'_>, input: ClosePeriodInput) -> Result<
         Ok(value) => value,
         Err(_) => return Ok(ClosePeriodResult::UserError(bad_input())),
     };
-    match postgres_close_period::close_period(
+    match postgres_settlement::close_period(
         ctx.data::<PgPool>()?,
         &household_id.to_string(),
         &actor.0.to_string(),

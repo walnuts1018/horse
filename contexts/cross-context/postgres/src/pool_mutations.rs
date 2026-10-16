@@ -7,6 +7,7 @@ use diesel::{
     result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use crate::{PgPool, create_household, schema::public};
@@ -55,16 +56,15 @@ pub async fn persist_create_pool(
                 .await
                 .optional()?
                 .ok_or(CreatePoolMutationError::HouseholdNotFound)?;
-            let actor_is_active = public::household_members::table
+            let role = public::household_members::table
                 .filter(public::household_members::household_id.eq(household_id))
                 .filter(public::household_members::member_id.eq(actor_id))
                 .filter(public::household_members::left_at.is_null())
-                .select(public::household_members::member_id)
-                .first::<Uuid>(&mut *conn)
+                .select(public::household_members::role)
+                .first::<String>(&mut *conn)
                 .await
-                .optional()?
-                .is_some();
-            if !actor_is_active {
+                .optional()?;
+            if authorize(role.as_deref(), Operation::FinancialData).is_err() {
                 return Err(CreatePoolMutationError::MemberNotFound);
             }
             diesel::insert_into(public::pools::table)
@@ -142,7 +142,7 @@ pub async fn persist_create_pool(
                 &mut *conn,
                 household_id,
                 pool_id,
-                revision,
+                version,
                 actor_id,
                 Utc::now(),
                 bookkeeping_application::ui_changes::pool_created(),

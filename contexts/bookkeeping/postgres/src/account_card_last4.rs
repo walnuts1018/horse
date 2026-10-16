@@ -49,8 +49,6 @@ pub async fn persist_set_card_last4(
     (*pooled)
         .transaction::<PersistedSetCardLast4, SetCardLast4PersistenceError, _>(async move |conn| {
             use public::accounts::dsl as accounts;
-            use public::household_members::dsl as members;
-            use public::households::dsl as households;
 
             let row = accounts::accounts
                 .filter(accounts::id.eq(account_id))
@@ -67,14 +65,10 @@ pub async fn persist_set_card_last4(
                 .optional()?
                 .ok_or(SetCardLast4PersistenceError::AccountNotFound)?;
 
-            let actor_role = members::household_members
-                .filter(members::household_id.eq(row.0))
-                .filter(members::member_id.eq(actor_id))
-                .filter(members::left_at.is_null())
-                .select(members::role)
-                .first::<String>(&mut *conn)
-                .await
-                .optional()?;
+            let actor_role = household_postgres::household_access::active_member_role(
+                &mut *conn, row.0, actor_id,
+            )
+            .await?;
             if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
                 return Err(SetCardLast4PersistenceError::AccountNotFound);
             }
@@ -106,14 +100,13 @@ pub async fn persist_set_card_last4(
                     return Err(SetCardLast4PersistenceError::AccountNotFound);
                 }
 
-                households::households
-                    .filter(households::id.eq(row.0))
-                    .for_update()
-                    .select(households::id)
-                    .first::<Uuid>(&mut *conn)
-                    .await
-                    .optional()?
-                    .ok_or(SetCardLast4PersistenceError::AccountNotFound)?;
+                if !household_postgres::household_access::lock_household_for_update(
+                    &mut *conn, row.0,
+                )
+                .await?
+                {
+                    return Err(SetCardLast4PersistenceError::AccountNotFound);
+                }
 
                 horse_postgres_common::insert_ui_change(
                     &mut *conn,

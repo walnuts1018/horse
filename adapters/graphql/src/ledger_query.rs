@@ -107,7 +107,7 @@ pub async fn graphql_ledger(
             }
             "transfer" | "TRANSFER" => {
                 let projection =
-                    bookkeeping_postgres::financial_command_result::load_transfer_ledger_entry_result(
+                    cross_context_postgres::financial_command_result::load_transfer_ledger_entry_result(
                         ctx.data::<PgPool>()?,
                         household_id,
                         id,

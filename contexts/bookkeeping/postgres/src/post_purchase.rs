@@ -259,20 +259,17 @@ pub async fn persist_post_purchase_in_transaction(
     )
     .await?;
 
-    use public::household_members::dsl as members;
     use public::idempotency_records::dsl as idem;
     use public::journals::dsl as journals;
     use public::ledger_entries::dsl as ledger;
     use public::purchases::dsl as purchases;
 
-    let actor_role = members::household_members
-        .filter(members::household_id.eq(household_id))
-        .filter(members::member_id.eq(actor_id))
-        .filter(members::left_at.is_null())
-        .select(members::role)
-        .first::<String>(&mut *conn)
-        .await
-        .optional()?;
+    let actor_role = household_postgres::household_access::active_member_role(
+        &mut *conn,
+        household_id,
+        actor_id,
+    )
+    .await?;
     if authorize(actor_role.as_deref(), Operation::FinancialData).is_err() {
         return Err(PostPurchasePersistenceError::HouseholdMismatch);
     }
@@ -662,7 +659,7 @@ async fn validate_household_references(
     purchase_id: Uuid,
     decision: &PostPurchaseDecision,
 ) -> Result<(), PostPurchasePersistenceError> {
-    use public::{accounts, household_members, pools, purchase_items};
+    use public::{accounts, pools, purchase_items};
 
     let mut pool_ids = BTreeSet::new();
     let mut account_ids = BTreeSet::new();
@@ -715,12 +712,15 @@ async fn validate_household_references(
     {
         return Err(PostPurchasePersistenceError::HouseholdMismatch);
     }
-    let found_members = household_members::table
-        .filter(household_members::household_id.eq(household_id))
-        .filter(household_members::member_id.eq_any(member_ids.iter().copied()))
-        .select(household_members::member_id)
-        .load::<Uuid>(conn)
-        .await?;
+    let member_ids = member_ids.into_iter().collect::<Vec<_>>();
+    let found_members = household_postgres::household_access::member_ids_for_household(
+        conn,
+        household_id,
+        &member_ids,
+        false,
+        false,
+    )
+    .await?;
     if found_members.len() != member_ids.len() {
         return Err(PostPurchasePersistenceError::HouseholdMismatch);
     }

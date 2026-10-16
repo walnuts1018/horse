@@ -9,11 +9,95 @@ use bookkeeping_application::settlement_preview::{PreviewFundingRuleKind, Previe
 use bookkeeping_domain::SettlementPolicy;
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
 use diesel::{
-    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, dsl::min,
-    result::Error as DieselError,
+    ExpressionMethods, OptionalExtension, QueryDsl, dsl::min, result::Error as DieselError,
 };
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
+
+pub type FundingScheduleRow = (
+    Uuid,
+    Uuid,
+    Uuid,
+    i64,
+    String,
+    NaiveDate,
+    Option<NaiveDate>,
+    bool,
+    DateTime<Utc>,
+);
+pub type HouseholdFundingScheduleRow = (
+    Uuid,
+    Uuid,
+    Uuid,
+    Uuid,
+    i64,
+    String,
+    NaiveDate,
+    Option<NaiveDate>,
+    bool,
+);
+pub type FundingRuleRow = (Uuid, i32, Option<Uuid>, Option<String>);
+pub type FundingShareRow = (Uuid, i32, Uuid, i64);
+
+#[async_trait::async_trait]
+pub trait PolicySettlementData: Send {
+    async fn household_members_for_settlement(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+    ) -> Result<Vec<(Uuid, String, Option<DateTime<Utc>>)>, DieselError>;
+
+    async fn household_members_present_after(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+        period_start_utc: DateTime<Utc>,
+    ) -> Result<Vec<(Uuid, String)>, DieselError>;
+
+    async fn schedules_for_period(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> Result<Vec<FundingScheduleRow>, DieselError>;
+
+    async fn schedules_overlapping(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_ids: &[Uuid],
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> Result<Vec<HouseholdFundingScheduleRow>, DieselError>;
+
+    async fn earliest_schedule_start(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+    ) -> Result<Option<NaiveDate>, DieselError>;
+
+    async fn rules_and_shares(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+    ) -> Result<(Vec<FundingRuleRow>, Vec<FundingShareRow>), DieselError>;
+
+    async fn historical_rules(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+        pool_ids: &[Uuid],
+        versions: &[i32],
+    ) -> Result<Vec<FundingRuleRow>, DieselError>;
+
+    async fn rule_owner(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        household_id: Uuid,
+        pool_id: Uuid,
+        version: i32,
+    ) -> Result<Option<Uuid>, DieselError>;
+}
 
 use crate::{PgPool, schema::public};
 
@@ -43,6 +127,7 @@ pub async fn calculate_preview(
     pool: &PgPool,
     household_id: &str,
     period: &str,
+    policy: &mut impl PolicySettlementData,
 ) -> Result<
     Vec<bookkeeping_application::settlement_preview::PreviewAmount>,
     SettlementPreviewPersistenceError,
@@ -51,13 +136,14 @@ pub async fn calculate_preview(
         .get()
         .await
         .map_err(|error| SettlementPreviewPersistenceError::Pool(error.to_string()))?;
-    calculate_preview_with_connection(&mut pooled, household_id, period).await
+    calculate_preview_with_connection(&mut pooled, household_id, period, policy).await
 }
 
 pub async fn calculate_preview_with_connection(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: &str,
     period: &str,
+    policy: &mut impl PolicySettlementData,
 ) -> Result<
     Vec<bookkeeping_application::settlement_preview::PreviewAmount>,
     SettlementPreviewPersistenceError,
@@ -66,21 +152,11 @@ pub async fn calculate_preview_with_connection(
         .map_err(|_| SettlementPreviewPersistenceError::InvalidUuid)?;
     let (target_start, _) = period_bounds(period)?;
 
-    use public::household_members::dsl as household_members;
-    use public::members::dsl as members;
     use public::settlement_run_lines::dsl as lines;
     use public::settlement_runs::dsl as runs;
 
-    let member_rows = household_members::household_members
-        .inner_join(members::members.on(members::id.eq(household_members::member_id)))
-        .filter(household_members::household_id.eq(household_id))
-        .order((household_members::joined_at, household_members::member_id))
-        .select((
-            household_members::member_id,
-            members::display_name,
-            household_members::left_at,
-        ))
-        .load::<(Uuid, String, Option<DateTime<Utc>>)>(conn)
+    let member_rows = policy
+        .household_members_for_settlement(conn, household_id)
         .await?;
     let members_data = member_rows
         .iter()
@@ -123,7 +199,7 @@ pub async fn calculate_preview_with_connection(
         None
     };
 
-    let earliest = earliest_period(conn, household_id, target_start).await?;
+    let earliest = earliest_period(conn, household_id, target_start, policy).await?;
     let first_period = previous_period
         .map(first_of_next_month)
         .or(earliest)
@@ -136,7 +212,7 @@ pub async fn calculate_preview_with_connection(
         let month_end = first_of_next_month(month);
         let period = format!("{:04}-{:02}", month.year(), month.month());
         let (obligations, schedules, adjustments, purchases, funding_rules) =
-            load_month(conn, household_id, month, month_end, &member_index).await?;
+            load_month(conn, household_id, month, month_end, &member_index, policy).await?;
         let input = PreviewInput {
             period: period.clone(),
             members: members_data.clone(),
@@ -164,9 +240,9 @@ async fn earliest_period(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     target_start: NaiveDate,
+    policy: &mut impl PolicySettlementData,
 ) -> Result<Option<NaiveDate>, SettlementPreviewPersistenceError> {
     use public::funding_obligations::dsl as obligations;
-    use public::funding_schedules::dsl as schedules;
     use public::purchases::dsl as purchases;
 
     let obligation_period = obligations::funding_obligations
@@ -174,11 +250,7 @@ async fn earliest_period(
         .select(min(obligations::period_start))
         .first::<Option<NaiveDate>>(conn)
         .await?;
-    let schedule_start = schedules::funding_schedules
-        .filter(schedules::household_id.eq(household_id))
-        .select(min(schedules::starts_on))
-        .first::<Option<NaiveDate>>(conn)
-        .await?;
+    let schedule_start = policy.earliest_schedule_start(conn, household_id).await?;
     let purchase_start = purchases::purchases
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::status.eq("POSTED"))
@@ -199,6 +271,7 @@ async fn load_month(
     start: NaiveDate,
     end: NaiveDate,
     member_index: &BTreeMap<Uuid, usize>,
+    policy: &mut impl PolicySettlementData,
 ) -> Result<
     (
         Vec<PreviewObligation>,
@@ -210,7 +283,6 @@ async fn load_month(
     SettlementPreviewPersistenceError,
 > {
     use public::funding_obligations::dsl as obligations;
-    use public::funding_schedules::dsl as schedules;
     use public::settlement_adjustments::dsl as adjustments;
 
     let obligation_rows = obligations::funding_obligations
@@ -241,48 +313,8 @@ async fn load_month(
         })
         .collect::<Result<Vec<_>, SettlementPreviewPersistenceError>>()?;
 
-    let schedule_rows = schedules::funding_schedules
-        .filter(schedules::household_id.eq(household_id))
-        .filter(schedules::starts_on.lt(end))
-        .filter(
-            schedules::ends_on
-                .is_null()
-                .or(schedules::ends_on.ge(start)),
-        )
-        .filter(
-            schedules::active
-                .eq(true)
-                .or(schedules::ends_on.is_not_null()),
-        )
-        .order((
-            schedules::member_id,
-            schedules::pool_id,
-            schedules::starts_on,
-            schedules::created_at,
-            schedules::id,
-        ))
-        .select((
-            schedules::id,
-            schedules::member_id,
-            schedules::pool_id,
-            schedules::amount_yen,
-            schedules::cadence,
-            schedules::starts_on,
-            schedules::ends_on,
-            schedules::active,
-            schedules::created_at,
-        ))
-        .load::<(
-            Uuid,
-            Uuid,
-            Uuid,
-            i64,
-            String,
-            NaiveDate,
-            Option<NaiveDate>,
-            bool,
-            DateTime<Utc>,
-        )>(conn)
+    let schedule_rows = policy
+        .schedules_for_period(conn, household_id, start, end)
         .await?;
     let schedule_data = schedule_rows
         .into_iter()
@@ -335,7 +367,7 @@ async fn load_month(
         .collect::<Result<Vec<_>, SettlementPreviewPersistenceError>>()?;
 
     let (purchase_data, funding_rules) =
-        load_purchase_expenses(conn, household_id, start, end).await?;
+        load_purchase_expenses(conn, household_id, start, end, policy).await?;
     Ok((
         obligation_data,
         schedule_data,
@@ -350,9 +382,8 @@ async fn load_purchase_expenses(
     household_id: Uuid,
     start: NaiveDate,
     end: NaiveDate,
+    policy: &mut impl PolicySettlementData,
 ) -> Result<(Vec<PreviewPurchase>, Vec<PreviewFundingRule>), SettlementPreviewPersistenceError> {
-    use public::pool_funding_rules::dsl as funding_rules;
-    use public::pool_funding_shares::dsl as funding_shares;
     use public::purchase_items::dsl as items;
     use public::purchase_member_burdens::dsl as burdens;
     use public::purchase_payment_funding_snapshots::dsl as snapshots;
@@ -432,28 +463,10 @@ async fn load_purchase_expenses(
         .load::<(Uuid, Uuid, Uuid, Uuid, i64, i32, i64)>(conn)
         .await?;
 
-    let rule_rows = funding_rules::pool_funding_rules
-        .filter(funding_rules::household_id.eq(household_id))
-        .select((
-            funding_rules::pool_id,
-            funding_rules::version,
-            funding_rules::owner_member_id,
-        ))
-        .load::<(Uuid, i32, Option<Uuid>)>(conn)
-        .await?;
-    let share_rows = funding_shares::pool_funding_shares
-        .filter(funding_shares::household_id.eq(household_id))
-        .select((
-            funding_shares::pool_id,
-            funding_shares::version,
-            funding_shares::member_id,
-            funding_shares::weight,
-        ))
-        .load::<(Uuid, i32, Uuid, i64)>(conn)
-        .await?;
+    let (rule_rows, share_rows) = policy.rules_and_shares(conn, household_id).await?;
     let historical_rules = rule_rows
         .into_iter()
-        .map(|(pool, version, owner)| ((pool, version), owner))
+        .map(|(pool, version, owner, _)| ((pool, version), owner))
         .collect::<BTreeMap<_, _>>();
     let historical_shares = share_rows
         .into_iter()

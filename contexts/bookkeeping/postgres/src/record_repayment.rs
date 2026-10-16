@@ -145,13 +145,11 @@ pub async fn persist_record_repayment(
                 decision.accounting_period.revision(),
             )
             .await?;
-            public::households::table
-                .filter(public::households::id.eq(household_id))
-                .select(public::households::id)
-                .first::<Uuid>(&mut *conn)
-                .await
-                .optional()?
-                .ok_or(RecordRepaymentPersistenceError::HouseholdNotFound)?;
+            if !household_postgres::household_access::household_exists(&mut *conn, household_id)
+                .await?
+            {
+                return Err(RecordRepaymentPersistenceError::HouseholdNotFound);
+            }
             validate_active_members(&mut *conn, household_id, actor_id, &decision).await?;
             let inserted = diesel::insert_into(idem::idempotency_records)
                 .values((
@@ -387,30 +385,23 @@ pub async fn find_record_repayment_replay(
         .get()
         .await
         .map_err(|error| RecordRepaymentPersistenceError::Pool(error.to_string()))?;
-    let actor_role = public::household_members::table
-        .filter(public::household_members::household_id.eq(household_id))
-        .filter(public::household_members::member_id.eq(actor_id))
-        .filter(public::household_members::left_at.is_null())
-        .select(public::household_members::role)
-        .first::<String>(&mut *conn)
-        .await
-        .optional()?
-        .ok_or(RecordRepaymentPersistenceError::MemberNotFound)?;
+    let actor_role =
+        household_postgres::household_access::active_member_role(&mut conn, household_id, actor_id)
+            .await?
+            .ok_or(RecordRepaymentPersistenceError::MemberNotFound)?;
     horse_authorization::authorize(
         Some(&actor_role),
         horse_authorization::Operation::FinancialData,
     )
     .map_err(|_| RecordRepaymentPersistenceError::MemberNotFound)?;
     for member_id in [actor_id, from_member_id, to_member_id] {
-        public::household_members::table
-            .filter(public::household_members::household_id.eq(household_id))
-            .filter(public::household_members::member_id.eq(member_id))
-            .filter(public::household_members::left_at.is_null())
-            .select(public::household_members::member_id)
-            .first::<Uuid>(&mut *conn)
-            .await
-            .optional()?
-            .ok_or(RecordRepaymentPersistenceError::MemberNotFound)?;
+        household_postgres::household_access::active_member_role(
+            &mut conn,
+            household_id,
+            member_id,
+        )
+        .await?
+        .ok_or(RecordRepaymentPersistenceError::MemberNotFound)?;
     }
     let existing = public::idempotency_records::table
         .filter(public::idempotency_records::household_id.eq(household_id))
@@ -485,29 +476,21 @@ async fn validate_active_members(
         .map(|id| parse_uuid(id.as_str(), "borrower_id"))
         .transpose()?
         .ok_or(RecordRepaymentPersistenceError::InvalidDecision)?;
-    let actor_role = public::household_members::table
-        .filter(public::household_members::household_id.eq(household_id))
-        .filter(public::household_members::member_id.eq(actor_id))
-        .filter(public::household_members::left_at.is_null())
-        .select(public::household_members::role)
-        .first::<String>(conn)
-        .await
-        .optional()?
-        .ok_or(RecordRepaymentPersistenceError::MemberNotFound)?;
+    let actor_role = household_postgres::household_access::active_member_role(
+        &mut *conn,
+        household_id,
+        actor_id,
+    )
+    .await?
+    .ok_or(RecordRepaymentPersistenceError::MemberNotFound)?;
     horse_authorization::authorize(
         Some(&actor_role),
         horse_authorization::Operation::FinancialData,
     )
     .map_err(|_| RecordRepaymentPersistenceError::MemberNotFound)?;
     for member_id in [actor_id, borrower, lender] {
-        public::household_members::table
-            .filter(public::household_members::household_id.eq(household_id))
-            .filter(public::household_members::member_id.eq(member_id))
-            .filter(public::household_members::left_at.is_null())
-            .select(public::household_members::member_id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
+        household_postgres::household_access::active_member_role(conn, household_id, member_id)
+            .await?
             .ok_or(RecordRepaymentPersistenceError::MemberNotFound)?;
     }
     Ok(())
@@ -835,21 +818,10 @@ async fn validate_members_and_accounts(
     actor_id: Uuid,
     decision: &RecordRepaymentDecision,
 ) -> Result<(), RecordRepaymentPersistenceError> {
-    use public::household_members::dsl as members;
-    members::household_members
-        .filter(members::household_id.eq(household_id))
-        .filter(members::member_id.eq(actor_id))
-        .select(members::member_id)
-        .first::<Uuid>(conn)
-        .await?;
+    let mut member_ids = BTreeSet::from([actor_id]);
     for line in &decision.journal_lines {
         if let Some(id) = &line.member_id {
-            members::household_members
-                .filter(members::household_id.eq(household_id))
-                .filter(members::member_id.eq(parse_uuid(id.as_str(), "member_id")?))
-                .select(members::member_id)
-                .first::<Uuid>(conn)
-                .await?;
+            member_ids.insert(parse_uuid(id.as_str(), "member_id")?);
         }
         if let Some(id) = &line.account_id {
             public::accounts::table
@@ -869,15 +841,22 @@ async fn validate_members_and_accounts(
         }
     }
     for adjustment in &decision.settlement_adjustments {
-        members::household_members
-            .filter(members::household_id.eq(household_id))
-            .filter(members::member_id.eq(parse_uuid(
-                adjustment.member_id.as_str(),
-                "adjustment member_id",
-            )?))
-            .select(members::member_id)
-            .first::<Uuid>(conn)
-            .await?;
+        member_ids.insert(parse_uuid(
+            adjustment.member_id.as_str(),
+            "adjustment member_id",
+        )?);
+    }
+    let expected = member_ids.into_iter().collect::<Vec<_>>();
+    let found = household_postgres::household_access::member_ids_for_household(
+        conn,
+        household_id,
+        &expected,
+        false,
+        false,
+    )
+    .await?;
+    if found.len() != expected.len() {
+        return Err(RecordRepaymentPersistenceError::MemberNotFound);
     }
     Ok(())
 }

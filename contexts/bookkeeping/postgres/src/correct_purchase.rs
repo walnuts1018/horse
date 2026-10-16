@@ -113,6 +113,7 @@ pub async fn correct_purchase(
     pool: &PgPool,
     request: CorrectPurchaseRequest,
     evidence: &impl EvidenceOperations,
+    policy: &mut impl super::settlement_preview::PolicySettlementData,
 ) -> Result<PersistedCorrectPurchase, CorrectPurchasePersistenceError> {
     let household_id = parse_uuid(&request.household_id, "household_id")?;
     let purchase_id = parse_uuid(&request.purchase_id, "purchase_id")?;
@@ -145,6 +146,7 @@ pub async fn correct_purchase(
             let mut operations = PgCorrectPurchaseOperations {
                 conn,
                 evidence,
+                policy,
                 request,
                 household_id,
                 purchase_id,
@@ -173,9 +175,10 @@ pub async fn correct_purchase(
         .await
 }
 
-struct PgCorrectPurchaseOperations<'a, E: EvidenceOperations> {
+struct PgCorrectPurchaseOperations<'a, E: EvidenceOperations, P> {
     conn: &'a mut diesel_async::AsyncPgConnection,
     evidence: &'a E,
+    policy: &'a mut P,
     request: CorrectPurchaseRequest,
     household_id: Uuid,
     purchase_id: Uuid,
@@ -185,9 +188,9 @@ struct PgCorrectPurchaseOperations<'a, E: EvidenceOperations> {
     source_observation: Option<LoadedStatementRefund>,
 }
 
-impl<E: EvidenceOperations>
+impl<E: EvidenceOperations, P: super::settlement_preview::PolicySettlementData>
     bookkeeping_application::correct_purchase_workflow::CorrectPurchaseOperations
-    for PgCorrectPurchaseOperations<'_, E>
+    for PgCorrectPurchaseOperations<'_, E, P>
 {
     type Error = CorrectPurchasePersistenceError;
 
@@ -621,6 +624,7 @@ impl<E: EvidenceOperations>
             &mut *self.conn,
             self.persist_input.clone(),
             decision,
+            self.policy,
         )
         .await?;
         if let (Some(source_document_id), Some(source_reference)) = (
@@ -673,18 +677,15 @@ pub async fn link_statement_refund_correction(
 
     (*pooled)
         .transaction::<String, CorrectPurchasePersistenceError, _>(async |conn| {
-            use public::household_members::dsl as members;
             use public::purchase_corrections::dsl as corrections;
 
-            let role = members::household_members
-                .filter(members::household_id.eq(household_id))
-                .filter(members::member_id.eq(actor_id))
-                .filter(members::left_at.is_null())
-                .select(members::role)
-                .first::<String>(&mut *conn)
-                .await
-                .optional()?
-                .ok_or(CorrectPurchasePersistenceError::MemberNotFound)?;
+            let role = household_postgres::household_access::active_member_role(
+                &mut *conn,
+                household_id,
+                actor_id,
+            )
+            .await?
+            .ok_or(CorrectPurchasePersistenceError::MemberNotFound)?;
             horse_authorization::authorize(
                 Some(&role),
                 horse_authorization::Operation::FinancialData,
@@ -890,6 +891,7 @@ async fn persist_correct_purchase_in_transaction(
     conn: &mut diesel_async::AsyncPgConnection,
     input: PersistCorrectPurchase,
     decision: CorrectPurchaseDecision,
+    policy: &mut impl super::settlement_preview::PolicySettlementData,
 ) -> Result<PersistedCorrectPurchase, CorrectPurchasePersistenceError> {
     if input.idempotency_key.is_empty() || input.idempotency_key.len() > 200 {
         return Err(CorrectPurchasePersistenceError::InvalidIdempotencyKey);
@@ -1142,9 +1144,15 @@ async fn persist_correct_purchase_in_transaction(
             .await?;
     }
 
-    let funding_effects =
-        load_correction_funding_effects(&mut *conn, household_id, purchase_id, item_id, &decision)
-            .await?;
+    let funding_effects = load_correction_funding_effects(
+        &mut *conn,
+        household_id,
+        purchase_id,
+        item_id,
+        &decision,
+        policy,
+    )
+    .await?;
     persist_correction_member_burdens(
         &mut *conn,
         household_id,
@@ -1198,13 +1206,10 @@ async fn persist_correct_purchase_in_transaction(
         .execute(&mut *conn)
         .await?;
 
-    use public::households::dsl as households;
-    households::households
-        .filter(households::id.eq(household_id))
-        .for_update()
-        .select(households::id)
-        .first::<Uuid>(&mut *conn)
-        .await?;
+    household_postgres::household_access::lock_household_for_update(&mut *conn, household_id)
+        .await?
+        .then_some(())
+        .ok_or(DieselError::NotFound)?;
     horse_postgres_common::insert_ui_change(
         &mut *conn,
         household_id,
@@ -1435,17 +1440,10 @@ async fn validate_actor_membership(
     household_id: Uuid,
     actor_id: Uuid,
 ) -> Result<(), CorrectPurchasePersistenceError> {
-    use public::household_members::dsl as members;
-
-    let role = members::household_members
-        .filter(members::household_id.eq(household_id))
-        .filter(members::member_id.eq(actor_id))
-        .filter(members::left_at.is_null())
-        .select(members::role)
-        .first::<String>(conn)
-        .await
-        .optional()?
-        .ok_or(CorrectPurchasePersistenceError::HouseholdMismatch)?;
+    let role =
+        household_postgres::household_access::active_member_role(conn, household_id, actor_id)
+            .await?
+            .ok_or(CorrectPurchasePersistenceError::HouseholdMismatch)?;
     horse_authorization::authorize(Some(&role), horse_authorization::Operation::FinancialData)
         .map_err(|_| CorrectPurchasePersistenceError::HouseholdMismatch)?;
     Ok(())
@@ -1529,7 +1527,7 @@ async fn validate_references(
     purchase_id: Uuid,
     decision: &CorrectPurchaseDecision,
 ) -> Result<(), CorrectPurchasePersistenceError> {
-    use public::{accounts, household_members, pools, purchase_items};
+    use public::{accounts, pools, purchase_items};
 
     let mut account_ids = BTreeSet::new();
     let mut pool_ids = BTreeSet::new();
@@ -1549,13 +1547,14 @@ async fn validate_references(
         CorrectionTarget::Item(id) => Some(parse_uuid(id.as_str(), "item_id")?),
     };
 
-    let members = household_members::table
-        .filter(household_members::household_id.eq(household_id))
-        .filter(household_members::member_id.eq(actor_id))
-        .filter(household_members::left_at.is_null())
-        .select(household_members::member_id)
-        .load::<Uuid>(conn)
-        .await?;
+    let members = household_postgres::household_access::member_ids_for_household(
+        conn,
+        household_id,
+        &[actor_id],
+        true,
+        false,
+    )
+    .await?;
     if members.len() != 1 {
         return Err(CorrectPurchasePersistenceError::HouseholdMismatch);
     }
@@ -1598,11 +1597,9 @@ async fn load_correction_funding_effects(
     purchase_id: Uuid,
     _item_id: Option<Uuid>,
     decision: &CorrectPurchaseDecision,
+    policy: &mut impl super::settlement_preview::PolicySettlementData,
 ) -> Result<CorrectionFundingEffects, CorrectPurchasePersistenceError> {
-    use public::{
-        pool_funding_rules, purchase_member_burdens, purchase_payment_funding_snapshots,
-        purchase_payments,
-    };
+    use public::{purchase_member_burdens, purchase_payment_funding_snapshots, purchase_payments};
 
     let burden_rows = purchase_member_burdens::table
         .filter(purchase_member_burdens::household_id.eq(household_id))
@@ -1727,17 +1724,13 @@ async fn load_correction_funding_effects(
         .iter()
         .map(|(_, version)| *version)
         .collect::<BTreeSet<_>>();
-    let rule_rows = pool_funding_rules::table
-        .filter(pool_funding_rules::household_id.eq(household_id))
-        .filter(pool_funding_rules::pool_id.eq_any(pool_ids))
-        .filter(pool_funding_rules::version.eq_any(versions))
-        .select((
-            pool_funding_rules::pool_id,
-            pool_funding_rules::version,
-            pool_funding_rules::owner_member_id,
-            pool_funding_rules::settlement_policy,
-        ))
-        .load::<(Uuid, i32, Option<Uuid>, Option<String>)>(conn)
+    let rule_rows = policy
+        .historical_rules(
+            conn,
+            household_id,
+            &pool_ids.into_iter().collect::<Vec<_>>(),
+            &versions.into_iter().collect::<Vec<_>>(),
+        )
         .await?;
     let historical_rules = rule_rows
         .into_iter()

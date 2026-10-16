@@ -57,6 +57,12 @@ pub trait UpdatePurchaseItemReferenceData:
         household_id: Uuid,
         tag_ids: Vec<Uuid>,
     ) -> impl Future<Output = Result<Vec<Uuid>, DieselError>> + Send;
+
+    fn persist_product_learning(
+        &mut self,
+        conn: &mut diesel_async::AsyncPgConnection,
+        context: ProductLearningRequest,
+    ) -> impl Future<Output = Result<(), UpdatePurchaseItemPersistenceError>> + Send;
 }
 
 pub(crate) type BurdenSnapshot = (Uuid, Uuid, Uuid, i32, i64, Option<String>, String);
@@ -74,17 +80,17 @@ pub(crate) struct PostedAccountingSync<'a> {
     pub(crate) payments_changed: bool,
 }
 
-struct ProductLearningContext<'a> {
-    household_id: Uuid,
-    actor_id: Uuid,
-    purchase_id: Uuid,
-    item_id: Uuid,
-    raw_name: &'a str,
-    previous_variant_id: Option<Uuid>,
-    variant_id: Option<Uuid>,
-    variant_changed: bool,
-    merchant: &'a str,
-    learning: Option<&'a ProductLearning>,
+pub struct ProductLearningRequest {
+    pub household_id: Uuid,
+    pub actor_id: Uuid,
+    pub purchase_id: Uuid,
+    pub item_id: Uuid,
+    pub raw_name: String,
+    pub previous_variant_id: Option<Uuid>,
+    pub variant_id: Option<Uuid>,
+    pub variant_changed: bool,
+    pub merchant: String,
+    pub learning: Option<ProductLearning>,
 }
 
 #[derive(Debug, Clone)]
@@ -165,8 +171,6 @@ pub async fn persist_update_purchase_item_in_transaction<C: UpdatePurchaseItemRe
 ) -> Result<PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError> {
     let item_id = parse_uuid(&command.item_id, "item_id")?;
     use public::accounting_periods::dsl as periods;
-    use public::household_members::dsl as members;
-    use public::households::dsl as households;
     use public::purchase_items::dsl as items;
     use public::purchases::dsl as purchases;
 
@@ -211,27 +215,13 @@ pub async fn persist_update_purchase_item_in_transaction<C: UpdatePurchaseItemRe
         return Err(UpdatePurchaseItemPersistenceError::AccountingPeriodClosed);
     }
 
-    let default_version = households::households
-        .filter(households::id.eq(household_id))
-        .for_share()
-        .select(households::default_allocation_version)
-        .first::<i64>(&mut *conn)
-        .await
-        .optional()?
+    let default_version =
+        household_postgres::household_access::default_allocation_version_for_share(
+            &mut *conn,
+            household_id,
+        )
+        .await?
         .ok_or(UpdatePurchaseItemPersistenceError::HouseholdMismatch)?;
-    let active_member = members::household_members
-        .filter(members::household_id.eq(household_id))
-        .filter(members::member_id.eq(actor_id))
-        .filter(members::left_at.is_null())
-        .select(members::member_id)
-        .first::<Uuid>(&mut *conn)
-        .await
-        .optional()?
-        .is_some();
-    if !active_member {
-        return Err(UpdatePurchaseItemPersistenceError::MemberNotFound);
-    }
-
     let purchase = purchases::purchases
         .filter(purchases::id.eq(observed.1))
         .for_update()
@@ -371,7 +361,8 @@ pub async fn persist_update_purchase_item_in_transaction<C: UpdatePurchaseItemRe
         field_revisions: revisions(locked.1)?,
         allocations: current_allocations,
     };
-    let default_basis = load_default_basis(&mut *conn, household_id, default_version).await?;
+    let default_basis =
+        load_default_basis(&mut *conn, household_id, default_version, reference_data).await?;
     let target_category_id = match &command.category_id {
         OptionalValueChange::Unchanged => locked.4,
         OptionalValueChange::Set(id) => Some(parse_uuid(id, "category_id")?),
@@ -506,22 +497,23 @@ pub async fn persist_update_purchase_item_in_transaction<C: UpdatePurchaseItemRe
         .execute(&mut *conn)
         .await?;
 
-    persist_product_learning(
-        &mut *conn,
-        ProductLearningContext {
-            household_id,
-            actor_id,
-            purchase_id: observed.1,
-            item_id,
-            raw_name: &locked.2,
-            previous_variant_id: locked.5,
-            variant_id: product_variant_id,
-            variant_changed,
-            merchant: &purchase.3,
-            learning: decision.product_learning.as_ref(),
-        },
-    )
-    .await?;
+    reference_data
+        .persist_product_learning(
+            &mut *conn,
+            ProductLearningRequest {
+                household_id,
+                actor_id,
+                purchase_id: observed.1,
+                item_id,
+                raw_name: locked.2.clone(),
+                previous_variant_id: locked.5,
+                variant_id: product_variant_id,
+                variant_changed,
+                merchant: purchase.3.clone(),
+                learning: decision.product_learning.clone(),
+            },
+        )
+        .await?;
 
     if let Some(payments) = adjusted_payments {
         diesel::delete(
@@ -638,36 +630,29 @@ async fn require_member(
     household_id: Uuid,
     actor_id: Uuid,
 ) -> Result<(), UpdatePurchaseItemPersistenceError> {
-    let exists = public::household_members::dsl::household_members
-        .filter(public::household_members::dsl::household_id.eq(household_id))
-        .filter(public::household_members::dsl::member_id.eq(actor_id))
-        .filter(public::household_members::dsl::left_at.is_null())
-        .select(public::household_members::dsl::member_id)
-        .first::<Uuid>(conn)
-        .await
-        .optional()?
-        .is_some();
-    if exists {
+    let role =
+        household_postgres::household_access::active_member_role(conn, household_id, actor_id)
+            .await?;
+    if horse_authorization::authorize(
+        role.as_deref(),
+        horse_authorization::Operation::FinancialData,
+    )
+    .is_ok()
+    {
         Ok(())
     } else {
         Err(UpdatePurchaseItemPersistenceError::MemberNotFound)
     }
 }
 
-async fn load_default_basis(
+async fn load_default_basis<C: UpdatePurchaseItemReferenceData>(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
     version: i64,
+    reference_data: &mut C,
 ) -> Result<AllocationBasis, UpdatePurchaseItemPersistenceError> {
-    let weights = public::allocation_defaults::dsl::allocation_defaults
-        .filter(public::allocation_defaults::dsl::household_id.eq(household_id))
-        .filter(public::allocation_defaults::dsl::version.eq(version))
-        .order(public::allocation_defaults::dsl::pool_id)
-        .select((
-            public::allocation_defaults::dsl::pool_id,
-            public::allocation_defaults::dsl::weight,
-        ))
-        .load::<(Uuid, i64)>(conn)
+    let weights = reference_data
+        .load_default_allocation(conn, household_id, version)
         .await?
         .into_iter()
         .map(|(pool_id, weight)| ItemAllocationWeight {
@@ -1314,137 +1299,6 @@ fn accounting_period(
 }
 
 fn normalize_merchant(value: &str) -> String {
-    value
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
-}
-
-async fn persist_product_learning(
-    conn: &mut crate::AsyncPgConnection,
-    context: ProductLearningContext<'_>,
-) -> Result<(), UpdatePurchaseItemPersistenceError> {
-    let ProductLearningContext {
-        household_id,
-        actor_id,
-        purchase_id,
-        item_id,
-        raw_name,
-        previous_variant_id,
-        variant_id,
-        variant_changed,
-        merchant,
-        learning,
-    } = context;
-    use public::product_aliases::dsl as aliases;
-    use public::product_corrections::dsl as corrections;
-    use public::product_variants::dsl as variants;
-
-    if let (Some(ProductLearning::VariantName(name)), Some(variant_id)) = (learning, variant_id) {
-        let name = name.trim();
-        let normalized_name = normalize_product_name(name);
-        if normalized_name.is_empty() || name.len() > 240 {
-            return Err(UpdatePurchaseItemPersistenceError::InvalidDecision);
-        }
-        let revision = diesel::update(
-            variants::product_variants
-                .filter(variants::household_id.eq(household_id))
-                .filter(variants::id.eq(variant_id)),
-        )
-        .set((
-            variants::name.eq(name),
-            variants::normalized_name.eq(normalized_name),
-            variants::revision.eq(variants::revision + 1),
-            variants::updated_at.eq(now),
-        ))
-        .returning(variants::revision)
-        .get_result::<i64>(conn)
-        .await?;
-        horse_postgres_common::insert_ui_change(
-            conn,
-            household_id,
-            variant_id,
-            revision,
-            actor_id,
-            Utc::now(),
-            bookkeeping_application::ui_changes::product_variant_renamed(),
-        )
-        .await?;
-    }
-
-    if !variant_changed {
-        return Ok(());
-    }
-    let Some(variant_id) = variant_id else {
-        return Ok(());
-    };
-    let merchant_key = normalize_merchant(merchant);
-    let scope = match learning {
-        Some(ProductLearning::VariantName(_)) => "VARIANT_NAME",
-        Some(ProductLearning::MerchantAlias) => "MERCHANT_ALIAS",
-        Some(ProductLearning::ItemOnly) | None => "ITEM_ONLY",
-    };
-    if scope == "MERCHANT_ALIAS" {
-        if merchant_key.is_empty() {
-            return Err(UpdatePurchaseItemPersistenceError::MerchantRequired);
-        }
-        let normalized_alias = normalize_product_name(raw_name);
-        let alias = diesel::insert_into(aliases::product_aliases)
-            .values((
-                aliases::id.eq(Uuid::now_v7()),
-                aliases::household_id.eq(household_id),
-                aliases::variant_id.eq(variant_id),
-                aliases::merchant_key.eq(&merchant_key),
-                aliases::alias_text.eq(raw_name),
-                aliases::normalized_alias.eq(normalized_alias),
-            ))
-            .on_conflict((
-                aliases::household_id,
-                aliases::merchant_key,
-                aliases::normalized_alias,
-            ))
-            .do_update()
-            .set((
-                aliases::variant_id.eq(variant_id),
-                aliases::alias_text.eq(raw_name),
-                aliases::revision.eq(aliases::revision + 1),
-                aliases::updated_at.eq(now),
-            ))
-            .returning((aliases::id, aliases::revision))
-            .get_result::<(Uuid, i64)>(conn)
-            .await?;
-        horse_postgres_common::insert_ui_change(
-            conn,
-            household_id,
-            alias.0,
-            alias.1,
-            actor_id,
-            Utc::now(),
-            bookkeeping_application::ui_changes::product_alias_learned(),
-        )
-        .await?;
-    }
-
-    diesel::insert_into(corrections::product_corrections)
-        .values((
-            corrections::id.eq(Uuid::now_v7()),
-            corrections::household_id.eq(household_id),
-            corrections::purchase_id.eq(purchase_id),
-            corrections::item_id.eq(item_id),
-            corrections::raw_name.eq(raw_name),
-            corrections::previous_product_variant_id.eq(previous_variant_id),
-            corrections::product_variant_id.eq(variant_id),
-            corrections::learning_scope.eq(scope),
-            corrections::merchant_key.eq(merchant_key),
-            corrections::actor_id.eq(actor_id),
-        ))
-        .execute(conn)
-        .await?;
-    Ok(())
-}
-
-fn normalize_product_name(value: &str) -> String {
     value
         .split_whitespace()
         .collect::<Vec<_>>()

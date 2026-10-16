@@ -7,10 +7,11 @@ use bookkeeping_application::{
 use bookkeeping_postgres::{
     account_command_result as postgres_account_result, account_income as postgres_income,
     account_movement as postgres_movement, correct_purchase as postgres_correction,
-    financial_command_result as postgres_financial_result, statement_transfer as postgres_transfer,
+    statement_transfer as postgres_transfer,
 };
 use cross_context_postgres::{
-    evidence_workflows, purchase_command_result as postgres_purchase_result,
+    evidence_workflows, financial_command_result as postgres_financial_result,
+    purchase_command_result as postgres_purchase_result,
 };
 use horse_postgres_common::PgPool;
 use uuid::Uuid;

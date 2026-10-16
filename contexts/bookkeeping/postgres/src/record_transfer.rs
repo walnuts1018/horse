@@ -3,6 +3,7 @@ use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use std::collections::BTreeSet;
 use uuid::Uuid;
 
 use bookkeeping_application::{
@@ -87,6 +88,7 @@ pub async fn persist_record_transfer(
     input: PersistRecordTransfer,
     decision: RecordTransferDecision,
     evidence: &impl EvidenceOperations,
+    policy: &mut impl super::settlement_preview::PolicySettlementData,
 ) -> Result<PersistedTransfer, RecordTransferPersistenceError> {
     if input.idempotency_key.is_empty() || input.idempotency_key.len() > 200 {
         return Err(RecordTransferPersistenceError::InvalidIdempotencyKey);
@@ -138,19 +140,17 @@ pub async fn persist_record_transfer(
         .map_err(|error| RecordTransferPersistenceError::Pool(error.to_string()))?;
     (*pooled)
         .transaction::<PersistedTransfer, RecordTransferPersistenceError, _>(async |conn| {
-            use public::households::dsl as households;
             use public::idempotency_records::dsl as idem;
             use public::journals::dsl as journals;
             use public::ledger_entries::dsl as ledger;
 
-            households::households
-                .filter(households::id.eq(household_id))
-                .for_update()
-                .select(households::id)
-                .first::<Uuid>(&mut *conn)
-                .await
-                .optional()?
-                .ok_or(RecordTransferPersistenceError::HouseholdNotFound)?;
+            household_postgres::household_access::lock_household_for_update(
+                &mut *conn,
+                household_id,
+            )
+            .await?
+            .then_some(())
+            .ok_or(RecordTransferPersistenceError::HouseholdNotFound)?;
             validate_active_members(
                 &mut *conn,
                 household_id,
@@ -237,6 +237,7 @@ pub async fn persist_record_transfer(
                 from_member_id,
                 to_member_id,
                 &decision,
+                policy,
             )
             .await?;
             validate_settlement_adjustments(&decision, payment_pool_kind)?;
@@ -739,41 +740,35 @@ async fn validate_members_and_references(
     to_member_id: Uuid,
     decision: &RecordTransferDecision,
 ) -> Result<(), RecordTransferPersistenceError> {
-    use public::household_members::dsl as members;
-    let actor_role = members::household_members
-        .filter(members::household_id.eq(household_id))
-        .filter(members::member_id.eq(actor_id))
-        .filter(members::left_at.is_null())
-        .select(members::role)
-        .first::<String>(conn)
-        .await
-        .optional()?
-        .ok_or(RecordTransferPersistenceError::MemberNotFound)?;
+    let actor_role =
+        household_postgres::household_access::active_member_role(conn, household_id, actor_id)
+            .await?
+            .ok_or(RecordTransferPersistenceError::MemberNotFound)?;
     horse_authorization::authorize(
         Some(&actor_role),
         horse_authorization::Operation::FinancialData,
     )
     .map_err(|_| RecordTransferPersistenceError::MemberNotFound)?;
-    for member_id in [actor_id, from_member_id, to_member_id] {
-        members::household_members
-            .filter(members::household_id.eq(household_id))
-            .filter(members::member_id.eq(member_id))
-            .filter(members::left_at.is_null())
-            .select(members::member_id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
-            .ok_or(RecordTransferPersistenceError::MemberNotFound)?;
+    let active_members = household_postgres::household_access::member_ids_for_household(
+        conn,
+        household_id,
+        &[actor_id, from_member_id, to_member_id],
+        true,
+        false,
+    )
+    .await?;
+    if active_members
+        != [actor_id, from_member_id, to_member_id]
+            .into_iter()
+            .collect()
+    {
+        return Err(RecordTransferPersistenceError::MemberNotFound);
     }
+    let mut referenced_members = BTreeSet::new();
     for line in decision.journal.entries() {
         match &line.target {
             JournalTarget::Member(id) => {
-                members::household_members
-                    .filter(members::household_id.eq(household_id))
-                    .filter(members::member_id.eq(parse_uuid(id.as_str(), "journal member_id")?))
-                    .select(members::member_id)
-                    .first::<Uuid>(conn)
-                    .await?;
+                referenced_members.insert(parse_uuid(id.as_str(), "journal member_id")?);
             }
             JournalTarget::Account(id) => {
                 public::accounts::table
@@ -799,15 +794,22 @@ async fn validate_members_and_references(
         }
     }
     for adjustment in &decision.settlement_adjustments {
-        members::household_members
-            .filter(members::household_id.eq(household_id))
-            .filter(members::member_id.eq(parse_uuid(
-                adjustment.member_id.as_str(),
-                "adjustment member_id",
-            )?))
-            .select(members::member_id)
-            .first::<Uuid>(conn)
-            .await?;
+        referenced_members.insert(parse_uuid(
+            adjustment.member_id.as_str(),
+            "adjustment member_id",
+        )?);
+    }
+    let referenced_members = referenced_members.into_iter().collect::<Vec<_>>();
+    let found = household_postgres::household_access::member_ids_for_household(
+        conn,
+        household_id,
+        &referenced_members,
+        false,
+        false,
+    )
+    .await?;
+    if found.len() != referenced_members.len() {
+        return Err(RecordTransferPersistenceError::MemberNotFound);
     }
     Ok(())
 }
@@ -819,31 +821,29 @@ async fn validate_active_members(
     from_member_id: Uuid,
     to_member_id: Uuid,
 ) -> Result<(), RecordTransferPersistenceError> {
-    use public::household_members::dsl as members;
-    let actor_role = members::household_members
-        .filter(members::household_id.eq(household_id))
-        .filter(members::member_id.eq(actor_id))
-        .filter(members::left_at.is_null())
-        .select(members::role)
-        .first::<String>(conn)
-        .await
-        .optional()?
-        .ok_or(RecordTransferPersistenceError::MemberNotFound)?;
+    let actor_role =
+        household_postgres::household_access::active_member_role(conn, household_id, actor_id)
+            .await?
+            .ok_or(RecordTransferPersistenceError::MemberNotFound)?;
     horse_authorization::authorize(
         Some(&actor_role),
         horse_authorization::Operation::FinancialData,
     )
     .map_err(|_| RecordTransferPersistenceError::MemberNotFound)?;
-    for member_id in [actor_id, from_member_id, to_member_id] {
-        members::household_members
-            .filter(members::household_id.eq(household_id))
-            .filter(members::member_id.eq(member_id))
-            .filter(members::left_at.is_null())
-            .select(members::member_id)
-            .first::<Uuid>(conn)
-            .await
-            .optional()?
-            .ok_or(RecordTransferPersistenceError::MemberNotFound)?;
+    let active_members = household_postgres::household_access::member_ids_for_household(
+        conn,
+        household_id,
+        &[actor_id, from_member_id, to_member_id],
+        true,
+        false,
+    )
+    .await?;
+    if active_members
+        != [actor_id, from_member_id, to_member_id]
+            .into_iter()
+            .collect()
+    {
+        return Err(RecordTransferPersistenceError::MemberNotFound);
     }
     Ok(())
 }
@@ -854,6 +854,7 @@ async fn validate_transfer_accounts(
     from_member_id: Uuid,
     to_member_id: Uuid,
     decision: &RecordTransferDecision,
+    policy: &mut impl super::settlement_preview::PolicySettlementData,
 ) -> Result<Option<String>, RecordTransferPersistenceError> {
     let payment_pool_kind = if let Some(account_id) = &decision.payment_account_id {
         Some(
@@ -862,6 +863,7 @@ async fn validate_transfer_accounts(
                 household_id,
                 parse_uuid(account_id.as_str(), "payment_account_id")?,
                 from_member_id,
+                policy,
             )
             .await?,
         )
@@ -874,6 +876,7 @@ async fn validate_transfer_accounts(
             household_id,
             parse_uuid(account_id.as_str(), "destination_account_id")?,
             to_member_id,
+            policy,
         )
         .await?;
     }
@@ -885,6 +888,7 @@ async fn validate_transfer_account(
     household_id: Uuid,
     account_id: Uuid,
     owner_member_id: Uuid,
+    policy: &mut impl super::settlement_preview::PolicySettlementData,
 ) -> Result<String, RecordTransferPersistenceError> {
     use public::accounts::dsl as accounts;
     let (kind, pool_id) = accounts::accounts
@@ -911,16 +915,9 @@ async fn validate_transfer_account(
     if pool_kind == "PERSONAL" {
         let funding_version =
             funding_version.ok_or(RecordTransferPersistenceError::AccountOwnershipMismatch)?;
-        use public::pool_funding_rules::dsl as funding_rules;
-        let owner = funding_rules::pool_funding_rules
-            .filter(funding_rules::household_id.eq(household_id))
-            .filter(funding_rules::pool_id.eq(pool_id))
-            .filter(funding_rules::version.eq(funding_version))
-            .select(funding_rules::owner_member_id)
-            .first::<Option<Uuid>>(conn)
-            .await
-            .optional()?
-            .flatten();
+        let owner = policy
+            .rule_owner(conn, household_id, pool_id, funding_version)
+            .await?;
         if owner != Some(owner_member_id) {
             return Err(RecordTransferPersistenceError::AccountOwnershipMismatch);
         }

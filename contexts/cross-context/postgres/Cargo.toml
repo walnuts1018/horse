@@ -8,6 +8,8 @@ async-trait = "0.1"
 bookkeeping-application = { path = "../../bookkeeping/application" }
 bookkeeping-domain = { path = "../../bookkeeping/domain" }
 bookkeeping-postgres = { path = "../../bookkeeping/postgres" }
+catalog-application = { path = "../../catalog/application" }
+catalog-postgres = { path = "../../catalog/postgres" }
 chrono = { workspace = true }
 diesel = { workspace = true, features = ["32-column-tables"] }
 diesel-async = { workspace = true }
