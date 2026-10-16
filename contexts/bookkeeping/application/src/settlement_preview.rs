@@ -508,6 +508,44 @@ struct Totals {
 const MICROS_PER_DAY: i64 = 86_400_000_000;
 const JST_OFFSET_MICROS: i64 = 9 * 60 * 60 * 1_000_000;
 
+#[cfg(test)]
+mod tests {
+    use super::{PreviewInput, PreviewMember, PreviewObligation, calculate_settlement_preview};
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn preview_uses_previous_due_and_current_payment_shortfall() {
+        let input = PreviewInput {
+            period: "2026-10".to_owned(),
+            members: vec![PreviewMember {
+                id: "member-1".to_owned(),
+                name: "Member".to_owned(),
+                left_at_micros: None,
+            }],
+            obligations: vec![PreviewObligation {
+                member_id: 0,
+                pool_id: "pool-1".to_owned(),
+                scheduled_yen: 10_000,
+                paid_yen: 8_000,
+            }],
+            schedules: vec![],
+            adjustments: vec![],
+            purchase_adjustments: vec![],
+            funding_rules: vec![],
+            purchases: vec![],
+        };
+        let previous_due = BTreeMap::from([("member-1".to_owned(), 2_000)]);
+
+        let result = calculate_settlement_preview(input, &previous_due).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].scheduled_yen, 10_000);
+        assert_eq!(result[0].paid_yen, 8_000);
+        assert_eq!(result[0].carry_yen, 2_000);
+        assert_eq!(result[0].amount_due_yen, 4_000);
+    }
+}
+
 fn schedule_amount(
     start: i32,
     end: i32,

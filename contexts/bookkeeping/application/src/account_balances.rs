@@ -101,3 +101,79 @@ pub fn calculate_account_balances(
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn account(id: u128, kind: AccountKind) -> AccountBalanceInput {
+        AccountBalanceInput {
+            account_id: Uuid::from_u128(id),
+            kind,
+        }
+    }
+
+    fn entry(
+        account_id: Uuid,
+        source_kind: &str,
+        source_id: Uuid,
+        occurred_at_micros: i64,
+        debit_yen: i64,
+        credit_yen: i64,
+    ) -> JournalEntryBalanceInput {
+        JournalEntryBalanceInput {
+            account_id,
+            source_kind: source_kind.into(),
+            source_id,
+            occurred_at_micros,
+            debit_yen,
+            credit_yen,
+        }
+    }
+
+    #[test]
+    fn opening_balance_includes_movements_at_its_timestamp_and_later() {
+        let account_id = Uuid::from_u128(1);
+        let balances = calculate_account_balances(
+            &[account(1, AccountKind::Other)],
+            &[
+                entry(
+                    account_id,
+                    OPENING_BALANCE_SOURCE_KIND,
+                    account_id,
+                    10,
+                    100,
+                    0,
+                ),
+                entry(account_id, "TRANSFER", Uuid::from_u128(2), 9, 50, 0),
+                entry(account_id, "TRANSFER", Uuid::from_u128(3), 10, 20, 0),
+                entry(account_id, "TRANSFER", Uuid::from_u128(4), 11, 0, 5),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(balances[0].balance_yen, 115);
+    }
+
+    #[test]
+    fn ordinary_movements_use_account_kind_debit_and_credit_signs() {
+        let card_id = Uuid::from_u128(1);
+        let other_id = Uuid::from_u128(2);
+        let balances = calculate_account_balances(
+            &[
+                account(1, AccountKind::Card),
+                account(2, AccountKind::Other),
+            ],
+            &[
+                entry(card_id, "PURCHASE", Uuid::from_u128(3), 1, 60, 0),
+                entry(card_id, "PAYMENT", Uuid::from_u128(4), 2, 0, 15),
+                entry(other_id, "TRANSFER", Uuid::from_u128(5), 1, 60, 0),
+                entry(other_id, "TRANSFER", Uuid::from_u128(6), 2, 0, 15),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(balances[0].balance_yen, -45);
+        assert_eq!(balances[1].balance_yen, 45);
+    }
+}

@@ -37,3 +37,27 @@ pub fn calculate_settlement(input: SettlementInput) -> Result<SettlementAmounts,
         amount_due_yen,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{SettlementAmounts, SettlementInput, calculate_settlement};
+
+    #[test]
+    fn scheduled_shortfall_and_previous_owed_are_added_to_amount_due() {
+        let result = calculate_settlement(SettlementInput {
+            scheduled_yen: 10_000,
+            paid_yen: 8_000,
+            previous_owed_yen: 2_000,
+            monthly_adjustment_yen: 0,
+            advance_credit_yen: 0,
+        });
+
+        assert_eq!(
+            result,
+            Ok(SettlementAmounts {
+                carry_yen: 2_000,
+                amount_due_yen: 4_000,
+            })
+        );
+    }
+}
