@@ -540,15 +540,17 @@ async fn budget_projections(
                 .ok_or(PolicyQueryError::AmountOverflow)?;
             Ok(BudgetReadModel {
                 budget: budget::Budget {
-                    id: row.0.to_string(),
-                    household_id: row.1.to_string(),
-                    category_id: row.2.map(|id| id.to_string()),
+                    id: budget::BudgetId::from_persisted(row.0),
+                    household_id: budget::BudgetHouseholdId::from_persisted(row.1),
+                    category_id: row.2.map(budget::BudgetCategoryId::from_persisted),
                     name: row.3,
-                    amount_yen: row.4,
+                    amount_yen: budget::BudgetAmountYen::try_from(row.4)
+                        .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?,
                     starts_on: row.5,
                     ends_on: row.6,
                     archived: row.7,
-                    revision: row.8,
+                    revision: budget::BudgetRevision::try_from(row.8)
+                        .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?,
                 },
                 actual_yen,
                 remaining_yen,
@@ -624,20 +626,22 @@ fn recurring_expense_from_row(
         household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(row.1),
         name: row.2,
         merchant: row.3,
-        amount_yen: row.4,
+        amount_yen: recurring_expense::RecurringExpenseAmountYen::try_from(row.4)
+            .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?,
         currency: row.5,
         category_id: row
             .6
-            .map(|id| recurring_expense::RecurringExpenseCategoryId::from_persisted(id)),
+            .map(recurring_expense::RecurringExpenseCategoryId::from_persisted),
         payment_account_id: row
             .7
-            .map(|id| recurring_expense::RecurringExpensePaymentAccountId::from_persisted(id)),
+            .map(recurring_expense::RecurringExpensePaymentAccountId::from_persisted),
         cadence: recurring_expense::Cadence::parse(&row.8)
             .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?,
         starts_on: row.9,
         next_due_on: row.10,
         ends_on: row.11,
         archived: row.12,
-        revision: row.13,
+        revision: recurring_expense::RecurringExpenseRevision::try_from(row.13)
+            .map_err(|_| PolicyQueryError::Database(DieselError::NotFound))?,
     })
 }

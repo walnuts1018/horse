@@ -1,8 +1,8 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use catalog_application::category::{
-    CategoryMutation, CategoryMutationError, CreateCategoryCommand, SetCategoryArchivedCommand,
-    UpdateCategoryNameCommand,
+    ActorId, CategoryId, CategoryMutation, CategoryMutationError, CreateCategoryCommand,
+    HouseholdId, SetCategoryArchivedCommand, UpdateCategoryNameCommand,
 };
 use catalog_domain::category::CategoryView as DomainCategory;
 use uuid::Uuid;
@@ -98,15 +98,15 @@ pub async fn create_category(
     };
     let parent_id = match input.parent_id.as_ref() {
         Some(id) => match decode_node_id(id, "Category") {
-            Ok(id) => Some(id.to_string()),
+            Ok(id) => Some(id.into()),
             Err(()) => return Ok(create_error(MutationErrorCode::BadInput).into()),
         },
         None => None,
     };
     let command = CreateCategoryCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
-        category_id: Uuid::now_v7().to_string(),
+        actor_id: ActorId::from(actor.0),
+        household_id: HouseholdId::from(household_id),
+        category_id: CategoryId::from(Uuid::now_v7()),
         parent_id,
         name: input.name,
     };
@@ -136,8 +136,8 @@ pub async fn update_category_name(
         Err(()) => return Ok(update_error(MutationErrorCode::BadInput).into()),
     };
     let command = UpdateCategoryNameCommand {
-        actor_id: actor.0.to_string(),
-        category_id: category_id.to_string(),
+        actor_id: ActorId::from(actor.0),
+        category_id: CategoryId::from(category_id),
         name: input.name,
     };
     let result = ctx
@@ -166,8 +166,8 @@ pub async fn set_category_archived(
         Err(()) => return Ok(archive_error(MutationErrorCode::BadInput).into()),
     };
     let command = SetCategoryArchivedCommand {
-        actor_id: actor.0.to_string(),
-        category_id: category_id.to_string(),
+        actor_id: ActorId::from(actor.0),
+        category_id: CategoryId::from(category_id),
         archived: input.archived,
     };
     let result = ctx

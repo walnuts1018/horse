@@ -1,15 +1,20 @@
 use async_graphql::{Context, ID, InputObject, OneofObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::create_pool::CreatePoolCommand;
-use cross_context_postgres::pool_mutations as postgres_pool_mutations;
+use cross_context_postgres::pool_mutations as cross_pool_queries;
 use horse_postgres_common::PgPool;
+use household_application::default_allocation::{
+    DefaultAllocationWeight, SetDefaultAllocationCommand,
+};
 use household_postgres::create_household;
+use household_postgres::set_default_allocation as postgres_default_allocation;
+use policy_application::create_pool::{CreatePoolCommand, NewPoolId, PoolActorId, PoolHouseholdId};
 use policy_application::{
     set_allocation_rule::{
+        AllocationActorId, AllocationCategoryId, AllocationHouseholdId, AllocationPoolId,
+        AllocationProductConceptId, AllocationProductVariantId,
         AllocationRuleTarget as WorkflowAllocationRuleTarget, AllocationRuleWeight,
         SetAllocationRuleCommand,
     },
-    set_default_allocation::{DefaultAllocationWeight, SetDefaultAllocationCommand},
     set_funding_schedule::{
         ActorId as FundingActorId, FundingScheduleAmount, FundingScheduleCadence as PolicyCadence,
         FundingScheduleDate, FundingScheduleId, HouseholdId as FundingHouseholdId,
@@ -17,8 +22,7 @@ use policy_application::{
     },
 };
 use policy_postgres::{
-    set_allocation_rule as postgres_allocation_rule,
-    set_default_allocation as postgres_default_allocation,
+    pool_mutations as postgres_pool_mutations, set_allocation_rule as postgres_allocation_rule,
     set_funding_schedule as postgres_funding_schedule,
 };
 use uuid::Uuid;
@@ -230,12 +234,12 @@ pub async fn create_pool(ctx: &Context<'_>, input: CreatePoolInput) -> Result<Cr
         member_pool::PoolKind::Personal => "PERSONAL",
         member_pool::PoolKind::Shared => "SHARED",
     };
-    let raw_pool_id = match postgres_pool_mutations::persist_create_pool(
+    let pool_id = match postgres_pool_mutations::persist_create_pool(
         ctx.data::<PgPool>()?,
         CreatePoolCommand {
-            actor_id: actor.0.to_string(),
-            household_id: household_id.to_string(),
-            pool_id: Uuid::now_v7().to_string(),
+            actor_id: PoolActorId::from_uuid(actor.0),
+            household_id: PoolHouseholdId::from_uuid(household_id),
+            pool_id: NewPoolId::from_uuid(Uuid::now_v7()),
             name: input.name,
             kind: kind.to_owned(),
         },
@@ -245,8 +249,7 @@ pub async fn create_pool(ctx: &Context<'_>, input: CreatePoolInput) -> Result<Cr
         Ok(id) => id,
         Err(error) => return create_pool_error_result(error),
     };
-    let pool_id = Uuid::parse_str(&raw_pool_id).map_err(crate::internal_error)?;
-    let projection = match postgres_pool_mutations::load_pool_read_model(
+    let projection = match cross_pool_queries::load_pool_read_model(
         ctx.data::<PgPool>()?,
         actor.0,
         household_id,
@@ -329,7 +332,7 @@ pub async fn set_pool_funding_rule(
     .await
     {
         Ok(_) => {
-            let projection = match postgres_pool_mutations::load_pool_read_model(
+            let projection = match cross_pool_queries::load_pool_read_model(
                 ctx.data::<PgPool>()?,
                 actor.0,
                 household_id,
@@ -405,13 +408,15 @@ pub async fn set_allocation_rule(
     };
     let target = match input.target {
         AllocationRuleTargetInput::CategoryId(id) => match decode_node_id(&id, "Category") {
-            Ok(id) => WorkflowAllocationRuleTarget::Category(id.to_string()),
+            Ok(id) => WorkflowAllocationRuleTarget::Category(AllocationCategoryId::from_uuid(id)),
             Err(()) => return Ok(set_allocation_rule_error(MutationErrorCode::BadInput).into()),
         },
         AllocationRuleTargetInput::Merchant(value) => WorkflowAllocationRuleTarget::Merchant(value),
         AllocationRuleTargetInput::ProductConceptId(id) => {
             match decode_node_id(&id, "ProductConcept") {
-                Ok(id) => WorkflowAllocationRuleTarget::ProductConcept(id.to_string()),
+                Ok(id) => WorkflowAllocationRuleTarget::ProductConcept(
+                    AllocationProductConceptId::from_uuid(id),
+                ),
                 Err(()) => {
                     return Ok(set_allocation_rule_error(MutationErrorCode::BadInput).into());
                 }
@@ -419,7 +424,9 @@ pub async fn set_allocation_rule(
         }
         AllocationRuleTargetInput::ProductVariantId(id) => {
             match decode_node_id(&id, "ProductVariant") {
-                Ok(id) => WorkflowAllocationRuleTarget::ProductVariant(id.to_string()),
+                Ok(id) => WorkflowAllocationRuleTarget::ProductVariant(
+                    AllocationProductVariantId::from_uuid(id),
+                ),
                 Err(()) => {
                     return Ok(set_allocation_rule_error(MutationErrorCode::BadInput).into());
                 }
@@ -435,13 +442,13 @@ pub async fn set_allocation_rule(
             }
         };
         weights.push(AllocationRuleWeight {
-            pool_id: pool_id.to_string(),
+            pool_id: AllocationPoolId::from_uuid(pool_id),
             weight: allocation.weight.0,
         });
     }
     let command = SetAllocationRuleCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
+        actor_id: AllocationActorId::from_uuid(actor.0),
+        household_id: AllocationHouseholdId::from_uuid(household_id),
         target,
         weights,
     };
@@ -449,13 +456,10 @@ pub async fn set_allocation_rule(
         match postgres_allocation_rule::persist_set_allocation_rule(ctx.data::<PgPool>()?, command)
             .await
         {
-            Ok(value) => match Uuid::parse_str(&value.id) {
-                Ok(id) => id,
-                Err(error) => return Err(crate::internal_error(error)),
-            },
+            Ok(value) => value.id.value(),
             Err(error) => return set_allocation_rule_persistence_error(error),
         };
-    let projection = match postgres_pool_mutations::load_allocation_rule_projection(
+    let projection = match cross_pool_queries::load_allocation_rule_projection(
         ctx.data::<PgPool>()?,
         actor.0,
         rule_id,
@@ -557,7 +561,7 @@ fn map_pool_projection(
 }
 
 pub(crate) fn map_allocation_rule_projection(
-    value: postgres_pool_mutations::AllocationRuleProjection,
+    value: cross_pool_queries::AllocationRuleProjection,
 ) -> Result<AllocationRuleObject> {
     let target = crate::catalog_mutations::allocation_rule_target_from_projection(value.target)
         .map_err(crate::internal_error)?;
@@ -640,9 +644,7 @@ fn create_pool_error_result(
 ) -> Result<CreatePoolResult> {
     use postgres_pool_mutations::CreatePoolMutationError as E;
     match error {
-        E::InvalidUuid(_) | E::InvalidWorkflow(_) => {
-            Ok(create_pool_error(MutationErrorCode::BadInput).into())
-        }
+        E::InvalidWorkflow(_) => Ok(create_pool_error(MutationErrorCode::BadInput).into()),
         E::HouseholdNotFound | E::MemberNotFound => {
             Ok(create_pool_error(MutationErrorCode::NotFound).into())
         }
@@ -650,12 +652,12 @@ fn create_pool_error_result(
     }
 }
 
-fn pool_read_error<T>(error: postgres_pool_mutations::PoolReadModelError) -> Result<T> {
+fn pool_read_error<T>(error: cross_pool_queries::PoolReadModelError) -> Result<T> {
     match error {
-        postgres_pool_mutations::PoolReadModelError::PoolNotFound => {
+        cross_pool_queries::PoolReadModelError::PoolNotFound => {
             Err(crate::internal_error("created pool projection is missing"))
         }
-        postgres_pool_mutations::PoolReadModelError::Household(error) => {
+        cross_pool_queries::PoolReadModelError::Household(error) => {
             Err(crate::internal_error(error))
         }
     }
@@ -712,9 +714,9 @@ fn set_allocation_rule_persistence_error(
 }
 
 fn allocation_rule_projection_error(
-    error: postgres_pool_mutations::AllocationRuleProjectionError,
+    error: cross_pool_queries::AllocationRuleProjectionError,
 ) -> Result<SetAllocationRuleResult> {
-    use postgres_pool_mutations::AllocationRuleProjectionError as E;
+    use cross_pool_queries::AllocationRuleProjectionError as E;
     match error {
         E::HouseholdNotFound | E::MemberNotFound | E::RuleNotFound | E::TargetNotFound => {
             Ok(set_allocation_rule_error(MutationErrorCode::NotFound).into())

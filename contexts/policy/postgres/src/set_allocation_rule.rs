@@ -5,10 +5,9 @@ use diesel::{
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_authorization::{Operation, authorize};
-use horse_postgres_common::insert_ui_change;
 use policy_application::set_allocation_rule::{
-    AllocationRuleTarget, SetAllocationRuleCommand, SetAllocationRuleDecision,
-    SetAllocationRuleError, SetAllocationRuleOperations, SetAllocationRuleResult,
+    AllocationRuleId, SetAllocationRuleCommand, SetAllocationRuleDecision, SetAllocationRuleError,
+    SetAllocationRuleOperations, SetAllocationRuleResult, ValidatedAllocationRuleTarget,
     ValidatedSetAllocationRuleCommand, decide_set_allocation_rule, set_allocation_rule,
 };
 use uuid::Uuid;
@@ -70,22 +69,16 @@ async fn persist_validated(
     pool: &PgPool,
     validated: ValidatedSetAllocationRuleCommand,
 ) -> Result<PersistedAllocationRule, SetAllocationRulePersistenceError> {
-    let household_id = parse_uuid(validated.household_id(), "household_id")?;
-    let actor_id = parse_uuid(validated.actor_id(), "actor_id")?;
-    let category_id = parse_optional_uuid(validated.target().category_id(), "category_id")?;
-    let product_concept_id = parse_optional_uuid(
-        validated.target().product_concept_id(),
-        "product_concept_id",
-    )?;
-    let product_variant_id = parse_optional_uuid(
-        validated.target().product_variant_id(),
-        "product_variant_id",
-    )?;
+    let household_id = validated.household_id();
+    let actor_id = validated.actor_id();
+    let category_id = validated.target().category_id();
+    let product_concept_id = validated.target().product_concept_id();
+    let product_variant_id = validated.target().product_variant_id();
     let pool_ids = validated
         .weights()
         .iter()
-        .map(|weight| parse_uuid(&weight.pool_id, "pool_id"))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|weight| weight.pool_id.value())
+        .collect::<Vec<_>>();
     let expected_pool_ids = pool_ids.iter().copied().collect::<BTreeSet<_>>();
     if expected_pool_ids.len() != pool_ids.len() {
         return Err(SetAllocationRulePersistenceError::InvalidDecision);
@@ -158,7 +151,7 @@ async fn persist_validated(
                 let current = existing
                     .map(|(id, revision)| {
                         u64::try_from(revision)
-                            .map(|revision| (id.to_string(), revision))
+                            .map(|revision| (id, revision))
                             .map_err(|_| SetAllocationRulePersistenceError::InvalidDecision)
                     })
                     .transpose()?;
@@ -172,11 +165,11 @@ async fn persist_validated(
                     product_concept_id,
                     product_variant_id,
                 )?;
-                let revision = i64::try_from(decision.revision).map_err(|_| {
+                let revision = i64::try_from(decision.revision.value()).map_err(|_| {
                     SetAllocationRulePersistenceError::NumericOutOfRange("revision")
                 })?;
-                let rule_id = match decision.rule_id.as_deref() {
-                    Some(value) => parse_uuid(value, "rule_id")?,
+                let rule_id = match decision.rule_id {
+                    Some(value) => value.value(),
                     None => Uuid::now_v7(),
                 };
 
@@ -206,31 +199,43 @@ async fn persist_validated(
                 }
 
                 for weight in &decision.weights {
-                    let pool_id = parse_uuid(&weight.pool_id, "pool_id")?;
+                    let pool_id = weight.pool_id.value();
                     diesel::insert_into(weights::allocation_rule_weights)
                         .values((
                             weights::household_id.eq(household_id),
                             weights::rule_id.eq(rule_id),
                             weights::pool_id.eq(pool_id),
-                            weights::weight.eq(weight.weight),
+                            weights::weight.eq(weight.weight.value()),
                         ))
                         .execute(conn)
                         .await?;
                 }
 
-                insert_ui_change(
+                household_postgres::record_change::record_household_change(
                     conn,
-                    household_id,
-                    rule_id,
-                    revision,
-                    actor_id,
-                    chrono::Utc::now(),
-                    decision.ui_change(),
+                    household_application::record_change::RecordHouseholdChange {
+                        household_id,
+                        entity_id: rule_id,
+                        actor_id,
+                        occurred_at: chrono::Utc::now(),
+                        change: decision.ui_change(),
+                    },
                 )
-                .await?;
+                .await
+                .map_err(|error| match error {
+                    household_postgres::record_change::RecordHouseholdChangeError::Database(
+                        error,
+                    ) => SetAllocationRulePersistenceError::Database(error),
+                    household_postgres::record_change::RecordHouseholdChangeError::HouseholdNotFound => {
+                        SetAllocationRulePersistenceError::HouseholdNotFound
+                    }
+                    household_postgres::record_change::RecordHouseholdChangeError::NumericOutOfRange => {
+                        SetAllocationRulePersistenceError::NumericOutOfRange("household_revision")
+                    }
+                })?;
 
                 Ok(PersistedAllocationRule {
-                    id: rule_id.to_string(),
+                    id: AllocationRuleId::from_persisted(rule_id),
                     revision: decision.revision,
                 })
             },
@@ -290,7 +295,7 @@ async fn validate_target_reference(
 async fn find_rule(
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
-    target: &AllocationRuleTarget,
+    target: &ValidatedAllocationRuleTarget,
     category_id: Option<Uuid>,
     product_concept_id: Option<Uuid>,
     product_variant_id: Option<Uuid>,
@@ -345,42 +350,15 @@ fn validate_decision(
     product_concept_id: Option<Uuid>,
     product_variant_id: Option<Uuid>,
 ) -> Result<(), SetAllocationRulePersistenceError> {
-    if parse_uuid(&decision.actor_id, "actor_id")? != actor_id
-        || parse_uuid(&decision.household_id, "household_id")? != household_id
+    if decision.actor_id.value() != actor_id
+        || decision.household_id.value() != household_id
         || decision.weights.is_empty()
         || decision.changed_fields != ["allocations", decision.target.changed_field()]
-        || decision.weights.iter().any(|weight| weight.weight <= 0)
-        || decision
-            .target
-            .category_id()
-            .map(|id| parse_uuid(id, "category_id"))
-            .transpose()?
-            != category_id
-        || decision
-            .target
-            .product_concept_id()
-            .map(|id| parse_uuid(id, "product_concept_id"))
-            .transpose()?
-            != product_concept_id
-        || decision
-            .target
-            .product_variant_id()
-            .map(|id| parse_uuid(id, "product_variant_id"))
-            .transpose()?
-            != product_variant_id
+        || decision.target.category_id() != category_id
+        || decision.target.product_concept_id() != product_concept_id
+        || decision.target.product_variant_id() != product_variant_id
     {
         return Err(SetAllocationRulePersistenceError::InvalidDecision);
     }
     Ok(())
-}
-
-fn parse_optional_uuid(
-    value: Option<&str>,
-    field: &'static str,
-) -> Result<Option<Uuid>, SetAllocationRulePersistenceError> {
-    value.map(|value| parse_uuid(value, field)).transpose()
-}
-
-fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, SetAllocationRulePersistenceError> {
-    Uuid::parse_str(value).map_err(|_| SetAllocationRulePersistenceError::InvalidUuid(field))
 }

@@ -6,8 +6,40 @@ use bookkeeping_application::account_balances::{
     AccountBalance, AccountBalanceInput, AccountBalancesError, AccountKind,
     JournalEntryBalanceInput, calculate_account_balances,
 };
+use bookkeeping_application::account_balances_query::{
+    AccountBalancesQuery, AccountBalancesQueryError,
+};
 
 use crate::{PgPool, schema::public};
+
+pub struct PostgresAccountBalancesQuery {
+    pool: PgPool,
+}
+
+impl PostgresAccountBalancesQuery {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl AccountBalancesQuery for PostgresAccountBalancesQuery {
+    fn query<'a>(
+        &'a self,
+        household_id: Uuid,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<AccountBalance>, AccountBalancesQueryError>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            account_balances(&self.pool, household_id)
+                .await
+                .map_err(|error| AccountBalancesQueryError::Infrastructure(format!("{error:?}")))
+        })
+    }
+}
 
 #[derive(Debug)]
 pub enum AccountBalancesReadError {

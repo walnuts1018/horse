@@ -29,3 +29,6 @@ webpki-roots = { workspace = true }
 humantime = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+horse-test-infra = { path = "../../platform/test-infra" }

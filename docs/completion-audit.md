@@ -5,11 +5,11 @@
 
 ## 現在の状態
 
-2026年10月16日時点でGoからRustへのサーバー移行を終え、Horse CI run #921のquality jobが成功した。quality jobではRust workspaceのtest・check・format・Clippy、新規DBへのAtlas migration、OCR検査、Relay・Frontendの型検査・lint・FSD検査・format・buildが成功した。publish jobはARM64 imageをQEMUで約45分ビルドした後にキャンセルし、Rust API/Worker imageは公開していない。Node WebとOCR imageは公開済みである。次回以降のビルドを短縮するためRust imageをamd64とarm64のnative runnerで並行ビルドするworkflowを追加したが、実行結果は未確認である。
+2026年10月16日時点でGoの実行コードはRustへ移行済みである。最新のCatalog・Evidence・Policy変更を含むworkspaceで`mise run rust:check`、`mise run rust:test`、`mise run lint`、`mise run rust:architecture:check`、`mise run rust:fmt:check`、`git diff --check`が成功した。今回の変更は未commitで、公開環境へは未反映である。
 
-CI run #924ではClippyがsettlement previewのtest moduleがファイル末尾にないことを検出した。test moduleを末尾へ移動し、対象testとRust format checkは成功した。修正後のrun #926ではquality jobが成功したが、publish jobsはGitHub Actionsのcache-modeを`none`にしたため、Cargo cacheとBuildKit cacheのtoken scopeがなく失敗した。publish jobsのcache-modeを`write`に変更し、次のCI runでimage公開を再確認する。
+kurumiのArgo CD Applicationはinfra commit `559c1cd`で`Synced`かつ`Healthy`である。API・Worker・Web・OCRは`v0.0.950`でReadyになっており、Workerは`GEMINI_MODEL_PRICES` ConfigMapを参照する。ConfigMapのversionは`gemini-prices-2026-10-v2`である。`https://horse.walnuts.dev/healthz`はHTTP 200を返す。実行中のimageがHorse mainの最新commit由来だとは確認できていない。Chromeで公開トップを開くとログインリンクが表示され、認証後の操作はこの確認では行っていない。
 
-本番のDB resetとRust版の配備を準備するため、kurumi上のHorse API・Web・Workerは停止中である。DB resetは未実施であり、Rust版の本番稼働、公開URLでのRust版動作、OIDCログイン後の操作は未確認である。以下の公開環境での操作記録は、記録された日付時点で旧Go版を含む過去の検証結果であり、現在のRust版の証拠ではない。Goテスト名とGo CI runも旧Go実装の履歴であり、Rust検証の根拠には含めない。
+以下の操作記録は記録された日付時点の証拠であり、現在のRust版で未確認の項目を完了扱いにしない。旧Goテストと旧Go CI runは現行Rust実装の検証根拠に含めない。
 
 ## 要件別の証拠
 

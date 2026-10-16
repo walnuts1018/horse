@@ -4,7 +4,7 @@ use diesel::{
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_authorization::{Operation, authorize};
 use horse_postgres_common::insert_ui_change;
-use policy_application::set_default_allocation::{
+use household_application::default_allocation::{
     DefaultAllocationState, SetDefaultAllocationCommand, SetDefaultAllocationDecision,
     SetDefaultAllocationError, SetDefaultAllocationOperations, SetDefaultAllocationResult,
     ValidatedDefaultAllocation, decide_set_default_allocation, set_default_allocation,
@@ -68,13 +68,13 @@ async fn persist_validated(
     pool: &PgPool,
     validated: ValidatedDefaultAllocation,
 ) -> Result<PersistedDefaultAllocation, SetDefaultAllocationPersistenceError> {
-    let household_id = parse_uuid(validated.household_id(), "household_id")?;
-    let actor_id = parse_uuid(validated.actor_id(), "actor_id")?;
+    let household_id = validated.household_id();
+    let actor_id = validated.actor_id();
     let pool_ids = validated
         .weights()
         .iter()
-        .map(|weight| parse_uuid(&weight.pool_id, "pool_id"))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|weight| weight.pool_id.value())
+        .collect::<Vec<_>>();
     let expected_pool_ids = pool_ids.iter().copied().collect::<BTreeSet<_>>();
     if expected_pool_ids.len() != pool_ids.len() {
         return Err(SetDefaultAllocationPersistenceError::InvalidDecision);
@@ -127,28 +127,32 @@ async fn persist_validated(
 
                 let current = DefaultAllocationState {
                     revision: u64::try_from(state.0)
+                        .map_err(|_| SetDefaultAllocationPersistenceError::InvalidDecision)?
+                        .try_into()
                         .map_err(|_| SetDefaultAllocationPersistenceError::InvalidDecision)?,
                     version: u64::try_from(state.1)
+                        .map_err(|_| SetDefaultAllocationPersistenceError::InvalidDecision)?
+                        .try_into()
                         .map_err(|_| SetDefaultAllocationPersistenceError::InvalidDecision)?,
                 };
                 let decision = decide_set_default_allocation(validated, current)
                     .map_err(SetDefaultAllocationPersistenceError::InvalidWorkflow)?;
                 validate_decision(&decision, household_id, actor_id)?;
-                let revision = i64::try_from(decision.revision).map_err(|_| {
+                let revision = i64::try_from(decision.revision.value()).map_err(|_| {
                     SetDefaultAllocationPersistenceError::NumericOutOfRange("revision")
                 })?;
-                let version = i64::try_from(decision.version).map_err(|_| {
+                let version = i64::try_from(decision.version.value()).map_err(|_| {
                     SetDefaultAllocationPersistenceError::NumericOutOfRange("version")
                 })?;
 
                 for weight in &decision.weights {
-                    let pool_id = parse_uuid(&weight.pool_id, "pool_id")?;
+                    let pool_id = weight.pool_id.value();
                     diesel::insert_into(defaults::allocation_defaults)
                         .values((
                             defaults::household_id.eq(household_id),
                             defaults::version.eq(version),
                             defaults::pool_id.eq(pool_id),
-                            defaults::weight.eq(weight.weight),
+                            defaults::weight.eq(weight.weight.value()),
                         ))
                         .execute(conn)
                         .await?;
@@ -188,20 +192,12 @@ fn validate_decision(
     household_id: Uuid,
     actor_id: Uuid,
 ) -> Result<(), SetDefaultAllocationPersistenceError> {
-    if parse_uuid(&decision.household_id, "household_id")? != household_id
-        || parse_uuid(&decision.actor_id, "actor_id")? != actor_id
+    if decision.household_id.value() != household_id
+        || decision.actor_id.value() != actor_id
         || decision.weights.is_empty()
         || decision.changed_fields != ["defaultAllocation"]
-        || decision.weights.iter().any(|weight| weight.weight <= 0)
     {
         return Err(SetDefaultAllocationPersistenceError::InvalidDecision);
     }
     Ok(())
-}
-
-fn parse_uuid(
-    value: &str,
-    field: &'static str,
-) -> Result<Uuid, SetDefaultAllocationPersistenceError> {
-    Uuid::parse_str(value).map_err(|_| SetDefaultAllocationPersistenceError::InvalidUuid(field))
 }

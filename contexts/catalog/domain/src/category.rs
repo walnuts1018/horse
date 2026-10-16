@@ -79,6 +79,20 @@ identifier!(ActorId, InvalidActorId);
 identifier!(HouseholdId, InvalidHouseholdId);
 identifier!(CategoryId, InvalidCategoryId);
 
+macro_rules! uuid_conversion {
+    ($type_name:ident) => {
+        impl From<Uuid> for $type_name {
+            fn from(value: Uuid) -> Self {
+                Self(value.to_string())
+            }
+        }
+    };
+}
+
+uuid_conversion!(ActorId);
+uuid_conversion!(HouseholdId);
+uuid_conversion!(CategoryId);
+
 impl CategoryView {
     pub fn new(
         id: impl Into<String>,
@@ -128,10 +142,10 @@ impl CategoryName {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateCategoryCommand {
-    pub actor_id: String,
-    pub household_id: String,
-    pub category_id: String,
-    pub parent_id: Option<String>,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
+    pub category_id: CategoryId,
+    pub parent_id: Option<CategoryId>,
     pub name: String,
 }
 
@@ -191,8 +205,8 @@ impl CategoryEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateCategoryNameCommand {
-    pub actor_id: String,
-    pub category_id: String,
+    pub actor_id: ActorId,
+    pub category_id: CategoryId,
     pub name: String,
 }
 
@@ -206,8 +220,8 @@ pub struct UpdateCategoryNameDecision {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetCategoryArchivedCommand {
-    pub actor_id: String,
-    pub category_id: String,
+    pub actor_id: ActorId,
+    pub category_id: CategoryId,
     pub archived: bool,
 }
 
@@ -241,16 +255,10 @@ fn validate_parent(
 pub fn decide_create_category(
     command: CreateCategoryCommand,
 ) -> Result<CreateCategoryDecision, CategoryError> {
-    let actor_id = ActorId::new(command.actor_id).map_err(|_| CategoryError::InvalidActorId)?;
-    let household_id =
-        HouseholdId::new(command.household_id).map_err(|_| CategoryError::InvalidHouseholdId)?;
-    let category_id =
-        CategoryId::new(command.category_id).map_err(|_| CategoryError::InvalidCategoryId)?;
-    let parent_id = command
-        .parent_id
-        .map(CategoryId::new)
-        .transpose()
-        .map_err(|_| CategoryError::InvalidParentId)?;
+    let actor_id = command.actor_id;
+    let household_id = command.household_id;
+    let category_id = command.category_id;
+    let parent_id = command.parent_id;
     validate_parent(&category_id, parent_id.as_ref())?;
     let name = CategoryName::new(command.name).map_err(|_| CategoryError::InvalidName)?;
     let event = CategoryEvent::Created {
@@ -269,9 +277,8 @@ pub fn decide_create_category(
 pub fn decide_update_category_name(
     command: UpdateCategoryNameCommand,
 ) -> Result<UpdateCategoryNameDecision, CategoryError> {
-    let actor_id = ActorId::new(command.actor_id).map_err(|_| CategoryError::InvalidActorId)?;
-    let category_id =
-        CategoryId::new(command.category_id).map_err(|_| CategoryError::InvalidCategoryId)?;
+    let actor_id = command.actor_id;
+    let category_id = command.category_id;
     let name = CategoryName::new(command.name).map_err(|_| CategoryError::InvalidName)?;
     let event = CategoryEvent::NameUpdated {
         category_id: category_id.clone(),
@@ -287,9 +294,8 @@ pub fn decide_update_category_name(
 pub fn decide_set_category_archived(
     command: SetCategoryArchivedCommand,
 ) -> Result<SetCategoryArchivedDecision, CategoryError> {
-    let actor_id = ActorId::new(command.actor_id).map_err(|_| CategoryError::InvalidActorId)?;
-    let category_id =
-        CategoryId::new(command.category_id).map_err(|_| CategoryError::InvalidCategoryId)?;
+    let actor_id = command.actor_id;
+    let category_id = command.category_id;
     let event = if command.archived {
         CategoryEvent::Archived {
             category_id: category_id.clone(),

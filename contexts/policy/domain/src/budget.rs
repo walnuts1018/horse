@@ -1,7 +1,62 @@
 use chrono::NaiveDate;
 use horse_household_change::UiChangeDescriptor;
+use uuid::Uuid;
 
 const MAX_AMOUNT_YEN: i64 = 1_000_000_000_000;
+
+macro_rules! budget_id {
+    ($name:ident) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub struct $name(Uuid);
+
+        impl $name {
+            pub fn from_persisted(value: Uuid) -> Self {
+                Self(value)
+            }
+
+            pub const fn value(self) -> Uuid {
+                self.0
+            }
+        }
+    };
+}
+
+budget_id!(BudgetActorId);
+budget_id!(BudgetHouseholdId);
+budget_id!(BudgetId);
+budget_id!(BudgetCategoryId);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BudgetRevision(i64);
+
+impl BudgetRevision {
+    pub const fn value(self) -> i64 {
+        self.0
+    }
+
+    pub fn from_persisted(value: i64) -> Result<Self, BudgetError> {
+        Self::try_from(value)
+    }
+
+    pub fn next(self) -> Result<Self, BudgetError> {
+        self.0
+            .checked_add(1)
+            .map(Self)
+            .ok_or(BudgetError::InvalidRevision)
+    }
+}
+
+impl TryFrom<i64> for BudgetRevision {
+    type Error = BudgetError;
+
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        if value > 0 {
+            Ok(Self(value))
+        } else {
+            Err(BudgetError::InvalidRevision)
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BudgetName(String);
@@ -23,23 +78,23 @@ impl BudgetAmountYen {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Budget {
-    pub id: String,
-    pub household_id: String,
-    pub category_id: Option<String>,
+    pub id: BudgetId,
+    pub household_id: BudgetHouseholdId,
+    pub category_id: Option<BudgetCategoryId>,
     pub name: String,
-    pub amount_yen: i64,
+    pub amount_yen: BudgetAmountYen,
     pub starts_on: NaiveDate,
     pub ends_on: Option<NaiveDate>,
     pub archived: bool,
-    pub revision: i64,
+    pub revision: BudgetRevision,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateBudgetCommand {
-    pub actor_id: String,
-    pub household_id: String,
-    pub id: String,
-    pub category_id: Option<String>,
+    pub actor_id: BudgetActorId,
+    pub household_id: BudgetHouseholdId,
+    pub id: BudgetId,
+    pub category_id: Option<BudgetCategoryId>,
     pub name: String,
     pub amount_yen: i64,
     pub starts_on: NaiveDate,
@@ -48,11 +103,11 @@ pub struct CreateBudgetCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateBudgetCommand {
-    pub actor_id: String,
-    pub household_id: String,
-    pub id: String,
+    pub actor_id: BudgetActorId,
+    pub household_id: BudgetHouseholdId,
+    pub id: BudgetId,
     pub expected_revision: i64,
-    pub category_id: Option<String>,
+    pub category_id: Option<BudgetCategoryId>,
     pub name: String,
     pub amount_yen: i64,
     pub starts_on: NaiveDate,
@@ -61,19 +116,19 @@ pub struct UpdateBudgetCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchiveBudgetCommand {
-    pub actor_id: String,
-    pub household_id: String,
-    pub id: String,
+    pub actor_id: BudgetActorId,
+    pub household_id: BudgetHouseholdId,
+    pub id: BudgetId,
     pub expected_revision: i64,
     pub archived: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateBudgetDecision {
-    pub actor_id: String,
-    pub id: String,
-    pub household_id: String,
-    pub category_id: Option<String>,
+    pub actor_id: BudgetActorId,
+    pub id: BudgetId,
+    pub household_id: BudgetHouseholdId,
+    pub category_id: Option<BudgetCategoryId>,
     pub name: BudgetName,
     pub amount_yen: BudgetAmountYen,
     pub starts_on: NaiveDate,
@@ -97,11 +152,11 @@ pub enum EndDateChange {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateBudgetDecision {
-    pub actor_id: String,
-    pub id: String,
-    pub household_id: String,
-    pub expected_revision: i64,
-    pub category_id: Option<String>,
+    pub actor_id: BudgetActorId,
+    pub id: BudgetId,
+    pub household_id: BudgetHouseholdId,
+    pub expected_revision: BudgetRevision,
+    pub category_id: Option<BudgetCategoryId>,
     pub name: BudgetName,
     pub amount_yen: BudgetAmountYen,
     pub starts_on: NaiveDate,
@@ -119,10 +174,10 @@ impl UpdateBudgetDecision {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchiveBudgetDecision {
-    pub actor_id: String,
-    pub id: String,
-    pub household_id: String,
-    pub expected_revision: i64,
+    pub actor_id: BudgetActorId,
+    pub id: BudgetId,
+    pub household_id: BudgetHouseholdId,
+    pub expected_revision: BudgetRevision,
     pub archived: bool,
 }
 
@@ -152,8 +207,7 @@ pub enum BudgetError {
 }
 
 pub fn decide_create(command: CreateBudgetCommand) -> Result<CreateBudgetDecision, BudgetError> {
-    validate_identity(&command.actor_id, &command.household_id, &command.id)?;
-    let category_id = validate_optional_id(command.category_id)?;
+    let category_id = command.category_id;
     let name = BudgetName(validate_name(command.name)?);
     let amount_yen = BudgetAmountYen::try_from(command.amount_yen)?;
     validate_dates(command.starts_on, command.ends_on)?;
@@ -170,9 +224,8 @@ pub fn decide_create(command: CreateBudgetCommand) -> Result<CreateBudgetDecisio
 }
 
 pub fn decide_update(command: UpdateBudgetCommand) -> Result<UpdateBudgetDecision, BudgetError> {
-    validate_identity(&command.actor_id, &command.household_id, &command.id)?;
-    validate_revision(command.expected_revision)?;
-    let category_id = validate_optional_id(command.category_id)?;
+    let expected_revision = BudgetRevision::try_from(command.expected_revision)?;
+    let category_id = command.category_id;
     let name = BudgetName(validate_name(command.name)?);
     let amount_yen = BudgetAmountYen::try_from(command.amount_yen)?;
     if let Some(ends_on) = command.ends_on {
@@ -182,7 +235,7 @@ pub fn decide_update(command: UpdateBudgetCommand) -> Result<UpdateBudgetDecisio
         actor_id: command.actor_id,
         id: command.id,
         household_id: command.household_id,
-        expected_revision: command.expected_revision,
+        expected_revision,
         category_id,
         name,
         amount_yen,
@@ -194,49 +247,16 @@ pub fn decide_update(command: UpdateBudgetCommand) -> Result<UpdateBudgetDecisio
 }
 
 pub fn decide_archive(command: ArchiveBudgetCommand) -> Result<ArchiveBudgetDecision, BudgetError> {
-    validate_identity(&command.actor_id, &command.household_id, &command.id)?;
-    validate_revision(command.expected_revision)?;
+    let expected_revision = BudgetRevision::try_from(command.expected_revision)?;
     Ok(ArchiveBudgetDecision {
         actor_id: command.actor_id,
         id: command.id,
         household_id: command.household_id,
-        expected_revision: command.expected_revision,
+        expected_revision,
         archived: command.archived,
     })
 }
 
-fn validate_identity(actor: &str, household: &str, id: &str) -> Result<(), BudgetError> {
-    validate_actor_id(actor)?;
-    if household.trim().is_empty() {
-        return Err(BudgetError::InvalidHouseholdId);
-    }
-    validate_id(id)
-}
-fn validate_actor_id(value: &str) -> Result<(), BudgetError> {
-    if value.trim().is_empty() {
-        Err(BudgetError::InvalidActorId)
-    } else {
-        Ok(())
-    }
-}
-fn validate_id(value: &str) -> Result<(), BudgetError> {
-    if value.trim().is_empty() {
-        Err(BudgetError::InvalidId)
-    } else {
-        Ok(())
-    }
-}
-fn validate_optional_id(value: Option<String>) -> Result<Option<String>, BudgetError> {
-    value
-        .map(|id| {
-            if id.trim().is_empty() {
-                Err(BudgetError::InvalidCategoryId)
-            } else {
-                Ok(id)
-            }
-        })
-        .transpose()
-}
 fn validate_name(value: String) -> Result<String, BudgetError> {
     let value = value.trim().to_owned();
     if value.is_empty() || value.chars().count() > 120 {
@@ -261,12 +281,5 @@ fn validate_dates(starts: NaiveDate, ends: Option<NaiveDate>) -> Result<(), Budg
         Err(BudgetError::InvalidDateRange)
     } else {
         Ok(())
-    }
-}
-fn validate_revision(value: i64) -> Result<(), BudgetError> {
-    if value > 0 {
-        Ok(())
-    } else {
-        Err(BudgetError::InvalidRevision)
     }
 }

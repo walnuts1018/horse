@@ -1,16 +1,10 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use catalog_application::workflow_failure::WorkflowFailure;
-use catalog_domain::{
-    product_alias::SetProductAliasCommand,
-    product_alias::decide_set_product_alias,
-    product_creation::{CreateConceptCommand, CreateVariantCommand},
-    tag::{CreateTagCommand, SetTagArchivedCommand, Tag as DomainTag, UpdateTagCommand},
+use catalog_application::catalog_mutation::{
+    CatalogMutationError, CatalogMutationHandler, CreateConceptCommand, CreateTagCommand,
+    CreateVariantCommand, SetProductAliasCommand, SetTagArchivedCommand, Tag as DomainTag,
+    UpdateTagCommand,
 };
-use catalog_postgres::{
-    create_product as postgres_product, product_alias as postgres_alias, tag as postgres_tag,
-};
-use horse_postgres_common::PgPool;
 use uuid::Uuid;
 
 use crate::MutationErrorCode;
@@ -345,15 +339,14 @@ pub async fn create_tag(ctx: &Context<'_>, input: CreateTagInput) -> Result<Crea
         Ok(id) => id,
         Err(_) => return Ok(create_tag_error(MutationErrorCode::BadInput).into()),
     };
-    match postgres_tag::persist_create_tag(
-        ctx.data::<PgPool>()?,
-        CreateTagCommand {
-            actor_id: actor.0.to_string(),
-            household_id: household_id.to_string(),
+    match ctx
+        .data::<std::sync::Arc<dyn CatalogMutationHandler>>()?
+        .create_tag(CreateTagCommand {
+            actor_id: actor.0.into(),
+            household_id: household_id.into(),
             name: input.name,
-        },
-    )
-    .await
+        })
+        .await
     {
         Ok(tag) => Ok(CreateTagSuccess {
             result: map_tag(tag).map_err(crate::internal_error)?,
@@ -372,16 +365,15 @@ pub async fn update_tag(ctx: &Context<'_>, input: UpdateTagInput) -> Result<Upda
         Ok(id) => id,
         Err(()) => return Ok(update_tag_error(MutationErrorCode::BadInput).into()),
     };
-    match postgres_tag::persist_update_tag(
-        ctx.data::<PgPool>()?,
-        UpdateTagCommand {
-            actor_id: actor.0.to_string(),
-            tag_id: tag_id.to_string(),
+    match ctx
+        .data::<std::sync::Arc<dyn CatalogMutationHandler>>()?
+        .update_tag(UpdateTagCommand {
+            actor_id: actor.0.into(),
+            tag_id: tag_id.into(),
             base_revision: input.base_revision,
             name: input.name,
-        },
-    )
-    .await
+        })
+        .await
     {
         Ok(tag) => Ok(UpdateTagSuccess {
             result: map_tag(tag).map_err(crate::internal_error)?,
@@ -400,16 +392,15 @@ pub async fn archive_tag(ctx: &Context<'_>, input: ArchiveTagInput) -> Result<Ar
         Ok(id) => id,
         Err(()) => return Ok(archive_tag_error(MutationErrorCode::BadInput).into()),
     };
-    match postgres_tag::persist_set_tag_archived(
-        ctx.data::<PgPool>()?,
-        SetTagArchivedCommand {
-            actor_id: actor.0.to_string(),
-            tag_id: tag_id.to_string(),
+    match ctx
+        .data::<std::sync::Arc<dyn CatalogMutationHandler>>()?
+        .set_tag_archived(SetTagArchivedCommand {
+            actor_id: actor.0.into(),
+            tag_id: tag_id.into(),
             base_revision: input.base_revision,
             archived: input.archived,
-        },
-    )
-    .await
+        })
+        .await
     {
         Ok(tag) => Ok(ArchiveTagSuccess {
             result: map_tag(tag).map_err(crate::internal_error)?,
@@ -433,7 +424,7 @@ pub async fn create_product_concept(
     };
     let category_id = match input.category_id.as_ref() {
         Some(id) => match decode_node_id(id, "Category") {
-            Ok(id) => Some(id.to_string()),
+            Ok(id) => Some(id.into()),
             Err(()) => {
                 return Ok(create_product_concept_error(MutationErrorCode::BadInput).into());
             }
@@ -441,20 +432,25 @@ pub async fn create_product_concept(
         None => None,
     };
     let command = CreateConceptCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
+        actor_id: actor.0.into(),
+        household_id: household_id.into(),
         name: input.name,
         category_id,
     };
-    match postgres_product::create_concept(ctx.data::<PgPool>()?, command).await {
-        Ok((id, decision)) => Ok(CreateProductConceptSuccess {
+    match ctx
+        .data::<std::sync::Arc<dyn CatalogMutationHandler>>()?
+        .create_concept(command)
+        .await
+    {
+        Ok(created) => Ok(CreateProductConceptSuccess {
             result: ProductConcept {
-                id: encode_node_id("ProductConcept", &id).map_err(crate::internal_error)?,
-                household_id: encode_node_id("Household", decision.household_id.as_str())
+                id: encode_node_id("ProductConcept", &created.id).map_err(crate::internal_error)?,
+                household_id: encode_node_id("Household", created.decision.household_id.as_str())
                     .map_err(crate::internal_error)?,
-                name: decision.name.as_str().to_owned(),
-                normalized_name: decision.normalized_name().as_str().to_owned(),
-                category_id: decision
+                name: created.decision.name.as_str().to_owned(),
+                normalized_name: created.decision.normalized_name().as_str().to_owned(),
+                category_id: created
+                    .decision
                     .category_id
                     .as_ref()
                     .map(|id| {
@@ -488,33 +484,40 @@ pub async fn create_product_variant(
         Err(()) => return Ok(create_product_variant_error(MutationErrorCode::BadInput).into()),
     };
     let command = CreateVariantCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
-        concept_id: concept_id.to_string(),
+        actor_id: actor.0.into(),
+        household_id: household_id.into(),
+        concept_id: concept_id.into(),
         name: input.name,
         brand: input.brand,
         package_size: input.package_size,
         barcode: input.barcode,
     };
-    match postgres_product::create_variant(ctx.data::<PgPool>()?, command).await {
-        Ok((id, decision)) => Ok(CreateProductVariantSuccess {
+    match ctx
+        .data::<std::sync::Arc<dyn CatalogMutationHandler>>()?
+        .create_variant(command)
+        .await
+    {
+        Ok(created) => Ok(CreateProductVariantSuccess {
             result: ProductVariant {
-                id: encode_node_id("ProductVariant", &id).map_err(crate::internal_error)?,
-                household_id: encode_node_id("Household", decision.household_id.as_str())
+                id: encode_node_id("ProductVariant", &created.id).map_err(crate::internal_error)?,
+                household_id: encode_node_id("Household", created.decision.household_id.as_str())
                     .map_err(crate::internal_error)?,
-                concept_id: encode_node_id("ProductConcept", decision.concept_id.as_str())
+                concept_id: encode_node_id("ProductConcept", created.decision.concept_id.as_str())
                     .map_err(crate::internal_error)?,
-                name: decision.name.as_str().to_owned(),
-                normalized_name: decision.normalized_name().as_str().to_owned(),
-                brand: decision
+                name: created.decision.name.as_str().to_owned(),
+                normalized_name: created.decision.normalized_name().as_str().to_owned(),
+                brand: created
+                    .decision
                     .brand
                     .map(|value| value.as_str().to_owned())
                     .filter(|value| !value.is_empty()),
-                package_size: decision
+                package_size: created
+                    .decision
                     .package_size
                     .map(|value| value.as_str().to_owned())
                     .filter(|value| !value.is_empty()),
-                barcode: decision
+                barcode: created
+                    .decision
                     .barcode
                     .map(|value| value.as_str().to_owned()),
                 archived: false,
@@ -544,17 +547,17 @@ pub async fn set_product_alias(
         Err(()) => return Ok(set_product_alias_error(MutationErrorCode::BadInput).into()),
     };
     let command = SetProductAliasCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
-        variant_id: variant_id.to_string(),
+        actor_id: actor.0.into(),
+        household_id: household_id.into(),
+        variant_id: variant_id.into(),
         merchant: input.merchant,
         alias: input.alias,
     };
-    let decision = match decide_set_product_alias(command.clone()) {
-        Ok(decision) => decision,
-        Err(_) => return Ok(set_product_alias_error(MutationErrorCode::BadInput).into()),
-    };
-    match postgres_alias::persist_set_product_alias(ctx.data::<PgPool>()?, command).await {
+    match ctx
+        .data::<std::sync::Arc<dyn CatalogMutationHandler>>()?
+        .set_product_alias(command)
+        .await
+    {
         Ok(alias) => {
             let Ok(revision) = i32::try_from(alias.revision) else {
                 return Err(crate::internal_error(
@@ -564,13 +567,16 @@ pub async fn set_product_alias(
             Ok(SetProductAliasSuccess {
                 result: ProductAlias {
                     id: encode_node_id("ProductAlias", &alias.id).map_err(crate::internal_error)?,
-                    household_id: encode_node_id("Household", decision.household_id.as_str())
+                    household_id: encode_node_id("Household", alias.decision.household_id.as_str())
                         .map_err(crate::internal_error)?,
-                    variant_id: encode_node_id("ProductVariant", decision.variant_id.as_str())
-                        .map_err(crate::internal_error)?,
-                    merchant_key: decision.merchant_key.as_str().to_owned(),
-                    alias: decision.alias_text.as_str().to_owned(),
-                    normalized_alias: decision.normalized_alias.as_str().to_owned(),
+                    variant_id: encode_node_id(
+                        "ProductVariant",
+                        alias.decision.variant_id.as_str(),
+                    )
+                    .map_err(crate::internal_error)?,
+                    merchant_key: alias.decision.merchant_key.as_str().to_owned(),
+                    alias: alias.decision.alias_text.as_str().to_owned(),
+                    normalized_alias: alias.decision.normalized_alias.as_str().to_owned(),
                     revision,
                 },
             }
@@ -584,13 +590,13 @@ pub async fn set_product_alias(
 }
 
 pub(crate) fn map_tag(value: DomainTag) -> Result<Tag> {
-    let revision = i32::try_from(value.revision)
+    let revision = i32::try_from(value.revision.as_i64())
         .map_err(|_| crate::internal_error("Tag revision exceeds GraphQL Int"))?;
     Ok(Tag {
-        id: encode_node_id("Tag", &value.id).map_err(crate::internal_error)?,
-        household_id: encode_node_id("Household", &value.household_id)
+        id: encode_node_id("Tag", value.id.as_str()).map_err(crate::internal_error)?,
+        household_id: encode_node_id("Household", value.household_id.as_str())
             .map_err(crate::internal_error)?,
-        name: value.name,
+        name: value.name.as_str().to_owned(),
         archived: value.archived,
         revision,
     })
@@ -623,16 +629,12 @@ pub(crate) fn encode_node_id(kind: &str, raw_id: &str) -> std::result::Result<ID
     Ok(ID(URL_SAFE_NO_PAD.encode(payload)))
 }
 
-fn catalog_error_code<DecisionError, InfrastructureError>(
-    error: &WorkflowFailure<DecisionError, InfrastructureError>,
-) -> Option<MutationErrorCode> {
+fn catalog_error_code(error: &CatalogMutationError) -> Option<MutationErrorCode> {
     match error {
-        WorkflowFailure::Decision(_) | WorkflowFailure::InvalidInput => {
-            Some(MutationErrorCode::BadInput)
-        }
-        WorkflowFailure::NotFound => Some(MutationErrorCode::NotFound),
-        WorkflowFailure::Conflict => Some(MutationErrorCode::Conflict),
-        WorkflowFailure::Infrastructure(_) => None,
+        CatalogMutationError::BadInput => Some(MutationErrorCode::BadInput),
+        CatalogMutationError::NotFound => Some(MutationErrorCode::NotFound),
+        CatalogMutationError::Conflict => Some(MutationErrorCode::Conflict),
+        CatalogMutationError::Infrastructure(_) => None,
     }
 }
 

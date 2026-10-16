@@ -13,18 +13,6 @@ pub fn account_card_last4_updated() -> UiChangeDescriptor {
     UiChangeDescriptor::new("account.card_last4_updated", "account", ["cardLast4"])
 }
 
-pub fn pool_created() -> UiChangeDescriptor {
-    UiChangeDescriptor::new("pool.created", "pool", ["name", "kind"])
-}
-
-pub fn pool_funding_rule_updated() -> UiChangeDescriptor {
-    UiChangeDescriptor::new(
-        "pool.funding_rule.updated",
-        "pool",
-        ["ownerMemberId", "fundingShares", "settlementPolicy"],
-    )
-}
-
 pub fn purchase_created() -> UiChangeDescriptor {
     UiChangeDescriptor::new("purchase.created", "purchase", std::iter::empty::<String>())
 }

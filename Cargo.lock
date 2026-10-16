@@ -2801,6 +2801,7 @@ name = "horse-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "bookkeeping-postgres",
  "catalog-postgres",
  "horse-auth",
  "horse-extraction-queue",
@@ -2866,7 +2867,6 @@ dependencies = [
  "bookkeeping-postgres",
  "catalog-application",
  "catalog-domain",
- "catalog-postgres",
  "chrono",
  "cross-context-postgres",
  "diesel",
@@ -3009,6 +3009,7 @@ dependencies = [
  "horse-gemini-developer-api",
  "horse-object-storage",
  "horse-postgres-common",
+ "horse-test-infra",
  "humantime",
  "mail-parser",
  "reqwest 0.13.5",
@@ -3050,6 +3051,7 @@ dependencies = [
  "chrono",
  "diesel",
  "diesel-async",
+ "horse-authorization",
  "horse-household-change",
  "horse-postgres-common",
  "household-application",
@@ -4525,7 +4527,11 @@ dependencies = [
  "horse-authorization",
  "horse-household-change",
  "horse-postgres-common",
+ "horse-test-infra",
+ "household-application",
+ "household-postgres",
  "policy-application",
+ "tokio",
  "uuid",
 ]
 

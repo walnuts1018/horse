@@ -7,12 +7,18 @@ macro_rules! product_id {
         pub struct $name(String);
 
         impl $name {
-            fn new(value: String) -> Self {
-                Self(value)
-            }
-
             pub fn as_str(&self) -> &str {
                 &self.0
+            }
+        }
+    };
+}
+
+macro_rules! uuid_conversion {
+    ($name:ident) => {
+        impl From<Uuid> for $name {
+            fn from(value: Uuid) -> Self {
+                Self(value.to_string())
             }
         }
     };
@@ -22,6 +28,11 @@ product_id!(ActorId);
 product_id!(HouseholdId);
 product_id!(CategoryId);
 product_id!(ConceptId);
+
+uuid_conversion!(ActorId);
+uuid_conversion!(HouseholdId);
+uuid_conversion!(CategoryId);
+uuid_conversion!(ConceptId);
 
 macro_rules! product_text {
     ($name:ident) => {
@@ -72,10 +83,10 @@ impl NormalizedProductName {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateConceptCommand {
-    pub actor_id: String,
-    pub household_id: String,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
     pub name: String,
-    pub category_id: Option<String>,
+    pub category_id: Option<CategoryId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,9 +113,9 @@ impl CreateConceptDecision {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateVariantCommand {
-    pub actor_id: String,
-    pub household_id: String,
-    pub concept_id: String,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
+    pub concept_id: ConceptId,
     pub name: String,
     pub brand: Option<String>,
     pub package_size: Option<String>,
@@ -149,20 +160,9 @@ pub enum CreateProductError {
 pub fn decide_create_concept(
     command: CreateConceptCommand,
 ) -> Result<CreateConceptDecision, CreateProductError> {
-    let actor_id = validated_id(command.actor_id)
-        .map(ActorId::new)
-        .map_err(|_| CreateProductError::InvalidActorId)?;
-    let household_id = validated_id(command.household_id)
-        .map(HouseholdId::new)
-        .map_err(|_| CreateProductError::InvalidHouseholdId)?;
-    let category_id = command
-        .category_id
-        .map(|id| {
-            validated_id(id)
-                .map(CategoryId::new)
-                .map_err(|_| CreateProductError::InvalidCategoryId)
-        })
-        .transpose()?;
+    let actor_id = command.actor_id;
+    let household_id = command.household_id;
+    let category_id = command.category_id;
     let name = ProductName::new(validated_name(command.name)?);
     Ok(CreateConceptDecision {
         actor_id,
@@ -175,15 +175,9 @@ pub fn decide_create_concept(
 pub fn decide_create_variant(
     command: CreateVariantCommand,
 ) -> Result<CreateVariantDecision, CreateProductError> {
-    let actor_id = validated_id(command.actor_id)
-        .map(ActorId::new)
-        .map_err(|_| CreateProductError::InvalidActorId)?;
-    let household_id = validated_id(command.household_id)
-        .map(HouseholdId::new)
-        .map_err(|_| CreateProductError::InvalidHouseholdId)?;
-    let concept_id = validated_id(command.concept_id)
-        .map(ConceptId::new)
-        .map_err(|_| CreateProductError::InvalidConceptId)?;
+    let actor_id = command.actor_id;
+    let household_id = command.household_id;
+    let concept_id = command.concept_id;
     if command
         .barcode
         .as_deref()
@@ -223,9 +217,4 @@ fn normalize_text(value: &str) -> String {
 
 fn trim_optional(value: Option<String>) -> Option<String> {
     value.map(|value| value.trim().to_owned())
-}
-
-fn validated_id(value: String) -> Result<String, ()> {
-    Uuid::parse_str(&value).map_err(|_| ())?;
-    Ok(value)
 }

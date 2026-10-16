@@ -68,18 +68,27 @@ pub struct Config {
 #[derive(Clone, Copy, Debug)]
 pub struct Actor(pub Uuid);
 
-pub fn schema(
-    pool: PgPool,
-    config: Config,
-    tag_query: std::sync::Arc<dyn catalog_application::tag_query::TagQuery>,
-    product_query: std::sync::Arc<dyn catalog_application::product_query::ProductQuery>,
-    category_mutation: std::sync::Arc<dyn catalog_application::category::CategoryMutation>,
-) -> Schema {
+pub struct Ports {
+    pub account_balances_query:
+        std::sync::Arc<dyn bookkeeping_application::account_balances_query::AccountBalancesQuery>,
+    pub tag_query: std::sync::Arc<dyn catalog_application::tag_query::TagQuery>,
+    pub product_query: std::sync::Arc<dyn catalog_application::product_query::ProductQuery>,
+    pub category_mutation: std::sync::Arc<dyn catalog_application::category::CategoryMutation>,
+    pub catalog_mutation:
+        std::sync::Arc<dyn catalog_application::catalog_mutation::CatalogMutationHandler>,
+    pub catalog_node_batch_query:
+        std::sync::Arc<dyn catalog_application::node_batch_query::CatalogNodeBatchQuery>,
+}
+
+pub fn schema(pool: PgPool, config: Config, ports: Ports) -> Schema {
     GraphqlSchema::build(QueryRoot, MutationRoot, subscriptions::SubscriptionRoot)
         .data(pool)
-        .data(tag_query)
-        .data(product_query)
-        .data(category_mutation)
+        .data(ports.account_balances_query)
+        .data(ports.tag_query)
+        .data(ports.product_query)
+        .data(ports.category_mutation)
+        .data(ports.catalog_mutation)
+        .data(ports.catalog_node_batch_query)
         .data(config)
         .data(subscriptions::SubscriptionHub::new())
         .register_output_type::<MutationError>()

@@ -1048,14 +1048,18 @@ impl TryFrom<purchase_command_result::PurchaseCommandResult> for PurchaseObject 
                         .tags
                         .iter()
                         .map(|(id, name, archived, revision)| {
-                            crate::catalog_mutations::map_tag(catalog_domain::tag::Tag {
-                                id: id.to_string(),
-                                household_id: value.household_id.to_string(),
-                                name: name.clone(),
-                                archived: *archived,
-                                revision: *revision,
-                            })
+                            catalog_domain::tag::Tag::reconstitute(
+                                id.to_string(),
+                                value.household_id.to_string(),
+                                name,
+                                *archived,
+                                *revision,
+                            )
                             .map_err(|_| "invalid tag projection")
+                            .and_then(|tag| {
+                                crate::catalog_mutations::map_tag(tag)
+                                    .map_err(|_| "invalid tag projection")
+                            })
                         })
                         .collect::<std::result::Result<Vec<_>, &'static str>>()?,
                     revision: i32::try_from(item.revision)

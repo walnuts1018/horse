@@ -2,8 +2,11 @@ use std::collections::{HashMap, HashSet};
 
 use async_graphql::{Context, ID, Result};
 use base64::Engine;
+use catalog_application::node_batch_query::{
+    CatalogNodeBatch, CatalogNodeBatchInput, CatalogNodeBatchQuery,
+};
 use chrono::{NaiveDate, Utc};
-use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl};
+use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
 use horse_postgres_common::{PgPool, schema::public};
 use uuid::Uuid;
@@ -23,9 +26,7 @@ pub(crate) async fn load(
     use public::{
         allocation_rule_weights::dsl as weights, allocation_rules::dsl as rules,
         categories::dsl as categories, household_invitations::dsl as invitations,
-        household_members::dsl as members, product_aliases::dsl as aliases,
-        product_concepts::dsl as concepts, product_variants::dsl as variants,
-        recurring_expenses::dsl as expenses, tags::dsl as tags,
+        household_members::dsl as members, recurring_expenses::dsl as expenses,
     };
 
     if household_ids.is_empty() || requested.is_empty() {
@@ -40,36 +41,9 @@ pub(crate) async fn load(
         ids.retain(|id| seen.insert(*id));
     }
 
-    let pool = ctx.data::<PgPool>()?;
-    let mut conn = pool.get().await.map_err(crate::internal_error)?;
     let mut loaded = HashMap::new();
 
-    if let Some(ids) = ids_by_type.get("Tag") {
-        let rows = tags::tags
-            .filter(tags::household_id.eq_any(household_ids))
-            .filter(tags::id.eq_any(ids))
-            .select((
-                tags::id,
-                tags::household_id,
-                tags::name,
-                tags::archived,
-                tags::revision,
-            ))
-            .load::<(Uuid, Uuid, String, bool, i64)>(&mut conn)
-            .await
-            .map_err(crate::internal_error)?;
-        for (id, household_id, name, archived, revision) in rows {
-            let value = catalog_mutations::Tag {
-                id: relay_id("Tag", id)?,
-                household_id: relay_id("Household", household_id)?,
-                name,
-                archived,
-                revision: graphql_revision(revision, "Tag")?,
-            };
-            loaded.insert(("Tag".to_owned(), id), Node::Tag(value));
-        }
-    }
-
+    let tag_ids = ids_by_type.get("Tag").cloned().unwrap_or_default();
     let concept_ids = ids_by_type
         .get("ProductConcept")
         .cloned()
@@ -79,206 +53,34 @@ pub(crate) async fn load(
         .cloned()
         .unwrap_or_default();
     let alias_ids = ids_by_type.get("ProductAlias").cloned().unwrap_or_default();
-    if !concept_ids.is_empty() || !variant_ids.is_empty() || !alias_ids.is_empty() {
-        let mut concept_rows = Vec::new();
-        if !concept_ids.is_empty() {
-            concept_rows = concepts::product_concepts
-                .filter(concepts::household_id.eq_any(household_ids))
-                .filter(concepts::id.eq_any(&concept_ids))
-                .select((
-                    concepts::id,
-                    concepts::household_id,
-                    concepts::name,
-                    concepts::normalized_name,
-                    concepts::category_id,
-                    concepts::archived,
-                    concepts::revision,
-                ))
-                .load::<(Uuid, Uuid, String, String, Option<Uuid>, bool, i64)>(&mut conn)
-                .await
-                .map_err(crate::internal_error)?;
-        }
-        let mut variant_filter_ids = variant_ids.clone();
-        variant_filter_ids.extend(concept_rows.iter().map(|row| row.0));
-        let variant_rows = if variant_filter_ids.is_empty() {
-            Vec::new()
-        } else {
-            variants::product_variants
-                .filter(variants::household_id.eq_any(household_ids))
-                .filter(
-                    variants::id
-                        .eq_any(&variant_ids)
-                        .or(variants::concept_id.eq_any(&variant_filter_ids)),
-                )
-                .order_by(variants::normalized_name)
-                .then_order_by(variants::id)
-                .select((
-                    variants::id,
-                    variants::household_id,
-                    variants::concept_id,
-                    variants::name,
-                    variants::normalized_name,
-                    variants::brand,
-                    variants::package_size,
-                    variants::barcode,
-                    variants::archived,
-                    variants::revision,
-                ))
-                .load::<(
-                    Uuid,
-                    Uuid,
-                    Uuid,
-                    String,
-                    String,
-                    String,
-                    String,
-                    Option<String>,
-                    bool,
-                    i64,
-                )>(&mut conn)
-                .await
-                .map_err(crate::internal_error)?
-        };
-        let variant_row_ids: Vec<Uuid> = variant_rows.iter().map(|row| row.0).collect();
-        let alias_rows = if alias_ids.is_empty() && variant_row_ids.is_empty() {
-            Vec::new()
-        } else {
-            aliases::product_aliases
-                .filter(aliases::household_id.eq_any(household_ids))
-                .filter(
-                    aliases::id
-                        .eq_any(&alias_ids)
-                        .or(aliases::variant_id.eq_any(&variant_row_ids)),
-                )
-                .order_by(aliases::merchant_key)
-                .then_order_by(aliases::normalized_alias)
-                .select((
-                    aliases::id,
-                    aliases::household_id,
-                    aliases::variant_id,
-                    aliases::merchant_key,
-                    aliases::alias_text,
-                    aliases::normalized_alias,
-                    aliases::revision,
-                ))
-                .load::<(Uuid, Uuid, Uuid, String, String, String, i64)>(&mut conn)
-                .await
-                .map_err(crate::internal_error)?
-        };
-        let mut aliases_by_variant: HashMap<Uuid, Vec<catalog_mutations::ProductAlias>> =
-            HashMap::new();
-        for (id, household_id, variant_id, merchant_key, alias, normalized_alias, revision) in
-            alias_rows
-        {
-            let value = catalog_mutations::ProductAlias {
-                id: relay_id("ProductAlias", id)?,
-                household_id: relay_id("Household", household_id)?,
-                variant_id: relay_id("ProductVariant", variant_id)?,
-                merchant_key,
-                alias,
-                normalized_alias,
-                revision: graphql_revision(revision, "ProductAlias")?,
-            };
-            aliases_by_variant
-                .entry(variant_id)
-                .or_default()
-                .push(value);
-        }
-        let mut variants_by_concept: HashMap<Uuid, Vec<catalog_mutations::ProductVariant>> =
-            HashMap::new();
-        let mut variants_by_id = HashMap::new();
-        for (
-            id,
-            household_id,
-            concept_id,
-            name,
-            normalized_name,
-            brand,
-            package_size,
-            barcode,
-            archived,
-            revision,
-        ) in variant_rows
-        {
-            let value = catalog_mutations::ProductVariant {
-                id: relay_id("ProductVariant", id)?,
-                household_id: relay_id("Household", household_id)?,
-                concept_id: relay_id("ProductConcept", concept_id)?,
-                name,
-                normalized_name,
-                brand: nonempty(brand),
-                package_size: nonempty(package_size),
-                barcode,
-                archived,
-                revision: graphql_revision(revision, "ProductVariant")?,
-                aliases: aliases_by_variant.remove(&id).unwrap_or_default(),
-            };
-            variants_by_concept
-                .entry(concept_id)
-                .or_default()
-                .push(value.clone());
-            variants_by_id.insert(id, value);
-        }
-        for (id, household_id, name, normalized_name, category_id, archived, revision) in
-            concept_rows
-        {
-            let value = catalog_mutations::ProductConcept {
-                id: relay_id("ProductConcept", id)?,
-                household_id: relay_id("Household", household_id)?,
-                name,
-                normalized_name,
-                category_id: category_id
-                    .map(|category_id| relay_id("Category", category_id))
-                    .transpose()?,
-                archived,
-                revision: graphql_revision(revision, "ProductConcept")?,
-                variants: variants_by_concept.remove(&id).unwrap_or_default(),
-            };
-            loaded.insert(
-                ("ProductConcept".to_owned(), id),
-                Node::ProductConcept(value),
-            );
-        }
-        for id in variant_ids {
-            if let Some(value) = variants_by_id.remove(&id) {
-                loaded.insert(
-                    ("ProductVariant".to_owned(), id),
-                    Node::ProductVariant(value),
-                );
-            }
-        }
-        if !alias_ids.is_empty() {
-            let alias_rows = aliases::product_aliases
-                .filter(aliases::household_id.eq_any(household_ids))
-                .filter(aliases::id.eq_any(&alias_ids))
-                .select((
-                    aliases::id,
-                    aliases::household_id,
-                    aliases::variant_id,
-                    aliases::merchant_key,
-                    aliases::alias_text,
-                    aliases::normalized_alias,
-                    aliases::revision,
-                ))
-                .load::<(Uuid, Uuid, Uuid, String, String, String, i64)>(&mut conn)
-                .await
-                .map_err(crate::internal_error)?;
-            for (id, household_id, variant_id, merchant_key, alias, normalized_alias, revision) in
-                alias_rows
-            {
-                let value = catalog_mutations::ProductAlias {
-                    id: relay_id("ProductAlias", id)?,
-                    household_id: relay_id("Household", household_id)?,
-                    variant_id: relay_id("ProductVariant", variant_id)?,
-                    merchant_key,
-                    alias,
-                    normalized_alias,
-                    revision: graphql_revision(revision, "ProductAlias")?,
-                };
-                loaded.insert(("ProductAlias".to_owned(), id), Node::ProductAlias(value));
-            }
-        }
+    if !tag_ids.is_empty()
+        || !concept_ids.is_empty()
+        || !variant_ids.is_empty()
+        || !alias_ids.is_empty()
+    {
+        let catalog_batch = ctx
+            .data::<std::sync::Arc<dyn CatalogNodeBatchQuery>>()?
+            .query(CatalogNodeBatchInput {
+                household_ids: household_ids.to_vec(),
+                tag_ids,
+                concept_ids,
+                concept_variant_ids: variant_ids.clone(),
+                variant_ids,
+                alias_ids,
+            })
+            .await
+            .map_err(crate::internal_error)?;
+        loaded.extend(map_catalog_nodes(catalog_batch)?);
     }
+
+    let has_policy_nodes = ids_by_type.contains_key("RecurringExpense")
+        || ids_by_type.contains_key("HouseholdInvitation")
+        || ids_by_type.contains_key("AllocationRule");
+    if !has_policy_nodes {
+        return Ok(loaded);
+    }
+    let pool = ctx.data::<PgPool>()?;
+    let mut conn = pool.get().await.map_err(crate::internal_error)?;
 
     if let Some(ids) = ids_by_type.get("RecurringExpense") {
         let rows = expenses::recurring_expenses
@@ -513,7 +315,7 @@ pub(crate) async fn load(
         let concept_targets: Vec<Uuid> = rule_rows.iter().filter_map(|row| row.5).collect();
         let variant_targets: Vec<Uuid> = rule_rows.iter().filter_map(|row| row.6).collect();
         let products =
-            load_products_for_targets(&mut conn, household_ids, &concept_targets, &variant_targets)
+            load_products_for_targets(ctx, household_ids, &concept_targets, &variant_targets)
                 .await?;
         let mut weights_by_rule: HashMap<Uuid, Vec<crate::pool_mutations::AllocationObject>> =
             HashMap::new();
@@ -585,176 +387,122 @@ pub(crate) async fn load(
 }
 
 async fn load_products_for_targets(
-    conn: &mut horse_postgres_common::AsyncPgConnection,
+    ctx: &Context<'_>,
     household_ids: &[Uuid],
     concept_ids: &[Uuid],
     variant_ids: &[Uuid],
 ) -> Result<HashMap<NodeKey, Node>> {
-    use public::{
-        product_aliases::dsl as aliases, product_concepts::dsl as concepts,
-        product_variants::dsl as variants,
-    };
-    let concept_rows = if concept_ids.is_empty() {
-        Vec::new()
-    } else {
-        concepts::product_concepts
-            .filter(concepts::household_id.eq_any(household_ids))
-            .filter(concepts::id.eq_any(concept_ids))
-            .select((
-                concepts::id,
-                concepts::household_id,
-                concepts::name,
-                concepts::normalized_name,
-                concepts::category_id,
-                concepts::archived,
-                concepts::revision,
-            ))
-            .load::<(Uuid, Uuid, String, String, Option<Uuid>, bool, i64)>(conn)
-            .await
-            .map_err(crate::internal_error)?
-    };
-    let relevant_concepts: Vec<Uuid> = concept_rows.iter().map(|row| row.0).collect();
-    let variant_rows = if relevant_concepts.is_empty() && variant_ids.is_empty() {
-        Vec::new()
-    } else {
-        variants::product_variants
-            .filter(variants::household_id.eq_any(household_ids))
-            .filter(
-                variants::concept_id
-                    .eq_any(&relevant_concepts)
-                    .or(variants::id.eq_any(variant_ids)),
-            )
-            .order_by(variants::normalized_name)
-            .then_order_by(variants::id)
-            .select((
-                variants::id,
-                variants::household_id,
-                variants::concept_id,
-                variants::name,
-                variants::normalized_name,
-                variants::brand,
-                variants::package_size,
-                variants::barcode,
-                variants::archived,
-                variants::revision,
-            ))
-            .load::<(
-                Uuid,
-                Uuid,
-                Uuid,
-                String,
-                String,
-                String,
-                String,
-                Option<String>,
-                bool,
-                i64,
-            )>(conn)
-            .await
-            .map_err(crate::internal_error)?
-    };
-    let variant_row_ids: Vec<Uuid> = variant_rows.iter().map(|row| row.0).collect();
-    let alias_rows = if variant_row_ids.is_empty() {
-        Vec::new()
-    } else {
-        aliases::product_aliases
-            .filter(aliases::household_id.eq_any(household_ids))
-            .filter(aliases::variant_id.eq_any(&variant_row_ids))
-            .order_by(aliases::merchant_key)
-            .then_order_by(aliases::normalized_alias)
-            .select((
-                aliases::id,
-                aliases::household_id,
-                aliases::variant_id,
-                aliases::merchant_key,
-                aliases::alias_text,
-                aliases::normalized_alias,
-                aliases::revision,
-            ))
-            .load::<(Uuid, Uuid, Uuid, String, String, String, i64)>(conn)
-            .await
-            .map_err(crate::internal_error)?
-    };
-    let mut aliases_by_variant: HashMap<Uuid, Vec<catalog_mutations::ProductAlias>> =
-        HashMap::new();
-    for (id, household_id, variant_id, merchant_key, alias, normalized_alias, revision) in
-        alias_rows
-    {
-        aliases_by_variant
-            .entry(variant_id)
-            .or_default()
-            .push(catalog_mutations::ProductAlias {
-                id: relay_id("ProductAlias", id)?,
-                household_id: relay_id("Household", household_id)?,
-                variant_id: relay_id("ProductVariant", variant_id)?,
-                merchant_key,
-                alias,
-                normalized_alias,
-                revision: graphql_revision(revision, "ProductAlias")?,
-            });
+    if concept_ids.is_empty() && variant_ids.is_empty() {
+        return Ok(HashMap::new());
     }
-    let mut by_concept: HashMap<Uuid, Vec<catalog_mutations::ProductVariant>> = HashMap::new();
-    let mut by_variant = HashMap::new();
-    for (
-        id,
-        household_id,
-        concept_id,
-        name,
-        normalized_name,
-        brand,
-        package_size,
-        barcode,
-        archived,
-        revision,
-    ) in variant_rows
-    {
-        let value = catalog_mutations::ProductVariant {
-            id: relay_id("ProductVariant", id)?,
-            household_id: relay_id("Household", household_id)?,
-            concept_id: relay_id("ProductConcept", concept_id)?,
-            name,
-            normalized_name,
-            brand: nonempty(brand),
-            package_size: nonempty(package_size),
-            barcode,
-            archived,
-            revision: graphql_revision(revision, "ProductVariant")?,
-            aliases: aliases_by_variant.remove(&id).unwrap_or_default(),
-        };
-        by_concept
-            .entry(concept_id)
-            .or_default()
-            .push(value.clone());
-        by_variant.insert(id, value);
-    }
+    let batch = ctx
+        .data::<std::sync::Arc<dyn CatalogNodeBatchQuery>>()?
+        .query(CatalogNodeBatchInput {
+            household_ids: household_ids.to_vec(),
+            tag_ids: Vec::new(),
+            concept_ids: concept_ids.to_vec(),
+            variant_ids: variant_ids.to_vec(),
+            concept_variant_ids: Vec::new(),
+            alias_ids: Vec::new(),
+        })
+        .await
+        .map_err(crate::internal_error)?;
+    map_catalog_nodes(batch)
+}
+
+fn map_catalog_nodes(batch: CatalogNodeBatch) -> Result<HashMap<NodeKey, Node>> {
     let mut result = HashMap::new();
-    for (id, household_id, name, normalized_name, category_id, archived, revision) in concept_rows {
-        let value = catalog_mutations::ProductConcept {
-            id: relay_id("ProductConcept", id)?,
-            household_id: relay_id("Household", household_id)?,
-            name,
-            normalized_name,
-            category_id: category_id
-                .map(|value| relay_id("Category", value))
-                .transpose()?,
-            archived,
-            revision: graphql_revision(revision, "ProductConcept")?,
-            variants: by_concept.remove(&id).unwrap_or_default(),
+    for tag in batch.tags {
+        let id = tag.id;
+        let value = catalog_mutations::Tag {
+            id: relay_id("Tag", id)?,
+            household_id: relay_id("Household", tag.household_id)?,
+            name: tag.name,
+            archived: tag.archived,
+            revision: graphql_revision(tag.revision, "Tag")?,
         };
+        result.insert(("Tag".to_owned(), id), Node::Tag(value));
+    }
+    for concept in batch.concepts {
+        let id = concept.id;
         result.insert(
             ("ProductConcept".to_owned(), id),
-            Node::ProductConcept(value),
+            Node::ProductConcept(map_product_concept(concept)?),
         );
     }
-    for id in variant_ids {
-        if let Some(value) = by_variant.remove(id) {
-            result.insert(
-                ("ProductVariant".to_owned(), *id),
-                Node::ProductVariant(value),
-            );
-        }
+    for variant in batch.variants {
+        let id = variant.id;
+        result.insert(
+            ("ProductVariant".to_owned(), id),
+            Node::ProductVariant(map_product_variant(variant)?),
+        );
+    }
+    for alias in batch.aliases {
+        let id = alias.id;
+        result.insert(
+            ("ProductAlias".to_owned(), id),
+            Node::ProductAlias(map_product_alias(alias)?),
+        );
     }
     Ok(result)
+}
+
+fn map_product_concept(
+    value: catalog_application::product_query::ProductConceptProjection,
+) -> Result<catalog_mutations::ProductConcept> {
+    Ok(catalog_mutations::ProductConcept {
+        id: relay_id("ProductConcept", value.id)?,
+        household_id: relay_id("Household", value.household_id)?,
+        name: value.name,
+        normalized_name: value.normalized_name,
+        category_id: value
+            .category_id
+            .map(|id| relay_id("Category", id))
+            .transpose()?,
+        archived: value.archived,
+        revision: graphql_revision(value.revision, "ProductConcept")?,
+        variants: value
+            .variants
+            .into_iter()
+            .map(map_product_variant)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+fn map_product_variant(
+    value: catalog_application::product_query::ProductVariantProjection,
+) -> Result<catalog_mutations::ProductVariant> {
+    Ok(catalog_mutations::ProductVariant {
+        id: relay_id("ProductVariant", value.id)?,
+        household_id: relay_id("Household", value.household_id)?,
+        concept_id: relay_id("ProductConcept", value.concept_id)?,
+        name: value.name,
+        normalized_name: value.normalized_name,
+        brand: nonempty(value.brand),
+        package_size: nonempty(value.package_size),
+        barcode: value.barcode,
+        archived: value.archived,
+        revision: graphql_revision(value.revision, "ProductVariant")?,
+        aliases: value
+            .aliases
+            .into_iter()
+            .map(map_product_alias)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+fn map_product_alias(
+    value: catalog_application::product_query::ProductAliasProjection,
+) -> Result<catalog_mutations::ProductAlias> {
+    Ok(catalog_mutations::ProductAlias {
+        id: relay_id("ProductAlias", value.id)?,
+        household_id: relay_id("Household", value.household_id)?,
+        variant_id: relay_id("ProductVariant", value.variant_id)?,
+        merchant_key: value.merchant_key,
+        alias: value.alias,
+        normalized_alias: value.normalized_alias,
+        revision: graphql_revision(value.revision, "ProductAlias")?,
+    })
 }
 
 fn relay_id(type_name: &str, id: Uuid) -> Result<ID> {

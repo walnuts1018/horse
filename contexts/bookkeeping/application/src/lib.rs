@@ -1,6 +1,7 @@
 #![allow(async_fn_in_trait)]
 
 pub mod account_balances;
+pub mod account_balances_query;
 pub mod account_card_last4;
 pub mod account_income;
 pub mod account_movement;
@@ -9,7 +10,6 @@ pub mod correct_purchase;
 pub mod correct_purchase_workflow;
 pub mod create_account;
 pub mod create_and_post_purchase;
-pub mod create_pool;
 pub mod create_purchase_workflow;
 pub mod funding_record;
 pub mod post_purchase;

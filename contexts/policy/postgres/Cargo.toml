@@ -11,5 +11,15 @@ horse-household-change = { path = "../../../platform/household-change" }
 horse-authorization = { path = "../../../platform/authorization" }
 horse-postgres-common = { path = "../../../platform/postgres-common" }
 cross-context-postgres = { path = "../../cross-context/postgres" }
+household-postgres = { path = "../../household/postgres" }
+household-application = { path = "../../household/application" }
 policy-application = { path = "../application" }
+uuid = { workspace = true }
+
+[dev-dependencies]
+diesel = { workspace = true, features = ["32-column-tables"] }
+diesel-async = { workspace = true }
+horse-postgres-common = { path = "../../../platform/postgres-common" }
+horse-test-infra = { path = "../../../platform/test-infra" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 uuid = { workspace = true }

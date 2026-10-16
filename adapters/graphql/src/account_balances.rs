@@ -1,6 +1,8 @@
 use async_graphql::{Context, Error, ID, Result, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_postgres::account_balances as postgres_account_balances;
+use bookkeeping_application::account_balances_query::{
+    AccountBalancesQuery, AccountBalancesQueryError,
+};
 use horse_postgres_common::PgPool;
 use household_postgres::household_access as postgres_household_access;
 use uuid::Uuid;
@@ -27,9 +29,10 @@ pub async fn resolve_account_balances(
         return Err(Error::new("not found"));
     }
 
-    postgres_account_balances::account_balances(pool, household_id)
+    ctx.data::<std::sync::Arc<dyn AccountBalancesQuery>>()?
+        .query(household_id)
         .await
-        .map_err(crate::internal_error)
+        .map_err(map_query_error)
         .map(|balances| {
             balances
                 .into_iter()
@@ -40,6 +43,12 @@ pub async fn resolve_account_balances(
                 })
                 .collect()
         })
+}
+
+fn map_query_error(error: AccountBalancesQueryError) -> Error {
+    match error {
+        AccountBalancesQueryError::Infrastructure(error) => crate::internal_error(error),
+    }
 }
 
 fn encode_account_id(account_id: Uuid) -> ID {

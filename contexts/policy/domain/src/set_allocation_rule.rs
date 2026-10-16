@@ -1,24 +1,171 @@
 use horse_household_change::UiChangeDescriptor;
 use std::collections::BTreeSet;
 
+macro_rules! allocation_id {
+    ($name:ident) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub struct $name(uuid::Uuid);
+
+        impl $name {
+            pub const fn from_uuid(value: uuid::Uuid) -> Self {
+                Self(value)
+            }
+            pub const fn value(self) -> uuid::Uuid {
+                self.0
+            }
+        }
+    };
+}
+
+allocation_id!(AllocationActorId);
+allocation_id!(AllocationHouseholdId);
+allocation_id!(AllocationPoolId);
+allocation_id!(AllocationCategoryId);
+allocation_id!(AllocationProductConceptId);
+allocation_id!(AllocationProductVariantId);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AllocationRuleId(uuid::Uuid);
+
+impl AllocationRuleId {
+    pub const fn value(self) -> uuid::Uuid {
+        self.0
+    }
+
+    pub fn from_persisted(value: uuid::Uuid) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NormalizedMerchant(String);
+
+impl NormalizedMerchant {
+    fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct AllocationRuleWeightValue(i64);
+
+impl AllocationRuleWeightValue {
+    pub const fn value(self) -> i64 {
+        self.0
+    }
+}
+
+impl TryFrom<i64> for AllocationRuleWeightValue {
+    type Error = SetAllocationRuleError;
+
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        if value > 0 {
+            Ok(Self(value))
+        } else {
+            Err(SetAllocationRuleError::NonPositiveWeight)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct AllocationRuleRevision(u64);
+
+impl AllocationRuleRevision {
+    pub const fn value(self) -> u64 {
+        self.0
+    }
+
+    fn next(self) -> Result<Self, SetAllocationRuleError> {
+        self.0
+            .checked_add(1)
+            .map(Self)
+            .ok_or(SetAllocationRuleError::InvalidRevision)
+    }
+}
+
+impl TryFrom<u64> for AllocationRuleRevision {
+    type Error = SetAllocationRuleError;
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        if value > 0 {
+            Ok(Self(value))
+        } else {
+            Err(SetAllocationRuleError::InvalidRevision)
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AllocationRuleWeight {
-    pub pool_id: String,
+    pub pool_id: AllocationPoolId,
     pub weight: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedAllocationRuleWeight {
+    pub pool_id: AllocationPoolId,
+    pub weight: AllocationRuleWeightValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllocationRuleTarget {
-    Category(String),
+    Category(AllocationCategoryId),
     Merchant(String),
-    ProductConcept(String),
-    ProductVariant(String),
+    ProductConcept(AllocationProductConceptId),
+    ProductVariant(AllocationProductVariantId),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidatedAllocationRuleTarget {
+    Category(AllocationCategoryId),
+    Merchant(NormalizedMerchant),
+    ProductConcept(AllocationProductConceptId),
+    ProductVariant(AllocationProductVariantId),
+}
+
+impl ValidatedAllocationRuleTarget {
+    pub fn category_id(&self) -> Option<uuid::Uuid> {
+        match self {
+            Self::Category(id) => Some(id.value()),
+            _ => None,
+        }
+    }
+    pub fn merchant(&self) -> Option<&str> {
+        match self {
+            Self::Merchant(value) => Some(value.as_str()),
+            _ => None,
+        }
+    }
+    pub fn product_concept_id(&self) -> Option<uuid::Uuid> {
+        match self {
+            Self::ProductConcept(id) => Some(id.value()),
+            _ => None,
+        }
+    }
+    pub fn product_variant_id(&self) -> Option<uuid::Uuid> {
+        match self {
+            Self::ProductVariant(id) => Some(id.value()),
+            _ => None,
+        }
+    }
+    pub fn changed_field(&self) -> &'static str {
+        match self {
+            Self::Category(_) => "categoryId",
+            Self::Merchant(_) => "merchant",
+            Self::ProductConcept(_) => "productConceptId",
+            Self::ProductVariant(_) => "productVariantId",
+        }
+    }
 }
 
 impl AllocationRuleTarget {
-    pub fn category_id(&self) -> Option<&str> {
+    pub fn category_id(&self) -> Option<uuid::Uuid> {
         match self {
-            Self::Category(id) => Some(id),
+            Self::Category(id) => Some(id.value()),
             _ => None,
         }
     }
@@ -30,16 +177,16 @@ impl AllocationRuleTarget {
         }
     }
 
-    pub fn product_concept_id(&self) -> Option<&str> {
+    pub fn product_concept_id(&self) -> Option<uuid::Uuid> {
         match self {
-            Self::ProductConcept(id) => Some(id),
+            Self::ProductConcept(id) => Some(id.value()),
             _ => None,
         }
     }
 
-    pub fn product_variant_id(&self) -> Option<&str> {
+    pub fn product_variant_id(&self) -> Option<uuid::Uuid> {
         match self {
-            Self::ProductVariant(id) => Some(id),
+            Self::ProductVariant(id) => Some(id.value()),
             _ => None,
         }
     }
@@ -56,46 +203,46 @@ impl AllocationRuleTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetAllocationRuleCommand {
-    pub actor_id: String,
-    pub household_id: String,
+    pub actor_id: AllocationActorId,
+    pub household_id: AllocationHouseholdId,
     pub target: AllocationRuleTarget,
     pub weights: Vec<AllocationRuleWeight>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatedSetAllocationRuleCommand {
-    actor_id: String,
-    household_id: String,
-    target: AllocationRuleTarget,
-    weights: Vec<AllocationRuleWeight>,
+    actor_id: AllocationActorId,
+    household_id: AllocationHouseholdId,
+    target: ValidatedAllocationRuleTarget,
+    weights: Vec<ValidatedAllocationRuleWeight>,
 }
 
 impl ValidatedSetAllocationRuleCommand {
-    pub fn actor_id(&self) -> &str {
-        &self.actor_id
+    pub fn actor_id(&self) -> uuid::Uuid {
+        self.actor_id.value()
     }
 
-    pub fn household_id(&self) -> &str {
-        &self.household_id
+    pub fn household_id(&self) -> uuid::Uuid {
+        self.household_id.value()
     }
 
-    pub fn target(&self) -> &AllocationRuleTarget {
+    pub fn target(&self) -> &ValidatedAllocationRuleTarget {
         &self.target
     }
 
-    pub fn weights(&self) -> &[AllocationRuleWeight] {
+    pub fn weights(&self) -> &[ValidatedAllocationRuleWeight] {
         &self.weights
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetAllocationRuleDecision {
-    pub actor_id: String,
-    pub household_id: String,
-    pub target: AllocationRuleTarget,
-    pub rule_id: Option<String>,
-    pub revision: u64,
-    pub weights: Vec<AllocationRuleWeight>,
+    pub actor_id: AllocationActorId,
+    pub household_id: AllocationHouseholdId,
+    pub target: ValidatedAllocationRuleTarget,
+    pub rule_id: Option<AllocationRuleId>,
+    pub revision: AllocationRuleRevision,
+    pub weights: Vec<ValidatedAllocationRuleWeight>,
     pub changed_fields: Vec<String>,
 }
 
@@ -111,8 +258,8 @@ impl SetAllocationRuleDecision {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetAllocationRuleResult {
-    pub id: String,
-    pub revision: u64,
+    pub id: AllocationRuleId,
+    pub revision: AllocationRuleRevision,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,31 +278,22 @@ pub enum SetAllocationRuleError {
 pub fn validate_set_allocation_rule(
     command: SetAllocationRuleCommand,
 ) -> Result<ValidatedSetAllocationRuleCommand, SetAllocationRuleError> {
-    if command.actor_id.is_empty() {
-        return Err(SetAllocationRuleError::InvalidActorId);
-    }
-    if command.household_id.is_empty() {
-        return Err(SetAllocationRuleError::InvalidHouseholdId);
-    }
+    let actor_id = command.actor_id;
+    let household_id = command.household_id;
     let target = match command.target {
-        AllocationRuleTarget::Category(id) if !id.is_empty() => AllocationRuleTarget::Category(id),
-        AllocationRuleTarget::ProductConcept(id) if !id.is_empty() => {
-            AllocationRuleTarget::ProductConcept(id)
+        AllocationRuleTarget::Category(id) => ValidatedAllocationRuleTarget::Category(id),
+        AllocationRuleTarget::ProductConcept(id) => {
+            ValidatedAllocationRuleTarget::ProductConcept(id)
         }
-        AllocationRuleTarget::ProductVariant(id) if !id.is_empty() => {
-            AllocationRuleTarget::ProductVariant(id)
+        AllocationRuleTarget::ProductVariant(id) => {
+            ValidatedAllocationRuleTarget::ProductVariant(id)
         }
         AllocationRuleTarget::Merchant(value) => {
             let normalized = normalize_merchant(&value);
             if normalized.is_empty() || normalized.len() > 240 {
                 return Err(SetAllocationRuleError::InvalidMerchant);
             }
-            AllocationRuleTarget::Merchant(normalized)
-        }
-        AllocationRuleTarget::Category(_)
-        | AllocationRuleTarget::ProductConcept(_)
-        | AllocationRuleTarget::ProductVariant(_) => {
-            return Err(SetAllocationRuleError::InvalidTargetId);
+            ValidatedAllocationRuleTarget::Merchant(NormalizedMerchant::new(normalized))
         }
     };
     if command.weights.is_empty() {
@@ -163,39 +301,37 @@ pub fn validate_set_allocation_rule(
     }
 
     let mut pool_ids = BTreeSet::new();
-    for weight in &command.weights {
-        if weight.pool_id.is_empty() {
-            return Err(SetAllocationRuleError::InvalidPoolId);
-        }
-        if weight.weight <= 0 {
-            return Err(SetAllocationRuleError::NonPositiveWeight);
-        }
-        if !pool_ids.insert(weight.pool_id.as_str()) {
+    let mut weights = Vec::with_capacity(command.weights.len());
+    for weight in command.weights {
+        let pool_id = weight.pool_id;
+        let value = AllocationRuleWeightValue::try_from(weight.weight)?;
+        if !pool_ids.insert(pool_id.value()) {
             return Err(SetAllocationRuleError::DuplicatePoolId);
         }
+        weights.push(ValidatedAllocationRuleWeight {
+            pool_id,
+            weight: value,
+        });
     }
 
     Ok(ValidatedSetAllocationRuleCommand {
-        actor_id: command.actor_id,
-        household_id: command.household_id,
+        actor_id,
+        household_id,
         target,
-        weights: command.weights,
+        weights,
     })
 }
 
 pub fn decide_set_allocation_rule(
     command: ValidatedSetAllocationRuleCommand,
-    existing: Option<(String, u64)>,
+    existing: Option<(uuid::Uuid, u64)>,
 ) -> Result<SetAllocationRuleDecision, SetAllocationRuleError> {
     let (rule_id, revision) = match existing {
-        Some((rule_id, current_revision)) if !rule_id.is_empty() => (
-            Some(rule_id),
-            current_revision
-                .checked_add(1)
-                .ok_or(SetAllocationRuleError::InvalidRevision)?,
-        ),
-        Some(_) => return Err(SetAllocationRuleError::InvalidTargetId),
-        None => (None, 1),
+        Some((rule_id, current_revision)) => {
+            let revision = AllocationRuleRevision::try_from(current_revision)?.next()?;
+            (Some(AllocationRuleId(rule_id)), revision)
+        }
+        None => (None, AllocationRuleRevision(1)),
     };
     let target_field = command.target.changed_field();
     Ok(SetAllocationRuleDecision {
@@ -221,30 +357,34 @@ fn normalize_merchant(value: &str) -> String {
 mod tests {
     use super::*;
 
+    fn id(value: u128) -> uuid::Uuid {
+        uuid::Uuid::from_u128(value)
+    }
+
     fn command(
         target: AllocationRuleTarget,
         weights: Vec<AllocationRuleWeight>,
     ) -> SetAllocationRuleCommand {
         SetAllocationRuleCommand {
-            actor_id: "actor".to_owned(),
-            household_id: "household".to_owned(),
+            actor_id: AllocationActorId::from_uuid(id(1)),
+            household_id: AllocationHouseholdId::from_uuid(id(2)),
             target,
             weights,
         }
     }
 
     fn target_category() -> AllocationRuleTarget {
-        AllocationRuleTarget::Category("category".to_owned())
+        AllocationRuleTarget::Category(AllocationCategoryId::from_uuid(id(3)))
     }
 
     fn weights() -> Vec<AllocationRuleWeight> {
         vec![
             AllocationRuleWeight {
-                pool_id: "pool-a".to_owned(),
+                pool_id: AllocationPoolId::from_uuid(id(4)),
                 weight: 2,
             },
             AllocationRuleWeight {
-                pool_id: "pool-b".to_owned(),
+                pool_id: AllocationPoolId::from_uuid(id(5)),
                 weight: 3,
             },
         ]
@@ -258,22 +398,18 @@ mod tests {
         ))
         .expect("valid rule");
         assert_eq!(validated.target.merchant(), Some("foo bar"));
-        let decision =
-            decide_set_allocation_rule(validated, Some(("rule".to_owned(), 3))).expect("decision");
-        assert_eq!(decision.revision, 4);
-        assert_eq!(decision.rule_id.as_deref(), Some("rule"));
+        let decision = decide_set_allocation_rule(validated, Some((uuid::Uuid::from_u128(6), 3)))
+            .expect("decision");
+        assert_eq!(decision.revision.value(), 4);
+        assert_eq!(
+            decision.rule_id.map(AllocationRuleId::value),
+            Some(uuid::Uuid::from_u128(6))
+        );
         assert_eq!(decision.changed_fields, ["allocations", "merchant"]);
     }
 
     #[test]
-    fn rejects_empty_target_ids_and_invalid_weights() {
-        assert_eq!(
-            validate_set_allocation_rule(command(
-                AllocationRuleTarget::Category(String::new()),
-                weights(),
-            )),
-            Err(SetAllocationRuleError::InvalidTargetId)
-        );
+    fn rejects_invalid_merchant_and_weights() {
         assert_eq!(
             validate_set_allocation_rule(command(
                 AllocationRuleTarget::Merchant("   ".to_owned()),
@@ -282,7 +418,7 @@ mod tests {
             Err(SetAllocationRuleError::InvalidMerchant)
         );
         let invalid_weights = vec![AllocationRuleWeight {
-            pool_id: "pool".to_owned(),
+            pool_id: AllocationPoolId::from_uuid(id(4)),
             weight: 0,
         }];
         assert_eq!(

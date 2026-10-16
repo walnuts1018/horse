@@ -352,10 +352,10 @@ pub async fn create_budget(
         Err(()) => return Ok(MutationErrorCode::BadInput.into()),
     };
     let command = budget::CreateBudgetCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
-        id: Uuid::now_v7().to_string(),
-        category_id: category_id.map(|id| id.to_string()),
+        actor_id: budget::BudgetActorId::from_persisted(actor.0),
+        household_id: budget::BudgetHouseholdId::from_persisted(household_id),
+        id: budget::BudgetId::from_persisted(Uuid::now_v7()),
+        category_id: category_id.map(budget::BudgetCategoryId::from_persisted),
         name: input.name,
         amount_yen: input.amount_yen.0,
         starts_on: input.starts_on.0,
@@ -365,12 +365,7 @@ pub async fn create_budget(
     let mut operations = postgres_policy::PolicyOperations::new(pool);
     match budget::create_budget(&mut operations, command).await {
         Ok(value) => {
-            let result = load_budget_result(
-                pool,
-                actor.0,
-                Uuid::parse_str(&value.id).map_err(crate::internal_error)?,
-            )
-            .await?;
+            let result = load_budget_result(pool, actor.0, value.id.value()).await?;
             Ok(CreateBudgetSuccess { result }.into())
         }
         Err(error) => policy_error(error),
@@ -395,11 +390,11 @@ pub async fn update_budget(
         Err(()) => return Ok(MutationErrorCode::BadInput.into()),
     };
     let command = budget::UpdateBudgetCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
-        id: budget_id.to_string(),
+        actor_id: budget::BudgetActorId::from_persisted(actor.0),
+        household_id: budget::BudgetHouseholdId::from_persisted(household_id),
+        id: budget::BudgetId::from_persisted(budget_id),
         expected_revision: i64::from(input.base_revision),
-        category_id: category_id.map(|id| id.to_string()),
+        category_id: category_id.map(budget::BudgetCategoryId::from_persisted),
         name: input.name,
         amount_yen: input.amount_yen.0,
         starts_on: input.starts_on.0,
@@ -413,12 +408,7 @@ pub async fn update_budget(
     let mut operations = postgres_policy::PolicyOperations::new(pool);
     match budget::update_budget(&mut operations, command).await {
         Ok(value) => {
-            let result = load_budget_result(
-                pool,
-                actor.0,
-                Uuid::parse_str(&value.id).map_err(crate::internal_error)?,
-            )
-            .await?;
+            let result = load_budget_result(pool, actor.0, value.id.value()).await?;
             Ok(UpdateBudgetSuccess { result }.into())
         }
         Err(error) => policy_error(error),
@@ -442,21 +432,16 @@ pub async fn archive_budget(
         }
     };
     let command = budget::ArchiveBudgetCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
-        id: budget_id.to_string(),
+        actor_id: budget::BudgetActorId::from_persisted(actor.0),
+        household_id: budget::BudgetHouseholdId::from_persisted(household_id),
+        id: budget::BudgetId::from_persisted(budget_id),
         expected_revision: i64::from(input.base_revision),
         archived: input.archived,
     };
     let mut operations = postgres_policy::PolicyOperations::new(pool);
     match budget::archive_budget(&mut operations, command).await {
         Ok(value) => {
-            let result = load_budget_result(
-                pool,
-                actor.0,
-                Uuid::parse_str(&value.id).map_err(crate::internal_error)?,
-            )
-            .await?;
+            let result = load_budget_result(pool, actor.0, value.id.value()).await?;
             Ok(ArchiveBudgetSuccess { result }.into())
         }
         Err(error) => policy_error(error),
@@ -481,14 +466,15 @@ pub async fn create_recurring_expense(
         Err(()) => return Ok(MutationErrorCode::BadInput.into()),
     };
     let command = recurring_expense::CreateRecurringExpenseCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
-        id: Uuid::now_v7().to_string(),
+        actor_id: recurring_expense::RecurringExpenseActorId::from_persisted(actor.0),
+        household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(household_id),
+        id: recurring_expense::RecurringExpenseId::from_persisted(Uuid::now_v7()),
         name: input.name,
         merchant: input.merchant,
         amount_yen: input.amount_yen.0,
-        category_id: category_id.map(|id| id.to_string()),
-        payment_account_id: payment_account_id.map(|id| id.to_string()),
+        category_id: category_id.map(recurring_expense::RecurringExpenseCategoryId::from_persisted),
+        payment_account_id: payment_account_id
+            .map(recurring_expense::RecurringExpensePaymentAccountId::from_persisted),
         cadence: recurring_expense::Cadence::from(input.cadence)
             .as_str()
             .to_owned(),
@@ -528,15 +514,16 @@ pub async fn update_recurring_expense(
         Err(()) => return Ok(MutationErrorCode::BadInput.into()),
     };
     let command = recurring_expense::UpdateRecurringExpenseCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
-        id: expense_id.to_string(),
+        actor_id: recurring_expense::RecurringExpenseActorId::from_persisted(actor.0),
+        household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(household_id),
+        id: recurring_expense::RecurringExpenseId::from_persisted(expense_id),
         expected_revision: i64::from(input.base_revision),
         name: input.name,
         merchant: input.merchant,
         amount_yen: input.amount_yen.0,
-        category_id: category_id.map(|id| id.to_string()),
-        payment_account_id: payment_account_id.map(|id| id.to_string()),
+        category_id: category_id.map(recurring_expense::RecurringExpenseCategoryId::from_persisted),
+        payment_account_id: payment_account_id
+            .map(recurring_expense::RecurringExpensePaymentAccountId::from_persisted),
         cadence: recurring_expense::Cadence::from(input.cadence)
             .as_str()
             .to_owned(),
@@ -575,9 +562,9 @@ pub async fn archive_recurring_expense(
         }
     };
     let command = recurring_expense::ArchiveRecurringExpenseCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
-        id: expense_id.to_string(),
+        actor_id: recurring_expense::RecurringExpenseActorId::from_persisted(actor.0),
+        household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(household_id),
+        id: recurring_expense::RecurringExpenseId::from_persisted(expense_id),
         expected_revision: i64::from(input.base_revision),
         archived: input.archived,
     };
@@ -609,10 +596,10 @@ pub async fn match_recurring_expense(
         Err(()) => return Ok(MutationErrorCode::BadInput.into()),
     };
     let command = recurring_expense::MatchRecurringExpenseCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
-        id: expense_id.to_string(),
-        purchase_id: purchase_id.to_string(),
+        actor_id: recurring_expense::RecurringExpenseActorId::from_persisted(actor.0),
+        household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(household_id),
+        id: recurring_expense::RecurringExpenseId::from_persisted(expense_id),
+        purchase_id: recurring_expense::RecurringExpensePurchaseId::from_persisted(purchase_id),
         expected_revision: i64::from(input.base_revision),
     };
     let mut operations = postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
@@ -657,7 +644,7 @@ pub async fn graphql_budgets(
         .rows
         .into_iter()
         .map(|row| {
-            let cursor = encode_cursor("Budget", &row.budget.id);
+            let cursor = encode_cursor("Budget", &row.budget.id.value().to_string());
             BudgetEdge {
                 cursor,
                 node: row.into(),
@@ -709,7 +696,7 @@ pub async fn graphql_recurring_expenses(
         .rows
         .into_iter()
         .map(|value| RecurringExpenseEdge {
-            cursor: encode_cursor("RecurringExpense", value.id.as_str()),
+            cursor: encode_cursor("RecurringExpense", &value.id.value().to_string()),
             node: value.into(),
         })
         .collect::<Vec<_>>();
@@ -732,25 +719,26 @@ impl From<postgres_policy_query::BudgetReadModel> for BudgetObject {
         let remaining_yen = value.remaining_yen;
         let projection = value.budget;
         Self {
-            id: encode_node_id("Budget", &projection.id)
+            id: encode_node_id("Budget", &projection.id.value().to_string())
                 .expect("persisted budget id must be a UUID")
                 .into(),
-            household_id: encode_node_id("Household", &projection.household_id)
+            household_id: encode_node_id("Household", &projection.household_id.value().to_string())
                 .expect("persisted household id must be a UUID")
                 .into(),
             category_id: projection
                 .category_id
-                .as_deref()
-                .and_then(|id| encode_node_id("Category", id).ok())
+                .as_ref()
+                .map(|id| id.value().to_string())
+                .and_then(|id| encode_node_id("Category", &id).ok())
                 .map(Into::into),
             name: projection.name,
-            amount_yen: Long(projection.amount_yen),
+            amount_yen: Long(projection.amount_yen.value()),
             actual_yen: Long(actual_yen),
             remaining_yen: Long(remaining_yen),
             starts_on: Date(projection.starts_on),
             ends_on: projection.ends_on.map(Date),
             archived: projection.archived,
-            revision: projection.revision as i32,
+            revision: projection.revision.value() as i32,
         }
     }
 }
@@ -758,27 +746,27 @@ impl From<postgres_policy_query::BudgetReadModel> for BudgetObject {
 impl From<recurring_expense::RecurringExpense> for RecurringExpenseObject {
     fn from(value: recurring_expense::RecurringExpense) -> Self {
         Self {
-            id: encode_node_id("RecurringExpense", value.id.as_str())
+            id: encode_node_id("RecurringExpense", &value.id.value().to_string())
                 .expect("persisted recurring expense id must be a UUID")
                 .into(),
-            household_id: encode_node_id("Household", value.household_id.as_str())
+            household_id: encode_node_id("Household", &value.household_id.value().to_string())
                 .expect("persisted household id must be a UUID")
                 .into(),
             name: value.name,
             merchant: value.merchant,
-            amount_yen: Long(value.amount_yen),
+            amount_yen: Long(value.amount_yen.value()),
             currency: value.currency,
             category_id: value
                 .category_id
                 .as_ref()
-                .map(|id| id.as_str())
-                .and_then(|id| encode_node_id("Category", id).ok())
+                .map(|id| id.value().to_string())
+                .and_then(|id| encode_node_id("Category", &id).ok())
                 .map(Into::into),
             payment_account_id: value
                 .payment_account_id
                 .as_ref()
-                .map(|id| id.as_str())
-                .and_then(|id| encode_node_id("Account", id).ok())
+                .map(|id| id.value().to_string())
+                .and_then(|id| encode_node_id("Account", &id).ok())
                 .map(Into::into),
             cadence: match value.cadence {
                 recurring_expense::Cadence::Weekly => RecurringExpenseCadence::Weekly,
@@ -789,7 +777,7 @@ impl From<recurring_expense::RecurringExpense> for RecurringExpenseObject {
             next_due_on: Date(value.next_due_on),
             ends_on: value.ends_on.map(Date),
             archived: value.archived,
-            revision: value.revision as i32,
+            revision: value.revision.value() as i32,
         }
     }
 }

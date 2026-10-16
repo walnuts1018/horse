@@ -1891,12 +1891,11 @@ fn parse_model_price_table(raw: &str) -> Result<ModelPriceTable, String> {
             DateTime::parse_from_rfc3339(date)
                 .map_err(|_| "GEMINI_MODEL_PRICES dates must use RFC3339".to_owned())?;
         }
-        if let (Some(start), Some(end)) = (&rule.starts_at, &rule.ends_at) {
-            if DateTime::parse_from_rfc3339(start).unwrap()
+        if let (Some(start), Some(end)) = (&rule.starts_at, &rule.ends_at)
+            && DateTime::parse_from_rfc3339(start).unwrap()
                 >= DateTime::parse_from_rfc3339(end).unwrap()
-            {
-                return Err("GEMINI_MODEL_PRICES end date must follow start date".to_owned());
-            }
+        {
+            return Err("GEMINI_MODEL_PRICES end date must follow start date".to_owned());
         }
     }
     Ok(ModelPriceTable {

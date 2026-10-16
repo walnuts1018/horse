@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 axum = "0.8.9"
+bookkeeping-postgres = { path = "../../contexts/bookkeeping/postgres" }
 horse-auth = { path = "../../adapters/identity" }
 catalog-postgres = { path = "../../contexts/catalog/postgres" }
 horse-observability = { path = "../../platform/observability" }

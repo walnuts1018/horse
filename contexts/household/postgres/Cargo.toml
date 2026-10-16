@@ -8,6 +8,7 @@ chrono = { workspace = true }
 diesel = { workspace = true, features = ["32-column-tables"] }
 diesel-async = { workspace = true }
 horse-postgres-common = { path = "../../../platform/postgres-common" }
+horse-authorization = { path = "../../../platform/authorization" }
 horse-household-change = { path = "../../../platform/household-change" }
 household-application = { path = "../application" }
 household-domain = { path = "../domain" }

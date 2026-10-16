@@ -64,13 +64,30 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             mailbox_domain,
             local_part_prefix,
         },
-        Arc::new(catalog_postgres::tag_query::PostgresTagQuery::new(
-            pool.clone(),
-        )),
-        Arc::new(catalog_postgres::product_query::PostgresProductQuery::new(
-            pool.clone(),
-        )),
-        Arc::new(catalog_postgres::category_mutation::PostgresCategoryMutation::new(pool.clone())),
+        horse_graphql_api::Ports {
+            account_balances_query: Arc::new(
+                bookkeeping_postgres::account_balances::PostgresAccountBalancesQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            tag_query: Arc::new(catalog_postgres::tag_query::PostgresTagQuery::new(
+                pool.clone(),
+            )),
+            product_query: Arc::new(catalog_postgres::product_query::PostgresProductQuery::new(
+                pool.clone(),
+            )),
+            category_mutation: Arc::new(
+                catalog_postgres::category_mutation::PostgresCategoryMutation::new(pool.clone()),
+            ),
+            catalog_mutation: Arc::new(
+                catalog_postgres::catalog_mutation::PostgresCatalogMutation::new(pool.clone()),
+            ),
+            catalog_node_batch_query: Arc::new(
+                catalog_postgres::node_batch_query::PostgresCatalogNodeBatchQuery::new(
+                    pool.clone(),
+                ),
+            ),
+        },
     );
     let object_store = match ObjectStore::from_env().await {
         Ok(store) => Some(Arc::new(store)),

@@ -1,5 +1,30 @@
 use uuid::Uuid;
 
+macro_rules! learning_id {
+    ($name:ident) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub struct $name(Uuid);
+
+        impl From<Uuid> for $name {
+            fn from(value: Uuid) -> Self {
+                Self(value)
+            }
+        }
+
+        impl $name {
+            pub fn value(self) -> Uuid {
+                self.0
+            }
+        }
+    };
+}
+
+learning_id!(LearningHouseholdId);
+learning_id!(LearningActorId);
+learning_id!(LearningPurchaseId);
+learning_id!(LearningItemId);
+learning_id!(LearningVariantId);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VariantName(String);
 
@@ -65,13 +90,13 @@ pub enum ProductLearningKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProductLearningCommand {
-    pub household_id: Uuid,
-    pub actor_id: Uuid,
-    pub purchase_id: Uuid,
-    pub item_id: Uuid,
+    pub household_id: LearningHouseholdId,
+    pub actor_id: LearningActorId,
+    pub purchase_id: LearningPurchaseId,
+    pub item_id: LearningItemId,
     pub raw_name: String,
-    pub previous_variant_id: Option<Uuid>,
-    pub variant_id: Option<Uuid>,
+    pub previous_variant_id: Option<LearningVariantId>,
+    pub variant_id: Option<LearningVariantId>,
     pub variant_changed: bool,
     pub merchant: String,
     pub learning: Option<ProductLearningKind>,
@@ -79,13 +104,13 @@ pub struct ProductLearningCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProductLearningDecision {
-    pub household_id: Uuid,
-    pub actor_id: Uuid,
-    pub purchase_id: Uuid,
-    pub item_id: Uuid,
+    pub household_id: LearningHouseholdId,
+    pub actor_id: LearningActorId,
+    pub purchase_id: LearningPurchaseId,
+    pub item_id: LearningItemId,
     pub raw_name: String,
-    pub previous_variant_id: Option<Uuid>,
-    pub variant_id: Uuid,
+    pub previous_variant_id: Option<LearningVariantId>,
+    pub variant_id: LearningVariantId,
     pub merchant_key: MerchantKey,
     pub learning_scope: LearningScope,
     pub record_correction: bool,

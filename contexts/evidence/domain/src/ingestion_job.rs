@@ -351,7 +351,8 @@ mod tests {
             max_attempts: 5,
             failure_count: 1,
             available_at_ms: 0,
-            lease: ValidLease::new("active-token", 10_000).expect("token is valid"),
+            lease: ValidLease::new("01933a1c-9ed7-7f00-8000-000000000002", 10_000)
+                .expect("token is valid"),
         }
     }
 
@@ -416,14 +417,14 @@ mod tests {
     #[test]
     fn lease_rejects_non_positive_expiry_without_rejecting_expired_lease() {
         assert_eq!(
-            ValidLease::new("token", 0),
+            ValidLease::new("01933a1c-9ed7-7f00-8000-000000000003", 0),
             Err(ValidLeaseError::InvalidExpiry)
         );
         assert_eq!(
-            ValidLease::new("token", -1),
+            ValidLease::new("01933a1c-9ed7-7f00-8000-000000000003", -1),
             Err(ValidLeaseError::InvalidExpiry)
         );
-        assert!(ValidLease::new("token", 1).is_ok());
-        assert!(ValidLease::new("token", 10_000).is_ok());
+        assert!(ValidLease::new("01933a1c-9ed7-7f00-8000-000000000003", 1).is_ok());
+        assert!(ValidLease::new("01933a1c-9ed7-7f00-8000-000000000003", 10_000).is_ok());
     }
 }

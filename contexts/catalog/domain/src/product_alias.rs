@@ -18,18 +18,38 @@ macro_rules! alias_value {
     };
 }
 
-alias_value!(ActorId);
-alias_value!(HouseholdId);
-alias_value!(VariantId);
 alias_value!(MerchantKey);
 alias_value!(AliasText);
 alias_value!(NormalizedAlias);
 
+macro_rules! alias_id {
+    ($name:ident) => {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub struct $name(String);
+
+        impl From<Uuid> for $name {
+            fn from(value: Uuid) -> Self {
+                Self(value.to_string())
+            }
+        }
+
+        impl $name {
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+    };
+}
+
+alias_id!(ActorId);
+alias_id!(HouseholdId);
+alias_id!(VariantId);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetProductAliasCommand {
-    pub actor_id: String,
-    pub household_id: String,
-    pub variant_id: String,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
+    pub variant_id: VariantId,
     pub merchant: String,
     pub alias: String,
 }
@@ -66,16 +86,6 @@ pub enum SetProductAliasError {
 pub fn decide_set_product_alias(
     command: SetProductAliasCommand,
 ) -> Result<SetProductAliasDecision, SetProductAliasError> {
-    if Uuid::parse_str(&command.actor_id).is_err() {
-        return Err(SetProductAliasError::InvalidActorId);
-    }
-    if Uuid::parse_str(&command.household_id).is_err() {
-        return Err(SetProductAliasError::InvalidHouseholdId);
-    }
-    if Uuid::parse_str(&command.variant_id).is_err() {
-        return Err(SetProductAliasError::InvalidVariantId);
-    }
-
     let merchant_key = normalize_text(&command.merchant);
     if merchant_key.is_empty() || merchant_key.chars().count() > 240 {
         return Err(SetProductAliasError::InvalidMerchant);
@@ -87,9 +97,9 @@ pub fn decide_set_product_alias(
     let normalized_alias = normalize_text(&alias_text);
 
     Ok(SetProductAliasDecision {
-        actor_id: ActorId::new(command.actor_id),
-        household_id: HouseholdId::new(command.household_id),
-        variant_id: VariantId::new(command.variant_id),
+        actor_id: command.actor_id,
+        household_id: command.household_id,
+        variant_id: command.variant_id,
         merchant_key: MerchantKey::new(merchant_key),
         alias_text: AliasText::new(alias_text),
         normalized_alias: NormalizedAlias::new(normalized_alias),
@@ -111,9 +121,15 @@ mod tests {
     #[test]
     fn normalizes_merchant_and_alias_for_persistence() {
         let decision = decide_set_product_alias(SetProductAliasCommand {
-            actor_id: "00000000-0000-4000-8000-000000000001".to_owned(),
-            household_id: "00000000-0000-4000-8000-000000000002".to_owned(),
-            variant_id: "00000000-0000-4000-8000-000000000003".to_owned(),
+            actor_id: Uuid::parse_str("00000000-0000-4000-8000-000000000001")
+                .expect("uuid")
+                .into(),
+            household_id: Uuid::parse_str("00000000-0000-4000-8000-000000000002")
+                .expect("uuid")
+                .into(),
+            variant_id: Uuid::parse_str("00000000-0000-4000-8000-000000000003")
+                .expect("uuid")
+                .into(),
             merchant: "  SHOP   NAME ".to_owned(),
             alias: "  Product   Name  ".to_owned(),
         })

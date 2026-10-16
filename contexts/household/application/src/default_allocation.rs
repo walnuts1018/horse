@@ -1,5 +1,5 @@
-pub use policy_domain::set_default_allocation::decide_set_default_allocation;
-pub use policy_domain::*;
+pub use household_domain::default_allocation::decide_set_default_allocation;
+pub use household_domain::default_allocation::*;
 
 pub trait SetDefaultAllocationOperations {
     type Error: From<SetDefaultAllocationError>;
@@ -14,6 +14,6 @@ pub async fn set_default_allocation<O: SetDefaultAllocationOperations>(
     command: SetDefaultAllocationCommand,
 ) -> Result<SetDefaultAllocationResult, O::Error> {
     operations
-        .persist(policy_domain::set_default_allocation::validate_default_allocation(command)?)
+        .persist(household_domain::default_allocation::validate_default_allocation(command)?)
         .await
 }

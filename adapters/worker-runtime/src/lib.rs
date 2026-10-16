@@ -1,3 +1,4 @@
+mod document_retention;
 mod email;
 mod mailbox;
 mod object_store;
@@ -71,11 +72,28 @@ impl Worker {
         &self,
         mut shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let mut last_retention_sweep = None;
         loop {
             if *shutdown.borrow() {
                 break;
             }
             let now = Utc::now();
+            if last_retention_sweep.is_none_or(|last: std::time::Instant| {
+                last.elapsed() >= Duration::from_secs(60 * 60)
+            }) {
+                match document_retention::delete_expired_unconfirmed(&self.pool, &self.store, now)
+                    .await
+                {
+                    Ok(deleted) if deleted > 0 => {
+                        tracing::info!(deleted, "Expired unconfirmed documents deleted");
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::error!(error = ?error, "Expired document retention sweep failed")
+                    }
+                }
+                last_retention_sweep = Some(std::time::Instant::now());
+            }
             if let Err(error) = recover_expired_extraction_jobs(&self.pool, now).await {
                 tracing::error!(error = ?error, "recover expired extraction jobs failed");
             }

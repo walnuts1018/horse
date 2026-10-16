@@ -1,7 +1,7 @@
 use catalog_application::workflow_failure::WorkflowFailure;
 use catalog_domain::tag::{
-    CreateTagCommand, SetTagArchivedCommand, Tag, TagError, UpdateTagCommand, decide_create_tag,
-    decide_set_tag_archived, decide_update_tag, validate_tag_name,
+    CreateTagCommand, SetTagArchivedCommand, Tag, TagError, TagName, UpdateTagCommand,
+    decide_create_tag, decide_set_tag_archived, decide_update_tag,
 };
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -21,15 +21,18 @@ struct PersistedTag {
     revision: i64,
 }
 
-impl From<PersistedTag> for Tag {
-    fn from(tag: PersistedTag) -> Self {
-        Self {
-            id: tag.id.to_string(),
-            household_id: tag.household_id.to_string(),
-            name: tag.name,
-            archived: tag.archived,
-            revision: tag.revision,
-        }
+impl TryFrom<PersistedTag> for Tag {
+    type Error = TagPersistenceError;
+
+    fn try_from(tag: PersistedTag) -> Result<Self, Self::Error> {
+        Self::reconstitute(
+            tag.id.to_string(),
+            tag.household_id.to_string(),
+            tag.name,
+            tag.archived,
+            tag.revision,
+        )
+        .map_err(|_| TagPersistenceError::CorruptStoredData)
     }
 }
 
@@ -42,6 +45,7 @@ pub enum TagPersistenceError {
     HouseholdNotFound,
     TagNotFound,
     RevisionConflict,
+    CorruptStoredData,
 }
 
 impl From<DieselError> for TagPersistenceError {
@@ -54,10 +58,10 @@ pub async fn persist_create_tag(
     pool: &PgPool,
     command: CreateTagCommand,
 ) -> Result<Tag, WorkflowFailure<TagError, TagPersistenceError>> {
-    validate_tag_name(&command.name).map_err(TagPersistenceError::InvalidWorkflow)?;
+    TagName::new(&command.name).map_err(TagPersistenceError::InvalidWorkflow)?;
     let tag_id = Uuid::now_v7();
-    let decision = decide_create_tag(command, tag_id.to_string())
-        .map_err(TagPersistenceError::InvalidWorkflow)?;
+    let decision =
+        decide_create_tag(command, tag_id.into()).map_err(TagPersistenceError::InvalidWorkflow)?;
     let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
     let household_id = parse_uuid(decision.household_id.as_str(), "household_id")?;
 
@@ -85,7 +89,7 @@ pub async fn persist_create_tag(
                     tags::id.eq(tag_id),
                     tags::household_id.eq(household_id),
                     tags::name.eq(decision.name.as_str()),
-                    tags::revision.eq(decision.revision),
+                    tags::revision.eq(decision.revision.as_i64()),
                 ))
                 .execute(&mut *conn)
                 .await?;
@@ -94,21 +98,21 @@ pub async fn persist_create_tag(
                 conn,
                 household_id,
                 tag_id,
-                decision.revision,
+                decision.revision.as_i64(),
                 actor_id,
                 chrono::Utc::now(),
                 decision.ui_change(),
             )
             .await?;
 
-            Ok(PersistedTag {
+            PersistedTag {
                 id: tag_id,
                 household_id,
                 name: decision.name.as_str().to_owned(),
                 archived: false,
-                revision: decision.revision,
+                revision: decision.revision.as_i64(),
             }
-            .into())
+            .try_into()
         })
         .await
         .map_err(map_workflow_failure)
@@ -118,9 +122,9 @@ pub async fn persist_update_tag(
     pool: &PgPool,
     command: UpdateTagCommand,
 ) -> Result<Tag, WorkflowFailure<TagError, TagPersistenceError>> {
-    validate_tag_name(&command.name).map_err(TagPersistenceError::InvalidWorkflow)?;
-    let actor_id = parse_uuid(&command.actor_id, "actor_id")?;
-    let tag_id = parse_uuid(&command.tag_id, "tag_id")?;
+    TagName::new(&command.name).map_err(TagPersistenceError::InvalidWorkflow)?;
+    let actor_id = parse_uuid(command.actor_id.as_str(), "actor_id")?;
+    let tag_id = parse_uuid(command.tag_id.as_str(), "tag_id")?;
 
     let mut pooled = pool
         .get()
@@ -146,21 +150,21 @@ pub async fn persist_update_tag(
                 .ok_or(TagPersistenceError::TagNotFound)?;
             require_member(conn, row.1, actor_id).await?;
 
-            let current = PersistedTag {
+            let current: Tag = PersistedTag {
                 id: row.0,
                 household_id: row.1,
                 name: row.2,
                 archived: row.3,
                 revision: row.4,
             }
-            .into();
+            .try_into()?;
             let decision = decide_update_tag(command, current).map_err(map_workflow_error)?;
-            let new_revision = decision.tag.revision;
+            let new_revision = decision.tag.revision.as_i64();
             let change = decision.ui_change();
 
             let updated = diesel::update(tags::tags.filter(tags::id.eq(tag_id)))
                 .set((
-                    tags::name.eq(&decision.tag.name),
+                    tags::name.eq(decision.tag.name.as_str()),
                     tags::revision.eq(new_revision),
                 ))
                 .returning((
@@ -175,14 +179,14 @@ pub async fn persist_update_tag(
 
             record_event(conn, updated.1, updated.0, actor_id, new_revision, change).await?;
 
-            Ok(PersistedTag {
+            PersistedTag {
                 id: updated.0,
                 household_id: updated.1,
                 name: updated.2,
                 archived: updated.3,
                 revision: updated.4,
             }
-            .into())
+            .try_into()
         })
         .await
         .map_err(map_workflow_failure)
@@ -192,8 +196,8 @@ pub async fn persist_set_tag_archived(
     pool: &PgPool,
     command: SetTagArchivedCommand,
 ) -> Result<Tag, WorkflowFailure<TagError, TagPersistenceError>> {
-    let actor_id = parse_uuid(&command.actor_id, "actor_id")?;
-    let tag_id = parse_uuid(&command.tag_id, "tag_id")?;
+    let actor_id = parse_uuid(command.actor_id.as_str(), "actor_id")?;
+    let tag_id = parse_uuid(command.tag_id.as_str(), "tag_id")?;
 
     let mut pooled = pool
         .get()
@@ -219,16 +223,16 @@ pub async fn persist_set_tag_archived(
                 .ok_or(TagPersistenceError::TagNotFound)?;
             require_member(conn, row.1, actor_id).await?;
 
-            let current = PersistedTag {
+            let current: Tag = PersistedTag {
                 id: row.0,
                 household_id: row.1,
                 name: row.2,
                 archived: row.3,
                 revision: row.4,
             }
-            .into();
+            .try_into()?;
             let decision = decide_set_tag_archived(command, current).map_err(map_workflow_error)?;
-            let new_revision = decision.tag.revision;
+            let new_revision = decision.tag.revision.as_i64();
             let change = decision.ui_change();
 
             let updated = diesel::update(tags::tags.filter(tags::id.eq(tag_id)))
@@ -248,14 +252,14 @@ pub async fn persist_set_tag_archived(
 
             record_event(conn, updated.1, updated.0, actor_id, new_revision, change).await?;
 
-            Ok(PersistedTag {
+            PersistedTag {
                 id: updated.0,
                 household_id: updated.1,
                 name: updated.2,
                 archived: updated.3,
                 revision: updated.4,
             }
-            .into())
+            .try_into()
         })
         .await
         .map_err(map_workflow_failure)
@@ -320,9 +324,9 @@ fn map_workflow_failure(
             WorkflowFailure::NotFound
         }
         TagPersistenceError::RevisionConflict => WorkflowFailure::Conflict,
-        error @ (TagPersistenceError::Pool(_) | TagPersistenceError::Database(_)) => {
-            WorkflowFailure::Infrastructure(error)
-        }
+        error @ (TagPersistenceError::Pool(_)
+        | TagPersistenceError::Database(_)
+        | TagPersistenceError::CorruptStoredData) => WorkflowFailure::Infrastructure(error),
     }
 }
 

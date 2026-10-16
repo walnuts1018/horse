@@ -6,20 +6,16 @@ const MAX_AMOUNT_YEN: i64 = 1_000_000_000_000;
 
 macro_rules! recurring_expense_id {
     ($name:ident) => {
-        #[derive(Debug, Clone, PartialEq, Eq)]
-        pub struct $name(String);
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub struct $name(Uuid);
 
         impl $name {
-            fn new(value: String) -> Self {
+            pub fn from_persisted(value: Uuid) -> Self {
                 Self(value)
             }
 
-            pub fn from_persisted(value: Uuid) -> Self {
-                Self(value.to_string())
-            }
-
-            pub fn as_str(&self) -> &str {
-                &self.0
+            pub const fn value(self) -> Uuid {
+                self.0
             }
         }
     };
@@ -63,7 +59,7 @@ pub struct RecurringExpense {
     pub household_id: RecurringExpenseHouseholdId,
     pub name: String,
     pub merchant: String,
-    pub amount_yen: i64,
+    pub amount_yen: RecurringExpenseAmountYen,
     pub currency: String,
     pub category_id: Option<RecurringExpenseCategoryId>,
     pub payment_account_id: Option<RecurringExpensePaymentAccountId>,
@@ -72,7 +68,7 @@ pub struct RecurringExpense {
     pub next_due_on: NaiveDate,
     pub ends_on: Option<NaiveDate>,
     pub archived: bool,
-    pub revision: i64,
+    pub revision: RecurringExpenseRevision,
 }
 
 pub const CURRENCY: &str = "JPY";
@@ -98,16 +94,44 @@ impl TryFrom<i64> for RecurringExpenseAmountYen {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RecurringExpenseRevision(i64);
+
+impl RecurringExpenseRevision {
+    pub const fn value(self) -> i64 {
+        self.0
+    }
+
+    pub fn next(self) -> Result<Self, RecurringExpenseError> {
+        self.0
+            .checked_add(1)
+            .map(Self)
+            .ok_or(RecurringExpenseError::InvalidRevision)
+    }
+}
+
+impl TryFrom<i64> for RecurringExpenseRevision {
+    type Error = RecurringExpenseError;
+
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        if value > 0 {
+            Ok(Self(value))
+        } else {
+            Err(RecurringExpenseError::InvalidRevision)
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateRecurringExpenseCommand {
-    pub actor_id: String,
-    pub household_id: String,
-    pub id: String,
+    pub actor_id: RecurringExpenseActorId,
+    pub household_id: RecurringExpenseHouseholdId,
+    pub id: RecurringExpenseId,
     pub name: String,
     pub merchant: String,
     pub amount_yen: i64,
-    pub category_id: Option<String>,
-    pub payment_account_id: Option<String>,
+    pub category_id: Option<RecurringExpenseCategoryId>,
+    pub payment_account_id: Option<RecurringExpensePaymentAccountId>,
     pub cadence: String,
     pub starts_on: NaiveDate,
     pub next_due_on: NaiveDate,
@@ -116,15 +140,15 @@ pub struct CreateRecurringExpenseCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateRecurringExpenseCommand {
-    pub actor_id: String,
-    pub household_id: String,
-    pub id: String,
+    pub actor_id: RecurringExpenseActorId,
+    pub household_id: RecurringExpenseHouseholdId,
+    pub id: RecurringExpenseId,
     pub expected_revision: i64,
     pub name: String,
     pub merchant: String,
     pub amount_yen: i64,
-    pub category_id: Option<String>,
-    pub payment_account_id: Option<String>,
+    pub category_id: Option<RecurringExpenseCategoryId>,
+    pub payment_account_id: Option<RecurringExpensePaymentAccountId>,
     pub cadence: String,
     pub starts_on: NaiveDate,
     pub next_due_on: NaiveDate,
@@ -133,19 +157,19 @@ pub struct UpdateRecurringExpenseCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchiveRecurringExpenseCommand {
-    pub actor_id: String,
-    pub household_id: String,
-    pub id: String,
+    pub actor_id: RecurringExpenseActorId,
+    pub household_id: RecurringExpenseHouseholdId,
+    pub id: RecurringExpenseId,
     pub expected_revision: i64,
     pub archived: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchRecurringExpenseCommand {
-    pub actor_id: String,
-    pub household_id: String,
-    pub id: String,
-    pub purchase_id: String,
+    pub actor_id: RecurringExpenseActorId,
+    pub household_id: RecurringExpenseHouseholdId,
+    pub id: RecurringExpenseId,
+    pub purchase_id: RecurringExpensePurchaseId,
     pub expected_revision: i64,
 }
 
@@ -154,7 +178,7 @@ pub struct RecurringExpenseDecision {
     pub actor_id: RecurringExpenseActorId,
     pub id: RecurringExpenseId,
     pub household_id: Option<RecurringExpenseHouseholdId>,
-    pub expected_revision: Option<i64>,
+    pub expected_revision: Option<RecurringExpenseRevision>,
     pub name: Option<String>,
     pub merchant: Option<String>,
     pub amount_yen: Option<RecurringExpenseAmountYen>,
@@ -201,7 +225,7 @@ pub struct MatchRecurringExpenseDecision {
     pub household_id: RecurringExpenseHouseholdId,
     pub id: RecurringExpenseId,
     pub purchase_id: RecurringExpensePurchaseId,
-    pub expected_revision: i64,
+    pub expected_revision: RecurringExpenseRevision,
 }
 
 impl MatchRecurringExpenseDecision {
@@ -233,19 +257,13 @@ pub enum RecurringExpenseError {
 pub fn decide_match(
     command: MatchRecurringExpenseCommand,
 ) -> Result<MatchRecurringExpenseDecision, RecurringExpenseError> {
-    identity(&command.actor_id, Some(&command.household_id), &command.id)?;
-    if command.purchase_id.trim().is_empty() {
-        return Err(RecurringExpenseError::InvalidPurchaseId);
-    }
-    if command.expected_revision <= 0 {
-        return Err(RecurringExpenseError::InvalidRevision);
-    }
+    let expected_revision = RecurringExpenseRevision::try_from(command.expected_revision)?;
     Ok(MatchRecurringExpenseDecision {
-        actor_id: RecurringExpenseActorId::new(command.actor_id),
-        household_id: RecurringExpenseHouseholdId::new(command.household_id),
-        id: RecurringExpenseId::new(command.id),
-        purchase_id: RecurringExpensePurchaseId::new(command.purchase_id),
-        expected_revision: command.expected_revision,
+        actor_id: command.actor_id,
+        household_id: command.household_id,
+        id: command.id,
+        purchase_id: command.purchase_id,
+        expected_revision,
     })
 }
 
@@ -283,7 +301,6 @@ pub fn next_due_on(
 pub fn decide_create(
     command: CreateRecurringExpenseCommand,
 ) -> Result<RecurringExpenseDecision, RecurringExpenseError> {
-    identity(&command.actor_id, Some(&command.household_id), &command.id)?;
     let fields = validate_fields(
         command.name,
         command.merchant,
@@ -294,9 +311,9 @@ pub fn decide_create(
     )?;
     validate_dates(command.starts_on, command.next_due_on, command.ends_on)?;
     Ok(RecurringExpenseDecision {
-        actor_id: RecurringExpenseActorId::new(command.actor_id),
-        id: RecurringExpenseId::new(command.id),
-        household_id: Some(RecurringExpenseHouseholdId::new(command.household_id)),
+        actor_id: command.actor_id,
+        id: command.id,
+        household_id: Some(command.household_id),
         expected_revision: None,
         name: Some(fields.name),
         merchant: Some(fields.merchant),
@@ -314,10 +331,7 @@ pub fn decide_create(
 pub fn decide_update(
     command: UpdateRecurringExpenseCommand,
 ) -> Result<RecurringExpenseDecision, RecurringExpenseError> {
-    identity(&command.actor_id, Some(&command.household_id), &command.id)?;
-    if command.expected_revision <= 0 {
-        return Err(RecurringExpenseError::InvalidRevision);
-    }
+    let expected_revision = RecurringExpenseRevision::try_from(command.expected_revision)?;
     let fields = validate_fields(
         command.name,
         command.merchant,
@@ -328,10 +342,10 @@ pub fn decide_update(
     )?;
     validate_dates(command.starts_on, command.next_due_on, command.ends_on)?;
     Ok(RecurringExpenseDecision {
-        actor_id: RecurringExpenseActorId::new(command.actor_id),
-        id: RecurringExpenseId::new(command.id),
-        household_id: Some(RecurringExpenseHouseholdId::new(command.household_id)),
-        expected_revision: Some(command.expected_revision),
+        actor_id: command.actor_id,
+        id: command.id,
+        household_id: Some(command.household_id),
+        expected_revision: Some(expected_revision),
         name: Some(fields.name),
         merchant: Some(fields.merchant),
         amount_yen: Some(fields.amount_yen),
@@ -348,15 +362,12 @@ pub fn decide_update(
 pub fn decide_archive(
     command: ArchiveRecurringExpenseCommand,
 ) -> Result<RecurringExpenseDecision, RecurringExpenseError> {
-    identity(&command.actor_id, Some(&command.household_id), &command.id)?;
-    if command.expected_revision <= 0 {
-        return Err(RecurringExpenseError::InvalidRevision);
-    }
+    let expected_revision = RecurringExpenseRevision::try_from(command.expected_revision)?;
     Ok(RecurringExpenseDecision {
-        actor_id: RecurringExpenseActorId::new(command.actor_id),
-        id: RecurringExpenseId::new(command.id),
-        household_id: Some(RecurringExpenseHouseholdId::new(command.household_id)),
-        expected_revision: Some(command.expected_revision),
+        actor_id: command.actor_id,
+        id: command.id,
+        household_id: Some(command.household_id),
+        expected_revision: Some(expected_revision),
         name: None,
         merchant: None,
         amount_yen: None,
@@ -370,18 +381,6 @@ pub fn decide_archive(
     })
 }
 
-fn identity(actor: &str, household: Option<&str>, id: &str) -> Result<(), RecurringExpenseError> {
-    if actor.trim().is_empty() {
-        return Err(RecurringExpenseError::InvalidActorId);
-    }
-    if household.is_some_and(|value| value.trim().is_empty()) {
-        return Err(RecurringExpenseError::InvalidHouseholdId);
-    }
-    if id.trim().is_empty() {
-        return Err(RecurringExpenseError::InvalidId);
-    }
-    Ok(())
-}
 struct ValidatedRecurringExpenseFields {
     name: String,
     merchant: String,
@@ -394,8 +393,8 @@ struct ValidatedRecurringExpenseFields {
 fn validate_fields(
     name: String,
     merchant: String,
-    category: Option<String>,
-    account: Option<String>,
+    category: Option<RecurringExpenseCategoryId>,
+    account: Option<RecurringExpensePaymentAccountId>,
     amount: i64,
     cadence: &str,
 ) -> Result<ValidatedRecurringExpenseFields, RecurringExpenseError> {
@@ -408,30 +407,14 @@ fn validate_fields(
         return Err(RecurringExpenseError::InvalidMerchant);
     }
     let amount_yen = RecurringExpenseAmountYen::try_from(amount)?;
-    let category = validate_id(category, RecurringExpenseError::InvalidCategoryId)?;
-    let account = validate_id(account, RecurringExpenseError::InvalidPaymentAccountId)?;
     Ok(ValidatedRecurringExpenseFields {
         name,
         merchant,
         amount_yen,
-        category_id: category.map(RecurringExpenseCategoryId::new),
-        payment_account_id: account.map(RecurringExpensePaymentAccountId::new),
+        category_id: category,
+        payment_account_id: account,
         cadence: Cadence::parse(cadence)?,
     })
-}
-fn validate_id(
-    value: Option<String>,
-    error: RecurringExpenseError,
-) -> Result<Option<String>, RecurringExpenseError> {
-    value
-        .map(|id| {
-            if id.trim().is_empty() {
-                Err(error)
-            } else {
-                Ok(id)
-            }
-        })
-        .transpose()
 }
 fn validate_dates(
     starts: NaiveDate,

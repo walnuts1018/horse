@@ -683,3 +683,8 @@ Homeの日付と最近の購入日時は`Asia/Tokyo`を指定して表示し、�
 ### 購入履歴コピー後の入力
 
 購入履歴から品目をコピーすると、最初の品名欄へフォーカスし、コピー品目が見える位置までスクロールします。購入情報の概要では店名と詳細開閉を別の操作にし、店名を押すと詳細を開いて店名欄へフォーカスします。コピー時に既存品目を置換する動作は変更していないため、「置換」「追加」の選択は未解決項目としてレビューに残します。Frontend型検査、対象oxlint、Stylelint、Markuplint、整形検査に成功しました。
+## 2026年10月16日
+
+### Bounded Contextのデータ所有権
+
+Poolと負担・拠出ルールはPolicyが所有し、Householdのデフォルト配賦はHouseholdが所有する。口座、仕訳、購入、精算スナップショットはBookkeepingが所有する。Pool作成はPolicyからHouseholdのApplication契約を呼び、同一PostgreSQL transactionでデフォルト配賦snapshotを作成する。Policyのルール変更はHouseholdのApplication契約を通じてrevisionと変更eventを同じtransactionで記録する。更新処理は各所有Contextへ移し、複数Contextを横断する読み取りはCross-contextに残す。

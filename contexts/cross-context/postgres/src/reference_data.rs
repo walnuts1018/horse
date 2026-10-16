@@ -543,13 +543,13 @@ impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
             }
         });
         let decision = decide_product_learning(ProductLearningCommand {
-            household_id: context.household_id,
-            actor_id: context.actor_id,
-            purchase_id: context.purchase_id,
-            item_id: context.item_id,
+            household_id: context.household_id.into(),
+            actor_id: context.actor_id.into(),
+            purchase_id: context.purchase_id.into(),
+            item_id: context.item_id.into(),
             raw_name: context.raw_name,
-            previous_variant_id: context.previous_variant_id,
-            variant_id: context.variant_id,
+            previous_variant_id: context.previous_variant_id.map(Into::into),
+            variant_id: context.variant_id.map(Into::into),
             variant_changed: context.variant_changed,
             merchant: context.merchant,
             learning,
