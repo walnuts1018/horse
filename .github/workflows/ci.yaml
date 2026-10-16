@@ -58,6 +58,9 @@ jobs:
           - name: Check Rust workspace
             run: mise run rust:check
 
+          - name: Check Rust architecture
+            run: mise run rust:architecture:check
+
           - name: Check Rust formatting
             run: mise run rust:fmt:check
 

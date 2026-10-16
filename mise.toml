@@ -28,6 +28,10 @@ run = "cargo fmt --all -- --check"
 description = "Rust workspaceの型検査"
 run = "cargo check --workspace"
 
+[tasks."rust:architecture:check"]
+description = "Rust domain/applicationの依存境界検査"
+run = "python3 scripts/check_rust_architecture.py"
+
 [tasks."rust:test"]
 description = "Rust workspaceのテスト"
 run = "cargo test --workspace"
