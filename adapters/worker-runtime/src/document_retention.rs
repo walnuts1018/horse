@@ -4,7 +4,10 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_object_storage::ObjectStore;
 use horse_postgres_common::{PgPool, schema::public};
 use serde_json::Value;
-use std::future::Future;
+use std::{
+    collections::{HashMap, HashSet},
+    future::Future,
+};
 use uuid::Uuid;
 
 const RETENTION_DAYS: i64 = 90;
@@ -16,6 +19,13 @@ struct DocumentKeys {
     household_id: Uuid,
     object_key: String,
     analysis_object_key: Option<String>,
+}
+
+struct ConfirmationStatus {
+    source_reference: String,
+    status: String,
+    changed_at: DateTime<Utc>,
+    id: Uuid,
 }
 
 pub(crate) trait RetentionObjectStore: Sync {
@@ -64,12 +74,6 @@ pub(crate) async fn delete_expired_unconfirmed(
                     .filter(evidence_links::source_document_id.eq(documents::id)),
             )))
             .filter(dsl::not(dsl::exists(
-                source_confirmations::table
-                    .filter(source_confirmations::household_id.eq(documents::household_id))
-                    .filter(source_confirmations::source_document_id.eq(documents::id))
-                    .filter(source_confirmations::status.eq("confirmed")),
-            )))
-            .filter(dsl::not(dsl::exists(
                 bank_statement_imports::table
                     .filter(bank_statement_imports::household_id.eq(documents::household_id))
                     .filter(bank_statement_imports::source_document_id.eq(documents::id)),
@@ -98,12 +102,41 @@ pub(crate) async fn delete_expired_unconfirmed(
             .limit(BATCH_SIZE)
             .load::<(DateTime<Utc>, Uuid)>(&mut *connection)
             .await?;
+        let candidate_ids = rows.iter().map(|(_, id)| *id).collect::<Vec<_>>();
+        let confirmations = source_confirmations::table
+            .filter(source_confirmations::source_document_id.eq_any(&candidate_ids))
+            .select((
+                source_confirmations::source_document_id,
+                source_confirmations::source_reference,
+                source_confirmations::status,
+                source_confirmations::changed_at,
+                source_confirmations::id,
+            ))
+            .load::<(Uuid, String, String, DateTime<Utc>, Uuid)>(&mut *connection)
+            .await?;
+        let mut confirmations_by_document = HashMap::<Uuid, Vec<ConfirmationStatus>>::new();
+        for (document_id, source_reference, status, changed_at, id) in confirmations {
+            confirmations_by_document
+                .entry(document_id)
+                .or_default()
+                .push(ConfirmationStatus {
+                    source_reference,
+                    status,
+                    changed_at,
+                    id,
+                });
+        }
         drop(connection);
         let Some(last) = rows.last().copied() else {
             break;
         };
         cursor = Some(last);
         for (_, id) in rows {
+            if has_current_confirmation_status(
+                confirmations_by_document.remove(&id).unwrap_or_default(),
+            ) {
+                continue;
+            }
             match delete_one(pool, store, id, now).await {
                 Ok(true) => deleted += 1,
                 Ok(false) => {}
@@ -122,10 +155,7 @@ async fn delete_one(
     document_id: Uuid,
     now: DateTime<Utc>,
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-    use public::{
-        bank_statement_imports, evidence_links, extraction_jobs, source_confirmations,
-        source_documents,
-    };
+    use public::{bank_statement_imports, evidence_links, extraction_jobs, source_documents};
 
     let mut connection = pool.get().await?;
     let keys = (*connection)
@@ -166,14 +196,8 @@ async fn delete_one(
             ))
             .get_result::<bool>(conn)
             .await?;
-            let has_confirmation = dsl::select(dsl::exists(
-                source_confirmations::table
-                    .filter(source_confirmations::household_id.eq(household_id))
-                    .filter(source_confirmations::source_document_id.eq(document_id))
-                    .filter(source_confirmations::status.eq("confirmed")),
-            ))
-            .get_result::<bool>(conn)
-            .await?;
+            let has_confirmation =
+                has_current_confirmation(conn, household_id, document_id).await?;
             let has_statement_import = dsl::select(dsl::exists(
                 bank_statement_imports::table
                     .filter(bank_statement_imports::household_id.eq(household_id))
@@ -240,14 +264,8 @@ async fn delete_one(
             ))
             .get_result::<bool>(conn)
             .await?;
-            let has_confirmation = dsl::select(dsl::exists(
-                source_confirmations::table
-                    .filter(source_confirmations::household_id.eq(keys.household_id))
-                    .filter(source_confirmations::source_document_id.eq(keys.id))
-                    .filter(source_confirmations::status.eq("confirmed")),
-            ))
-            .get_result::<bool>(conn)
-            .await?;
+            let has_confirmation =
+                has_current_confirmation(conn, keys.household_id, keys.id).await?;
             let has_statement_import = dsl::select(dsl::exists(
                 bank_statement_imports::table
                     .filter(bank_statement_imports::household_id.eq(keys.household_id))
@@ -295,6 +313,51 @@ fn unique_keys(document: &DocumentKeys) -> Vec<String> {
     keys
 }
 
+async fn has_current_confirmation(
+    conn: &mut horse_postgres_common::AsyncPgConnection,
+    household_id: Uuid,
+    document_id: Uuid,
+) -> Result<bool, diesel::result::Error> {
+    use public::source_confirmations;
+
+    let confirmations = source_confirmations::table
+        .filter(source_confirmations::household_id.eq(household_id))
+        .filter(source_confirmations::source_document_id.eq(document_id))
+        .select((
+            source_confirmations::source_reference,
+            source_confirmations::status,
+            source_confirmations::changed_at,
+            source_confirmations::id,
+        ))
+        .load::<(String, String, DateTime<Utc>, Uuid)>(conn)
+        .await?
+        .into_iter()
+        .map(
+            |(source_reference, status, changed_at, id)| ConfirmationStatus {
+                source_reference,
+                status,
+                changed_at,
+                id,
+            },
+        )
+        .collect();
+    Ok(has_current_confirmation_status(confirmations))
+}
+
+fn has_current_confirmation_status(mut confirmations: Vec<ConfirmationStatus>) -> bool {
+    confirmations.sort_unstable_by(|left, right| {
+        left.source_reference
+            .cmp(&right.source_reference)
+            .then_with(|| right.changed_at.cmp(&left.changed_at))
+            .then_with(|| right.id.cmp(&left.id))
+    });
+
+    let mut seen_references = HashSet::new();
+    confirmations.into_iter().any(|confirmation| {
+        seen_references.insert(confirmation.source_reference) && confirmation.status == "confirmed"
+    })
+}
+
 fn is_active_job(latest_job: Option<&(String, Option<DateTime<Utc>>)>, now: DateTime<Utc>) -> bool {
     latest_job.is_some_and(|(status, lease_expires_at)| {
         status == "running" && lease_expires_at.is_some_and(|expires_at| expires_at > now)
@@ -328,7 +391,48 @@ mod tests {
     use horse_postgres_common::{connect, schema::public};
     use horse_test_infra::{TestPostgres, apply_migrations};
 
-    use super::{RetentionObjectStore, delete_expired_unconfirmed};
+    use super::{
+        ConfirmationStatus, RetentionObjectStore, delete_expired_unconfirmed,
+        has_current_confirmation_status,
+    };
+
+    #[test]
+    fn current_confirmation_uses_latest_event_per_reference_and_breaks_timestamp_ties_by_id() {
+        let changed_at = chrono::Utc::now();
+        let revoked_id = uuid::Uuid::from_u128(2);
+        let confirmed_id = uuid::Uuid::from_u128(1);
+        let prior_confirmation = ConfirmationStatus {
+            source_reference: "receipt".to_owned(),
+            status: "confirmed".to_owned(),
+            changed_at,
+            id: confirmed_id,
+        };
+        let latest_revocation = ConfirmationStatus {
+            source_reference: "receipt".to_owned(),
+            status: "revoked".to_owned(),
+            changed_at,
+            id: revoked_id,
+        };
+
+        assert!(!has_current_confirmation_status(vec![
+            prior_confirmation,
+            latest_revocation,
+        ]));
+        assert!(has_current_confirmation_status(vec![
+            ConfirmationStatus {
+                source_reference: "receipt".to_owned(),
+                status: "revoked".to_owned(),
+                changed_at,
+                id: revoked_id,
+            },
+            ConfirmationStatus {
+                source_reference: "other-row".to_owned(),
+                status: "confirmed".to_owned(),
+                changed_at,
+                id: confirmed_id,
+            },
+        ]));
+    }
 
     #[derive(Default)]
     struct DeletedObjects(Mutex<Vec<String>>);
@@ -364,6 +468,7 @@ mod tests {
         let confirmed_purchase_id = uuid::Uuid::now_v7();
         let unconfirmed_document_id = uuid::Uuid::now_v7();
         let confirmed_document_id = uuid::Uuid::now_v7();
+        let revoked_document_id = uuid::Uuid::now_v7();
         let old_created_at = now - Duration::days(91);
 
         {
@@ -405,6 +510,11 @@ mod tests {
                     "b".repeat(64),
                     "retention/confirmed".to_owned(),
                 ),
+                (
+                    revoked_document_id,
+                    "c".repeat(64),
+                    "retention/revoked".to_owned(),
+                ),
             ] {
                 insert_into(source_documents::table)
                     .values((
@@ -444,21 +554,73 @@ mod tests {
                     source_confirmations::status.eq("confirmed"),
                     source_confirmations::idempotency_key.eq("confirmed-retention-test"),
                     source_confirmations::changed_by.eq(member_id),
-                    source_confirmations::changed_at.eq(now),
+                    source_confirmations::changed_at.eq(now - Duration::seconds(2)),
                 ))
                 .execute(&mut *conn)
                 .await
                 .unwrap();
+            for (document_id, source_reference, status, idempotency_key, changed_at) in [
+                (
+                    confirmed_document_id,
+                    "receipt",
+                    "revoked",
+                    "revoked-retention-test",
+                    now - Duration::seconds(1),
+                ),
+                (
+                    confirmed_document_id,
+                    "other-row",
+                    "confirmed",
+                    "other-reference-retention-test",
+                    now,
+                ),
+                (
+                    revoked_document_id,
+                    "receipt",
+                    "confirmed",
+                    "revoked-only-confirmed-retention-test",
+                    now - Duration::seconds(2),
+                ),
+                (
+                    revoked_document_id,
+                    "receipt",
+                    "revoked",
+                    "revoked-only-revoked-retention-test",
+                    now - Duration::seconds(1),
+                ),
+            ] {
+                insert_into(source_confirmations::table)
+                    .values((
+                        source_confirmations::id.eq(uuid::Uuid::now_v7()),
+                        source_confirmations::household_id.eq(household_id),
+                        source_confirmations::source_document_id.eq(document_id),
+                        source_confirmations::source_reference.eq(source_reference),
+                        source_confirmations::entity_kind.eq("purchase"),
+                        source_confirmations::entity_id.eq(confirmed_purchase_id),
+                        source_confirmations::status.eq(status),
+                        source_confirmations::idempotency_key.eq(idempotency_key),
+                        source_confirmations::changed_by.eq(member_id),
+                        source_confirmations::changed_at.eq(changed_at),
+                    ))
+                    .execute(&mut *conn)
+                    .await
+                    .unwrap();
+            }
         }
 
         let deleted_objects = DeletedObjects::default();
         let deleted = delete_expired_unconfirmed(&pool, &deleted_objects, now)
             .await
             .unwrap();
-        assert_eq!(deleted, 1);
+        assert_eq!(deleted, 2);
+        let mut deleted_keys = deleted_objects.0.lock().unwrap().clone();
+        deleted_keys.sort();
         assert_eq!(
-            *deleted_objects.0.lock().unwrap(),
-            vec!["retention/unconfirmed".to_owned()]
+            deleted_keys,
+            vec![
+                "retention/revoked".to_owned(),
+                "retention/unconfirmed".to_owned(),
+            ]
         );
 
         let mut conn = pool.get().await.unwrap();
@@ -475,7 +637,7 @@ mod tests {
             .first::<i64>(&mut *conn)
             .await
             .unwrap();
-        assert_eq!(retained_confirmation, 1);
+        assert_eq!(retained_confirmation, 3);
     }
 
     #[tokio::test]
