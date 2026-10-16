@@ -139,7 +139,7 @@ pub fn decide_product_learning(
         Some(ProductLearningKind::VariantName(name)) => {
             let name = name.trim();
             let normalized_name = normalize(name);
-            if normalized_name.is_empty() || name.len() > 240 {
+            if normalized_name.is_empty() || name.chars().count() > 240 {
                 return Err(ProductLearningError::InvalidVariantName);
             }
             Some((
@@ -183,4 +183,28 @@ fn normalize(value: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_japanese_variant_names_within_character_limit() {
+        let decision = decide_product_learning(ProductLearningCommand {
+            household_id: Uuid::nil().into(),
+            actor_id: Uuid::nil().into(),
+            purchase_id: Uuid::nil().into(),
+            item_id: Uuid::nil().into(),
+            raw_name: "ヨーグルト".to_owned(),
+            previous_variant_id: None,
+            variant_id: Some(Uuid::nil().into()),
+            variant_changed: false,
+            merchant: "店舗".to_owned(),
+            learning: Some(ProductLearningKind::VariantName("あ".repeat(240))),
+        })
+        .expect("240文字の名称は有効");
+
+        assert!(decision.is_some());
+    }
 }
