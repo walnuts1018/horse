@@ -1,6 +1,6 @@
 # Horse を DMMF に忠実に Rust で再設計する方針
 
-GraphQL Schemaはそのままに、BEをRustに移行する。ついでにDBリセットを前提としてDB Schemaもこの機会に完璧で洗練されたものにする。
+既存Go実装との互換性を移行条件にせず、GraphQL APIとDB SchemaをRustのドメインモデルに合わせて再設計する。BEはRustへ移行し、DBリセットを前提としてスキーマを再構成する。
 DMMFについてわからないことがあれば必ずユーザーに問い合わせる。積極的に問い合わせる。
 
 Rustで全Backend機能と公開契約を実装し、必要な検証を完了してから、Go APIとWorkerを一括でRustへ切り替える。GoとRustの機能単位の共存移行は完了条件にしない。
