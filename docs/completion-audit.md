@@ -5,9 +5,9 @@
 
 ## 現在の状態
 
-2026年10月16日時点でGoの実行コードはRustへ移行済みである。commit`90b15c21`でCatalog・Evidence・Policy変更、原本保存期限、Application契約を反映した。workspaceで`mise run rust:check`、`mise run rust:test`、`mise run lint`、`mise run rust:architecture:check`、`mise run rust:fmt:check`、`git diff --check`が成功した。Horse CI run `38857596263`は実行中であり、kurumiでは`v0.0.954`が稼働しているため、このcommitのimageは未配備である。
+2026年10月16日時点でGoの実行コードはRustへ移行済みである。commit`d8e0dd74`でGraphQLからPostgres依存をApplication Portへ移し、`docs/reviews/rust_review5.md`の指摘を解消した。`mise run rust:check`、`mise run rust:test`、`mise run lint`、`mise run rust:architecture:check`、`mise run rust:fmt:check`が成功し、Horse CI run `38876737440`のqualityとimage publishも成功した。
 
-kurumiのArgo CD Applicationはinfra commit `559c1cd`で`Synced`かつ`Healthy`である。API・Worker・Web・OCRは`v0.0.950`でReadyになっており、Workerは`GEMINI_MODEL_PRICES` ConfigMapを参照する。ConfigMapのversionは`gemini-prices-2026-10-v2`である。`https://horse.walnuts.dev/healthz`はHTTP 200を返す。実行中のimageがHorse mainの最新commit由来だとは確認できていない。Chromeで公開トップを開くとログインリンクが表示され、認証後の操作はこの確認では行っていない。
+kurumiのArgo CD Applicationはinfra commit `575434a1b`で`Synced`かつ`Healthy`である。API・Worker・Web・OCRはすべてReadyで、4つとも`v0.0.978`を実行している。APIとWorkerのimage digestは`sha256:5453f182854c1f50565bdfccc3ecf5eabb77709da7911053bb6004ab40f1b155`である。`https://horse.walnuts.dev/healthz`と指定されたhousehold ledger URLはHTTP 200を返し、household settings URLは未認証時にログインへredirectするHTTP 307を返す。Chrome sessionにHorseの認証情報がなかったため、認証後の操作は未確認である。
 
 以下の操作記録は記録された日付時点の証拠であり、現在のRust版で未確認の項目を完了扱いにしない。旧Goテストと旧Go CI runは現行Rust実装の検証根拠に含めない。
 
