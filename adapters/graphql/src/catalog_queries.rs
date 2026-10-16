@@ -1,8 +1,12 @@
 use async_graphql::{Context, Error, ID, Result, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use catalog_application::tag_query::{TagCursor, TagQuery, TagQueryError, TagQueryInput};
-use catalog_postgres::catalog_query as postgres_query;
-use horse_postgres_common::PgPool;
+use catalog_application::{
+    product_query::{
+        ProductAliasProjection, ProductCatalogInput, ProductConceptProjection, ProductCursor,
+        ProductQuery, ProductQueryError, ProductSuggestionsInput, ProductVariantProjection,
+    },
+    tag_query::{TagCursor, TagQuery, TagQueryError, TagQueryInput},
+};
 use uuid::Uuid;
 
 use crate::{Actor, catalog_mutations, pagination::PageInfo};
@@ -108,29 +112,30 @@ pub async fn graphql_product_catalog(
 ) -> Result<ProductConceptConnection> {
     let actor = actor(ctx)?;
     let household_id = crate::decode_household_id(&household_id)?;
-    let after_cursor = decode_cursor(after.as_deref(), "ProductConcept")?.map(|cursor| {
-        postgres_query::CatalogCursor {
+    let after_cursor =
+        decode_cursor(after.as_deref(), "ProductConcept")?.map(|cursor| ProductCursor {
             sort_key: cursor.sort_key,
             id: cursor.id,
-        }
-    });
-    let before_cursor = decode_cursor(before.as_deref(), "ProductConcept")?.map(|cursor| {
-        postgres_query::CatalogCursor {
+        });
+    let before_cursor =
+        decode_cursor(before.as_deref(), "ProductConcept")?.map(|cursor| ProductCursor {
             sort_key: cursor.sort_key,
             id: cursor.id,
-        }
-    });
-    let page = postgres_query::product_catalog(
-        ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        after_cursor,
-        before_cursor,
-        first,
-        last,
-    )
-    .await
-    .map_err(map_query_error)?;
+        });
+    let page = ctx
+        .data::<std::sync::Arc<dyn ProductQuery>>()?
+        .catalog(
+            actor.0,
+            household_id,
+            ProductCatalogInput {
+                after: after_cursor,
+                before: before_cursor,
+                first,
+                last,
+            },
+        )
+        .await
+        .map_err(map_product_query_error)?;
     let edges = page
         .rows
         .into_iter()
@@ -155,16 +160,19 @@ pub async fn graphql_product_suggestions(
 ) -> Result<Vec<ProductSuggestion>> {
     let actor = actor(ctx)?;
     let household_id = crate::decode_household_id(&household_id)?;
-    let rows = postgres_query::product_suggestions(
-        ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        &query,
-        merchant.as_deref(),
-        first,
-    )
-    .await
-    .map_err(map_query_error)?;
+    let rows = ctx
+        .data::<std::sync::Arc<dyn ProductQuery>>()?
+        .suggestions(
+            actor.0,
+            household_id,
+            ProductSuggestionsInput {
+                query,
+                merchant,
+                first,
+            },
+        )
+        .await
+        .map_err(map_product_query_error)?;
     rows.into_iter()
         .map(|row| {
             Ok(ProductSuggestion {
@@ -177,9 +185,7 @@ pub async fn graphql_product_suggestions(
         .collect()
 }
 
-fn map_concept(
-    row: postgres_query::ProductConceptProjection,
-) -> Result<catalog_mutations::ProductConcept> {
+fn map_concept(row: ProductConceptProjection) -> Result<catalog_mutations::ProductConcept> {
     Ok(catalog_mutations::ProductConcept {
         id: node_id("ProductConcept", row.id)?,
         household_id: node_id("Household", row.household_id)?,
@@ -199,9 +205,7 @@ fn map_concept(
     })
 }
 
-fn map_variant(
-    row: postgres_query::ProductVariantProjection,
-) -> Result<catalog_mutations::ProductVariant> {
+fn map_variant(row: ProductVariantProjection) -> Result<catalog_mutations::ProductVariant> {
     Ok(catalog_mutations::ProductVariant {
         id: node_id("ProductVariant", row.id)?,
         household_id: node_id("Household", row.household_id)?,
@@ -221,9 +225,7 @@ fn map_variant(
     })
 }
 
-fn map_alias(
-    row: postgres_query::ProductAliasProjection,
-) -> Result<catalog_mutations::ProductAlias> {
+fn map_alias(row: ProductAliasProjection) -> Result<catalog_mutations::ProductAlias> {
     Ok(catalog_mutations::ProductAlias {
         id: node_id("ProductAlias", row.id)?,
         household_id: node_id("Household", row.household_id)?,
@@ -319,15 +321,12 @@ fn nonempty(value: String) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
-fn map_query_error(error: postgres_query::CatalogQueryError) -> Error {
-    use postgres_query::CatalogQueryError as QueryError;
+fn map_product_query_error(error: ProductQueryError) -> Error {
     match error {
-        QueryError::HouseholdNotFound => Error::new("household not found"),
-        QueryError::InvalidPagination => Error::new("invalid pagination"),
-        QueryError::InvalidCursor => Error::new("invalid cursor"),
-        error @ (QueryError::Pool(_)
-        | QueryError::Database(_)
-        | QueryError::InvalidPersistedData) => crate::internal_error(error),
+        ProductQueryError::HouseholdNotFound => Error::new("household not found"),
+        ProductQueryError::InvalidPagination => Error::new("invalid pagination"),
+        ProductQueryError::InvalidCursor => Error::new("invalid cursor"),
+        ProductQueryError::Infrastructure(error) => crate::internal_error(error),
     }
 }
 

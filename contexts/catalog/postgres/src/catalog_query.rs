@@ -7,6 +7,11 @@ use diesel_async::RunQueryDsl;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
+pub use catalog_application::product_query::{
+    ProductAliasProjection, ProductCatalogPage, ProductConceptProjection,
+    ProductSuggestionProjection, ProductVariantProjection,
+};
+
 use crate::{PgPool, schema::public};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,59 +44,6 @@ pub struct TagPage {
     pub total_count: i64,
     pub has_next_page: bool,
     pub has_previous_page: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProductAliasProjection {
-    pub id: Uuid,
-    pub household_id: Uuid,
-    pub variant_id: Uuid,
-    pub merchant_key: String,
-    pub alias: String,
-    pub normalized_alias: String,
-    pub revision: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProductVariantProjection {
-    pub id: Uuid,
-    pub household_id: Uuid,
-    pub concept_id: Uuid,
-    pub name: String,
-    pub normalized_name: String,
-    pub brand: String,
-    pub package_size: String,
-    pub barcode: Option<String>,
-    pub archived: bool,
-    pub revision: i64,
-    pub aliases: Vec<ProductAliasProjection>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProductConceptProjection {
-    pub id: Uuid,
-    pub household_id: Uuid,
-    pub name: String,
-    pub normalized_name: String,
-    pub category_id: Option<Uuid>,
-    pub archived: bool,
-    pub revision: i64,
-    pub variants: Vec<ProductVariantProjection>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProductCatalogPage {
-    pub rows: Vec<ProductConceptProjection>,
-    pub has_next_page: bool,
-    pub has_previous_page: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProductSuggestionProjection {
-    pub concept: ProductConceptProjection,
-    pub variant: ProductVariantProjection,
-    pub matched_name: String,
-    pub score: i32,
 }
 
 #[derive(Debug)]
