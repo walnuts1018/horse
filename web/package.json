@@ -52,7 +52,7 @@
     "babel-plugin-relay": "^21.0.1",
     "eslint-plugin-compat": "^7.0.2",
     "eslint-plugin-react-you-might-not-need-an-effect": "^1.0.2",
-    "fake-indexeddb": "^6.2.6",
+    "fake-indexeddb": "^6.2.5",
     "fast-check": "^4.10.2",
     "markuplint": "^5.2.0",
     "nitro": "3.0.260610-beta",
