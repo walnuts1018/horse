@@ -5,11 +5,11 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as Di
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_authorization::{Operation, authorize};
 use policy_application::set_pool_funding_rule::{
-    FundingRuleActorId, FundingRuleHouseholdId, FundingRuleMemberId, FundingRulePoolId,
-    PersistedPoolFundingRule, PoolFundingConfiguration, PoolFundingKind, PoolFundingRuleContext,
-    SetPoolFundingRuleCommand, SetPoolFundingRuleDecision, SetPoolFundingRuleOperations,
-    SharedSettlementPolicy, set_pool_funding_rule,
+    FundingRuleMemberId, FundingRulePoolId, PersistedPoolFundingRule, PoolFundingConfiguration,
+    PoolFundingKind, PoolFundingRuleContext, SetPoolFundingRuleCommand, SetPoolFundingRuleDecision,
+    SetPoolFundingRuleOperations, SharedSettlementPolicy, set_pool_funding_rule,
 };
+use policy_application::{ActorId, HouseholdId};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -68,8 +68,8 @@ impl SetPoolFundingRuleOperations for PostgresSetPoolFundingRuleOperations<'_> {
 
     async fn load_context(
         &mut self,
-        actor_id: FundingRuleActorId,
-        household_id: FundingRuleHouseholdId,
+        actor_id: ActorId,
+        household_id: HouseholdId,
         pool_id: FundingRulePoolId,
     ) -> Result<PoolFundingRuleContext, Self::Error> {
         use public::{household_members as members, households, pools};

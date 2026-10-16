@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bookkeeping_domain::SettlementPolicy;
 use chrono::{DateTime, Utc};
 use diesel::{
@@ -5,6 +7,7 @@ use diesel::{
     result::Error as DieselError,
 };
 use diesel_async::RunQueryDsl;
+use policy_application::settlement_data::SettlementDataRead;
 use uuid::Uuid;
 
 use horse_postgres_common::{PgPool, schema::public};
@@ -106,7 +109,7 @@ pub async fn load_funding_ledger_entry_result(
     let member_id = member_id.ok_or(FundingCommandResultError::MissingFundingMember)?;
     let pool_id = pool_id.ok_or(FundingCommandResultError::MissingFundingPool)?;
     let member = load_member(&mut conn, household_id, member_id).await?;
-    let pool = load_pool(&mut conn, household_id, pool_id).await?;
+    let pool = load_pool(pool, &mut conn, household_id, pool_id).await?;
 
     Ok(FundingLedgerEntryResult {
         id,
@@ -237,60 +240,56 @@ pub async fn load_funding_ledger_entry_results(
         .map(|(household_id, pool_id, weight)| ((household_id, pool_id), weight))
         .collect::<HashMap<_, _>>();
 
-    let rules = public::pool_funding_rules::table
-        .filter(public::pool_funding_rules::household_id.eq_any(household_ids))
-        .filter(public::pool_funding_rules::pool_id.eq_any(&pool_ids))
-        .select((
-            public::pool_funding_rules::household_id,
-            public::pool_funding_rules::pool_id,
-            public::pool_funding_rules::version,
-            public::pool_funding_rules::owner_member_id,
-            public::pool_funding_rules::settlement_policy,
-        ))
-        .load::<(Uuid, Uuid, i32, Option<Uuid>, Option<String>)>(&mut *conn)
-        .await?
-        .into_iter()
-        .map(|(household_id, pool_id, version, owner, policy)| {
-            ((household_id, pool_id, version), (owner, policy))
-        })
-        .collect::<HashMap<_, _>>();
-
-    let versions = pool_rows
-        .values()
-        .filter_map(|(_, _, version)| *version)
-        .collect::<Vec<_>>();
-    let mut shares_by_rule = HashMap::<(Uuid, Uuid, i32), Vec<FundingPoolShare>>::new();
-    if !versions.is_empty() {
-        let shares = public::pool_funding_shares::table
-            .inner_join(
-                public::members::table
-                    .on(public::pool_funding_shares::member_id.eq(public::members::id)),
-            )
-            .filter(public::pool_funding_shares::household_id.eq_any(household_ids))
-            .filter(public::pool_funding_shares::pool_id.eq_any(&pool_ids))
-            .filter(public::pool_funding_shares::version.eq_any(&versions))
-            .select((
-                public::pool_funding_shares::household_id,
-                public::pool_funding_shares::pool_id,
-                public::pool_funding_shares::version,
-                public::pool_funding_shares::member_id,
-                public::members::display_name,
-                public::pool_funding_shares::weight,
-            ))
-            .load::<(Uuid, Uuid, i32, Uuid, String, i64)>(&mut *conn)
-            .await?;
-        for (household_id, pool_id, version, member_id, member_name, weight) in shares {
-            shares_by_rule
-                .entry((household_id, pool_id, version))
-                .or_default()
-                .push(FundingPoolShare {
-                    member_id,
-                    member_name,
-                    weight,
-                });
+    let policy_reader =
+        policy_postgres::settlement_data::PostgresSettlementDataRead::new(pool.clone());
+    let mut rules = HashMap::new();
+    let mut raw_shares_by_rule = HashMap::<(Uuid, Uuid, i32), Vec<(Uuid, i64)>>::new();
+    let mut share_member_ids = Vec::new();
+    for household_id in household_ids {
+        let policy = policy_reader
+            .rules_and_shares(*household_id)
+            .await
+            .map_err(FundingCommandResultError::Pool)?;
+        for rule in policy.rules {
+            rules.insert(
+                (*household_id, rule.pool_id, rule.version),
+                (rule.owner_member_id, rule.settlement_policy),
+            );
         }
-        for shares in shares_by_rule.values_mut() {
-            shares.sort_by_key(|share| share.member_id);
+        for share in policy.shares {
+            share_member_ids.push(share.member_id);
+            raw_shares_by_rule
+                .entry((*household_id, share.pool_id, share.version))
+                .or_default()
+                .push((share.member_id, share.weight));
+        }
+    }
+    share_member_ids.sort_unstable();
+    share_member_ids.dedup();
+    let share_member_names = if share_member_ids.is_empty() {
+        HashMap::new()
+    } else {
+        public::members::table
+            .filter(public::members::id.eq_any(&share_member_ids))
+            .select((public::members::id, public::members::display_name))
+            .load::<(Uuid, String)>(&mut *conn)
+            .await?
+            .into_iter()
+            .collect::<HashMap<_, _>>()
+    };
+    let mut shares_by_rule = HashMap::<(Uuid, Uuid, i32), Vec<FundingPoolShare>>::new();
+    for (key, shares) in raw_shares_by_rule {
+        let values = shares_by_rule.entry(key).or_default();
+        for (member_id, weight) in shares {
+            let member_name = share_member_names
+                .get(&member_id)
+                .cloned()
+                .ok_or(FundingCommandResultError::MissingFundingMember)?;
+            values.push(FundingPoolShare {
+                member_id,
+                member_name,
+                weight,
+            });
         }
     }
 
@@ -418,6 +417,7 @@ async fn load_member(
 }
 
 async fn load_pool(
+    pool: &PgPool,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     pool_id: Uuid,
@@ -459,50 +459,58 @@ async fn load_pool(
     let mut settlement_policy = None;
     let mut funding_shares = Vec::new();
     if let Some(version) = funding_rule_version {
-        let rule = public::pool_funding_rules::table
-            .filter(public::pool_funding_rules::household_id.eq(household_id))
-            .filter(public::pool_funding_rules::pool_id.eq(pool_id))
-            .filter(public::pool_funding_rules::version.eq(version))
-            .select((
-                public::pool_funding_rules::owner_member_id,
-                public::pool_funding_rules::settlement_policy,
-            ))
-            .first::<(Option<Uuid>, Option<String>)>(conn)
-            .await
-            .optional()?;
-        if let Some((owner, policy)) = rule {
-            owner_member_id = owner;
-            if let Some(policy) = policy {
+        let policy =
+            policy_postgres::settlement_data::PostgresSettlementDataRead::new(pool.clone())
+                .rules_and_shares(household_id)
+                .await
+                .map_err(FundingCommandResultError::Pool)?;
+        if let Some(rule) = policy
+            .rules
+            .into_iter()
+            .find(|rule| rule.pool_id == pool_id && rule.version == version)
+        {
+            owner_member_id = rule.owner_member_id;
+            if let Some(policy) = rule.settlement_policy {
                 settlement_policy = Some(match policy.as_str() {
                     "BALANCE_TO_STANDARD" => SettlementPolicy::BalanceToStandard,
                     "REIMBURSE_PERSONAL" => SettlementPolicy::ReimbursePersonal,
                     _ => return Err(FundingCommandResultError::InvalidSettlementPolicy(policy)),
                 });
             }
-            let shares = public::pool_funding_shares::table
-                .inner_join(
-                    public::members::table
-                        .on(public::pool_funding_shares::member_id.eq(public::members::id)),
-                )
-                .filter(public::pool_funding_shares::household_id.eq(household_id))
-                .filter(public::pool_funding_shares::pool_id.eq(pool_id))
-                .filter(public::pool_funding_shares::version.eq(version))
-                .order_by(public::pool_funding_shares::member_id.asc())
-                .select((
-                    public::pool_funding_shares::member_id,
-                    public::members::display_name,
-                    public::pool_funding_shares::weight,
-                ))
-                .load::<(Uuid, String, i64)>(conn)
-                .await?;
+            let shares = policy
+                .shares
+                .into_iter()
+                .filter(|share| share.pool_id == pool_id && share.version == version)
+                .collect::<Vec<_>>();
+            let member_ids = shares
+                .iter()
+                .map(|share| share.member_id)
+                .collect::<Vec<_>>();
+            let member_names = if member_ids.is_empty() {
+                HashMap::new()
+            } else {
+                public::members::table
+                    .filter(public::members::id.eq_any(&member_ids))
+                    .select((public::members::id, public::members::display_name))
+                    .load::<(Uuid, String)>(conn)
+                    .await?
+                    .into_iter()
+                    .collect::<HashMap<_, _>>()
+            };
             funding_shares = shares
                 .into_iter()
-                .map(|(member_id, member_name, weight)| FundingPoolShare {
-                    member_id,
-                    member_name,
-                    weight,
+                .map(|share| {
+                    let member_name = member_names
+                        .get(&share.member_id)
+                        .cloned()
+                        .ok_or(FundingCommandResultError::MissingFundingMember)?;
+                    Ok(FundingPoolShare {
+                        member_id: share.member_id,
+                        member_name,
+                        weight: share.weight,
+                    })
                 })
-                .collect();
+                .collect::<Result<Vec<_>, FundingCommandResultError>>()?;
         }
     }
 

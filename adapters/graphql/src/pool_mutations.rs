@@ -5,15 +5,13 @@ use household_application::default_allocation::{
     SetDefaultAllocationCommand,
 };
 use household_application::household_query::{HouseholdPoolReadModel, HouseholdQuery};
-use policy_application::create_pool::{
-    CreatePoolCommand, CreatePoolHandler, NewPoolId, PoolActorId, PoolHouseholdId,
-};
+use policy_application::create_pool::{CreatePoolCommand, CreatePoolHandler, NewPoolId};
 use policy_application::{
+    ActorId as PolicyActorId, HouseholdId as PolicyHouseholdId,
     set_allocation_rule::{
-        AllocationActorId, AllocationCategoryId, AllocationHouseholdId, AllocationPoolId,
-        AllocationProductConceptId, AllocationProductVariantId,
-        AllocationRuleTarget as WorkflowAllocationRuleTarget, AllocationRuleWeight,
-        SetAllocationRuleCommand, SetAllocationRuleHandler,
+        AllocationCategoryId, AllocationPoolId, AllocationProductConceptId,
+        AllocationProductVariantId, AllocationRuleTarget as WorkflowAllocationRuleTarget,
+        AllocationRuleWeight, SetAllocationRuleCommand, SetAllocationRuleHandler,
     },
     set_funding_schedule::{
         ActorId as FundingActorId, FundingScheduleAmount, FundingScheduleCadence as PolicyCadence,
@@ -22,7 +20,7 @@ use policy_application::{
         SetFundingScheduleHandler,
     },
     set_pool_funding_rule::{
-        FundingRuleActorId, FundingRuleHouseholdId, FundingRuleMemberId, FundingRulePoolId,
+        FundingRuleMemberId, FundingRulePoolId,
         PoolFundingConfiguration as WorkflowPoolFundingConfiguration,
         PoolFundingShareInput as WorkflowPoolFundingShareInput, SetPoolFundingRuleCommand,
         SetPoolFundingRuleHandler, SharedSettlementPolicy,
@@ -237,8 +235,8 @@ pub async fn create_pool(ctx: &Context<'_>, input: CreatePoolInput) -> Result<Cr
     let pool_id = match ctx
         .data::<Arc<dyn CreatePoolHandler>>()?
         .create(CreatePoolCommand {
-            actor_id: PoolActorId::from_uuid(actor.0),
-            household_id: PoolHouseholdId::from_uuid(household_id),
+            actor_id: PolicyActorId::from_uuid(actor.0),
+            household_id: PolicyHouseholdId::from_uuid(household_id),
             pool_id: NewPoolId::from_uuid(Uuid::now_v7()),
             name: input.name,
             kind: match input.kind {
@@ -314,8 +312,8 @@ pub async fn set_pool_funding_rule(
     match ctx
         .data::<Arc<dyn SetPoolFundingRuleHandler>>()?
         .set(SetPoolFundingRuleCommand {
-            actor_id: FundingRuleActorId::new(actor.0),
-            household_id: FundingRuleHouseholdId::new(household_id),
+            actor_id: PolicyActorId::new(actor.0),
+            household_id: PolicyHouseholdId::new(household_id),
             pool_id: FundingRulePoolId::new(pool_id),
             expected_version: input.expected_version,
             configuration,
@@ -423,8 +421,8 @@ pub async fn set_allocation_rule(
         });
     }
     let command = SetAllocationRuleCommand {
-        actor_id: AllocationActorId::from_uuid(actor.0),
-        household_id: AllocationHouseholdId::from_uuid(household_id),
+        actor_id: PolicyActorId::from_uuid(actor.0),
+        household_id: PolicyHouseholdId::from_uuid(household_id),
         target,
         weights,
     };

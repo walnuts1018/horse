@@ -6,7 +6,10 @@ use horse_postgres_common::schema::public::{
 use household_application::create_household::CreateHouseholdCommand;
 use household_application::household_query::{HouseholdQuery, HouseholdQueryError};
 use household_postgres::household_query::PostgresHouseholdQuery;
-use policy_application::create_pool::{CreatePoolCommand, NewPoolId, PoolActorId, PoolHouseholdId};
+use policy_application::{
+    ActorId, HouseholdId,
+    create_pool::{CreatePoolCommand, NewPoolId},
+};
 use uuid::Uuid;
 
 #[tokio::test]
@@ -45,8 +48,8 @@ async fn pool_creation_updates_household_defaults_atomically() {
     policy_postgres::pool_mutations::persist_create_pool(
         &pool,
         CreatePoolCommand {
-            actor_id: PoolActorId::from_uuid(actor_id),
-            household_id: PoolHouseholdId::from_uuid(household_id),
+            actor_id: ActorId::from_uuid(actor_id),
+            household_id: HouseholdId::from_uuid(household_id),
             pool_id: NewPoolId::from_uuid(first_pool_id),
             name: "Shared".to_owned(),
             kind: "SHARED".to_owned(),
@@ -79,8 +82,8 @@ async fn pool_creation_updates_household_defaults_atomically() {
     let result = policy_postgres::pool_mutations::persist_create_pool(
         &pool,
         CreatePoolCommand {
-            actor_id: PoolActorId::from_uuid(actor_id),
-            household_id: PoolHouseholdId::from_uuid(household_id),
+            actor_id: ActorId::from_uuid(actor_id),
+            household_id: HouseholdId::from_uuid(household_id),
             pool_id: NewPoolId::from_uuid(failed_pool_id),
             name: "Must roll back".to_owned(),
             kind: "SHARED".to_owned(),
@@ -170,8 +173,8 @@ async fn pool_creation_rejects_household_members() {
     let result = policy_postgres::pool_mutations::persist_create_pool(
         &pool,
         CreatePoolCommand {
-            actor_id: PoolActorId::from_uuid(member_id),
-            household_id: PoolHouseholdId::from_uuid(household_id),
+            actor_id: ActorId::from_uuid(member_id),
+            household_id: HouseholdId::from_uuid(household_id),
             pool_id: NewPoolId::from_uuid(attempted_pool_id),
             name: "Member-created pool".to_owned(),
             kind: "SHARED".to_owned(),
@@ -260,8 +263,8 @@ async fn household_member_cannot_read_or_modify_another_household() {
     let result = policy_postgres::pool_mutations::persist_create_pool(
         &pool,
         CreatePoolCommand {
-            actor_id: PoolActorId::from_uuid(actor_id),
-            household_id: PoolHouseholdId::from_uuid(other_household_id),
+            actor_id: ActorId::from_uuid(actor_id),
+            household_id: HouseholdId::from_uuid(other_household_id),
             pool_id: NewPoolId::from_uuid(attempted_pool_id),
             name: "Unauthorized pool".to_owned(),
             kind: "SHARED".to_owned(),

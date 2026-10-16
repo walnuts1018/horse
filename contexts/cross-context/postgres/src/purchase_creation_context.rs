@@ -6,6 +6,9 @@ use bookkeeping_postgres::create_purchase::{
 };
 use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, dsl::now};
 use diesel_async::RunQueryDsl;
+use policy_application::purchase_allocation::{
+    AllocationRuleTargetQuery, PurchaseAllocationRulesRead,
+};
 use uuid::Uuid;
 
 async fn validate_catalog_references(
@@ -15,7 +18,6 @@ async fn validate_catalog_references(
 ) -> Result<(), CreatePurchasePersistenceError> {
     use public::accounts::dsl as accounts;
     use public::allocation_defaults::dsl as defaults;
-    use public::allocation_rule_weights::dsl as rule_weights;
     use public::categories::dsl as categories;
     use public::households::dsl as households;
     use public::pools::dsl as pools;
@@ -137,15 +139,46 @@ async fn validate_catalog_references(
             .to_lowercase();
         let category_id = item.category_id.map(|id| id.value().to_string());
         let variant_id = item.product_variant_id.map(|id| id.value().to_string());
-        let candidates = eligible_allocation_rule_candidates(
-            conn,
-            household_id,
-            concept_id,
-            category_id.as_deref(),
-            variant_id.as_deref(),
-            &merchant_key,
-        )
-        .await?;
+        let target = AllocationRuleTargetQuery {
+            product_variant_id: variant_id
+                .as_deref()
+                .map(|id| parse_uuid(id, "product_variant_id"))
+                .transpose()?,
+            product_concept_id: concept_id,
+            category_id: category_id
+                .as_deref()
+                .map(|id| parse_uuid(id, "category_id"))
+                .transpose()?,
+            merchant_key: (!merchant_key.is_empty()).then_some(merchant_key.clone()),
+        };
+        let policy_rules = policy_postgres::purchase_allocation::PostgresPurchaseAllocationRulesRead
+            .read(conn, household_id, &[target])
+            .await
+            .map_err(|error| match error {
+                policy_application::purchase_allocation::PurchaseAllocationRulesFailure::Infrastructure(error) => {
+                    CreatePurchasePersistenceError::Database(
+                        diesel::result::Error::SerializationError(Box::new(
+                            std::io::Error::other(error),
+                        )),
+                    )
+                }
+            })?;
+        let candidates = policy_rules
+            .iter()
+            .map(|rule| {
+                Ok(
+                    bookkeeping_domain::purchase_commands::AllocationRuleCandidate {
+                        rule_id: rule.id.to_string(),
+                        revision: u64::try_from(rule.revision)
+                            .map_err(|_| CreatePurchasePersistenceError::AllocationRuleMismatch)?,
+                        product_variant_id: rule.product_variant_id.map(|id| id.to_string()),
+                        product_concept_id: rule.product_concept_id.map(|id| id.to_string()),
+                        category_id: rule.category_id.map(|id| id.to_string()),
+                        merchant_key: rule.merchant_key.clone(),
+                    },
+                )
+            })
+            .collect::<Result<Vec<_>, CreatePurchasePersistenceError>>()?;
         let selected_rule = bookkeeping_domain::purchase_commands::select_allocation_rule(
             &candidates,
             variant_id.as_deref(),
@@ -167,6 +200,8 @@ async fn validate_catalog_references(
         }
 
         let expected = if let Some(rule_id) = first.rule_id.map(|id| id.value()) {
+            let rule_revision = i64::try_from(first.rule_version.value())
+                .map_err(|_| CreatePurchasePersistenceError::NumericOutOfRange("rule_version"))?;
             let revision_matches = candidates.iter().any(|candidate| {
                 candidate.rule_id == rule_id.to_string()
                     && candidate.revision == first.rule_version.value()
@@ -174,12 +209,15 @@ async fn validate_catalog_references(
             if !revision_matches {
                 return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
             }
-            rule_weights::allocation_rule_weights
-                .filter(rule_weights::household_id.eq(household_id))
-                .filter(rule_weights::rule_id.eq(rule_id))
-                .select((rule_weights::pool_id, rule_weights::weight))
-                .load::<(Uuid, i64)>(conn)
-                .await?
+            policy_rules
+                .iter()
+                .find(|rule| rule.id == rule_id)
+                .filter(|rule| rule.revision == rule_revision)
+                .ok_or(CreatePurchasePersistenceError::AllocationRuleMismatch)?
+                .allocations
+                .iter()
+                .map(|allocation| (allocation.pool_id, allocation.weight))
+                .collect::<Vec<_>>()
         } else {
             let version = i64::try_from(first.rule_version.value())
                 .map_err(|_| CreatePurchasePersistenceError::NumericOutOfRange("rule_version"))?;
@@ -208,84 +246,6 @@ async fn validate_catalog_references(
         }
     }
     Ok(())
-}
-
-async fn eligible_allocation_rule_candidates(
-    conn: &mut diesel_async::AsyncPgConnection,
-    household_id: Uuid,
-    concept_id: Option<Uuid>,
-    category_id: Option<&str>,
-    variant_id: Option<&str>,
-    merchant_key: &str,
-) -> Result<
-    Vec<bookkeeping_domain::purchase_commands::AllocationRuleCandidate>,
-    CreatePurchasePersistenceError,
-> {
-    use public::allocation_rules::dsl as rules;
-
-    let category_id = category_id
-        .map(|id| parse_uuid(id, "category_id"))
-        .transpose()?;
-    let variant_id = variant_id
-        .map(|id| parse_uuid(id, "product_variant_id"))
-        .transpose()?;
-    let mut query = rules::allocation_rules.into_boxed();
-    let mut has_candidate_scope = false;
-    if let Some(variant_id) = variant_id {
-        query = query.or_filter(rules::product_variant_id.eq(Some(variant_id)));
-        has_candidate_scope = true;
-    }
-    if let Some(concept_id) = concept_id {
-        query = query.or_filter(rules::product_concept_id.eq(Some(concept_id)));
-        has_candidate_scope = true;
-    }
-    if let Some(category_id) = category_id {
-        query = query.or_filter(rules::category_id.eq(Some(category_id)));
-        has_candidate_scope = true;
-    }
-    if !merchant_key.is_empty() {
-        query = query.or_filter(rules::merchant_key.eq(Some(merchant_key.to_owned())));
-        has_candidate_scope = true;
-    }
-    if !has_candidate_scope {
-        return Ok(Vec::new());
-    }
-    query
-        .filter(rules::household_id.eq(household_id))
-        .select((
-            rules::id,
-            rules::revision,
-            rules::product_variant_id,
-            rules::product_concept_id,
-            rules::category_id,
-            rules::merchant_key,
-        ))
-        .load::<(
-            Uuid,
-            i64,
-            Option<Uuid>,
-            Option<Uuid>,
-            Option<Uuid>,
-            Option<String>,
-        )>(conn)
-        .await?
-        .into_iter()
-        .map(
-            |(id, revision, variant_id, concept_id, category_id, merchant)| {
-                Ok(
-                    bookkeeping_domain::purchase_commands::AllocationRuleCandidate {
-                        rule_id: id.to_string(),
-                        revision: u64::try_from(revision)
-                            .map_err(|_| CreatePurchasePersistenceError::AllocationRuleMismatch)?,
-                        product_variant_id: variant_id.map(|id| id.to_string()),
-                        product_concept_id: concept_id.map(|id| id.to_string()),
-                        category_id: category_id.map(|id| id.to_string()),
-                        merchant_key: merchant,
-                    },
-                )
-            },
-        )
-        .collect::<Result<Vec<_>, CreatePurchasePersistenceError>>()
 }
 
 async fn resolve_source_confirmation(

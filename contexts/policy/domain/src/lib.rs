@@ -1,5 +1,6 @@
 pub mod budget;
 pub mod create_pool;
+pub mod ids;
 pub mod recurring_expense;
 pub mod set_allocation_rule;
 pub mod set_pool_funding_rule;
@@ -10,10 +11,11 @@ pub use budget::{
     CreateBudgetCommand, CreateBudgetDecision, EndDateChange, UpdateBudgetCommand,
     UpdateBudgetDecision,
 };
+use chrono::NaiveDate;
 pub use create_pool::{
-    CreatePoolCommand, CreatePoolDecision, CreatePoolError, NewPoolId, PoolActorId,
-    PoolHouseholdId, decide_create_pool,
+    CreatePoolCommand, CreatePoolDecision, CreatePoolError, NewPoolId, decide_create_pool,
 };
+pub use ids::{ActorId, HouseholdId};
 pub use recurring_expense::{
     ArchiveRecurringExpenseCommand, CURRENCY, Cadence, CreateRecurringExpenseCommand,
     MatchRecurringExpenseCommand, MatchRecurringExpenseDecision, RecurringExpense,
@@ -23,21 +25,19 @@ pub use recurring_expense::{
     RecurringExpenseRevision, UpdateRecurringExpenseCommand,
 };
 pub use set_allocation_rule::{
-    AllocationActorId, AllocationCategoryId, AllocationHouseholdId, AllocationPoolId,
-    AllocationProductConceptId, AllocationProductVariantId, AllocationRuleId,
-    AllocationRuleRevision, AllocationRuleTarget, AllocationRuleWeight, AllocationRuleWeightValue,
-    NormalizedMerchant, SetAllocationRuleCommand, SetAllocationRuleDecision,
-    SetAllocationRuleError, SetAllocationRuleResult, ValidatedAllocationRuleTarget,
-    ValidatedAllocationRuleWeight, ValidatedSetAllocationRuleCommand,
+    AllocationCategoryId, AllocationPoolId, AllocationProductConceptId, AllocationProductVariantId,
+    AllocationRuleId, AllocationRuleRevision, AllocationRuleTarget, AllocationRuleWeight,
+    AllocationRuleWeightValue, NormalizedMerchant, SetAllocationRuleCommand,
+    SetAllocationRuleDecision, SetAllocationRuleError, SetAllocationRuleResult,
+    ValidatedAllocationRuleTarget, ValidatedAllocationRuleWeight,
+    ValidatedSetAllocationRuleCommand,
 };
 pub use set_pool_funding_rule::{
-    FundingRuleActorId, FundingRuleHouseholdId, FundingRuleMemberId, FundingRulePoolId,
-    PoolFundingConfiguration, PoolFundingKind, PoolFundingRuleContext, PoolFundingShare,
-    PoolFundingShareInput, SetPoolFundingRuleCommand, SetPoolFundingRuleDecision,
-    SetPoolFundingRuleError, SharedSettlementPolicy, decide_set_pool_funding_rule,
+    FundingRuleMemberId, FundingRulePoolId, PoolFundingConfiguration, PoolFundingKind,
+    PoolFundingRuleContext, PoolFundingShare, PoolFundingShareInput, SetPoolFundingRuleCommand,
+    SetPoolFundingRuleDecision, SetPoolFundingRuleError, SharedSettlementPolicy,
+    decide_set_pool_funding_rule,
 };
-
-use chrono::NaiveDate;
 use uuid::Uuid;
 
 macro_rules! id_type {
@@ -63,8 +63,6 @@ macro_rules! id_type {
     };
 }
 
-id_type!(ActorId);
-id_type!(HouseholdId);
 id_type!(MemberId);
 id_type!(PoolId);
 id_type!(FundingScheduleId);

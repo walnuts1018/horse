@@ -77,15 +77,78 @@ impl BudgetAmountYen {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Budget {
-    pub id: BudgetId,
-    pub household_id: BudgetHouseholdId,
-    pub category_id: Option<BudgetCategoryId>,
-    pub name: String,
-    pub amount_yen: BudgetAmountYen,
-    pub starts_on: NaiveDate,
-    pub ends_on: Option<NaiveDate>,
-    pub archived: bool,
-    pub revision: BudgetRevision,
+    id: BudgetId,
+    household_id: BudgetHouseholdId,
+    category_id: Option<BudgetCategoryId>,
+    name: BudgetName,
+    amount_yen: BudgetAmountYen,
+    starts_on: NaiveDate,
+    ends_on: Option<NaiveDate>,
+    archived: bool,
+    revision: BudgetRevision,
+}
+
+impl Budget {
+    pub fn reconstitute(
+        id: BudgetId,
+        household_id: BudgetHouseholdId,
+        category_id: Option<BudgetCategoryId>,
+        name: impl Into<String>,
+        amount_yen: i64,
+        starts_on: NaiveDate,
+        ends_on: Option<NaiveDate>,
+        archived: bool,
+        revision: i64,
+    ) -> Result<Self, BudgetError> {
+        validate_dates(starts_on, ends_on)?;
+        Ok(Self {
+            id,
+            household_id,
+            category_id,
+            name: BudgetName(validate_name(name.into())?),
+            amount_yen: BudgetAmountYen::try_from(amount_yen)?,
+            starts_on,
+            ends_on,
+            archived,
+            revision: BudgetRevision::try_from(revision)?,
+        })
+    }
+
+    pub const fn id(&self) -> BudgetId {
+        self.id
+    }
+
+    pub const fn household_id(&self) -> BudgetHouseholdId {
+        self.household_id
+    }
+
+    pub const fn category_id(&self) -> Option<BudgetCategoryId> {
+        self.category_id
+    }
+
+    pub fn name(&self) -> &BudgetName {
+        &self.name
+    }
+
+    pub const fn amount_yen(&self) -> BudgetAmountYen {
+        self.amount_yen
+    }
+
+    pub const fn starts_on(&self) -> NaiveDate {
+        self.starts_on
+    }
+
+    pub const fn ends_on(&self) -> Option<NaiveDate> {
+        self.ends_on
+    }
+
+    pub const fn archived(&self) -> bool {
+        self.archived
+    }
+
+    pub const fn revision(&self) -> BudgetRevision {
+        self.revision
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -46,6 +46,12 @@ pub trait SettlementDataRead: Send + Sync {
         end: NaiveDate,
     ) -> Result<Vec<FundingSchedule>, String>;
 
+    async fn schedules_by_ids(
+        &self,
+        household_ids: &[Uuid],
+        schedule_ids: &[Uuid],
+    ) -> Result<Vec<FundingSchedule>, String>;
+
     async fn schedules_overlapping(
         &self,
         household_ids: &[Uuid],

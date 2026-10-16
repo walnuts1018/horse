@@ -7,6 +7,7 @@ use cross_context_application::node_financial_batch::{
 };
 use diesel::{ExpressionMethods, QueryDsl};
 use diesel_async::RunQueryDsl;
+use policy_application::settlement_data::SettlementDataRead;
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -38,62 +39,25 @@ impl NodeFinancialBatchQuery for PostgresNodeFinancialBatchQuery {
             .map_err(|error| format!("{error:?}"))?;
 
         if !input.funding_schedule_ids.is_empty() {
-            let rows = public::funding_schedules::table
-                .filter(public::funding_schedules::household_id.eq_any(&input.household_ids))
-                .filter(public::funding_schedules::id.eq_any(&input.funding_schedule_ids))
-                .select((
-                    public::funding_schedules::id,
-                    public::funding_schedules::household_id,
-                    public::funding_schedules::member_id,
-                    public::funding_schedules::pool_id,
-                    public::funding_schedules::amount_yen,
-                    public::funding_schedules::cadence,
-                    public::funding_schedules::starts_on,
-                    public::funding_schedules::ends_on,
-                    public::funding_schedules::active,
-                    public::funding_schedules::created_at,
-                ))
-                .load::<(
-                    Uuid,
-                    Uuid,
-                    Uuid,
-                    Uuid,
-                    i64,
-                    String,
-                    chrono::NaiveDate,
-                    Option<chrono::NaiveDate>,
-                    bool,
-                    chrono::DateTime<chrono::Utc>,
-                )>(&mut conn)
-                .await
-                .map_err(|error| format!("{error:?}"))?;
-            result.funding_schedules = rows
+            let schedules = policy_postgres::settlement_data::PostgresSettlementDataRead::new(
+                self.pool.clone(),
+            )
+            .schedules_by_ids(&input.household_ids, &input.funding_schedule_ids)
+            .await?;
+            result.funding_schedules = schedules
                 .into_iter()
-                .map(
-                    |(
-                        id,
-                        household_id,
-                        member_id,
-                        pool_id,
-                        amount_yen,
-                        cadence,
-                        starts_on,
-                        ends_on,
-                        active,
-                        created_at,
-                    )| FundingScheduleProjection {
-                        id,
-                        household_id,
-                        member_id,
-                        pool_id,
-                        amount_yen,
-                        cadence,
-                        starts_on,
-                        ends_on,
-                        active,
-                        created_at,
-                    },
-                )
+                .map(|schedule| FundingScheduleProjection {
+                    id: schedule.id,
+                    household_id: schedule.household_id,
+                    member_id: schedule.member_id,
+                    pool_id: schedule.pool_id,
+                    amount_yen: schedule.amount_yen,
+                    cadence: schedule.cadence,
+                    starts_on: schedule.starts_on,
+                    ends_on: schedule.ends_on,
+                    active: schedule.active,
+                    created_at: schedule.created_at,
+                })
                 .collect();
         }
 

@@ -5,6 +5,7 @@ use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
 use bookkeeping_domain::purchase_commands::{AllocationRuleCandidate, select_allocation_rule};
+use policy_application::purchase_allocation::PurchaseAllocationRulesRead;
 
 use crate::{PgPool, schema::public};
 
@@ -75,8 +76,7 @@ pub async fn load_purchase_command_context_in_transaction(
     item_inputs: &[PurchaseItemAllocationInput],
 ) -> Result<PurchaseCommandContext, PurchaseCommandContextError> {
     use public::{
-        allocation_defaults::dsl as defaults, allocation_rule_weights::dsl as weights,
-        allocation_rules::dsl as rules, households::dsl as households,
+        allocation_defaults::dsl as defaults, households::dsl as households,
         product_concepts::dsl as concepts, product_variants::dsl as variants,
     };
 
@@ -102,7 +102,8 @@ pub async fn load_purchase_command_context_in_transaction(
         return Err(PurchaseCommandContextError::MissingDefaultAllocation);
     }
 
-    let mut items = Vec::with_capacity(item_inputs.len());
+    let mut item_targets = Vec::with_capacity(item_inputs.len());
+    let mut policy_targets = Vec::new();
     for item in item_inputs {
         let mut category_id = item.category_id;
         let mut concept_id = None;
@@ -124,7 +125,55 @@ pub async fn load_purchase_command_context_in_transaction(
                 category_id = variant.1;
             }
         }
+        item_targets.push((category_id, concept_id));
+        if item.allocations.is_empty() {
+            policy_targets.push(
+                policy_application::purchase_allocation::AllocationRuleTargetQuery {
+                    product_variant_id: item.product_variant_id,
+                    product_concept_id: concept_id,
+                    category_id,
+                    merchant_key: (!merchant_key.is_empty()).then(|| merchant_key.to_owned()),
+                },
+            );
+        }
+    }
 
+    let policy_rules = policy_postgres::purchase_allocation::PostgresPurchaseAllocationRulesRead
+        .read(conn, household_id, &policy_targets)
+        .await
+        .map_err(|error| {
+            match error {
+            policy_application::purchase_allocation::PurchaseAllocationRulesFailure::Infrastructure(
+                error,
+            ) => PurchaseCommandContextError::Database(DieselError::SerializationError(
+                Box::new(std::io::Error::other(error)),
+            )),
+        }
+        })?;
+    let candidates = policy_rules
+        .into_iter()
+        .map(|rule| {
+            Ok((
+                AllocationRuleCandidate {
+                    rule_id: rule.id.to_string(),
+                    revision: u64::try_from(rule.revision)
+                        .map_err(|_| PurchaseCommandContextError::InvalidVersion)?,
+                    product_variant_id: rule.product_variant_id.map(|id| id.to_string()),
+                    product_concept_id: rule.product_concept_id.map(|id| id.to_string()),
+                    category_id: rule.category_id.map(|id| id.to_string()),
+                    merchant_key: rule.merchant_key,
+                },
+                rule.allocations
+                    .into_iter()
+                    .map(|allocation| (allocation.pool_id, allocation.weight))
+                    .collect::<Vec<_>>(),
+            ))
+        })
+        .collect::<Result<Vec<_>, PurchaseCommandContextError>>()?;
+
+    let mut items = Vec::with_capacity(item_inputs.len());
+    for (index, item) in item_inputs.iter().enumerate() {
+        let (category_id, concept_id) = item_targets[index];
         if !item.allocations.is_empty() {
             items.push(PurchaseItemAllocationContext {
                 category_id,
@@ -143,64 +192,13 @@ pub async fn load_purchase_command_context_in_transaction(
             continue;
         }
 
-        let mut query = rules::allocation_rules.into_boxed();
-        let mut has_candidate_scope = false;
-        if let Some(variant_id) = item.product_variant_id {
-            query = query.or_filter(rules::product_variant_id.eq(Some(variant_id)));
-            has_candidate_scope = true;
-        }
-        if let Some(concept_id) = concept_id {
-            query = query.or_filter(rules::product_concept_id.eq(Some(concept_id)));
-            has_candidate_scope = true;
-        }
-        if let Some(category_id) = category_id {
-            query = query.or_filter(rules::category_id.eq(Some(category_id)));
-            has_candidate_scope = true;
-        }
-        if !merchant_key.is_empty() {
-            query = query.or_filter(rules::merchant_key.eq(Some(merchant_key.to_owned())));
-            has_candidate_scope = true;
-        }
-        let candidates = if has_candidate_scope {
-            query
-                .filter(rules::household_id.eq(household_id))
-                .select((
-                    rules::id,
-                    rules::revision,
-                    rules::product_variant_id,
-                    rules::product_concept_id,
-                    rules::category_id,
-                    rules::merchant_key,
-                ))
-                .load::<(
-                    Uuid,
-                    i64,
-                    Option<Uuid>,
-                    Option<Uuid>,
-                    Option<Uuid>,
-                    Option<String>,
-                )>(&mut *conn)
-                .await?
-                .into_iter()
-                .map(
-                    |(id, revision, variant_id, concept_id, candidate_category_id, merchant)| {
-                        Ok(AllocationRuleCandidate {
-                            rule_id: id.to_string(),
-                            revision: u64::try_from(revision)
-                                .map_err(|_| PurchaseCommandContextError::InvalidVersion)?,
-                            product_variant_id: variant_id.map(|id| id.to_string()),
-                            product_concept_id: concept_id.map(|id| id.to_string()),
-                            category_id: candidate_category_id.map(|id| id.to_string()),
-                            merchant_key: merchant,
-                        })
-                    },
-                )
-                .collect::<Result<Vec<_>, PurchaseCommandContextError>>()?
-        } else {
-            Vec::new()
-        };
+        let item_candidates = &candidates;
+        let allocation_candidates = item_candidates
+            .iter()
+            .map(|(candidate, _)| candidate.clone())
+            .collect::<Vec<_>>();
         let selected = select_allocation_rule(
-            &candidates,
+            &allocation_candidates,
             item.product_variant_id.map(|id| id.to_string()).as_deref(),
             concept_id.map(|id| id.to_string()).as_deref(),
             category_id.map(|id| id.to_string()).as_deref(),
@@ -210,15 +208,12 @@ pub async fn load_purchase_command_context_in_transaction(
             Some(selected) => {
                 let rule_id = Uuid::parse_str(&selected.rule_id)
                     .map_err(|_| PurchaseCommandContextError::MissingAllocationRule)?;
-                let resolved_weights = weights::allocation_rule_weights
-                    .filter(weights::household_id.eq(household_id))
-                    .filter(weights::rule_id.eq(rule_id))
-                    .select((weights::pool_id, weights::weight))
-                    .load::<(Uuid, i64)>(&mut *conn)
-                    .await?;
-                if resolved_weights.is_empty() {
-                    return Err(PurchaseCommandContextError::MissingAllocationRule);
-                }
+                let resolved_weights = item_candidates
+                    .iter()
+                    .find(|(candidate, _)| candidate.rule_id == selected.rule_id)
+                    .map(|(_, allocations)| allocations.clone())
+                    .filter(|allocations| !allocations.is_empty())
+                    .ok_or(PurchaseCommandContextError::MissingAllocationRule)?;
                 (Some(rule_id), selected.revision, resolved_weights)
             }
             None => (None, version, default_weights.clone()),

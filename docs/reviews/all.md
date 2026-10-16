@@ -174,33 +174,6 @@ if (printed_key.is_empty()
 
 Batch APIが未実装であることは既に `docs/reviews/gemini.md` に記録されているので新規の指摘には含めませんが、Flexの対応も料金最適化の観点から検討する価値があります。
 
-### P2-3. AIの出力を集計するときに整数オーバーフローが起こり得る
-
-対象：[`processing.rs:L2591-L2603`](https://github.com/walnuts1018/horse/blob/3df9367a2e13abe27978e4111ec50dda04119340/adapters/worker-runtime/src/processing.rs?utm_source=chatgpt.com#L2591-L2603)
-
-決済額の検証処理です。
-
-```
-let sum = payments
-    .iter()
-    .filter_map(|payment| payment.get("amount").and_then(Value::as_i64))
-    .sum::<i64>();
-```
-
-LLMが返した値に対して、合計前の範囲検証とオーバーフローチェックがありません。
-
-極端に大きな数値が複数返された場合、Debugビルドではpanicし、通常のReleaseビルドでは整数の折り返しによって不正な合計値になる可能性があります。
-
-また、`filter_map` により数値ではない決済額は無視されるため、不完全な出力を明示的に拒否できません。
-
-改善案
-
-`try_fold` と `checked_add` を使用し、すべての決済行に有効な整数金額が存在することを検証します。
-
-合計が一致するかだけでなく、決済明細の各値が許容範囲に収まることも確認します。
-
-LLMの出力は外部入力なので、ドメイン層に渡す前にすべて検証するべきです。
-
 ## 2. バックエンドの設計・保守性
 
 Rust移行後のアーキテクチャは、以前の構想よりも明確に整理されています。

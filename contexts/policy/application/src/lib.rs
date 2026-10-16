@@ -4,12 +4,15 @@ pub mod budget;
 pub mod create_pool;
 pub mod node_catalog_planning_query;
 pub mod pool_queries;
+pub mod purchase_allocation;
 pub mod recurring_expense;
 pub mod set_allocation_rule;
 pub mod set_funding_schedule;
 pub mod set_pool_funding_rule;
 pub mod settlement_data;
 pub mod ui_changes;
+
+pub use policy_domain::ids::{ActorId, HouseholdId};
 
 #[derive(Debug)]
 pub enum WorkflowFailure {

@@ -80,6 +80,37 @@ impl SettlementDataRead for PostgresSettlementDataRead {
             .map_err(|error| error.to_string())
     }
 
+    async fn schedules_by_ids(
+        &self,
+        household_ids: &[Uuid],
+        schedule_ids: &[Uuid],
+    ) -> Result<Vec<FundingSchedule>, String> {
+        use public::funding_schedules as schedules;
+        if household_ids.is_empty() || schedule_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut conn = self.pool.get().await.map_err(|error| error.to_string())?;
+        schedules::table
+            .filter(schedules::household_id.eq_any(household_ids))
+            .filter(schedules::id.eq_any(schedule_ids))
+            .select((
+                schedules::household_id,
+                schedules::id,
+                schedules::member_id,
+                schedules::pool_id,
+                schedules::amount_yen,
+                schedules::cadence,
+                schedules::starts_on,
+                schedules::ends_on,
+                schedules::active,
+                schedules::created_at,
+            ))
+            .load::<FundingScheduleRow>(&mut *conn)
+            .await
+            .map(map_schedules)
+            .map_err(|error| error.to_string())
+    }
+
     async fn schedules_overlapping(
         &self,
         household_ids: &[Uuid],
@@ -303,4 +334,51 @@ fn map_share((pool_id, version, member_id, weight): FundingShareRow) -> FundingS
         member_id,
         weight,
     }
+}
+
+pub async fn funding_rule_for_update(
+    conn: &mut horse_postgres_common::AsyncPgConnection,
+    household_id: Uuid,
+    pool_id: Uuid,
+    version: i32,
+) -> Result<Option<FundingRulesAndShares>, diesel::result::Error> {
+    use diesel::OptionalExtension;
+    use public::{pool_funding_rules as rules, pool_funding_shares as shares};
+    let Some((owner_member_id, settlement_policy)) = rules::table
+        .filter(rules::household_id.eq(household_id))
+        .filter(rules::pool_id.eq(pool_id))
+        .filter(rules::version.eq(version))
+        .for_update()
+        .select((rules::owner_member_id, rules::settlement_policy))
+        .first::<(Option<Uuid>, Option<String>)>(conn)
+        .await
+        .optional()?
+    else {
+        return Ok(None);
+    };
+    let shares = shares::table
+        .filter(shares::household_id.eq(household_id))
+        .filter(shares::pool_id.eq(pool_id))
+        .filter(shares::version.eq(version))
+        .for_update()
+        .select((
+            shares::pool_id,
+            shares::version,
+            shares::member_id,
+            shares::weight,
+        ))
+        .load::<FundingShareRow>(conn)
+        .await?
+        .into_iter()
+        .map(map_share)
+        .collect();
+    Ok(Some(FundingRulesAndShares {
+        rules: vec![FundingRule {
+            pool_id,
+            version,
+            owner_member_id,
+            settlement_policy,
+        }],
+        shares,
+    }))
 }

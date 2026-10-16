@@ -1,4 +1,6 @@
 use std::collections::BTreeSet;
+
+use super::ids::{ActorId, HouseholdId};
 use uuid::Uuid;
 
 macro_rules! id_type {
@@ -17,8 +19,6 @@ macro_rules! id_type {
     };
 }
 
-id_type!(FundingRuleActorId);
-id_type!(FundingRuleHouseholdId);
 id_type!(FundingRulePoolId);
 id_type!(FundingRuleMemberId);
 
@@ -62,8 +62,8 @@ pub enum PoolFundingConfiguration {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetPoolFundingRuleCommand {
-    pub actor_id: FundingRuleActorId,
-    pub household_id: FundingRuleHouseholdId,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
     pub pool_id: FundingRulePoolId,
     pub expected_version: i32,
     pub configuration: PoolFundingConfiguration,
@@ -91,8 +91,8 @@ pub struct PoolFundingShare {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetPoolFundingRuleDecision {
-    pub actor_id: FundingRuleActorId,
-    pub household_id: FundingRuleHouseholdId,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
     pub pool_id: FundingRulePoolId,
     pub version: i32,
     pub configuration: PoolFundingConfiguration,
@@ -159,16 +159,10 @@ pub fn decide_set_pool_funding_rule(
 mod tests {
     use super::*;
 
-    fn ids() -> (
-        FundingRuleActorId,
-        FundingRuleHouseholdId,
-        FundingRulePoolId,
-        Uuid,
-        Uuid,
-    ) {
+    fn ids() -> (ActorId, HouseholdId, FundingRulePoolId, Uuid, Uuid) {
         (
-            FundingRuleActorId::new(Uuid::from_u128(1)),
-            FundingRuleHouseholdId::new(Uuid::from_u128(2)),
+            ActorId::new(Uuid::from_u128(1)),
+            HouseholdId::new(Uuid::from_u128(2)),
             FundingRulePoolId::new(Uuid::from_u128(3)),
             Uuid::from_u128(4),
             Uuid::from_u128(5),

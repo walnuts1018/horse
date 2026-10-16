@@ -27,8 +27,8 @@ pub trait SetPoolFundingRuleOperations {
 
     async fn load_context(
         &mut self,
-        actor_id: FundingRuleActorId,
-        household_id: FundingRuleHouseholdId,
+        actor_id: super::ActorId,
+        household_id: super::HouseholdId,
         pool_id: FundingRulePoolId,
     ) -> Result<PoolFundingRuleContext, Self::Error>;
 

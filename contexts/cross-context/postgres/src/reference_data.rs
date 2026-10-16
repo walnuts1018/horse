@@ -1,4 +1,5 @@
 use bookkeeping_application::workflow_failure::{WorkflowFailure, WorkflowRejection};
+use bookkeeping_domain::purchase_commands::{AllocationRuleCandidate, select_allocation_rule};
 use bookkeeping_postgres::{
     bulk_delete_purchase_items::{
         BulkDeletePurchaseItemsPersistenceError, PersistBulkDeletePurchaseItems,
@@ -24,6 +25,7 @@ use bookkeeping_postgres::{
 };
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::RunQueryDsl;
+use policy_application::purchase_allocation::PurchaseAllocationRulesRead;
 use uuid::Uuid;
 
 pub struct UpdatePurchaseItemReferences;
@@ -423,8 +425,6 @@ impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
         variant_id: Option<Uuid>,
         merchant: &str,
     ) -> Result<Option<(Uuid, i64, Vec<(Uuid, i64)>)>, DieselError> {
-        use public::allocation_rules::dsl as rules;
-
         let concept_id = if let Some(variant_id) = variant_id {
             public::product_variants::table
                 .filter(public::product_variants::household_id.eq(household_id))
@@ -436,62 +436,60 @@ impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
         } else {
             None
         };
-        let mut rule = if let Some(id) = variant_id {
-            rules::allocation_rules
-                .filter(rules::household_id.eq(household_id))
-                .filter(rules::product_variant_id.eq(Some(id)))
-                .select((rules::id, rules::revision))
-                .first::<(Uuid, i64)>(conn)
-                .await
-                .optional()?
-        } else {
-            None
-        };
-        if rule.is_none()
-            && let Some(id) = concept_id
-        {
-            rule = rules::allocation_rules
-                .filter(rules::household_id.eq(household_id))
-                .filter(rules::product_concept_id.eq(Some(id)))
-                .select((rules::id, rules::revision))
-                .first::<(Uuid, i64)>(conn)
-                .await
-                .optional()?;
-        }
-        if rule.is_none()
-            && let Some(id) = category_id
-        {
-            rule = rules::allocation_rules
-                .filter(rules::household_id.eq(household_id))
-                .filter(rules::category_id.eq(Some(id)))
-                .select((rules::id, rules::revision))
-                .first::<(Uuid, i64)>(conn)
-                .await
-                .optional()?;
-        }
-        if rule.is_none() && !merchant.is_empty() {
-            rule = rules::allocation_rules
-                .filter(rules::household_id.eq(household_id))
-                .filter(rules::merchant_key.eq(Some(merchant.to_owned())))
-                .select((rules::id, rules::revision))
-                .first::<(Uuid, i64)>(conn)
-                .await
-                .optional()?;
-        }
-        let Some((rule_id, revision)) = rule else {
+        let targets = [
+            policy_application::purchase_allocation::AllocationRuleTargetQuery {
+                product_variant_id: variant_id,
+                product_concept_id: concept_id,
+                category_id,
+                merchant_key: (!merchant.is_empty()).then(|| merchant.to_owned()),
+            },
+        ];
+        let rules = policy_postgres::purchase_allocation::PostgresPurchaseAllocationRulesRead
+            .read(conn, household_id, &targets)
+            .await
+            .map_err(|error| match error {
+                policy_application::purchase_allocation::PurchaseAllocationRulesFailure::Infrastructure(error) => {
+                    DieselError::SerializationError(Box::new(std::io::Error::other(error)))
+                }
+            })?;
+        let candidates = rules
+            .iter()
+            .map(|rule| {
+                Ok(AllocationRuleCandidate {
+                    rule_id: rule.id.to_string(),
+                    revision: u64::try_from(rule.revision).map_err(|_| DieselError::NotFound)?,
+                    product_variant_id: rule.product_variant_id.map(|id| id.to_string()),
+                    product_concept_id: rule.product_concept_id.map(|id| id.to_string()),
+                    category_id: rule.category_id.map(|id| id.to_string()),
+                    merchant_key: rule.merchant_key.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, DieselError>>()?;
+        let selected = select_allocation_rule(
+            &candidates,
+            variant_id.map(|id| id.to_string()).as_deref(),
+            concept_id.map(|id| id.to_string()).as_deref(),
+            category_id.map(|id| id.to_string()).as_deref(),
+            merchant,
+        );
+        let Some(selected) = selected else {
             return Ok(None);
         };
-        let weights = public::allocation_rule_weights::table
-            .filter(public::allocation_rule_weights::household_id.eq(household_id))
-            .filter(public::allocation_rule_weights::rule_id.eq(rule_id))
-            .order(public::allocation_rule_weights::pool_id)
-            .select((
-                public::allocation_rule_weights::pool_id,
-                public::allocation_rule_weights::weight,
-            ))
-            .load::<(Uuid, i64)>(conn)
-            .await?;
-        Ok(Some((rule_id, revision, weights)))
+        let rule_id = Uuid::parse_str(&selected.rule_id).map_err(|_| DieselError::NotFound)?;
+        let rule = rules
+            .into_iter()
+            .find(|rule| rule.id == rule_id)
+            .ok_or(DieselError::NotFound)?;
+        let weights = rule
+            .allocations
+            .into_iter()
+            .map(|allocation| (allocation.pool_id, allocation.weight))
+            .collect();
+        Ok(Some((
+            rule_id,
+            i64::try_from(selected.revision).map_err(|_| DieselError::NotFound)?,
+            weights,
+        )))
     }
 
     async fn active_category(
@@ -599,33 +597,30 @@ impl PostPurchaseReferenceData for UpdatePurchaseItemReferences {
         pool_id: Uuid,
         version: i32,
     ) -> Result<Option<(Option<Uuid>, Option<String>, Vec<(Uuid, i64)>)>, DieselError> {
-        let rule = public::pool_funding_rules::table
-            .filter(public::pool_funding_rules::household_id.eq(household_id))
-            .filter(public::pool_funding_rules::pool_id.eq(pool_id))
-            .filter(public::pool_funding_rules::version.eq(version))
-            .for_update()
-            .select((
-                public::pool_funding_rules::owner_member_id,
-                public::pool_funding_rules::settlement_policy,
-            ))
-            .first::<(Option<Uuid>, Option<String>)>(conn)
-            .await
-            .optional()?;
-        let Some((owner, policy)) = rule else {
+        let Some(value) = policy_postgres::settlement_data::funding_rule_for_update(
+            conn,
+            household_id,
+            pool_id,
+            version,
+        )
+        .await?
+        else {
             return Ok(None);
         };
-        let shares = public::pool_funding_shares::table
-            .filter(public::pool_funding_shares::household_id.eq(household_id))
-            .filter(public::pool_funding_shares::pool_id.eq(pool_id))
-            .filter(public::pool_funding_shares::version.eq(version))
-            .for_update()
-            .select((
-                public::pool_funding_shares::member_id,
-                public::pool_funding_shares::weight,
-            ))
-            .load::<(Uuid, i64)>(conn)
-            .await?;
-        Ok(Some((owner, policy, shares)))
+        let rule = value
+            .rules
+            .into_iter()
+            .next()
+            .ok_or_else(|| DieselError::NotFound)?;
+        Ok(Some((
+            rule.owner_member_id,
+            rule.settlement_policy,
+            value
+                .shares
+                .into_iter()
+                .map(|share| (share.member_id, share.weight))
+                .collect(),
+        )))
     }
 }
 

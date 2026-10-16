@@ -1,7 +1,9 @@
+use super::ids::{ActorId, HouseholdId};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatePoolCommand {
-    pub actor_id: PoolActorId,
-    pub household_id: PoolHouseholdId,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
     pub pool_id: NewPoolId,
     pub name: String,
     pub kind: String,
@@ -15,8 +17,8 @@ pub enum PoolKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatePoolDecision {
-    pub actor_id: PoolActorId,
-    pub household_id: PoolHouseholdId,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
     pub pool_id: NewPoolId,
     pub name: String,
     pub kind: PoolKind,
@@ -51,23 +53,15 @@ pub fn decide_create_pool(
 }
 use uuid::Uuid;
 
-macro_rules! create_pool_id {
-    ($name:ident) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        pub struct $name(Uuid);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NewPoolId(Uuid);
 
-        impl $name {
-            pub const fn from_uuid(value: Uuid) -> Self {
-                Self(value)
-            }
+impl NewPoolId {
+    pub const fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
 
-            pub const fn value(self) -> Uuid {
-                self.0
-            }
-        }
-    };
+    pub const fn value(self) -> Uuid {
+        self.0
+    }
 }
-
-create_pool_id!(PoolActorId);
-create_pool_id!(PoolHouseholdId);
-create_pool_id!(NewPoolId);

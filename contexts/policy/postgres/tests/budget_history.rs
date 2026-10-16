@@ -297,22 +297,28 @@ async fn budget_edits_apply_from_the_selected_month_and_preserve_historical_valu
     .unwrap();
     let march_budget = &march.rows[0].budget;
     let april_budget = &april.rows[0].budget;
-    assert_eq!(march_budget.amount_yen.value(), 10_000);
-    assert_eq!(march_budget.category_id.unwrap().value(), original_category);
-    assert_eq!(april_budget.amount_yen.value(), 15_000);
-    assert_eq!(april_budget.category_id.unwrap().value(), updated_category);
-    assert_eq!(march_single.budget.amount_yen.value(), 10_000);
+    assert_eq!(march_budget.amount_yen().value(), 10_000);
     assert_eq!(
-        march_single.budget.category_id.unwrap().value(),
+        march_budget.category_id().unwrap().value(),
         original_category
     );
-    assert_eq!(april_single.budget.amount_yen.value(), 15_000);
+    assert_eq!(april_budget.amount_yen().value(), 15_000);
     assert_eq!(
-        april_single.budget.category_id.unwrap().value(),
+        april_budget.category_id().unwrap().value(),
         updated_category
     );
-    assert_eq!(march_budget.revision.value(), 2);
-    assert_eq!(march_single.budget.revision.value(), 2);
+    assert_eq!(march_single.budget.amount_yen().value(), 10_000);
+    assert_eq!(
+        march_single.budget.category_id().unwrap().value(),
+        original_category
+    );
+    assert_eq!(april_single.budget.amount_yen().value(), 15_000);
+    assert_eq!(
+        april_single.budget.category_id().unwrap().value(),
+        updated_category
+    );
+    assert_eq!(march_budget.revision().value(), 2);
+    assert_eq!(march_single.budget.revision().value(), 2);
     assert_eq!(
         range
             .iter()
@@ -321,15 +327,15 @@ async fn budget_edits_apply_from_the_selected_month_and_preserve_historical_valu
         vec!["2026-03", "2026-04", "2026-05"]
     );
     assert_eq!(range[0].budgets.len(), 2);
-    assert_eq!(range[0].budgets[0].budget.id.value(), budget_id);
-    assert_eq!(range[0].budgets[0].budget.amount_yen.value(), 10_000);
-    assert_eq!(range[1].budgets[0].budget.amount_yen.value(), 15_000);
-    assert_eq!(range[2].budgets[0].budget.amount_yen.value(), 15_000);
+    assert_eq!(range[0].budgets[0].budget.id().value(), budget_id);
+    assert_eq!(range[0].budgets[0].budget.amount_yen().value(), 10_000);
+    assert_eq!(range[1].budgets[0].budget.amount_yen().value(), 15_000);
+    assert_eq!(range[2].budgets[0].budget.amount_yen().value(), 15_000);
     assert_eq!(
         backwards_page
             .rows
             .iter()
-            .map(|row| row.budget.name.as_str())
+            .map(|row| row.budget.name().as_str())
             .collect::<Vec<_>>(),
         vec!["Monthly budget", "Zzz budget"]
     );
@@ -341,17 +347,17 @@ async fn budget_edits_apply_from_the_selected_month_and_preserve_historical_valu
         period
             .budgets
             .iter()
-            .all(|row| row.budget.id.value() != later_name_budget_id)
+            .all(|row| row.budget.id().value() != later_name_budget_id)
     }));
-    assert!(archived_current.budget.archived);
-    assert_eq!(future_start_budget.id.value(), future_start_budget_id);
-    assert_eq!(future_start_budget.starts_on, future_start);
-    assert_eq!(expired_budget.amount_yen.value(), 1_200);
-    assert_eq!(updated_expired_budget.amount_yen.value(), 1_500);
-    assert_eq!(updated_expired_budget.ends_on, Some(expired_ends_on));
-    assert!(archived_expired_budget.archived);
-    assert_eq!(archived_expired_budget.revision.value(), 3);
-    assert!(archived_future_start.archived);
+    assert!(archived_current.budget.archived());
+    assert_eq!(future_start_budget.id().value(), future_start_budget_id);
+    assert_eq!(future_start_budget.starts_on(), future_start);
+    assert_eq!(expired_budget.amount_yen().value(), 1_200);
+    assert_eq!(updated_expired_budget.amount_yen().value(), 1_500);
+    assert_eq!(updated_expired_budget.ends_on(), Some(expired_ends_on));
+    assert!(archived_expired_budget.archived());
+    assert_eq!(archived_expired_budget.revision().value(), 3);
+    assert!(archived_future_start.archived());
 
     postgres.terminate().await.unwrap();
 }

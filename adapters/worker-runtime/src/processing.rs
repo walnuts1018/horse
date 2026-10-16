@@ -2593,16 +2593,18 @@ fn verify_receipt(
         .and_then(Value::as_array)
         .filter(|payments| !payments.is_empty())
     {
-        let sum = payments
-            .iter()
-            .filter_map(|payment| payment.get("amount").and_then(Value::as_i64))
-            .sum::<i64>();
-        if sum != total {
+        if sum_payment_amounts(payments) != Some(total) {
             issues.push("決済額の合計と印字合計が一致しません。".to_owned());
             issue_codes.push(VerificationIssueCode::TotalMismatch);
         }
     }
     (computed_total, computed_total == total, issue_codes)
+}
+
+fn sum_payment_amounts(payments: &[Value]) -> Option<i64> {
+    payments.iter().try_fold(0_i64, |sum, payment| {
+        sum.checked_add(payment.get("amount")?.as_i64()?)
+    })
 }
 
 fn verify_printed_subtotal(
@@ -3297,7 +3299,8 @@ mod tests {
         Failure, ModelPriceTable, OcrLine, ProcessConfig, ProcessErrorKind, apply_cost_snapshot,
         candidate_should_run, compare_receipt_ocr, estimate_input_tokens, interaction_token_usage,
         map_extraction_regions, model_candidates, model_prices, needs_pro_review,
-        parse_model_price_table, process_with_timeout, truncate_to_byte_limit, verify_receipt,
+        parse_model_price_table, process_with_timeout, sum_payment_amounts, truncate_to_byte_limit,
+        verify_receipt,
     };
     use std::collections::HashMap;
     use tokio::time::Duration;
@@ -3399,6 +3402,22 @@ mod tests {
         assert_eq!(
             serde_json::to_value(codes).unwrap(),
             json!(["TOTAL_MISMATCH"])
+        );
+    }
+
+    #[test]
+    fn payment_total_rejects_overflow_and_invalid_amounts() {
+        assert_eq!(
+            sum_payment_amounts(&[json!({"amount": 1}), json!({"amount": 2})]),
+            Some(3)
+        );
+        assert_eq!(
+            sum_payment_amounts(&[json!({"amount": i64::MAX}), json!({"amount": 1})]),
+            None
+        );
+        assert_eq!(
+            sum_payment_amounts(&[json!({"amount": 1}), json!({"amount": "invalid"})]),
+            None
         );
     }
 

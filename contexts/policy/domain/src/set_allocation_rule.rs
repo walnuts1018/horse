@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 
+use super::ids::{ActorId, HouseholdId};
+
 macro_rules! allocation_id {
     ($name:ident) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -16,8 +18,6 @@ macro_rules! allocation_id {
     };
 }
 
-allocation_id!(AllocationActorId);
-allocation_id!(AllocationHouseholdId);
 allocation_id!(AllocationPoolId);
 allocation_id!(AllocationCategoryId);
 allocation_id!(AllocationProductConceptId);
@@ -202,16 +202,16 @@ impl AllocationRuleTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetAllocationRuleCommand {
-    pub actor_id: AllocationActorId,
-    pub household_id: AllocationHouseholdId,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
     pub target: AllocationRuleTarget,
     pub weights: Vec<AllocationRuleWeight>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatedSetAllocationRuleCommand {
-    actor_id: AllocationActorId,
-    household_id: AllocationHouseholdId,
+    actor_id: ActorId,
+    household_id: HouseholdId,
     target: ValidatedAllocationRuleTarget,
     weights: Vec<ValidatedAllocationRuleWeight>,
 }
@@ -236,8 +236,8 @@ impl ValidatedSetAllocationRuleCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetAllocationRuleDecision {
-    pub actor_id: AllocationActorId,
-    pub household_id: AllocationHouseholdId,
+    pub actor_id: ActorId,
+    pub household_id: HouseholdId,
     pub target: ValidatedAllocationRuleTarget,
     pub rule_id: Option<AllocationRuleId>,
     pub revision: AllocationRuleRevision,
@@ -355,8 +355,8 @@ mod tests {
         weights: Vec<AllocationRuleWeight>,
     ) -> SetAllocationRuleCommand {
         SetAllocationRuleCommand {
-            actor_id: AllocationActorId::from_uuid(id(1)),
-            household_id: AllocationHouseholdId::from_uuid(id(2)),
+            actor_id: ActorId::from_uuid(id(1)),
+            household_id: HouseholdId::from_uuid(id(2)),
             target,
             weights,
         }
