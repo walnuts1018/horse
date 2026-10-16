@@ -166,6 +166,21 @@ pub mod public {
     }
 
     diesel::table! {
+        budget_versions (budget_id, revision) {
+            budget_id -> Uuid,
+            household_id -> Uuid,
+            revision -> Int8,
+            effective_from -> Date,
+            category_id -> Nullable<Uuid>,
+            name -> Text,
+            amount_yen -> Int8,
+            starts_on -> Date,
+            ends_on -> Nullable<Date>,
+            archived -> Bool,
+        }
+    }
+
+    diesel::table! {
         categories (id) {
             id -> Uuid,
             household_id -> Uuid,
@@ -938,6 +953,7 @@ pub mod public {
     diesel::joinable!(accounts -> households (household_id));
     diesel::joinable!(allocation_defaults -> households (household_id));
     diesel::joinable!(allocation_rules -> households (household_id));
+    diesel::joinable!(budget_versions -> households (household_id));
     diesel::joinable!(budgets -> households (household_id));
     diesel::joinable!(categories -> households (household_id));
     diesel::joinable!(evidence_links -> households (household_id));
@@ -972,6 +988,7 @@ pub mod public {
         bank_statement_imports,
         bank_statement_rows,
         budgets,
+        budget_versions,
         categories,
         correction_member_burdens,
         evidence_links,

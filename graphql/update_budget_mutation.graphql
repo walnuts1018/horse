@@ -16,6 +16,7 @@ input UpdateBudgetInput {
   name: String!
   amountYen: Long!
   startsOn: Date!
+  effectiveFrom: YearMonth!
   endsOn: Date
 }
 

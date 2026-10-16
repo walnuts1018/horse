@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
 };
@@ -77,8 +77,8 @@ pub async fn persist_create_budget(
     (*pooled)
         .transaction::<budget::Budget, PolicyPersistenceError, _>(async |conn| {
             use public::{
-                budgets::dsl as budgets, categories::dsl as categories,
-                households::dsl as households,
+                budget_versions::dsl as versions, budgets::dsl as budgets,
+                categories::dsl as categories, households::dsl as households,
             };
             let found = households::households
                 .filter(households::id.eq(household))
@@ -117,6 +117,21 @@ pub async fn persist_create_budget(
                 ))
                 .execute(conn)
                 .await?;
+            diesel::insert_into(versions::budget_versions)
+                .values((
+                    versions::budget_id.eq(id),
+                    versions::household_id.eq(household),
+                    versions::revision.eq(1),
+                    versions::effective_from.eq(month_start(starts)),
+                    versions::category_id.eq(category),
+                    versions::name.eq(&name),
+                    versions::amount_yen.eq(amount),
+                    versions::starts_on.eq(starts),
+                    versions::ends_on.eq(ends),
+                    versions::archived.eq(false),
+                ))
+                .execute(conn)
+                .await?;
             record_event(conn, household, id, change, 1, actor).await?;
             Ok(budget::Budget {
                 id: budget::BudgetId::from_persisted(id),
@@ -147,7 +162,10 @@ pub async fn persist_update_budget(
         .map_err(|error| PolicyPersistenceError::Pool(error.to_string()))?;
     (*pooled)
         .transaction::<budget::Budget, PolicyPersistenceError, _>(async |conn| {
-            use public::{budgets::dsl as budgets, categories::dsl as categories};
+            use public::{
+                budget_versions::dsl as versions, budgets::dsl as budgets,
+                categories::dsl as categories,
+            };
             let row = budgets::budgets
                 .filter(budgets::id.eq(id))
                 .filter(budgets::household_id.eq(household))
@@ -218,6 +236,21 @@ pub async fn persist_update_budget(
             ))
             .execute(conn)
             .await?;
+            diesel::insert_into(versions::budget_versions)
+                .values((
+                    versions::budget_id.eq(id),
+                    versions::household_id.eq(row.0),
+                    versions::revision.eq(revision),
+                    versions::effective_from.eq(decision.effective_from),
+                    versions::category_id.eq(category),
+                    versions::name.eq(&name),
+                    versions::amount_yen.eq(amount),
+                    versions::starts_on.eq(starts),
+                    versions::ends_on.eq(ends),
+                    versions::archived.eq(row.6),
+                ))
+                .execute(conn)
+                .await?;
             record_event(conn, row.0, id, change, revision, actor).await?;
             Ok(budget::Budget {
                 id: budget::BudgetId::from_persisted(id),
@@ -248,7 +281,7 @@ pub async fn persist_archive_budget(
         .map_err(|error| PolicyPersistenceError::Pool(error.to_string()))?;
     (*pooled)
         .transaction::<budget::Budget, PolicyPersistenceError, _>(async |conn| {
-            use public::budgets::dsl as budgets;
+            use public::{budget_versions::dsl as versions, budgets::dsl as budgets};
             let row = budgets::budgets
                 .filter(budgets::id.eq(id))
                 .filter(budgets::household_id.eq(household))
@@ -295,6 +328,21 @@ pub async fn persist_archive_budget(
             ))
             .execute(conn)
             .await?;
+            diesel::insert_into(versions::budget_versions)
+                .values((
+                    versions::budget_id.eq(id),
+                    versions::household_id.eq(row.0),
+                    versions::revision.eq(revision),
+                    versions::effective_from.eq(current_budget_effective_month()),
+                    versions::category_id.eq(row.1),
+                    versions::name.eq(&row.2),
+                    versions::amount_yen.eq(row.3),
+                    versions::starts_on.eq(row.4),
+                    versions::ends_on.eq(row.5),
+                    versions::archived.eq(archived),
+                ))
+                .execute(conn)
+                .await?;
             record_event(conn, row.0, id, change, revision, actor).await?;
             Ok(budget::Budget {
                 id: budget::BudgetId::from_persisted(id),
@@ -309,6 +357,15 @@ pub async fn persist_archive_budget(
             })
         })
         .await
+}
+
+fn month_start(date: NaiveDate) -> NaiveDate {
+    date.with_day(1).expect("first day of month is valid")
+}
+
+fn current_budget_effective_month() -> NaiveDate {
+    let tokyo = FixedOffset::east_opt(9 * 60 * 60).expect("Tokyo offset is valid");
+    month_start(Utc::now().with_timezone(&tokyo).date_naive())
 }
 
 pub async fn persist_create_recurring_expense(

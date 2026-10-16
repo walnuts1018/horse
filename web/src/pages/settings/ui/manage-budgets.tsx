@@ -47,6 +47,7 @@ export function ManageBudgets({
   const [budgetName, setBudgetName] = useState("");
   const [budgetCategoryId, setBudgetCategoryId] = useState("");
   const [budgetAmount, setBudgetAmount] = useState("");
+  const [effectiveFrom, setEffectiveFrom] = useState(currentMonth);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [pending, setPending] = useState(false);
   const requestSequence = useRef(0);
@@ -98,6 +99,7 @@ export function ManageBudgets({
           ...input,
           budgetId: editingBudget.id,
           baseRevision: editingBudget.revision,
+          effectiveFrom,
         });
       } else {
         await createBudget(input);
@@ -106,6 +108,7 @@ export function ManageBudgets({
       setEditingBudget(null);
       setBudgetName("");
       setBudgetAmount("");
+      setEffectiveFrom(currentMonth());
       await refresh().catch(() => undefined);
       onNotice("予算を保存しました", "success");
     } catch (reason) {
@@ -122,6 +125,7 @@ export function ManageBudgets({
     setBudgetCategoryId(budget.categoryId ?? "");
     setBudgetName(budget.name);
     setBudgetAmount(String(budget.amountYen));
+    setEffectiveFrom(currentMonth());
   };
 
   const toggleBudgetVisibility = async (budget: Budget) => {
@@ -212,6 +216,18 @@ export function ManageBudgets({
         data-unsaved-id="budget"
         onSubmit={(event) => void saveBudget(event)}
       >
+        {editingBudget && (
+          <label className="budget-effective-month">
+            <span>変更の適用月</span>
+            <input
+              aria-label="変更の適用月"
+              type="month"
+              value={effectiveFrom}
+              onChange={(event) => setEffectiveFrom(event.target.value)}
+              required
+            />
+          </label>
+        )}
         <input
           value={budgetName}
           onChange={(event) => setBudgetName(event.target.value)}
@@ -253,6 +269,7 @@ export function ManageBudgets({
               setBudgetCategoryId("");
               setBudgetName("");
               setBudgetAmount("");
+              setEffectiveFrom(currentMonth());
               onFormClean("budget");
             }}
           >

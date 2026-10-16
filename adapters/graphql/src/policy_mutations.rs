@@ -86,6 +86,7 @@ pub struct UpdateBudgetInput {
     pub name: String,
     pub amount_yen: Long,
     pub starts_on: Date,
+    pub effective_from: YearMonth,
     pub ends_on: MaybeUndefined<Date>,
 }
 
@@ -398,6 +399,11 @@ pub async fn update_budget(
         name: input.name,
         amount_yen: input.amount_yen.0,
         starts_on: input.starts_on.0,
+        effective_from: NaiveDate::parse_from_str(
+            &format!("{}-01", input.effective_from.as_str()),
+            "%Y-%m-%d",
+        )
+        .expect("YearMonth scalar validates its date"),
         ends_on: match input.ends_on {
             MaybeUndefined::Undefined => None,
             MaybeUndefined::Null => Some(None),

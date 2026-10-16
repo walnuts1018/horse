@@ -628,6 +628,7 @@ async fn load_purchase_expenses(
                 return Err(SettlementPreviewPersistenceError::InvalidFundingSnapshot);
             }
             preview_items.push(PreviewPurchaseItem {
+                id: item_id.to_string(),
                 amount_yen,
                 burdens: preview_burdens,
             });

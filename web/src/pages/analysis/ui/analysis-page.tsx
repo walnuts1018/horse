@@ -7,10 +7,12 @@ import type { AnalyticsRow } from "../model/purchase-analytics";
 import { useHouseholdLedger } from "../../../entities/ledger";
 import { InlineError } from "../../../shared/ui";
 import { useAnalysisData } from "../model/use-analysis-data";
+import { useAnalysisEvidence } from "../model/use-analysis-evidence";
 import { useAnalysisPeriod } from "../model/use-analysis-period";
 import { AnalysisBreakdown } from "./analysis-breakdown";
 import { AnalysisBudgetPanel } from "./analysis-budget-panel";
 import { AnalysisControls } from "./analysis-controls";
+import { AnalysisEvidencePanel } from "./analysis-evidence-panel";
 import { AnalysisLedgerPanel } from "./analysis-ledger-panel";
 import { AnalysisSummary } from "./analysis-summary";
 import { ItemPricePanel } from "./item-price-panel";
@@ -85,7 +87,8 @@ export function AnalysisPage({ household }: { household: Household }) {
     budgetError,
     recurringExpenses,
     recurringError,
-  } = useAnalysisData(household.id, months[0], finalMonth, currentMonth, dimension, itemMetric);
+  } = useAnalysisData(household.id, months[0], finalMonth, finalMonth, dimension, itemMetric);
+  const evidence = useAnalysisEvidence(household.id, months[0], finalMonth);
 
   const usesPurchases = dimension !== "category" && dimension !== "member";
   const aggregateError = dimension === "category" ? spendingError : memberSpendingError;
@@ -241,11 +244,12 @@ export function AnalysisPage({ household }: { household: Household }) {
           peakRow={peakRow}
         />
       )}
-      <AnalysisBudgetPanel budgets={budgets} household={household} currentMonth={currentMonth} />
+      <AnalysisBudgetPanel budgets={budgets} household={household} periodMonth={finalMonth} />
       <RecurringExpensePanel
         expenses={activeRecurringExpenses}
         monthlyAmount={recurringMonthlyAmount}
       />
+      <AnalysisEvidencePanel {...evidence} />
       <AnalysisLedgerPanel
         entries={ledgerEntries}
         months={months}

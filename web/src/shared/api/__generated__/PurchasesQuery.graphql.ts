@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<3a908129f63930483c1c18f2105ef26e>>
+ * @generated SignedSource<<04a70952ba22449b0ba1591198c36104>>
  * @lightSyntaxTransform
  */
 
@@ -11,6 +11,7 @@ import type { ConcreteRequest } from 'relay-runtime';
 import type { FragmentRefs } from "relay-runtime";
 export type PurchaseAmountTarget = "ITEM" | "PURCHASE" | "%future added value";
 export type PurchaseOrigin = "AI" | "MANUAL" | "UNKNOWN" | "%future added value";
+export type PurchaseStatus = "CLOSED" | "DRAFT" | "POSTED" | "%future added value";
 export type PurchaseFilter = {
   amountTarget?: PurchaseAmountTarget | null | undefined;
   categoryId?: string | null | undefined;
@@ -23,6 +24,7 @@ export type PurchaseFilter = {
   paymentAccountId?: string | null | undefined;
   poolId?: string | null | undefined;
   search?: string | null | undefined;
+  status?: PurchaseStatus | null | undefined;
   tagId?: string | null | undefined;
   to?: string | null | undefined;
   uncategorized?: boolean | null | undefined;

@@ -23,13 +23,13 @@ export function useAnalysisData(
   householdId: string,
   fromMonth: string,
   toMonth: string,
-  currentMonth: string,
+  periodMonth: string,
   dimension: Dimension,
   itemMetric: ItemMetric,
 ) {
   const variables = useMemo(
-    () => ({ householdId, from: fromMonth, to: toMonth, period: currentMonth }),
-    [currentMonth, fromMonth, householdId, toMonth],
+    () => ({ householdId, from: fromMonth, to: toMonth, period: periodMonth }),
+    [fromMonth, householdId, periodMonth, toMonth],
   );
   const dashboard = useLazyLoadQuery<AnalysisDashboardQuery>(analysisDashboardQuery, variables, {
     fetchPolicy: "network-only",

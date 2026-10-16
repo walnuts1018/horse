@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0e72916aaa9ae9ee45358ee7f12e8a60>>
+ * @generated SignedSource<<64adb4d591ad708c8b38fa80f2de0958>>
  * @lightSyntaxTransform
  */
 
@@ -14,6 +14,7 @@ export type UpdateBudgetInput = {
   baseRevision: number;
   budgetId: string;
   categoryId?: string | null | undefined;
+  effectiveFrom: string;
   endsOn?: string | null | undefined;
   householdId: string;
   name: string;

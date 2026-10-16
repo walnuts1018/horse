@@ -4572,6 +4572,7 @@ dependencies = [
  "household-application",
  "household-postgres",
  "policy-application",
+ "policy-domain",
  "tokio",
  "uuid",
 ]

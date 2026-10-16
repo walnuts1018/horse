@@ -105,81 +105,72 @@ pub async fn budgets(
         .await
         .map_err(|error| PolicyQueryError::Pool(error.to_string()))?;
     require_member(&mut conn, household_id, actor_id).await?;
-    use public::budgets::dsl as b;
-
-    let total_count = b::budgets
-        .filter(b::household_id.eq(household_id))
-        .filter(b::archived.eq(false))
-        .filter(b::starts_on.lt(period_end))
-        .filter(b::ends_on.is_null().or(b::ends_on.ge(period_start)))
-        .select(count(b::id))
-        .first::<i64>(&mut conn)
-        .await?;
-    let mut query = b::budgets
-        .filter(b::household_id.eq(household_id))
-        .filter(b::archived.eq(false))
-        .filter(b::starts_on.lt(period_end))
-        .filter(b::ends_on.is_null().or(b::ends_on.ge(period_start)))
-        .into_boxed::<Pg>();
-    if let Some(cursor_id) = after_id {
-        let cursor_name = b::budgets
-            .filter(b::household_id.eq(household_id))
-            .filter(b::archived.eq(false))
-            .filter(b::starts_on.lt(period_end))
-            .filter(b::ends_on.is_null().or(b::ends_on.ge(period_start)))
-            .filter(b::id.eq(cursor_id))
-            .select(b::name)
-            .first::<String>(&mut conn)
-            .await
-            .optional()?
-            .ok_or(PolicyQueryError::NotFound)?;
-        query = query.filter(
-            b::name
-                .gt(cursor_name.clone())
-                .or(b::name.eq(cursor_name).and(b::id.gt(cursor_id))),
-        );
-    }
-    if let Some(cursor_id) = before_id {
-        let cursor_name = b::budgets
-            .filter(b::household_id.eq(household_id))
-            .filter(b::archived.eq(false))
-            .filter(b::starts_on.lt(period_end))
-            .filter(b::ends_on.is_null().or(b::ends_on.ge(period_start)))
-            .filter(b::id.eq(cursor_id))
-            .select(b::name)
-            .first::<String>(&mut conn)
-            .await
-            .optional()?
-            .ok_or(PolicyQueryError::NotFound)?;
-        query = query.filter(
-            b::name
-                .lt(cursor_name.clone())
-                .or(b::name.eq(cursor_name).and(b::id.lt(cursor_id))),
-        );
-    }
-    let query = if backwards {
-        query.order((b::name.desc(), b::id.desc()))
-    } else {
-        query.order((b::name.asc(), b::id.asc()))
-    };
-    let mut rows = query
-        .select((
-            b::id,
-            b::household_id,
-            b::category_id,
-            b::name,
-            b::amount_yen,
-            b::starts_on,
-            b::ends_on,
-            b::archived,
-            b::revision,
+    use public::budget_versions::dsl as versions;
+    let version_rows = versions::budget_versions
+        .filter(versions::household_id.eq(household_id))
+        .filter(versions::effective_from.le(period_start))
+        .order((
+            versions::budget_id.asc(),
+            versions::effective_from.desc(),
+            versions::revision.desc(),
         ))
-        .limit(i64::from(limit + 1))
-        .load::<BudgetRow>(&mut conn)
+        .select((
+            versions::budget_id,
+            versions::household_id,
+            versions::category_id,
+            versions::name,
+            versions::amount_yen,
+            versions::starts_on,
+            versions::ends_on,
+            versions::archived,
+            versions::revision,
+            versions::effective_from,
+        ))
+        .load::<BudgetVersionRow>(&mut conn)
         .await?;
+    let mut latest_by_budget = HashMap::new();
+    for row in version_rows {
+        latest_by_budget.entry(row.0).or_insert(row);
+    }
+    let mut rows = latest_by_budget
+        .into_values()
+        .filter(|row| !row.7 && row.5 < period_end && row.6.is_none_or(|date| date >= period_start))
+        .map(|row| {
+            (
+                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8,
+            )
+        })
+        .collect::<Vec<BudgetRow>>();
+    rows.sort_by(|left, right| left.3.cmp(&right.3).then_with(|| left.0.cmp(&right.0)));
+    let total_count = i64::try_from(rows.len()).map_err(|_| PolicyQueryError::AmountOverflow)?;
+    let after_index = after_id
+        .map(|cursor_id| {
+            rows.iter()
+                .position(|row| row.0 == cursor_id)
+                .ok_or(PolicyQueryError::NotFound)
+        })
+        .transpose()?;
+    let before_index = before_id
+        .map(|cursor_id| {
+            rows.iter()
+                .position(|row| row.0 == cursor_id)
+                .ok_or(PolicyQueryError::NotFound)
+        })
+        .transpose()?;
+    let start_index = after_index.map_or(0, |index| index + 1);
+    let end_index = before_index.unwrap_or(rows.len());
+    let mut rows = if start_index <= end_index {
+        rows.drain(start_index..end_index).collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     let has_more = rows.len() > limit as usize;
     if has_more {
-        rows.truncate(limit as usize);
+        if backwards {
+            rows.drain(..rows.len() - limit as usize);
+        } else {
+            rows.truncate(limit as usize);
+        }
     }
     if backwards {
         rows.reverse();
@@ -229,25 +220,30 @@ pub async fn budget(
         .get()
         .await
         .map_err(|error| PolicyQueryError::Pool(error.to_string()))?;
-    use public::budgets::dsl as b;
-    let row = b::budgets
-        .filter(b::id.eq(budget_id))
+    use public::budget_versions::dsl as versions;
+    let row = versions::budget_versions
+        .filter(versions::budget_id.eq(budget_id))
+        .filter(versions::effective_from.le(period_start))
+        .order((versions::effective_from.desc(), versions::revision.desc()))
         .select((
-            b::id,
-            b::household_id,
-            b::category_id,
-            b::name,
-            b::amount_yen,
-            b::starts_on,
-            b::ends_on,
-            b::archived,
-            b::revision,
+            versions::budget_id,
+            versions::household_id,
+            versions::category_id,
+            versions::name,
+            versions::amount_yen,
+            versions::starts_on,
+            versions::ends_on,
+            versions::archived,
+            versions::revision,
         ))
         .first::<BudgetRow>(&mut conn)
         .await
         .optional()?
         .ok_or(PolicyQueryError::NotFound)?;
     require_member(&mut conn, row.1, actor_id).await?;
+    if row.7 || row.5 >= period_end || row.6.is_some_and(|date| date < period_start) {
+        return Err(PolicyQueryError::NotFound);
+    }
     budget_projections(&mut conn, vec![row], start_utc, end_utc)
         .await?
         .into_iter()
@@ -441,6 +437,18 @@ type BudgetRow = (
     Option<NaiveDate>,
     bool,
     i64,
+);
+type BudgetVersionRow = (
+    Uuid,
+    Uuid,
+    Option<Uuid>,
+    String,
+    i64,
+    NaiveDate,
+    Option<NaiveDate>,
+    bool,
+    i64,
+    NaiveDate,
 );
 type RecurringExpenseRow = (
     Uuid,

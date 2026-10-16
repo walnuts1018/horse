@@ -5,11 +5,11 @@ import { yen } from "../model/format-yen";
 export function AnalysisBudgetPanel({
   budgets,
   household,
-  currentMonth,
+  periodMonth,
 }: {
   budgets: Budget[];
   household: Household;
-  currentMonth: string;
+  periodMonth: string;
 }) {
   if (budgets.length === 0) return null;
 
@@ -17,7 +17,7 @@ export function AnalysisBudgetPanel({
     <section className="panel analysis-budget-panel">
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">{currentMonth}の予算</span>
+          <span className="eyebrow">{periodMonth}の予算</span>
           <h2>予算と実績</h2>
         </div>
       </div>

@@ -57,6 +57,7 @@ input PurchaseFilter {
   from: DateTime
   to: DateTime
   origin: PurchaseOrigin
+  status: PurchaseStatus
   hasEvidence: Boolean
   search: String
   categoryId: ID @nodeID(of: "Category")

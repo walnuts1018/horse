@@ -148,6 +148,18 @@ export type {
   AnalysisDashboardQuery$data,
 } from "./__generated__/AnalysisDashboardQuery.graphql";
 export type {
+  AnalysisEvidenceQuery,
+  AnalysisEvidenceQuery$data,
+} from "./__generated__/AnalysisEvidenceQuery.graphql";
+export type {
+  AnalysisUnbackedPurchasesFragment$key,
+  AnalysisUnbackedPurchasesFragment$data,
+} from "./__generated__/AnalysisUnbackedPurchasesFragment.graphql";
+export type {
+  AnalysisUnmatchedObservationsFragment$key,
+  AnalysisUnmatchedObservationsFragment$data,
+} from "./__generated__/AnalysisUnmatchedObservationsFragment.graphql";
+export type {
   AnalysisPurchasePriceObservationsQuery,
   AnalysisPurchasePriceObservationsQuery$data,
 } from "./__generated__/AnalysisPurchasePriceObservationsQuery.graphql";

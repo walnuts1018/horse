@@ -394,6 +394,22 @@
   padding: 18px 20px;
 }
 
+.analysis-page .analysis-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.analysis-page .analysis-evidence-panel {
+  min-width: 0;
+  padding: 18px 20px;
+}
+
+.analysis-page .analysis-evidence-panel .analysis-ledger-list li {
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+}
+
 .analysis-page .analysis-ledger-heading {
   display: flex;
   align-items: baseline;
@@ -522,6 +538,14 @@
   .analysis-page .burden-panel,
   .analysis-page .analysis-price-panel,
   .analysis-page .analysis-ledger-panel {
+    padding: 15px;
+  }
+
+  .analysis-page .analysis-evidence-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .analysis-page .analysis-evidence-panel {
     padding: 15px;
   }
 

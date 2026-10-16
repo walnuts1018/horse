@@ -709,8 +709,7 @@ async fn process_inner(
     };
     let (model, route, project) = (selected_model.as_str(), selected_route, selected_project);
     let mut output = String::new();
-    let mut input_tokens = 0_i64;
-    let mut output_tokens = 0_i64;
+    let mut token_usage = None;
     let mut completion_seen = false;
     let mut last_preview = String::new();
     let mut last_preview_saved = Instant::now()
@@ -812,15 +811,7 @@ async fn process_inner(
             }
         }
         if event.event_type == "interaction.completed" {
-            let usage = event.payload.pointer("/interaction/usage");
-            input_tokens = usage
-                .and_then(|value| value.get("total_input_tokens"))
-                .and_then(Value::as_i64)
-                .unwrap_or_default();
-            output_tokens = usage
-                .and_then(|value| value.get("total_output_tokens"))
-                .and_then(Value::as_i64)
-                .unwrap_or_default();
+            token_usage = interaction_token_usage(&event.payload);
             completion_seen = true;
         }
     }
@@ -842,7 +833,7 @@ async fn process_inner(
             }),
         ));
     }
-    if let Some(reservation_id) = reservation_id {
+    if let (Some(reservation_id), Some((input_tokens, _))) = (reservation_id, token_usage) {
         gemini_quota::settle(pool, reservation_id, input_tokens, Utc::now())
             .await
             .map_err(|_| {
@@ -1003,6 +994,7 @@ async fn process_inner(
             ));
         }
     }
+    let (input_tokens, output_tokens) = token_usage.unzip();
     let mut run = extraction_run(ExtractionRun {
         model,
         route,
@@ -1778,13 +1770,16 @@ fn apply_cost_snapshot(
     config: &ProcessConfig,
     model: &str,
     route: &str,
-    input_tokens: i64,
-    output_tokens: i64,
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
     priced_at: DateTime<Utc>,
 ) {
-    let prices = model_prices(&config.model_price_table, model, input_tokens, priced_at);
+    let prices = input_tokens
+        .and_then(|tokens| model_prices(&config.model_price_table, model, tokens, priced_at));
     let price_status = if route == "free" {
         "free_tier"
+    } else if input_tokens.is_none() || output_tokens.is_none() {
+        "usage_unavailable"
     } else if prices.is_none() {
         "unknown_model_price"
     } else {
@@ -1795,8 +1790,8 @@ fn apply_cost_snapshot(
     } else {
         prices.and_then(|prices| {
             (config.usd_jpy_rate > 0.0).then(|| {
-                (input_tokens as f64 * prices.input_usd_per_million
-                    + output_tokens as f64 * prices.output_usd_per_million)
+                (input_tokens.unwrap_or_default() as f64 * prices.input_usd_per_million
+                    + output_tokens.unwrap_or_default() as f64 * prices.output_usd_per_million)
                     * config.usd_jpy_rate
                     / 1_000_000.0
             })
@@ -2280,8 +2275,8 @@ fn parse_json_output(output: &str) -> Option<Value> {
 fn normalize_receipt_fields(
     receipt: &mut serde_json::Map<String, Value>,
     model: &str,
-    input_tokens: i64,
-    output_tokens: i64,
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
 ) {
     for (key, value) in [
         ("items", json!([])),
@@ -3060,8 +3055,8 @@ struct ExtractionRun<'a> {
     model: &'a str,
     route: &'a str,
     project: &'a str,
-    input_tokens: i64,
-    output_tokens: i64,
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
     latency_ms: i64,
     receipt: &'a Value,
     is_clarification: bool,
@@ -3088,6 +3083,13 @@ fn extraction_run(run: ExtractionRun<'_>) -> Value {
         "status":"succeeded",
         "receipt":run.receipt,
     })
+}
+
+fn interaction_token_usage(payload: &Value) -> Option<(i64, i64)> {
+    let usage = payload.pointer("/interaction/usage")?;
+    let input_tokens = usage.get("total_input_tokens")?.as_i64()?;
+    let output_tokens = usage.get("total_output_tokens")?.as_i64()?;
+    (input_tokens >= 0 && output_tokens >= 0).then_some((input_tokens, output_tokens))
 }
 
 fn map_gemini_error(
@@ -3293,9 +3295,9 @@ mod tests {
 
     use super::{
         Failure, ModelPriceTable, OcrLine, ProcessConfig, ProcessErrorKind, apply_cost_snapshot,
-        candidate_should_run, compare_receipt_ocr, estimate_input_tokens, map_extraction_regions,
-        model_candidates, model_prices, needs_pro_review, parse_model_price_table,
-        process_with_timeout, truncate_to_byte_limit, verify_receipt,
+        candidate_should_run, compare_receipt_ocr, estimate_input_tokens, interaction_token_usage,
+        map_extraction_regions, model_candidates, model_prices, needs_pro_review,
+        parse_model_price_table, process_with_timeout, truncate_to_byte_limit, verify_receipt,
     };
     use std::collections::HashMap;
     use tokio::time::Duration;
@@ -3307,6 +3309,23 @@ mod tests {
 
         assert!(with_request_context > document_only);
         assert_eq!(with_request_context - document_only, 3_000);
+    }
+
+    #[test]
+    fn interaction_usage_is_unknown_when_missing_or_negative() {
+        assert_eq!(interaction_token_usage(&json!({"interaction": {}})), None);
+        assert_eq!(
+            interaction_token_usage(&json!({
+                "interaction": {"usage": {"total_input_tokens": -1, "total_output_tokens": 5}}
+            })),
+            None
+        );
+        assert_eq!(
+            interaction_token_usage(&json!({
+                "interaction": {"usage": {"total_input_tokens": 10, "total_output_tokens": 5}}
+            })),
+            Some((10, 5))
+        );
     }
 
     #[test]
@@ -3554,8 +3573,8 @@ mod tests {
             &config,
             "unconfigured-model",
             "paid",
-            1_000,
-            100,
+            Some(1_000),
+            Some(100),
             Utc::now(),
         );
 

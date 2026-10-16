@@ -9,6 +9,7 @@ pub struct PurchaseSearchFilter {
     pub from: Option<DateTime<Utc>>,
     pub to: Option<DateTime<Utc>>,
     pub origin: Option<String>,
+    pub status: Option<String>,
     pub has_evidence: Option<bool>,
     pub search: Option<String>,
     pub category_id: Option<Uuid>,

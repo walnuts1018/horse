@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
 use diesel::{
     BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl,
     result::Error as DieselError,
@@ -255,11 +255,7 @@ fn page_size(
 }
 fn period_start(value: Option<&str>) -> Result<Option<DateTime<Utc>>, UnmatchedObservationsError> {
     value
-        .map(|v| {
-            parse_period(v).map(|date| {
-                Utc.from_utc_datetime(&date.and_hms_opt(0, 0, 0).expect("midnight exists"))
-            })
-        })
+        .map(|v| tokyo_month_start(parse_period(v)?))
         .transpose()
 }
 fn period_end(value: Option<&str>) -> Result<Option<DateTime<Utc>>, UnmatchedObservationsError> {
@@ -273,9 +269,22 @@ fn period_end(value: Option<&str>) -> Result<Option<DateTime<Utc>>, UnmatchedObs
             };
             let next = NaiveDate::from_ymd_opt(year, month, 1)
                 .ok_or(UnmatchedObservationsError::InvalidPeriod)?;
-            Ok(Utc.from_utc_datetime(&next.and_hms_opt(0, 0, 0).expect("midnight exists")))
+            tokyo_month_start(next)
         })
         .transpose()
+}
+
+fn tokyo_month_start(date: NaiveDate) -> Result<DateTime<Utc>, UnmatchedObservationsError> {
+    let tokyo =
+        FixedOffset::east_opt(9 * 60 * 60).ok_or(UnmatchedObservationsError::InvalidPeriod)?;
+    let local = date
+        .and_hms_opt(0, 0, 0)
+        .ok_or(UnmatchedObservationsError::InvalidPeriod)?;
+    tokyo
+        .from_local_datetime(&local)
+        .single()
+        .map(|date| date.with_timezone(&Utc))
+        .ok_or(UnmatchedObservationsError::InvalidPeriod)
 }
 fn parse_period(value: &str) -> Result<NaiveDate, UnmatchedObservationsError> {
     if value.len() != 7 || value.as_bytes()[4] != b'-' {
@@ -293,5 +302,22 @@ fn ordinal_cmp(left: Option<u64>, right: Option<u64>) -> std::cmp::Ordering {
         (Some(_), None) => std::cmp::Ordering::Less,
         (None, Some(_)) => std::cmp::Ordering::Greater,
         (None, None) => std::cmp::Ordering::Equal,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{period_end, period_start};
+
+    #[test]
+    fn period_bounds_follow_japan_calendar_months() {
+        assert_eq!(
+            period_start(Some("2026-10")).unwrap().unwrap().to_rfc3339(),
+            "2026-09-30T15:00:00+00:00"
+        );
+        assert_eq!(
+            period_end(Some("2026-10")).unwrap().unwrap().to_rfc3339(),
+            "2026-10-31T15:00:00+00:00"
+        );
     }
 }

@@ -67,6 +67,14 @@
   flex: none;
 }
 
+.budget-effective-month {
+  display: grid;
+  flex: 0 1 168px;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .category-tags {
   display: flex;
   flex-wrap: wrap;

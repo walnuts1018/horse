@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
 
@@ -111,6 +111,7 @@ pub struct UpdateBudgetCommand {
     pub name: String,
     pub amount_yen: i64,
     pub starts_on: NaiveDate,
+    pub effective_from: NaiveDate,
     pub ends_on: Option<Option<NaiveDate>>,
 }
 
@@ -139,7 +140,14 @@ impl CreateBudgetDecision {
     pub fn ui_change(&self) -> UiChangeDescriptor {
         budget_change(
             "budget.updated",
-            ["name", "amountYen", "categoryId", "startsOn", "endsOn"],
+            [
+                "name",
+                "amountYen",
+                "categoryId",
+                "startsOn",
+                "endsOn",
+                "effectiveFrom",
+            ],
         )
     }
 }
@@ -160,6 +168,7 @@ pub struct UpdateBudgetDecision {
     pub name: BudgetName,
     pub amount_yen: BudgetAmountYen,
     pub starts_on: NaiveDate,
+    pub effective_from: NaiveDate,
     pub ends_on: EndDateChange,
 }
 
@@ -228,6 +237,9 @@ pub fn decide_update(command: UpdateBudgetCommand) -> Result<UpdateBudgetDecisio
     let category_id = command.category_id;
     let name = BudgetName(validate_name(command.name)?);
     let amount_yen = BudgetAmountYen::try_from(command.amount_yen)?;
+    if command.effective_from.day() != 1 {
+        return Err(BudgetError::InvalidDateRange);
+    }
     if let Some(ends_on) = command.ends_on {
         validate_dates(command.starts_on, ends_on)?;
     }
@@ -240,6 +252,7 @@ pub fn decide_update(command: UpdateBudgetCommand) -> Result<UpdateBudgetDecisio
         name,
         amount_yen,
         starts_on: command.starts_on,
+        effective_from: command.effective_from,
         ends_on: command
             .ends_on
             .map_or(EndDateChange::Unchanged, EndDateChange::Set),

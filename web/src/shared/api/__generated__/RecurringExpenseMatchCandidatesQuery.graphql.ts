@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<23532a7d0ef3271f7e441e4faa626194>>
+ * @generated SignedSource<<6b1519f4d155831463881a2cdd6dd02f>>
  * @lightSyntaxTransform
  */
 
@@ -23,6 +23,7 @@ export type PurchaseFilter = {
   paymentAccountId?: string | null | undefined;
   poolId?: string | null | undefined;
   search?: string | null | undefined;
+  status?: PurchaseStatus | null | undefined;
   tagId?: string | null | undefined;
   to?: string | null | undefined;
   uncategorized?: boolean | null | undefined;

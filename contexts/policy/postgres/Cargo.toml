@@ -21,5 +21,6 @@ diesel = { workspace = true, features = ["32-column-tables"] }
 diesel-async = { workspace = true }
 horse-postgres-common = { path = "../../../platform/postgres-common" }
 horse-test-infra = { path = "../../../platform/test-infra" }
+policy-domain = { path = "../domain" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 uuid = { workspace = true }

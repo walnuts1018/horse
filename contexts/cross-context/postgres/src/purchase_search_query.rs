@@ -27,6 +27,7 @@ pub struct PurchaseSearchFilter {
     pub from: Option<DateTime<Utc>>,
     pub to: Option<DateTime<Utc>>,
     pub origin: Option<String>,
+    pub status: Option<String>,
     pub has_evidence: Option<bool>,
     pub search: Option<String>,
     pub category_id: Option<Uuid>,
@@ -112,6 +113,7 @@ impl ApplicationQuery for PostgresPurchaseSearchQuery {
                     from: filter.from,
                     to: filter.to,
                     origin: filter.origin,
+                    status: filter.status,
                     has_evidence: filter.has_evidence,
                     search: filter.search,
                     category_id: filter.category_id,
@@ -321,6 +323,9 @@ pub async fn purchases(
         .into_boxed::<Pg>();
     if let Some(origin) = &filter.origin {
         query = query.filter(purchases::origin.eq(origin));
+    }
+    if let Some(status) = &filter.status {
+        query = query.filter(purchases::status.eq(status));
     }
     if let Some(from) = filter.from {
         query = query.filter(purchases::occurred_at.ge(from));

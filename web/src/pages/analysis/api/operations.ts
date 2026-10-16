@@ -71,6 +71,91 @@ export const analysisDashboardQuery = graphql`
   }
 `;
 
+export const analysisEvidenceQuery = graphql`
+  query AnalysisEvidenceQuery(
+    $householdId: ID!
+    $from: YearMonth!
+    $to: YearMonth!
+    $purchaseFilter: PurchaseFilter!
+  ) {
+    ...AnalysisUnbackedPurchasesFragment @arguments(filter: $purchaseFilter)
+    ...AnalysisUnmatchedObservationsFragment
+      @arguments(householdId: $householdId, from: $from, to: $to)
+  }
+`;
+
+export const analysisUnbackedPurchasesFragment = graphql`
+  fragment AnalysisUnbackedPurchasesFragment on Query
+  @argumentDefinitions(
+    filter: { type: "PurchaseFilter!" }
+    first: { type: "Int", defaultValue: 8 }
+    after: { type: "String" }
+  )
+  @refetchable(queryName: "AnalysisUnbackedPurchasesPaginationQuery") {
+    purchases(filter: $filter, first: $first, after: $after)
+      @connection(key: "AnalysisUnbackedPurchasesFragment_purchases", filters: ["filter"]) {
+      edges {
+        node {
+          id
+          occurredAt
+          merchant
+          totalYen
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      totalCount
+    }
+  }
+`;
+
+export const analysisUnmatchedObservationsFragment = graphql`
+  fragment AnalysisUnmatchedObservationsFragment on Query
+  @argumentDefinitions(
+    householdId: { type: "ID!" }
+    from: { type: "YearMonth!" }
+    to: { type: "YearMonth!" }
+    first: { type: "Int", defaultValue: 8 }
+    after: { type: "String" }
+  )
+  @refetchable(queryName: "AnalysisUnmatchedObservationsPaginationQuery") {
+    unmatchedObservations(
+      householdId: $householdId
+      from: $from
+      to: $to
+      state: UNMATCHED
+      first: $first
+      after: $after
+    )
+      @connection(
+        key: "AnalysisUnmatchedObservationsFragment_unmatchedObservations"
+        filters: ["householdId", "from", "to"]
+      ) {
+      edges {
+        node {
+          __typename
+          id
+          ... on UnmatchedObservation {
+            sourceKind
+            merchant
+            occurredAt
+            amountYen
+            orderId
+            transactionId
+          }
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      totalCount
+    }
+  }
+`;
+
 export const analysisBudgetsFragment = graphql`
   fragment AnalysisBudgetsFragment on Query
   @argumentDefinitions(
