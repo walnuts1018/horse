@@ -5,6 +5,8 @@
   "scripts": {
     "build": "pnpm relay && vite build",
     "dev": "vite --host 0.0.0.0",
+    "e2e": "playwright test --config playwright.config.ts",
+    "e2e:install": "playwright install --with-deps chromium",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint:markup": "markuplint 'src/**/*.tsx'",
@@ -40,6 +42,7 @@
     "@feature-sliced/steiger-plugin": "^0.8.0",
     "@markuplint/jsx-parser": "^5.2.0",
     "@markuplint/react-spec": "^5.2.0",
+    "@playwright/test": "^1.63.0",
     "@rolldown/plugin-babel": "^0.2.4",
     "@storybook/react-vite": "10.6.2",
     "@types/node": "^24.19.2",

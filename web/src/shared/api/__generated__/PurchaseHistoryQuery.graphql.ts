@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<6535133a3240cf335aea749fa0820468>>
+ * @generated SignedSource<<5859236ea78a4a45a857b394a7d7e149>>
  * @lightSyntaxTransform
  */
 
@@ -57,7 +57,7 @@ export type PurchaseHistoryQuery$data = {
           readonly categoryId: string | null | undefined;
           readonly currency: string;
           readonly effectiveUnitPrice: {
-            readonly denominator: string;
+            readonly denominatorYen: string;
             readonly numeratorYen: string;
           } | null | undefined;
           readonly id: string;
@@ -171,14 +171,7 @@ v7 = {
   "name": "remainingRefundableAmountYen",
   "storageKey": null
 },
-v8 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "denominator",
-  "storageKey": null
-},
-v9 = [
+v8 = [
   {
     "alias": null,
     "args": null,
@@ -186,7 +179,13 @@ v9 = [
     "name": "numerator",
     "storageKey": null
   },
-  (v8/*:: as any*/),
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "denominator",
+    "storageKey": null
+  },
   {
     "alias": null,
     "args": null,
@@ -195,14 +194,14 @@ v9 = [
     "storageKey": null
   }
 ],
-v10 = {
+v9 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "revision",
   "storageKey": null
 },
-v11 = [
+v10 = [
   {
     "alias": null,
     "args": [
@@ -352,7 +351,7 @@ v11 = [
                     "kind": "LinkedField",
                     "name": "quantity",
                     "plural": false,
-                    "selections": (v9/*:: as any*/),
+                    "selections": (v8/*:: as any*/),
                     "storageKey": null
                   },
                   {
@@ -371,7 +370,7 @@ v11 = [
                         "kind": "LinkedField",
                         "name": "basis",
                         "plural": false,
-                        "selections": (v9/*:: as any*/),
+                        "selections": (v8/*:: as any*/),
                         "storageKey": null
                       }
                     ],
@@ -392,11 +391,17 @@ v11 = [
                         "name": "numeratorYen",
                         "storageKey": null
                       },
-                      (v8/*:: as any*/)
+                      {
+                        "alias": null,
+                        "args": null,
+                        "kind": "ScalarField",
+                        "name": "denominatorYen",
+                        "storageKey": null
+                      }
                     ],
                     "storageKey": null
                   },
-                  (v10/*:: as any*/),
+                  (v9/*:: as any*/),
                   {
                     "alias": null,
                     "args": null,
@@ -462,7 +467,7 @@ v11 = [
                         "name": "archived",
                         "storageKey": null
                       },
-                      (v10/*:: as any*/)
+                      (v9/*:: as any*/)
                     ],
                     "storageKey": null
                   }
@@ -491,7 +496,7 @@ v11 = [
                 "storageKey": null
               },
               (v7/*:: as any*/),
-              (v10/*:: as any*/),
+              (v9/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -586,7 +591,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "PurchaseHistoryQuery",
-    "selections": (v11/*:: as any*/),
+    "selections": (v10/*:: as any*/),
     "type": "Query",
     "abstractKey": null
   },
@@ -599,15 +604,15 @@ return {
     ],
     "kind": "Operation",
     "name": "PurchaseHistoryQuery",
-    "selections": (v11/*:: as any*/)
+    "selections": (v10/*:: as any*/)
   },
   "params": {
-    "cacheID": "5bd2a042e1bb09b9baa3f8042c7ce76a",
+    "cacheID": "5bfa3c2dc7fb6a0bf97bcee6475078d9",
     "id": null,
     "metadata": {},
     "name": "PurchaseHistoryQuery",
     "operationKind": "query",
-    "text": "query PurchaseHistoryQuery(\n  $filter: PurchaseFilter!\n  $first: Int\n  $after: String\n) {\n  purchases(filter: $filter, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        datePrecision\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          remainingRefundableAmountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominator\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        correctionAmountYen\n        correctionCount\n        remainingRefundableAmountYen\n        revision\n        status\n        createdAt\n        updatedAt\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n    syncCursor\n  }\n}\n"
+    "text": "query PurchaseHistoryQuery(\n  $filter: PurchaseFilter!\n  $first: Int\n  $after: String\n) {\n  purchases(filter: $filter, after: $after, first: $first) {\n    edges {\n      cursor\n      node {\n        id\n        householdId\n        occurredAt\n        datePrecision\n        merchant\n        origin\n        hasEvidence\n        sourceKinds\n        paymentAllocations {\n          paymentAccountId\n          amountYen\n          account {\n            id\n            name\n          }\n        }\n        items {\n          id\n          name\n          amountYen\n          remainingRefundableAmountYen\n          currency\n          quantity {\n            numerator\n            denominator\n            unit\n          }\n          printedUnitPrice {\n            amountYen\n            basis {\n              numerator\n              denominator\n              unit\n            }\n          }\n          effectiveUnitPrice {\n            numeratorYen\n            denominatorYen\n          }\n          revision\n          categoryId\n          productVariantId\n          allocations {\n            poolId\n            poolName\n            weight\n            amountYen\n          }\n          tags {\n            id\n            householdId\n            name\n            archived\n            revision\n          }\n        }\n        totalYen\n        correctionAmountYen\n        correctionCount\n        remainingRefundableAmountYen\n        revision\n        status\n        createdAt\n        updatedAt\n      }\n    }\n    pageInfo {\n      startCursor\n      endCursor\n      hasNextPage\n      hasPreviousPage\n    }\n    totalCount\n    syncCursor\n  }\n}\n"
   }
 };
 })();

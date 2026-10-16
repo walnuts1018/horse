@@ -72,6 +72,16 @@ description = "フロントエンドのテスト"
 dir = "web"
 run = "pnpm test"
 
+[tasks."web:e2e:install"]
+description = "PlaywrightのChromiumをインストール"
+dir = "web"
+run = "pnpm e2e:install"
+
+[tasks."web:e2e"]
+description = "ブラウザーE2Eテスト"
+dir = "web"
+run = "pnpm e2e"
+
 [tasks."web:relay"]
 description = "Relayの型と操作の生成"
 dir = "web"

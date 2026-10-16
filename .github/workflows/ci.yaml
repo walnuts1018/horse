@@ -108,6 +108,11 @@ jobs:
           - name: Build frontend
             run: mise run web:build
 
+          - name: Run browser end-to-end tests
+            run: |
+              mise run web:e2e:install
+              mise run web:e2e
+
   publish:
     if: github.event_name == 'push'
     needs: quality

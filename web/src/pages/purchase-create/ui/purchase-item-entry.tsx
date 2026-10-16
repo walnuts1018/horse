@@ -145,40 +145,42 @@ export function PurchaseItemEntry({
               autoComplete="off"
             />
             <kbd>Enter</kbd>
-            <Combobox.Positioner>
-              <Combobox.Popup className="suggestions product-suggestions product-variant-select__popup">
-                <ProductCandidateList
-                  label="確認済み商品、購入履歴、推定商品候補"
-                  candidates={suggestions.map((suggestion, index) => ({
-                    id: String(index),
-                    content:
-                      suggestion.kind === "catalog" ? (
-                        <ProductCandidateOption
-                          label={suggestion.candidate.matchedName}
-                          description={`${suggestion.candidate.concept.name} · ${suggestion.candidate.variant.name}`}
-                          meta={suggestion.candidate.variant.packageSize ?? undefined}
-                          badge="推定候補"
-                        />
-                      ) : (
-                        <ProductCandidateOption
-                          label={suggestion.name}
-                          description={
-                            suggestion.kind === "confirmed"
-                              ? `${suggestion.candidate.concept.name} · ${suggestion.candidate.variant.name}`
-                              : undefined
-                          }
-                          meta={
-                            suggestion.kind === "confirmed"
-                              ? (suggestion.candidate.variant.packageSize ?? undefined)
-                              : undefined
-                          }
-                          badge={suggestion.kind === "confirmed" ? "確認済み商品" : "購入履歴"}
-                        />
-                      ),
-                  }))}
-                />
-              </Combobox.Popup>
-            </Combobox.Positioner>
+            <Combobox.Portal>
+              <Combobox.Positioner>
+                <Combobox.Popup className="suggestions product-suggestions product-variant-select__popup">
+                  <ProductCandidateList
+                    label="確認済み商品、購入履歴、推定商品候補"
+                    candidates={suggestions.map((suggestion, index) => ({
+                      id: String(index),
+                      content:
+                        suggestion.kind === "catalog" ? (
+                          <ProductCandidateOption
+                            label={suggestion.candidate.matchedName}
+                            description={`${suggestion.candidate.concept.name} · ${suggestion.candidate.variant.name}`}
+                            meta={suggestion.candidate.variant.packageSize ?? undefined}
+                            badge="推定候補"
+                          />
+                        ) : (
+                          <ProductCandidateOption
+                            label={suggestion.name}
+                            description={
+                              suggestion.kind === "confirmed"
+                                ? `${suggestion.candidate.concept.name} · ${suggestion.candidate.variant.name}`
+                                : undefined
+                            }
+                            meta={
+                              suggestion.kind === "confirmed"
+                                ? (suggestion.candidate.variant.packageSize ?? undefined)
+                                : undefined
+                            }
+                            badge={suggestion.kind === "confirmed" ? "確認済み商品" : "購入履歴"}
+                          />
+                        ),
+                    }))}
+                  />
+                </Combobox.Popup>
+              </Combobox.Positioner>
+            </Combobox.Portal>
           </Combobox.Root>
           {selectedProductVariantId && (
             <div className="selected-product-label">

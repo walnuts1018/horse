@@ -2,6 +2,7 @@
 members = [
     "apps/api",
     "apps/worker",
+    "apps/e2e-fixture",
     "contexts/bookkeeping/domain",
     "contexts/bookkeeping/application",
     "contexts/bookkeeping/postgres",

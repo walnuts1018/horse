@@ -162,8 +162,7 @@ export function App() {
       householdLoadError ||
       !viewer ||
       !activeHousehold ||
-      !households.some((item) => item.id === activeHousehold.id) ||
-      !activeHousehold.members.some((member) => member.id === viewer.id)
+      !households.some((item) => item.id === activeHousehold.id)
     )
       return;
     writeOfflineDraftScope(viewer.id, activeHousehold.id);

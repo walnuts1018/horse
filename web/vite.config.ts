@@ -29,5 +29,8 @@ export default defineConfig({
     ),
     react(),
   ],
-  server: { port: 3000 },
+  server: {
+    port: 3000,
+    hmr: { overlay: process.env.HORSE_E2E !== "1" },
+  },
 });

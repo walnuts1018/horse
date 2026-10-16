@@ -61,10 +61,6 @@ export function usePurchaseSubmission({
       setMessage("ログイン中のメンバーを確認できません");
       return;
     }
-    if (!household.members.some((member) => member.id === memberId)) {
-      setMessage("この家計簿のメンバーを確認できません");
-      return;
-    }
     if (!submittedItems.length) {
       setMessage("品目を1つ以上追加してください");
       return;

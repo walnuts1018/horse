@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<7f8ab91e3c86efa29cdef834375b1ca9>>
+ * @generated SignedSource<<f6ddbfb24d9510b65523a0089d29a094>>
  * @lightSyntaxTransform
  */
 
@@ -36,7 +36,7 @@ export type PurchaseListFragment$data = {
           readonly categoryId: string | null | undefined;
           readonly currency: string;
           readonly effectiveUnitPrice: {
-            readonly denominator: string;
+            readonly denominatorYen: string;
             readonly numeratorYen: string;
           } | null | undefined;
           readonly id: string;
@@ -141,14 +141,7 @@ v5 = {
   "name": "remainingRefundableAmountYen",
   "storageKey": null
 },
-v6 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "denominator",
-  "storageKey": null
-},
-v7 = [
+v6 = [
   {
     "alias": null,
     "args": null,
@@ -156,7 +149,13 @@ v7 = [
     "name": "numerator",
     "storageKey": null
   },
-  (v6/*:: as any*/),
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "denominator",
+    "storageKey": null
+  },
   {
     "alias": null,
     "args": null,
@@ -165,7 +164,7 @@ v7 = [
     "storageKey": null
   }
 ],
-v8 = {
+v7 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
@@ -354,7 +353,7 @@ return {
                       "kind": "LinkedField",
                       "name": "quantity",
                       "plural": false,
-                      "selections": (v7/*:: as any*/),
+                      "selections": (v6/*:: as any*/),
                       "storageKey": null
                     },
                     {
@@ -373,7 +372,7 @@ return {
                           "kind": "LinkedField",
                           "name": "basis",
                           "plural": false,
-                          "selections": (v7/*:: as any*/),
+                          "selections": (v6/*:: as any*/),
                           "storageKey": null
                         }
                       ],
@@ -394,11 +393,17 @@ return {
                           "name": "numeratorYen",
                           "storageKey": null
                         },
-                        (v6/*:: as any*/)
+                        {
+                          "alias": null,
+                          "args": null,
+                          "kind": "ScalarField",
+                          "name": "denominatorYen",
+                          "storageKey": null
+                        }
                       ],
                       "storageKey": null
                     },
-                    (v8/*:: as any*/),
+                    (v7/*:: as any*/),
                     {
                       "alias": null,
                       "args": null,
@@ -464,7 +469,7 @@ return {
                           "name": "archived",
                           "storageKey": null
                         },
-                        (v8/*:: as any*/)
+                        (v7/*:: as any*/)
                       ],
                       "storageKey": null
                     }
@@ -493,7 +498,7 @@ return {
                   "storageKey": null
                 },
                 (v5/*:: as any*/),
-                (v8/*:: as any*/),
+                (v7/*:: as any*/),
                 {
                   "alias": null,
                   "args": null,

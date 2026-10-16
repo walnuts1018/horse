@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<489f850bd9caf23330c1df436e09741e>>
+ * @generated SignedSource<<9c9cfa6b4e6bfdf0db6fb2ae4a9b9f41>>
  * @lightSyntaxTransform
  */
 
@@ -20,7 +20,7 @@ export type PurchaseItemFields$data = {
   readonly categoryId: string | null | undefined;
   readonly currency: string;
   readonly effectiveUnitPrice: {
-    readonly denominator: string;
+    readonly denominatorYen: string;
     readonly numeratorYen: string;
   } | null | undefined;
   readonly id: string;
@@ -77,14 +77,7 @@ v2 = {
   "name": "amountYen",
   "storageKey": null
 },
-v3 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "denominator",
-  "storageKey": null
-},
-v4 = [
+v3 = [
   {
     "alias": null,
     "args": null,
@@ -92,7 +85,13 @@ v4 = [
     "name": "numerator",
     "storageKey": null
   },
-  (v3/*:: as any*/),
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "denominator",
+    "storageKey": null
+  },
   {
     "alias": null,
     "args": null,
@@ -101,7 +100,7 @@ v4 = [
     "storageKey": null
   }
 ],
-v5 = {
+v4 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
@@ -138,7 +137,7 @@ return {
       "kind": "LinkedField",
       "name": "quantity",
       "plural": false,
-      "selections": (v4/*:: as any*/),
+      "selections": (v3/*:: as any*/),
       "storageKey": null
     },
     {
@@ -157,7 +156,7 @@ return {
           "kind": "LinkedField",
           "name": "basis",
           "plural": false,
-          "selections": (v4/*:: as any*/),
+          "selections": (v3/*:: as any*/),
           "storageKey": null
         }
       ],
@@ -178,11 +177,17 @@ return {
           "name": "numeratorYen",
           "storageKey": null
         },
-        (v3/*:: as any*/)
+        {
+          "alias": null,
+          "args": null,
+          "kind": "ScalarField",
+          "name": "denominatorYen",
+          "storageKey": null
+        }
       ],
       "storageKey": null
     },
-    (v5/*:: as any*/),
+    (v4/*:: as any*/),
     {
       "alias": null,
       "args": null,
@@ -254,7 +259,7 @@ return {
           "name": "archived",
           "storageKey": null
         },
-        (v5/*:: as any*/)
+        (v4/*:: as any*/)
       ],
       "storageKey": null
     }
@@ -264,6 +269,6 @@ return {
 };
 })();
 
-(node as any).hash = "6042bd6042494efbacd9b6114f50a764";
+(node as any).hash = "56b6b9771e29c0c8b816c94b64d6362e";
 
 export default node;

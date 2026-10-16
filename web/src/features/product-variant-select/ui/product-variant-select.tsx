@@ -98,33 +98,35 @@ export function ProductVariantSelect({
             autoComplete="off"
             onFocus={onFocus}
           />
-          <Combobox.Positioner>
-            <Combobox.Popup className="product-variant-select__popup">
-              <ProductCandidateList
-                empty={!loading && !error && search.length >= 2 && "商品候補がありません"}
-                candidates={visibleSuggestions.map((suggestion) => ({
-                  id: suggestion.variant.id,
-                  disabled: suggestion.variant.id === value,
-                  content: (
-                    <ProductCandidateOption
-                      label={suggestionLabel(suggestion)}
-                      meta={suggestion.variant.packageSize ?? undefined}
-                      badge={suggestion.variant.id === value ? "選択中" : undefined}
-                    />
-                  ),
-                }))}
-              />
-              <div
-                className="product-variant-select__status"
-                aria-live="polite"
-                aria-busy={loading}
-              >
-                {loading && "商品候補を検索中"}
-                {!loading && error && "商品候補を取得できませんでした"}
-                {!loading && !error && search.length < 2 && "2文字以上入力してください"}
-              </div>
-            </Combobox.Popup>
-          </Combobox.Positioner>
+          <Combobox.Portal>
+            <Combobox.Positioner>
+              <Combobox.Popup className="product-variant-select__popup">
+                <ProductCandidateList
+                  empty={!loading && !error && search.length >= 2 && "商品候補がありません"}
+                  candidates={visibleSuggestions.map((suggestion) => ({
+                    id: suggestion.variant.id,
+                    disabled: suggestion.variant.id === value,
+                    content: (
+                      <ProductCandidateOption
+                        label={suggestionLabel(suggestion)}
+                        meta={suggestion.variant.packageSize ?? undefined}
+                        badge={suggestion.variant.id === value ? "選択中" : undefined}
+                      />
+                    ),
+                  }))}
+                />
+                <div
+                  className="product-variant-select__status"
+                  aria-live="polite"
+                  aria-busy={loading}
+                >
+                  {loading && "商品候補を検索中"}
+                  {!loading && error && "商品候補を取得できませんでした"}
+                  {!loading && !error && search.length < 2 && "2文字以上入力してください"}
+                </div>
+              </Combobox.Popup>
+            </Combobox.Positioner>
+          </Combobox.Portal>
         </div>
       </Combobox.Root>
       {suggestions.length > INITIAL_CANDIDATE_COUNT && !expanded && !loading && !error && (

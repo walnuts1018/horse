@@ -245,7 +245,7 @@ pub fn schema(config: Config, ports: Ports) -> Schema {
 
 pub struct QueryRoot;
 
-#[Object]
+#[Object(name = "Query")]
 impl QueryRoot {
     async fn node(&self, ctx: &Context<'_>, id: ID) -> Result<Option<ledger_entry::Node>> {
         node_query::graphql_node(ctx, id).await

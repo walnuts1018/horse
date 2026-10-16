@@ -2853,6 +2853,19 @@ name = "horse-authorization"
 version = "0.1.0"
 
 [[package]]
+name = "horse-e2e-fixture"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "diesel",
+ "diesel-async",
+ "horse-postgres-common",
+ "sha2 0.11.1",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "horse-extraction-queue"
 version = "0.1.0"
 dependencies = [

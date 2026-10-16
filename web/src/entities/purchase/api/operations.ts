@@ -397,7 +397,7 @@ export const purchaseItemFields = graphql`
     }
     effectiveUnitPrice {
       numeratorYen
-      denominator
+      denominatorYen
     }
     revision
     categoryId

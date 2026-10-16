@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<fd4b09993f515855314e16f62a26a936>>
+ * @generated SignedSource<<e7475dac94935d168a91314a683c9bf7>>
  * @lightSyntaxTransform
  */
 
@@ -45,7 +45,7 @@ export type BulkUpdatePurchaseItemsMutation$data = {
       readonly categoryId: string | null | undefined;
       readonly currency: string;
       readonly effectiveUnitPrice: {
-        readonly denominator: string;
+        readonly denominatorYen: string;
         readonly numeratorYen: string;
       } | null | undefined;
       readonly id: string;
@@ -111,14 +111,7 @@ v3 = {
   "name": "amountYen",
   "storageKey": null
 },
-v4 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "denominator",
-  "storageKey": null
-},
-v5 = [
+v4 = [
   {
     "alias": null,
     "args": null,
@@ -126,7 +119,13 @@ v5 = [
     "name": "numerator",
     "storageKey": null
   },
-  (v4/*:: as any*/),
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "denominator",
+    "storageKey": null
+  },
   {
     "alias": null,
     "args": null,
@@ -135,14 +134,14 @@ v5 = [
     "storageKey": null
   }
 ],
-v6 = {
+v5 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "revision",
   "storageKey": null
 },
-v7 = [
+v6 = [
   {
     "alias": null,
     "args": [
@@ -199,7 +198,7 @@ v7 = [
                 "kind": "LinkedField",
                 "name": "quantity",
                 "plural": false,
-                "selections": (v5/*:: as any*/),
+                "selections": (v4/*:: as any*/),
                 "storageKey": null
               },
               {
@@ -218,7 +217,7 @@ v7 = [
                     "kind": "LinkedField",
                     "name": "basis",
                     "plural": false,
-                    "selections": (v5/*:: as any*/),
+                    "selections": (v4/*:: as any*/),
                     "storageKey": null
                   }
                 ],
@@ -239,11 +238,17 @@ v7 = [
                     "name": "numeratorYen",
                     "storageKey": null
                   },
-                  (v4/*:: as any*/)
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "denominatorYen",
+                    "storageKey": null
+                  }
                 ],
                 "storageKey": null
               },
-              (v6/*:: as any*/),
+              (v5/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -315,7 +320,7 @@ v7 = [
                     "name": "archived",
                     "storageKey": null
                   },
-                  (v6/*:: as any*/)
+                  (v5/*:: as any*/)
                 ],
                 "storageKey": null
               }
@@ -357,7 +362,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "BulkUpdatePurchaseItemsMutation",
-    "selections": (v7/*:: as any*/),
+    "selections": (v6/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
@@ -366,15 +371,15 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "BulkUpdatePurchaseItemsMutation",
-    "selections": (v7/*:: as any*/)
+    "selections": (v6/*:: as any*/)
   },
   "params": {
-    "cacheID": "7495dce1689e69e77546cb7ad33a9871",
+    "cacheID": "e6124bd7a7090360d2b97ad2d8eb9a14",
     "id": null,
     "metadata": {},
     "name": "BulkUpdatePurchaseItemsMutation",
     "operationKind": "mutation",
-    "text": "mutation BulkUpdatePurchaseItemsMutation(\n  $input: BulkUpdatePurchaseItemsInput!\n) {\n  bulkUpdatePurchaseItems(input: $input) {\n    __typename\n    ... on BulkUpdatePurchaseItemsSuccess {\n      items {\n        id\n        name\n        amountYen\n        remainingRefundableAmountYen\n        currency\n        quantity {\n          numerator\n          denominator\n          unit\n        }\n        printedUnitPrice {\n          amountYen\n          basis {\n            numerator\n            denominator\n            unit\n          }\n        }\n        effectiveUnitPrice {\n          numeratorYen\n          denominator\n        }\n        revision\n        categoryId\n        productVariantId\n        allocations {\n          poolId\n          poolName\n          weight\n          amountYen\n        }\n        tags {\n          id\n          householdId\n          name\n          archived\n          revision\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation BulkUpdatePurchaseItemsMutation(\n  $input: BulkUpdatePurchaseItemsInput!\n) {\n  bulkUpdatePurchaseItems(input: $input) {\n    __typename\n    ... on BulkUpdatePurchaseItemsSuccess {\n      items {\n        id\n        name\n        amountYen\n        remainingRefundableAmountYen\n        currency\n        quantity {\n          numerator\n          denominator\n          unit\n        }\n        printedUnitPrice {\n          amountYen\n          basis {\n            numerator\n            denominator\n            unit\n          }\n        }\n        effectiveUnitPrice {\n          numeratorYen\n          denominatorYen\n        }\n        revision\n        categoryId\n        productVariantId\n        allocations {\n          poolId\n          poolName\n          weight\n          amountYen\n        }\n        tags {\n          id\n          householdId\n          name\n          archived\n          revision\n        }\n      }\n    }\n    ... on MutationError {\n      __isMutationError: __typename\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();

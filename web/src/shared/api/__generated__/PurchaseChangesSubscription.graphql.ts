@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a743ebab8a8203b681966525a6f21d1c>>
+ * @generated SignedSource<<ce5b4f2de35652ddd32e84aabe7c1e1f>>
  * @lightSyntaxTransform
  */
 
@@ -45,7 +45,7 @@ export type PurchaseChangesSubscription$data = {
         readonly categoryId: string | null | undefined;
         readonly currency: string;
         readonly effectiveUnitPrice: {
-          readonly denominator: string;
+          readonly denominatorYen: string;
           readonly numeratorYen: string;
         } | null | undefined;
         readonly id: string;
@@ -145,14 +145,7 @@ v6 = {
   "name": "remainingRefundableAmountYen",
   "storageKey": null
 },
-v7 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "denominator",
-  "storageKey": null
-},
-v8 = [
+v7 = [
   {
     "alias": null,
     "args": null,
@@ -160,7 +153,13 @@ v8 = [
     "name": "numerator",
     "storageKey": null
   },
-  (v7/*:: as any*/),
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "denominator",
+    "storageKey": null
+  },
   {
     "alias": null,
     "args": null,
@@ -169,14 +168,14 @@ v8 = [
     "storageKey": null
   }
 ],
-v9 = {
+v8 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "revision",
   "storageKey": null
 },
-v10 = [
+v9 = [
   {
     "alias": null,
     "args": [
@@ -341,7 +340,7 @@ v10 = [
                 "kind": "LinkedField",
                 "name": "quantity",
                 "plural": false,
-                "selections": (v8/*:: as any*/),
+                "selections": (v7/*:: as any*/),
                 "storageKey": null
               },
               {
@@ -360,7 +359,7 @@ v10 = [
                     "kind": "LinkedField",
                     "name": "basis",
                     "plural": false,
-                    "selections": (v8/*:: as any*/),
+                    "selections": (v7/*:: as any*/),
                     "storageKey": null
                   }
                 ],
@@ -381,11 +380,17 @@ v10 = [
                     "name": "numeratorYen",
                     "storageKey": null
                   },
-                  (v7/*:: as any*/)
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "denominatorYen",
+                    "storageKey": null
+                  }
                 ],
                 "storageKey": null
               },
-              (v9/*:: as any*/),
+              (v8/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -451,7 +456,7 @@ v10 = [
                     "name": "archived",
                     "storageKey": null
                   },
-                  (v9/*:: as any*/)
+                  (v8/*:: as any*/)
                 ],
                 "storageKey": null
               }
@@ -480,7 +485,7 @@ v10 = [
             "storageKey": null
           },
           (v6/*:: as any*/),
-          (v9/*:: as any*/),
+          (v8/*:: as any*/),
           {
             "alias": null,
             "args": null,
@@ -518,7 +523,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "PurchaseChangesSubscription",
-    "selections": (v10/*:: as any*/),
+    "selections": (v9/*:: as any*/),
     "type": "Subscription",
     "abstractKey": null
   },
@@ -530,15 +535,15 @@ return {
     ],
     "kind": "Operation",
     "name": "PurchaseChangesSubscription",
-    "selections": (v10/*:: as any*/)
+    "selections": (v9/*:: as any*/)
   },
   "params": {
-    "cacheID": "0439b2c26c87fe93e300b77eed8f05eb",
+    "cacheID": "0bd03eb9e293dc446fd85c9d648d2358",
     "id": null,
     "metadata": {},
     "name": "PurchaseChangesSubscription",
     "operationKind": "subscription",
-    "text": "subscription PurchaseChangesSubscription(\n  $householdId: ID!\n  $after: String\n) {\n  purchaseChanges(householdId: $householdId, after: $after) {\n    cursor\n    entityId\n    entityKind\n    kind\n    changedFields\n    purchase {\n      id\n      householdId\n      occurredAt\n      datePrecision\n      merchant\n      origin\n      hasEvidence\n      sourceKinds\n      paymentAllocations {\n        paymentAccountId\n        amountYen\n        account {\n          id\n          name\n        }\n      }\n      items {\n        id\n        name\n        amountYen\n        remainingRefundableAmountYen\n        currency\n        quantity {\n          numerator\n          denominator\n          unit\n        }\n        printedUnitPrice {\n          amountYen\n          basis {\n            numerator\n            denominator\n            unit\n          }\n        }\n        effectiveUnitPrice {\n          numeratorYen\n          denominator\n        }\n        revision\n        categoryId\n        productVariantId\n        allocations {\n          poolId\n          poolName\n          weight\n          amountYen\n        }\n        tags {\n          id\n          householdId\n          name\n          archived\n          revision\n        }\n      }\n      totalYen\n      correctionAmountYen\n      correctionCount\n      remainingRefundableAmountYen\n      revision\n      status\n      createdAt\n      updatedAt\n    }\n  }\n}\n"
+    "text": "subscription PurchaseChangesSubscription(\n  $householdId: ID!\n  $after: String\n) {\n  purchaseChanges(householdId: $householdId, after: $after) {\n    cursor\n    entityId\n    entityKind\n    kind\n    changedFields\n    purchase {\n      id\n      householdId\n      occurredAt\n      datePrecision\n      merchant\n      origin\n      hasEvidence\n      sourceKinds\n      paymentAllocations {\n        paymentAccountId\n        amountYen\n        account {\n          id\n          name\n        }\n      }\n      items {\n        id\n        name\n        amountYen\n        remainingRefundableAmountYen\n        currency\n        quantity {\n          numerator\n          denominator\n          unit\n        }\n        printedUnitPrice {\n          amountYen\n          basis {\n            numerator\n            denominator\n            unit\n          }\n        }\n        effectiveUnitPrice {\n          numeratorYen\n          denominatorYen\n        }\n        revision\n        categoryId\n        productVariantId\n        allocations {\n          poolId\n          poolName\n          weight\n          amountYen\n        }\n        tags {\n          id\n          householdId\n          name\n          archived\n          revision\n        }\n      }\n      totalYen\n      correctionAmountYen\n      correctionCount\n      remainingRefundableAmountYen\n      revision\n      status\n      createdAt\n      updatedAt\n    }\n  }\n}\n"
   }
 };
 })();

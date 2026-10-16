@@ -18,7 +18,7 @@ export function mapPurchaseItem(item: PurchaseListItem): PurchaseItem {
     printedUnitPriceQuantityDenominator: item.printedUnitPrice?.basis.denominator ?? null,
     printedUnitPriceUnit: item.printedUnitPrice?.basis.unit ?? null,
     effectiveUnitPriceNumeratorYen: item.effectiveUnitPrice?.numeratorYen ?? null,
-    effectiveUnitPriceDenominator: item.effectiveUnitPrice?.denominator ?? null,
+    effectiveUnitPriceDenominator: item.effectiveUnitPrice?.denominatorYen ?? null,
     categoryId: item.categoryId,
     productVariantId: item.productVariantId,
     allocations: item.allocations.map((allocation) => ({

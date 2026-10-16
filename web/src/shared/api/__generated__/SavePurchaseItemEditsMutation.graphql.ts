@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4ac02176c483be0147347665d9456b5c>>
+ * @generated SignedSource<<c97b9a2c867487351b2b2c24b7bfc4f0>>
  * @lightSyntaxTransform
  */
 
@@ -81,7 +81,7 @@ export type SavePurchaseItemEditsMutation$data = {
       readonly categoryId: string | null | undefined;
       readonly currency: string;
       readonly effectiveUnitPrice: {
-        readonly denominator: string;
+        readonly denominatorYen: string;
         readonly numeratorYen: string;
       } | null | undefined;
       readonly id: string;
@@ -154,14 +154,7 @@ v3 = {
   "name": "amountYen",
   "storageKey": null
 },
-v4 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "denominator",
-  "storageKey": null
-},
-v5 = [
+v4 = [
   {
     "alias": null,
     "args": null,
@@ -169,7 +162,13 @@ v5 = [
     "name": "numerator",
     "storageKey": null
   },
-  (v4/*:: as any*/),
+  {
+    "alias": null,
+    "args": null,
+    "kind": "ScalarField",
+    "name": "denominator",
+    "storageKey": null
+  },
   {
     "alias": null,
     "args": null,
@@ -178,14 +177,14 @@ v5 = [
     "storageKey": null
   }
 ],
-v6 = {
+v5 = {
   "alias": null,
   "args": null,
   "kind": "ScalarField",
   "name": "revision",
   "storageKey": null
 },
-v7 = [
+v6 = [
   {
     "alias": null,
     "args": [
@@ -242,7 +241,7 @@ v7 = [
                 "kind": "LinkedField",
                 "name": "quantity",
                 "plural": false,
-                "selections": (v5/*:: as any*/),
+                "selections": (v4/*:: as any*/),
                 "storageKey": null
               },
               {
@@ -261,7 +260,7 @@ v7 = [
                     "kind": "LinkedField",
                     "name": "basis",
                     "plural": false,
-                    "selections": (v5/*:: as any*/),
+                    "selections": (v4/*:: as any*/),
                     "storageKey": null
                   }
                 ],
@@ -282,11 +281,17 @@ v7 = [
                     "name": "numeratorYen",
                     "storageKey": null
                   },
-                  (v4/*:: as any*/)
+                  {
+                    "alias": null,
+                    "args": null,
+                    "kind": "ScalarField",
+                    "name": "denominatorYen",
+                    "storageKey": null
+                  }
                 ],
                 "storageKey": null
               },
-              (v6/*:: as any*/),
+              (v5/*:: as any*/),
               {
                 "alias": null,
                 "args": null,
@@ -358,7 +363,7 @@ v7 = [
                     "name": "archived",
                     "storageKey": null
                   },
-                  (v6/*:: as any*/)
+                  (v5/*:: as any*/)
                 ],
                 "storageKey": null
               }
@@ -400,7 +405,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "SavePurchaseItemEditsMutation",
-    "selections": (v7/*:: as any*/),
+    "selections": (v6/*:: as any*/),
     "type": "Mutation",
     "abstractKey": null
   },
@@ -409,15 +414,15 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "SavePurchaseItemEditsMutation",
-    "selections": (v7/*:: as any*/)
+    "selections": (v6/*:: as any*/)
   },
   "params": {
-    "cacheID": "4bdbcfd50e130affdd5863b4eb0dfe5d",
+    "cacheID": "fc3e6a64fbb3bd6b6f389fe7e3d98e87",
     "id": null,
     "metadata": {},
     "name": "SavePurchaseItemEditsMutation",
     "operationKind": "mutation",
-    "text": "mutation SavePurchaseItemEditsMutation(\n  $input: SavePurchaseItemEditsInput!\n) {\n  savePurchaseItemEdits(input: $input) {\n    __typename\n    ... on SavePurchaseItemEditsSuccess {\n      items {\n        id\n        name\n        amountYen\n        remainingRefundableAmountYen\n        currency\n        quantity {\n          numerator\n          denominator\n          unit\n        }\n        printedUnitPrice {\n          amountYen\n          basis {\n            numerator\n            denominator\n            unit\n          }\n        }\n        effectiveUnitPrice {\n          numeratorYen\n          denominator\n        }\n        revision\n        categoryId\n        productVariantId\n        allocations {\n          poolId\n          poolName\n          weight\n          amountYen\n        }\n        tags {\n          id\n          householdId\n          name\n          archived\n          revision\n        }\n      }\n    }\n    ... on SavePurchaseItemEditsUserError {\n      code\n      message\n    }\n  }\n}\n"
+    "text": "mutation SavePurchaseItemEditsMutation(\n  $input: SavePurchaseItemEditsInput!\n) {\n  savePurchaseItemEdits(input: $input) {\n    __typename\n    ... on SavePurchaseItemEditsSuccess {\n      items {\n        id\n        name\n        amountYen\n        remainingRefundableAmountYen\n        currency\n        quantity {\n          numerator\n          denominator\n          unit\n        }\n        printedUnitPrice {\n          amountYen\n          basis {\n            numerator\n            denominator\n            unit\n          }\n        }\n        effectiveUnitPrice {\n          numeratorYen\n          denominatorYen\n        }\n        revision\n        categoryId\n        productVariantId\n        allocations {\n          poolId\n          poolName\n          weight\n          amountYen\n        }\n        tags {\n          id\n          householdId\n          name\n          archived\n          revision\n        }\n      }\n    }\n    ... on SavePurchaseItemEditsUserError {\n      code\n      message\n    }\n  }\n}\n"
   }
 };
 })();
