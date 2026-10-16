@@ -1,8 +1,9 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use catalog_application::{
-    create_product::{CreateConceptCommand, CreateVariantCommand},
-    product_alias::{SetProductAliasCommand, decide_set_product_alias},
+use catalog_domain::{
+    product_alias::SetProductAliasCommand,
+    product_alias::decide_set_product_alias,
+    product_creation::{CreateConceptCommand, CreateVariantCommand},
     tag::{CreateTagCommand, SetTagArchivedCommand, Tag as DomainTag, UpdateTagCommand},
 };
 use catalog_postgres::{

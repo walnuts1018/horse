@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    AccountingPeriod, AccountingPeriodStatus, AllocationShares, AllocationWeight, BalancedJournal,
-    PoolId, PositiveYen, Yen, allocate,
+    AllocationShares, AllocationWeight, BalancedJournal, OpenAccountingPeriod, PoolId, PositiveYen,
+    Yen, allocate,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -429,13 +429,13 @@ pub struct PaymentFundingBasis {
 pub struct PostPurchaseCommand {
     pub draft: DraftPurchase,
     pub expected_revision: u64,
-    pub period: AccountingPeriod,
+    pub period: OpenAccountingPeriod,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostPurchaseDecision {
     purchase: PostedPurchase,
-    period: AccountingPeriod,
+    period: OpenAccountingPeriod,
     events: Vec<PurchaseEvent>,
 }
 
@@ -449,7 +449,7 @@ impl PostPurchaseDecision {
     pub fn purchase(&self) -> &PostedPurchase {
         &self.purchase
     }
-    pub fn period(&self) -> &AccountingPeriod {
+    pub fn period(&self) -> &OpenAccountingPeriod {
         &self.period
     }
     pub fn journal(&self) -> &BalancedJournal {
@@ -642,9 +642,6 @@ pub enum PostPurchaseError {
 pub fn decide_post_purchase(
     command: PostPurchaseCommand,
 ) -> Result<PostPurchaseDecision, PostPurchaseError> {
-    if command.period.status() != AccountingPeriodStatus::Open {
-        return Err(PostPurchaseError::AccountingPeriodClosed);
-    }
     if command.draft.revision != command.expected_revision {
         return Err(PostPurchaseError::RevisionMismatch {
             expected: command.expected_revision,
@@ -991,7 +988,7 @@ mod tests {
         let command = PostPurchaseCommand {
             draft,
             expected_revision: 1,
-            period: AccountingPeriod::open(YearMonth::new(2026, 10).expect("valid month"), 1)
+            period: OpenAccountingPeriod::new(YearMonth::new(2026, 10).expect("valid month"), 1)
                 .expect("valid period"),
         };
         assert_eq!(

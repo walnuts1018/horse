@@ -1,11 +1,9 @@
 use std::collections::BTreeSet;
 
-use bookkeeping_application::{
-    save_purchase_item_edits::{
-        SavePurchaseItemEditsCommand, SavePurchaseItemEditsError, decide_save_purchase_item_edits,
-    },
-    update_purchase::{UpdatePurchaseCommand, UpdatePurchaseDraft, decide_update_purchase},
-    update_purchase_item::UpdatePurchaseItemCommand,
+use bookkeeping_domain::purchase_commands::{
+    SavePurchaseItemEditsCommand, SavePurchaseItemEditsError, UpdatePurchaseCommand,
+    UpdatePurchaseDraft, UpdatePurchaseItemCommand, decide_save_purchase_item_edits,
+    decide_update_purchase,
 };
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -215,7 +213,7 @@ pub async fn persist_save_purchase_item_edits<
                     _ => {
                         return Err(SavePurchaseItemEditsPersistenceError::InvalidPurchaseUpdate(
                             update_purchase::UpdatePurchasePersistenceError::InvalidDecision(
-                                bookkeeping_application::update_purchase::UpdatePurchaseError::NotEditable,
+                                bookkeeping_domain::purchase_commands::UpdatePurchaseError::NotEditable,
                             ),
                         ));
                     }

@@ -11,7 +11,9 @@ use bookkeeping_application::{
     },
     record_transfer::{PoolKind as TransferPoolKind, TransferAccount},
 };
-use bookkeeping_domain::{AccountingPeriod, PoolId, PositiveYen, YearMonth, Yen};
+use bookkeeping_domain::{
+    AccountingPeriod, OpenAccountingPeriod, PoolId, PositiveYen, YearMonth, Yen,
+};
 
 use crate::{PgPool, schema::public};
 
@@ -21,6 +23,7 @@ pub enum FinancialCommandContextError {
     Database(diesel::result::Error),
     InvalidTokyoOffset,
     InvalidAccountingPeriod(String),
+    AccountingPeriodClosed,
     InvalidPoolKind(String),
     InvalidAccountKind(String),
     InvalidLoan,
@@ -37,14 +40,14 @@ impl From<diesel::result::Error> for FinancialCommandContextError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransferCommandContext {
-    pub accounting_period: AccountingPeriod,
+    pub accounting_period: OpenAccountingPeriod,
     pub payment_account: Option<TransferAccount>,
     pub destination_account: Option<TransferAccount>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepaymentCommandContext {
-    pub accounting_period: AccountingPeriod,
+    pub accounting_period: OpenAccountingPeriod,
     pub loan: RepaymentLoan,
     pub repaid_so_far: Yen,
     pub source: Option<RepaymentSource>,
@@ -216,7 +219,7 @@ async fn load_period(
     pool: &PgPool,
     household_id: Uuid,
     occurred_at: DateTime<Utc>,
-) -> Result<(NaiveDate, AccountingPeriod), FinancialCommandContextError> {
+) -> Result<(NaiveDate, OpenAccountingPeriod), FinancialCommandContextError> {
     let tokyo = FixedOffset::east_opt(9 * 60 * 60)
         .ok_or(FinancialCommandContextError::InvalidTokyoOffset)?;
     let period_start = occurred_at
@@ -267,7 +270,9 @@ async fn load_period(
             }
         }
     }
-    .map_err(|_| FinancialCommandContextError::InvalidAccountingPeriod(period_start.to_string()))?;
+    .map_err(|_| FinancialCommandContextError::InvalidAccountingPeriod(period_start.to_string()))?
+    .into_open()
+    .map_err(|_| FinancialCommandContextError::AccountingPeriodClosed)?;
     Ok((period_start, accounting_period))
 }
 

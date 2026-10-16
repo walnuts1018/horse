@@ -1,13 +1,13 @@
 use std::{collections::BTreeMap, future::Future};
 
-use bookkeeping_application::update_purchase_item::{
-    AllocationBasis, ItemAllocationWeight, OptionalValueChange, ProductLearning, PurchaseItemState,
-    UpdatePurchaseItemCommand, UpdatePurchaseItemDecision, UpdatePurchaseItemError,
-    decide_update_purchase_item,
-};
 use bookkeeping_application::{
     MemberFundingBasis, MemberId, MemberWeight, PostingTarget, SettlementPolicy,
     decide_post_purchase,
+};
+use bookkeeping_domain::purchase_commands::{
+    AllocationBasis, OptionalValueChange, ProductLearning, PurchaseItemState,
+    UpdatePurchaseItemCommand, UpdatePurchaseItemDecision, UpdatePurchaseItemError,
+    UpdatedItemAllocationWeight as ItemAllocationWeight, decide_update_purchase_item,
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
@@ -737,7 +737,7 @@ async fn validate_references<C: UpdatePurchaseItemReferenceData>(
 async fn validate_pools(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
-    allocations: &[bookkeeping_application::update_purchase_item::ItemAllocation],
+    allocations: &[bookkeeping_domain::purchase_commands::UpdatedItemAllocation],
 ) -> Result<(), UpdatePurchaseItemPersistenceError> {
     let ids = allocations
         .iter()
@@ -1222,7 +1222,7 @@ fn measure(
     denominator: Option<i64>,
     unit: Option<String>,
 ) -> Result<
-    Option<bookkeeping_application::create_purchase::Measure>,
+    Option<bookkeeping_domain::purchase_commands::Measure>,
     UpdatePurchaseItemPersistenceError,
 > {
     match (numerator, denominator, unit) {
@@ -1230,12 +1230,9 @@ fn measure(
         (Some(numerator), Some(denominator), Some(unit)) => {
             let unit = persistence_values::parse_quantity_unit(&unit)
                 .ok_or(UpdatePurchaseItemPersistenceError::InvalidDecision)?;
-            let measure = bookkeeping_application::create_purchase::Measure::new(
-                numerator,
-                denominator,
-                unit,
-            )
-            .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidDecision)?;
+            let measure =
+                bookkeeping_domain::purchase_commands::Measure::new(numerator, denominator, unit)
+                    .map_err(|_| UpdatePurchaseItemPersistenceError::InvalidDecision)?;
             Ok(Some(measure))
         }
         _ => Err(UpdatePurchaseItemPersistenceError::InvalidDecision),
@@ -1248,7 +1245,7 @@ fn printed_price(
     denominator: Option<i64>,
     unit: Option<String>,
 ) -> Result<
-    Option<bookkeeping_application::update_purchase_item::PrintedUnitPrice>,
+    Option<bookkeeping_domain::purchase_commands::UpdatedPrintedUnitPrice>,
     UpdatePurchaseItemPersistenceError,
 > {
     match (yen, numerator, denominator, unit) {
@@ -1257,7 +1254,7 @@ fn printed_price(
             let basis = measure(Some(numerator), Some(denominator), Some(unit))?
                 .ok_or(UpdatePurchaseItemPersistenceError::InvalidDecision)?;
             Ok(Some(
-                bookkeeping_application::update_purchase_item::PrintedUnitPrice {
+                bookkeeping_domain::purchase_commands::UpdatedPrintedUnitPrice {
                     amount_yen,
                     basis,
                 },

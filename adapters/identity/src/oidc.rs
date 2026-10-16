@@ -364,21 +364,9 @@ impl AuthService {
     }
 
     pub fn accepts_origin(&self, origin: &str) -> bool {
-        let Ok(origin) = Url::parse(origin) else {
-            return false;
-        };
         [&self.config.public_origin, &self.config.frontend_origin]
             .into_iter()
-            .filter_map(|expected| Url::parse(expected).ok())
-            .any(|expected| {
-                expected.scheme().eq_ignore_ascii_case(origin.scheme())
-                    && expected.host_str().is_some_and(|host| {
-                        origin
-                            .host_str()
-                            .is_some_and(|actual| host.eq_ignore_ascii_case(actual))
-                    })
-                    && expected.port_or_known_default() == origin.port_or_known_default()
-            })
+            .any(|expected| crate::origins_match(origin, expected))
     }
 
     async fn connection(

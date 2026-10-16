@@ -30,8 +30,8 @@ pub struct UpdatePurchaseItemReferences;
 pub async fn persist_bulk_update_purchase_items(
     pool: &horse_postgres_common::PgPool,
     input: bookkeeping_postgres::bulk_update_purchase_items::PersistBulkUpdatePurchaseItems,
-    targets: Vec<bookkeeping_application::bulk_update_items::BulkUpdateItemTarget>,
-    patch: bookkeeping_application::bulk_update_items::BulkUpdateItemPatch,
+    targets: Vec<bookkeeping_domain::purchase_commands::BulkUpdateItemTarget>,
+    patch: bookkeeping_domain::purchase_commands::BulkUpdateItemPatch,
 ) -> Result<
     bookkeeping_postgres::bulk_update_purchase_items::PersistedBulkUpdatePurchaseItems,
     bookkeeping_postgres::bulk_update_purchase_items::BulkUpdatePurchaseItemsPersistenceError,
@@ -49,7 +49,7 @@ pub async fn persist_bulk_update_purchase_items(
 pub async fn persist_bulk_update_purchases(
     pool: &horse_postgres_common::PgPool,
     input: bookkeeping_postgres::bulk_update_purchases::PersistBulkUpdatePurchases,
-    commands: Vec<bookkeeping_application::update_purchase::UpdatePurchaseCommand>,
+    commands: Vec<bookkeeping_domain::purchase_commands::UpdatePurchaseCommand>,
 ) -> Result<
     Vec<String>,
     bookkeeping_postgres::bulk_update_purchases::BulkUpdatePurchasesPersistenceError,
@@ -83,8 +83,8 @@ pub async fn post_purchase_workflow(
 pub async fn persist_update_purchase(
     pool: &horse_postgres_common::PgPool,
     input: PersistUpdatePurchase,
-    command: bookkeeping_application::update_purchase::UpdatePurchaseCommand,
-    decision: bookkeeping_application::update_purchase::UpdatePurchaseDecision,
+    command: bookkeeping_domain::purchase_commands::UpdatePurchaseCommand,
+    decision: bookkeeping_domain::purchase_commands::UpdatePurchaseDecision,
 ) -> Result<PersistedUpdatePurchase, UpdatePurchasePersistenceError> {
     bookkeeping_postgres::update_purchase::persist_update_purchase(
         pool,
@@ -99,7 +99,7 @@ pub async fn persist_update_purchase(
 pub async fn persist_bulk_delete_purchase_items(
     pool: &horse_postgres_common::PgPool,
     input: PersistBulkDeletePurchaseItems,
-    targets: Vec<bookkeeping_application::bulk_delete_items::BulkDeleteItemTarget>,
+    targets: Vec<bookkeeping_domain::purchase_commands::BulkDeleteItemTarget>,
 ) -> Result<PersistedBulkDeletePurchaseItems, BulkDeletePurchaseItemsPersistenceError> {
     bookkeeping_postgres::bulk_delete_purchase_items::persist_bulk_delete_purchase_items(
         pool,
@@ -113,8 +113,8 @@ pub async fn persist_bulk_delete_purchase_items(
 pub async fn persist_save_purchase_item_edits(
     pool: &horse_postgres_common::PgPool,
     input: PersistSavePurchaseItemEdits,
-    items: Vec<bookkeeping_application::update_purchase_item::UpdatePurchaseItemCommand>,
-    purchase_patch: Option<bookkeeping_application::update_purchase::UpdatePurchaseCommand>,
+    items: Vec<bookkeeping_domain::purchase_commands::UpdatePurchaseItemCommand>,
+    purchase_patch: Option<bookkeeping_domain::purchase_commands::UpdatePurchaseCommand>,
 ) -> Result<Vec<String>, SavePurchaseItemEditsPersistenceError> {
     bookkeeping_postgres::save_purchase_item_edits::persist_save_purchase_item_edits(
         pool,
@@ -129,7 +129,7 @@ pub async fn persist_save_purchase_item_edits(
 pub async fn persist_update_purchase_item(
     pool: &horse_postgres_common::PgPool,
     input: PersistUpdatePurchaseItem,
-    command: bookkeeping_application::update_purchase_item::UpdatePurchaseItemCommand,
+    command: bookkeeping_domain::purchase_commands::UpdatePurchaseItemCommand,
 ) -> Result<PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError> {
     bookkeeping_postgres::update_purchase_item::persist_update_purchase_item(
         pool,
@@ -339,13 +339,13 @@ impl UpdatePurchaseItemReferenceData for UpdatePurchaseItemReferences {
             ProductLearningCommand, ProductLearningKind, decide_product_learning,
         };
         let learning = context.learning.map(|learning| match learning {
-            bookkeeping_application::update_purchase_item::ProductLearning::VariantName(name) => {
+            bookkeeping_domain::purchase_commands::ProductLearning::VariantName(name) => {
                 ProductLearningKind::VariantName(name)
             }
-            bookkeeping_application::update_purchase_item::ProductLearning::MerchantAlias => {
+            bookkeeping_domain::purchase_commands::ProductLearning::MerchantAlias => {
                 ProductLearningKind::MerchantAlias
             }
-            bookkeeping_application::update_purchase_item::ProductLearning::ItemOnly => {
+            bookkeeping_domain::purchase_commands::ProductLearning::ItemOnly => {
                 ProductLearningKind::ItemOnly
             }
         });
@@ -425,10 +425,10 @@ impl SharedDraftReferenceData for SharedDraftReferences {
         &mut self,
         conn: &mut diesel_async::AsyncPgConnection,
         household_id: Uuid,
-        kind: bookkeeping_application::shared_draft::DraftReferenceKind,
+        kind: bookkeeping_domain::purchase_commands::DraftReferenceKind,
         ids: &[Uuid],
     ) -> Result<Vec<Uuid>, DieselError> {
-        use bookkeeping_application::shared_draft::DraftReferenceKind;
+        use bookkeeping_domain::purchase_commands::DraftReferenceKind;
         match kind {
             DraftReferenceKind::Account => {
                 public::accounts::table

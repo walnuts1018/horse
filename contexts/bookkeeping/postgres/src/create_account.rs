@@ -1,4 +1,5 @@
-use bookkeeping_application::create_account::{
+use bookkeeping_application::workflow_failure::WorkflowFailure;
+use bookkeeping_domain::create_account::{
     CreateAccountCommand, CreateAccountError, decide_create_account,
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
@@ -38,6 +39,30 @@ impl From<DieselError> for CreateAccountPersistenceError {
 }
 
 pub async fn persist_create_account(
+    pool: &PgPool,
+    command: CreateAccountCommand,
+) -> Result<
+    PersistedCreateAccount,
+    WorkflowFailure<CreateAccountError, CreateAccountPersistenceError>,
+> {
+    persist_create_account_inner(pool, command)
+        .await
+        .map_err(|error| match error {
+            CreateAccountPersistenceError::InvalidWorkflow(error) => {
+                WorkflowFailure::Decision(error)
+            }
+            CreateAccountPersistenceError::InvalidOpeningDate => {
+                WorkflowFailure::Decision(CreateAccountError::InvalidOpeningDate)
+            }
+            CreateAccountPersistenceError::HouseholdNotFound
+            | CreateAccountPersistenceError::MemberNotFound
+            | CreateAccountPersistenceError::PoolNotFound => WorkflowFailure::NotFound,
+            CreateAccountPersistenceError::AccountingPeriodClosed => WorkflowFailure::Conflict,
+            error => WorkflowFailure::Infrastructure(error),
+        })
+}
+
+async fn persist_create_account_inner(
     pool: &PgPool,
     command: CreateAccountCommand,
 ) -> Result<PersistedCreateAccount, CreateAccountPersistenceError> {

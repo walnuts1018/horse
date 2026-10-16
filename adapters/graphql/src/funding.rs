@@ -1,8 +1,7 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::funding_record::{
-    RecordFundingCommand, RecordFundingError, RecordFundingWorkflowCommand,
-};
+use bookkeeping_application::funding_record::RecordFundingWorkflowCommand;
+use bookkeeping_domain::funding_record::{RecordFundingCommand, RecordFundingError};
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
 use bookkeeping_postgres::funding_command_context as postgres_funding_context;
 use bookkeeping_postgres::funding_record::{PersistRecordFunding, RecordFundingPersistenceError};
@@ -185,7 +184,10 @@ fn parse_input(
             member_id: member_id.to_string(),
             pool_id: pool_id.to_string(),
             amount_yen: input.amount_yen.0,
-            accounting_period: AccountingPeriod::open(period, 1).map_err(|_| bad_input_error())?,
+            accounting_period: AccountingPeriod::open(period, 1)
+                .map_err(|_| bad_input_error())?
+                .into_open()
+                .map_err(|_| bad_input_error())?,
             source_account: None,
             destination_account: None,
         },
@@ -258,6 +260,7 @@ fn command_context_error(
     use postgres_funding_context::FundingCommandContextError as E;
     match error {
         E::HouseholdNotFound | E::PoolNotFound | E::AccountNotFound(_) => Some(not_found_error()),
+        E::AccountingPeriodClosed => Some(conflict_error()),
         E::Database(_) => None,
         E::InvalidTokyoOffset
         | E::InvalidAccountingPeriodStatus(_)

@@ -10,7 +10,11 @@ use policy_application::{
         SetAllocationRuleCommand,
     },
     set_default_allocation::{DefaultAllocationWeight, SetDefaultAllocationCommand},
-    set_funding_schedule::SetFundingScheduleCommand,
+    set_funding_schedule::{
+        ActorId as FundingActorId, FundingScheduleAmount, FundingScheduleCadence as PolicyCadence,
+        FundingScheduleDate, FundingScheduleId, HouseholdId as FundingHouseholdId,
+        MemberId as FundingMemberId, PoolId as FundingPoolId, SetFundingScheduleCommand,
+    },
 };
 use policy_postgres::{
     set_allocation_rule as postgres_allocation_rule,
@@ -106,6 +110,8 @@ pub struct SetFundingScheduleInput {
 #[derive(Clone, Copy, Debug, async_graphql::Enum, Eq, PartialEq)]
 pub enum FundingScheduleCadence {
     Monthly,
+    Weekly,
+    Custom,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -482,20 +488,24 @@ pub async fn set_funding_schedule(
         Ok(id) => id,
         Err(()) => return Ok(set_funding_schedule_error(MutationErrorCode::BadInput).into()),
     };
+    let amount = match FundingScheduleAmount::new(input.amount_yen.0) {
+        Ok(amount) => amount,
+        Err(_) => return Ok(set_funding_schedule_error(MutationErrorCode::BadInput).into()),
+    };
     let command = SetFundingScheduleCommand {
-        actor_id: actor.0.to_string(),
-        household_id: household_id.to_string(),
-        member_id: member_id.to_string(),
-        pool_id: pool_id.to_string(),
-        schedule_id: Uuid::now_v7().to_string(),
-        amount_yen: input.amount_yen.0,
+        actor_id: FundingActorId::from(actor.0),
+        household_id: FundingHouseholdId::from(household_id),
+        member_id: FundingMemberId::from(member_id),
+        pool_id: FundingPoolId::from(pool_id),
+        schedule_id: FundingScheduleId::from(Uuid::now_v7()),
+        amount,
         cadence: match input.cadence {
-            FundingScheduleCadence::Monthly => "MONTHLY".to_owned(),
+            FundingScheduleCadence::Monthly => PolicyCadence::Monthly,
+            FundingScheduleCadence::Weekly => PolicyCadence::Weekly,
+            FundingScheduleCadence::Custom => PolicyCadence::Custom,
         },
-        starts_on: input.starts_on.0.format("%Y-%m-%d").to_string(),
-        ends_on: input
-            .ends_on
-            .map(|value| value.0.format("%Y-%m-%d").to_string()),
+        starts_on: FundingScheduleDate::new(input.starts_on.0),
+        ends_on: input.ends_on.map(|value| FundingScheduleDate::new(value.0)),
     };
     match postgres_funding_schedule::persist_set_funding_schedule(ctx.data::<PgPool>()?, command)
         .await
@@ -579,7 +589,16 @@ pub(crate) fn map_funding_schedule_projection(
         member_id: encode_node_id("Member", &value.member_id)?,
         pool_id: encode_node_id("Pool", &value.pool_id)?,
         amount_yen: Long(value.amount_yen),
-        cadence: FundingScheduleCadence::Monthly,
+        cadence: match value.cadence.as_str() {
+            "MONTHLY" => FundingScheduleCadence::Monthly,
+            "WEEKLY" => FundingScheduleCadence::Weekly,
+            "CUSTOM" => FundingScheduleCadence::Custom,
+            cadence => {
+                return Err(crate::internal_error(format!(
+                    "invalid funding schedule cadence {cadence}"
+                )));
+            }
+        },
         starts_on: crate::policy_mutations::Date(
             chrono::NaiveDate::parse_from_str(&value.starts_on, "%Y-%m-%d")
                 .map_err(crate::internal_error)?,

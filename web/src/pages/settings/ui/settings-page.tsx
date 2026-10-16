@@ -15,6 +15,7 @@ import { ManageAllocationCatalog } from "./manage-allocation-catalog";
 import { ManageBudgets } from "./manage-budgets";
 import { ManageCategoriesSection } from "./manage-categories-section";
 import { ManageDefaultAllocationSection } from "./manage-default-allocation-section";
+import { ManageFundingSchedules } from "./manage-funding-schedules";
 import { ManageHouseholdInvitations } from "./manage-household-invitations";
 import { ManageRecurringExpenses } from "./manage-recurring-expenses";
 import { ManageTags } from "./manage-tags";
@@ -179,6 +180,14 @@ export function SettingsPage({
           onFormDirty={changes.markFormDirty}
           onFormClean={changes.markFormClean}
           onPendingChange={(pending) => changes.setPending("recurring-expenses", pending)}
+        />
+        <ManageFundingSchedules
+          household={household}
+          hidden={activeTab !== "planning"}
+          onNotice={onNotice}
+          onFormDirty={changes.markFormDirty}
+          onFormClean={changes.markFormClean}
+          onPendingChange={(pending) => changes.setPending("funding-schedule", pending)}
         />
         <ManageAccountActivity
           household={household}

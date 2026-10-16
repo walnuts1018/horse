@@ -69,6 +69,8 @@ pub(crate) async fn load_funding_schedules(
     {
         let cadence = match cadence.as_str() {
             "MONTHLY" => FundingScheduleCadence::Monthly,
+            "WEEKLY" => FundingScheduleCadence::Weekly,
+            "CUSTOM" => FundingScheduleCadence::Custom,
             value => {
                 return Err(crate::internal_error(format!(
                     "invalid funding schedule cadence {value}"

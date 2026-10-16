@@ -1,0 +1,91 @@
+.section {
+  padding: 18px 18px 15px;
+}
+
+.panelHeading {
+  align-items: center;
+}
+
+.panelHeading h2 {
+  font-size: 15px;
+}
+
+.fundingScheduleFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.fundingScheduleFormGrid label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fundingScheduleFormGrid input,
+.fundingScheduleFormGrid select {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 9px;
+  color: var(--ink);
+  background: #fff;
+  font-size: 14px;
+}
+
+.settingsSave {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #eef1ee;
+  padding-top: 12px;
+  color: #5f6d65;
+  font-size: 12px;
+}
+
+.settingsSaveButton {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.settingsRows {
+  margin: 10px 0 12px;
+}
+
+.settingRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 49px;
+  border-bottom: 1px solid #f0f3f0;
+}
+
+.settingRow:last-child {
+  border: 0;
+}
+
+.settingRow b,
+.settingRow small {
+  display: block;
+}
+
+.settingRow b {
+  font-size: 12px;
+  color: #526259;
+}
+
+.settingRow small {
+  margin-top: 3px;
+  color: #5f6d65;
+  font-size: 12px;
+}
+
+@media (width <= 760px) {
+  .fundingScheduleFormGrid {
+    grid-template-columns: 1fr;
+  }
+}

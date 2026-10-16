@@ -95,6 +95,8 @@ async fn workflow_error_rolls_back_the_idempotency_record() {
             pool_id: pool_id.to_string(),
             amount_yen: 1200,
             accounting_period: AccountingPeriod::open(YearMonth::new(2026, 10).unwrap(), 1)
+                .unwrap()
+                .into_open()
                 .unwrap(),
             source_account: None::<FundingAccount>,
             destination_account: None::<FundingAccount>,

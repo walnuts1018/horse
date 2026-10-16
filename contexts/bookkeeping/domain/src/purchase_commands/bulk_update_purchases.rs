@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::update_purchase::{
+use super::update_purchase::{
     UpdatePurchaseCommand, UpdatePurchaseDecision, UpdatePurchaseDraft, UpdatePurchaseError,
     decide_update_purchase,
 };

@@ -1,5 +1,7 @@
-use crate::authorization::{self, Operation, Role};
-use horse_household_change::UiChangeDescriptor;
+use household_domain::membership::{self, ActorId, HouseholdId, MemberId};
+pub use household_domain::membership::{
+    MembershipChange, MembershipChangeDecision, MembershipError, MembershipFacts,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeaveHouseholdCommand {
@@ -21,54 +23,6 @@ pub struct TransferOwnerCommand {
     pub new_owner_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MembershipChangeDecision {
-    pub actor_id: String,
-    pub household_id: String,
-    pub member_id: String,
-    pub change: MembershipChange,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MembershipChange {
-    Leave,
-    Remove,
-    TransferOwner { new_owner_was_owner: bool },
-}
-
-impl MembershipChange {
-    pub fn ui_change(self) -> UiChangeDescriptor {
-        match self {
-            Self::Leave => UiChangeDescriptor::new("household.member.left", "member", ["members"]),
-            Self::Remove => {
-                UiChangeDescriptor::new("household.member.removed", "member", ["members"])
-            }
-            Self::TransferOwner { .. } => UiChangeDescriptor::new(
-                "household.owner.transferred",
-                "member",
-                ["members", "owner"],
-            ),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MembershipError {
-    InvalidIdentifier,
-    Forbidden,
-    SelfTransfer,
-    LastOwner,
-    ReferencedMember,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MembershipFacts {
-    pub actor_role: Option<String>,
-    pub target_role: Option<String>,
-    pub owner_count: usize,
-    pub has_active_funding_reference: bool,
-}
-
 pub trait LeaveHouseholdOperations {
     type Error: From<MembershipError>;
 
@@ -85,7 +39,9 @@ pub async fn leave_household<O: LeaveHouseholdOperations>(
     operations: &mut O,
     command: LeaveHouseholdCommand,
 ) -> Result<String, O::Error> {
-    validate_identifiers(&command.member_id, &command.household_id, None)?;
+    let actor_id = ActorId::new(&command.member_id)?;
+    let household_id = HouseholdId::new(&command.household_id)?;
+    let member_id = MemberId::new(&command.member_id)?;
     let facts = operations
         .load_facts(
             &command.household_id,
@@ -93,8 +49,10 @@ pub async fn leave_household<O: LeaveHouseholdOperations>(
             &command.member_id,
         )
         .await?;
-    let decision = decide_leave_household(
-        command,
+    let decision = membership::decide_leave_household(
+        actor_id,
+        household_id,
+        member_id,
         facts.target_role.as_deref(),
         facts.owner_count,
         facts.has_active_funding_reference,
@@ -118,16 +76,16 @@ pub async fn remove_household_member<O: RemoveHouseholdMemberOperations>(
     operations: &mut O,
     command: RemoveHouseholdMemberCommand,
 ) -> Result<String, O::Error> {
-    validate_identifiers(
-        &command.actor_id,
-        &command.household_id,
-        Some(&command.member_id),
-    )?;
+    let actor_id = ActorId::new(&command.actor_id)?;
+    let household_id = HouseholdId::new(&command.household_id)?;
+    let member_id = MemberId::new(&command.member_id)?;
     let facts = operations
         .load_facts(&command.household_id, &command.actor_id, &command.member_id)
         .await?;
-    let decision = decide_remove_household_member(
-        command,
+    let decision = membership::decide_remove_household_member(
+        actor_id,
+        household_id,
+        member_id,
         facts.actor_role.as_deref(),
         facts.target_role.as_deref(),
         facts.owner_count,
@@ -152,11 +110,9 @@ pub async fn transfer_owner<O: TransferHouseholdOwnerOperations>(
     operations: &mut O,
     command: TransferOwnerCommand,
 ) -> Result<String, O::Error> {
-    validate_identifiers(
-        &command.actor_id,
-        &command.household_id,
-        Some(&command.new_owner_id),
-    )?;
+    let actor_id = ActorId::new(&command.actor_id)?;
+    let household_id = HouseholdId::new(&command.household_id)?;
+    let new_owner_id = MemberId::new(&command.new_owner_id)?;
     let facts = operations
         .load_facts(
             &command.household_id,
@@ -164,108 +120,12 @@ pub async fn transfer_owner<O: TransferHouseholdOwnerOperations>(
             &command.new_owner_id,
         )
         .await?;
-    let decision = decide_transfer_owner(
-        command,
+    let decision = membership::decide_transfer_owner(
+        actor_id,
+        household_id,
+        new_owner_id,
         facts.actor_role.as_deref(),
         facts.target_role.as_deref(),
     )?;
     operations.persist(decision).await
-}
-
-fn validate_identifiers<E: From<MembershipError>>(
-    actor_id: &str,
-    household_id: &str,
-    target_id: Option<&str>,
-) -> Result<(), E> {
-    if actor_id.is_empty() || household_id.is_empty() || target_id.is_some_and(str::is_empty) {
-        return Err(MembershipError::InvalidIdentifier.into());
-    }
-    Ok(())
-}
-
-pub fn decide_leave_household(
-    command: LeaveHouseholdCommand,
-    target_role: Option<&str>,
-    owner_count: usize,
-    has_active_funding_reference: bool,
-) -> Result<MembershipChangeDecision, MembershipError> {
-    if command.member_id.is_empty() || command.household_id.is_empty() {
-        return Err(MembershipError::InvalidIdentifier);
-    }
-    let target_role = authorization::authorize(target_role, Operation::LeaveHousehold)
-        .map_err(|_| MembershipError::Forbidden)?;
-    if target_role == Role::Owner && owner_count <= 1 {
-        return Err(MembershipError::LastOwner);
-    }
-    if has_active_funding_reference {
-        return Err(MembershipError::ReferencedMember);
-    }
-    Ok(MembershipChangeDecision {
-        actor_id: command.member_id.clone(),
-        household_id: command.household_id,
-        member_id: command.member_id,
-        change: MembershipChange::Leave,
-    })
-}
-
-pub fn decide_remove_household_member(
-    command: RemoveHouseholdMemberCommand,
-    actor_role: Option<&str>,
-    target_role: Option<&str>,
-    owner_count: usize,
-    has_active_funding_reference: bool,
-) -> Result<MembershipChangeDecision, MembershipError> {
-    if command.actor_id.is_empty()
-        || command.household_id.is_empty()
-        || command.member_id.is_empty()
-    {
-        return Err(MembershipError::InvalidIdentifier);
-    }
-    if authorization::authorize(actor_role, Operation::ManageMembers).is_err()
-        || target_role.and_then(Role::parse).is_none()
-    {
-        return Err(MembershipError::Forbidden);
-    }
-    if target_role.and_then(Role::parse) == Some(Role::Owner) && owner_count <= 1 {
-        return Err(MembershipError::LastOwner);
-    }
-    if has_active_funding_reference {
-        return Err(MembershipError::ReferencedMember);
-    }
-    Ok(MembershipChangeDecision {
-        actor_id: command.actor_id,
-        household_id: command.household_id,
-        member_id: command.member_id,
-        change: MembershipChange::Remove,
-    })
-}
-
-pub fn decide_transfer_owner(
-    command: TransferOwnerCommand,
-    actor_role: Option<&str>,
-    new_owner_role: Option<&str>,
-) -> Result<MembershipChangeDecision, MembershipError> {
-    if command.actor_id.is_empty()
-        || command.household_id.is_empty()
-        || command.new_owner_id.is_empty()
-    {
-        return Err(MembershipError::InvalidIdentifier);
-    }
-    if authorization::authorize(actor_role, Operation::ManageMembers).is_err() {
-        return Err(MembershipError::Forbidden);
-    }
-    let Some(new_owner_role) = new_owner_role.and_then(Role::parse) else {
-        return Err(MembershipError::Forbidden);
-    };
-    if command.actor_id == command.new_owner_id {
-        return Err(MembershipError::SelfTransfer);
-    }
-    Ok(MembershipChangeDecision {
-        actor_id: command.actor_id,
-        household_id: command.household_id,
-        member_id: command.new_owner_id,
-        change: MembershipChange::TransferOwner {
-            new_owner_was_owner: new_owner_role == Role::Owner,
-        },
-    })
 }

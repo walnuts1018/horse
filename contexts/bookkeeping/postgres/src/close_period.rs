@@ -1,10 +1,13 @@
 use std::collections::BTreeMap;
 
 use bookkeeping_application::close_period::{
-    ClosePeriodCommand, ClosePeriodDecision, ClosePeriodWorkflowError, FundingCadence,
-    FundingScheduleInput, PurchaseSnapshot, SettlementInput, close_period as close_period_workflow,
+    ClosePeriodOperations, ClosePeriodWorkflowError, close_period as close_period_workflow,
 };
-use bookkeeping_domain::{AccountingPeriod, AccountingPeriodStatus, YearMonth};
+use bookkeeping_domain::close_period::{
+    ClosePeriodCommand, ClosePeriodDecision, FundingCadence, FundingScheduleInput,
+    PurchaseSnapshot, SettlementInput, SettlementLine,
+};
+use bookkeeping_domain::{AccountingPeriod, OpenAccountingPeriod, YearMonth};
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
@@ -110,8 +113,7 @@ struct PgClosePeriodOperations<'a, P> {
     policy: &'a mut P,
 }
 
-impl<P: super::settlement_preview::PolicySettlementData>
-    bookkeeping_application::close_period::ClosePeriodOperations
+impl<P: super::settlement_preview::PolicySettlementData> ClosePeriodOperations
     for PgClosePeriodOperations<'_, P>
 {
     type Error = ClosePeriodPersistenceError;
@@ -696,7 +698,6 @@ fn validate_decision(
         .checked_sub(1)
         .ok_or(ClosePeriodPersistenceError::InvalidDecision)?;
     if decision.period.year_month() != year_month(period_start)?
-        || decision.period.status() != AccountingPeriodStatus::Closed
         || decision.event.period != decision.period.year_month()
         || decision.event.revision != decision.period.revision()
         || parse_decision_uuid(decision.event.actor_id.as_str())? != actor_id
@@ -725,7 +726,7 @@ fn validate_decision(
     Ok(())
 }
 
-fn settlement_line_is_valid(line: &bookkeeping_application::close_period::SettlementLine) -> bool {
+fn settlement_line_is_valid(line: &SettlementLine) -> bool {
     if line.member_name.trim().is_empty()
         || !(0..=1_000_000_000_000).contains(&line.scheduled_yen)
         || !(0..=1_000_000_000_000).contains(&line.paid_yen)
@@ -796,7 +797,7 @@ fn period_model(
     period_start: NaiveDate,
     status: &str,
     revision: i64,
-) -> Result<AccountingPeriod, ClosePeriodPersistenceError> {
+) -> Result<OpenAccountingPeriod, ClosePeriodPersistenceError> {
     let year_month = year_month(period_start)?;
     let revision = u64::try_from(revision)
         .map_err(|_| ClosePeriodPersistenceError::CorruptPersistedData("period revision"))?;
@@ -809,7 +810,9 @@ fn period_model(
             ));
         }
     }
-    .map_err(|_| ClosePeriodPersistenceError::CorruptPersistedData("accounting period"))
+    .map_err(|_| ClosePeriodPersistenceError::CorruptPersistedData("accounting period"))?
+    .into_open()
+    .map_err(|_| ClosePeriodPersistenceError::PeriodAlreadyClosed)
 }
 
 fn period_start_utc(date: NaiveDate) -> Result<DateTime<Utc>, ClosePeriodPersistenceError> {

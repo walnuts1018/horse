@@ -5,6 +5,7 @@ import { BarChart3 } from "lucide-react";
 import type { AnalyticsRow, Dimension } from "../model/purchase-analytics";
 
 import { yen } from "../model/format-yen";
+import { signedBarScale } from "../model/purchase-analytics";
 import { analysisDimensionLabels } from "./analysis-dimension-labels";
 
 type MonthTotal = { month: string; amount: number };
@@ -51,6 +52,7 @@ export function AnalysisBreakdown({
   rows: AnalyticsRow[];
   hasUnattributedPurchases: boolean;
 }) {
+  const maxRowMagnitude = Math.max(...rows.map((row) => Math.abs(row.amount)), 1);
   const maxNegative = Math.max(
     ...monthly.filter((item) => item.amount < 0).map((item) => -item.amount),
     1,
@@ -196,9 +198,10 @@ export function AnalysisBreakdown({
             <div className="category-row" key={row.id}>
               <span className={`category-swatch swatch-${index % 6}`} />
               <span title={row.name}>{row.name}</span>
-              <i>
+              <i className="signed-breakdown-bar" aria-hidden="true">
                 <b
-                  style={{ width: `${Math.max(8, (row.amount / (rows[0]?.amount || 1)) * 100)}%` }}
+                  className={row.amount < 0 ? "negative" : "positive"}
+                  style={{ width: `${signedBarScale(row.amount, maxRowMagnitude) * 50}%` }}
                 />
               </i>
               <strong>{yen(row.amount)}</strong>

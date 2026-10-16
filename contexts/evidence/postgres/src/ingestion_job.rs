@@ -5,12 +5,14 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use evidence_application::ingestion_job::{
-    ClaimExtractionJob, ClaimExtractionJobOperations, ClaimExtractionJobWorkflowError,
-    ExtractionFailureKind, ExtractionJob, ExtractionJobStatus, FinishExtractionJobError,
-    FinishedJob, QueuedJob, RunningJob, ValidLease,
+    ClaimExtractionJobOperations, ClaimExtractionJobWorkflowError,
     claim_extraction_job_by_id as claim_extraction_job_by_id_workflow,
     claim_next_extraction_job as claim_next_extraction_job_workflow,
     claim_next_local_extraction_job as claim_next_local_extraction_job_workflow,
+};
+use evidence_domain::ingestion_job::{
+    ClaimExtractionJob, ExtractionFailureKind, ExtractionJob, ExtractionJobStatus,
+    FinishExtractionJobError, FinishedJob, QueuedJob, RunningJob, ValidLease,
     finish_extraction_failure, finish_extraction_success, recover_expired_extraction_job,
 };
 
@@ -450,7 +452,7 @@ where
             &RunningJob,
             i64,
         ) -> Result<
-            evidence_application::ingestion_job::ExtractionJobTransition,
+            evidence_domain::ingestion_job::ExtractionJobTransition,
             FinishExtractionJobError,
         > + Send,
 {

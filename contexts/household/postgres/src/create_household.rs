@@ -334,8 +334,7 @@ async fn persist_create_household_decision(
     pool: &PgPool,
     decision: CreateHouseholdDecision,
 ) -> Result<String, CreateHouseholdPersistenceError> {
-    let actor_id = Uuid::parse_str(&decision.actor_id)
-        .map_err(|_| CreateHouseholdPersistenceError::InvalidUuid)?;
+    let actor_id = decision.actor_id.value();
     let household_id = Uuid::new_v4();
 
     let mut pooled = pool

@@ -2,7 +2,7 @@ use std::{collections::HashMap, env, time::Instant};
 
 use chrono::{DateTime, Datelike, Duration as ChronoDuration, NaiveDate, Utc};
 use cross_context_postgres::purchase_history::{self, PurchaseHistoryItem};
-use evidence_application::ingestion_job::ExtractionFailureKind;
+use evidence_domain::ingestion_job::ExtractionFailureKind;
 use evidence_postgres::gemini_quota::{self, QuotaLimit};
 use evidence_postgres::ingestion_job::{ClaimedExtractionJob, save_interaction_reply_preview};
 use futures_util::StreamExt;
@@ -469,25 +469,22 @@ pub async fn process(
         if candidate_key.is_empty() {
             continue;
         }
-        if candidate_route == "paid" {
-            let (input_price, output_price) = model_prices(&candidate_model, 0, Utc::now());
-            if input_price == 0.0 && output_price == 0.0 {
-                last_error = Some(Failure::new(
-                    ProcessErrorKind::Permanent,
+        if candidate_route == "paid" && model_prices(&candidate_model, 0, Utc::now()).is_none() {
+            last_error = Some(Failure::new(
+                ProcessErrorKind::Permanent,
+                "unknown_model_price",
+                "Selected Gemini Developer API model has no configured price",
+                partial_result(
+                    &lines,
+                    &issues,
+                    Value::Null,
                     "unknown_model_price",
-                    "Selected Gemini Developer API model has no configured price",
-                    partial_result(
-                        &lines,
-                        &issues,
-                        Value::Null,
-                        "unknown_model_price",
-                        &candidate_model,
-                        candidate_route,
-                        candidate_project,
-                    ),
-                ));
-                break;
-            }
+                    &candidate_model,
+                    candidate_route,
+                    candidate_project,
+                ),
+            ));
+            break;
         }
         let reservation_id = if let Some(limit) = config
             .quota_limits
@@ -1038,7 +1035,8 @@ pub async fn process(
                 .into_iter()
                 .filter_map(|value| value.as_str().map(str::to_owned)),
         );
-        let (computed_total, total_matches) = verify_receipt(&mut receipt, &mut issues);
+        let (computed_total, total_matches, issue_codes) =
+            verify_receipt(&mut receipt, &mut issues);
         if is_image_or_pdf(&document.mime_type) {
             if lines.is_empty() {
                 issues.push(
@@ -1054,6 +1052,7 @@ pub async fn process(
             "transform": transform,
             "transformPage": transform_page,
             "issues": issues,
+            "issueCodes": issue_codes,
             "computedTotal": computed_total,
             "balanced": balanced,
             "ocrLines": lines,
@@ -1191,15 +1190,15 @@ fn truncate_to_byte_limit(value: &mut String, byte_limit: usize) {
 
 fn needs_pro_review(result: &Value) -> bool {
     result
-        .get("issues")
+        .get("issueCodes")
         .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .any(|issue| {
-            ["税率", "税額", "税の端数", "小計", "合計"]
+        .is_some_and(|codes| {
+            codes
                 .iter()
-                .any(|term| issue.contains(term))
+                .filter_map(|value| {
+                    serde_json::from_value::<VerificationIssueCode>(value.clone()).ok()
+                })
+                .any(|code| code.requires_pro_review())
         })
 }
 
@@ -1686,34 +1685,41 @@ fn apply_cost_snapshot(
     output_tokens: i64,
     priced_at: DateTime<Utc>,
 ) {
-    let (mut input_price, mut output_price) = model_prices(model, input_tokens, priced_at);
+    let prices = model_prices(model, input_tokens, priced_at);
     let price_status = if route == "free" {
         "free_tier"
-    } else if input_price == 0.0 && output_price == 0.0 {
+    } else if prices.is_none() {
         "unknown_model_price"
     } else {
         "estimated_paid"
     };
-    if model == "gemini-3.1-pro-preview" && input_tokens > 200_000 {
-        (input_price, output_price) = (4.0, 18.0);
-    }
-    let cost = if route == "paid" && input_price > 0.0 && config.usd_jpy_rate > 0.0 {
-        (input_tokens as f64 * input_price + output_tokens as f64 * output_price)
-            * config.usd_jpy_rate
-            / 1_000_000.0
+    let cost = if route == "free" {
+        Some(0.0)
     } else {
-        0.0
+        prices.and_then(|prices| {
+            (config.usd_jpy_rate > 0.0).then(|| {
+                (input_tokens as f64 * prices.input_usd_per_million
+                    + output_tokens as f64 * prices.output_usd_per_million)
+                    * config.usd_jpy_rate
+                    / 1_000_000.0
+            })
+        })
     };
-    let status =
-        if route == "paid" && price_status == "estimated_paid" && config.usd_jpy_rate <= 0.0 {
-            "missing_exchange_rate"
-        } else {
-            price_status
-        };
+    let status = if route == "paid" && prices.is_some() && config.usd_jpy_rate <= 0.0 {
+        "missing_exchange_rate"
+    } else {
+        price_status
+    };
     run.insert("estimatedCostJPY".to_owned(), json!(cost));
     run.insert("priceEstimateStatus".to_owned(), json!(status));
-    run.insert("inputUsdPerMillionTokens".to_owned(), json!(input_price));
-    run.insert("outputUsdPerMillionTokens".to_owned(), json!(output_price));
+    run.insert(
+        "inputUsdPerMillionTokens".to_owned(),
+        json!(prices.map(|price| price.input_usd_per_million)),
+    );
+    run.insert(
+        "outputUsdPerMillionTokens".to_owned(),
+        json!(prices.map(|price| price.output_usd_per_million)),
+    );
     run.insert("usdJpyRate".to_owned(), json!(config.usd_jpy_rate));
     run.insert(
         "usdJpyRateSource".to_owned(),
@@ -1723,11 +1729,17 @@ fn apply_cost_snapshot(
         "usdJpyRateAsOf".to_owned(),
         json!(config.usd_jpy_rate_as_of),
     );
-    run.insert("pricedAt".to_owned(), json!(priced_at));
+    run.insert("pricedAt".to_owned(), json!(priced_at.to_rfc3339()));
 }
 
-fn model_prices(model: &str, input_tokens: i64, at: DateTime<Utc>) -> (f64, f64) {
-    match model {
+#[derive(Clone, Copy)]
+struct ModelPrices {
+    input_usd_per_million: f64,
+    output_usd_per_million: f64,
+}
+
+fn model_prices(model: &str, input_tokens: i64, at: DateTime<Utc>) -> Option<ModelPrices> {
+    let (input_usd_per_million, output_usd_per_million) = match model {
         "gemini-4-argon"
             if at
                 < DateTime::parse_from_rfc3339("2026-12-01T00:00:00Z")
@@ -1750,8 +1762,12 @@ fn model_prices(model: &str, input_tokens: i64, at: DateTime<Utc>) -> (f64, f64)
         "gemini-3.1-flash-lite" => (0.25, 1.5),
         "gemini-3.1-pro-preview" if input_tokens > 200_000 => (4.0, 18.0),
         "gemini-3.1-pro-preview" => (2.0, 12.0),
-        _ => (0.0, 0.0),
-    }
+        _ => return None,
+    };
+    Some(ModelPrices {
+        input_usd_per_million,
+        output_usd_per_million,
+    })
 }
 
 fn valid_model_id(model: &str) -> bool {
@@ -2021,9 +2037,38 @@ struct TaxGroup {
     printed_subtotal: Option<i64>,
 }
 
-fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) {
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum VerificationIssueCode {
+    TaxMismatch,
+    TaxRoundingUnknown,
+    TaxUnresolved,
+    SubtotalMismatch,
+    TotalMismatch,
+    MissingItem,
+}
+
+impl VerificationIssueCode {
+    fn requires_pro_review(&self) -> bool {
+        matches!(
+            self,
+            Self::TaxMismatch
+                | Self::TaxRoundingUnknown
+                | Self::TaxUnresolved
+                | Self::SubtotalMismatch
+                | Self::TotalMismatch
+                | Self::MissingItem
+        )
+    }
+}
+
+fn verify_receipt(
+    receipt: &mut Value,
+    issues: &mut Vec<String>,
+) -> (i64, bool, Vec<VerificationIssueCode>) {
+    let mut issue_codes = Vec::new();
     let Some(object) = receipt.as_object_mut() else {
-        return (0, false);
+        return (0, false, issue_codes);
     };
     let total = object
         .get("total")
@@ -2034,6 +2079,7 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
     }
     if total.unsigned_abs() > 1_000_000_000_000 {
         issues.push("レシート合計を確認してください。".to_owned());
+        issue_codes.push(VerificationIssueCode::TotalMismatch);
     }
     let groups = object
         .get("taxGroups")
@@ -2042,6 +2088,7 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
         .unwrap_or_default();
     if groups.len() > 1000 {
         issues.push("税率グループが上限を超えています。原本を確認してください。".to_owned());
+        issue_codes.push(VerificationIssueCode::TaxUnresolved);
     }
     let mut by_id = HashMap::<String, TaxGroup>::new();
     for value in groups {
@@ -2064,20 +2111,24 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
                 } else {
                     issues
                         .push("税率グループを解釈できません。原本を確認してください。".to_owned());
+                    issue_codes.push(VerificationIssueCode::TaxUnresolved);
                 }
             }
             Err(_) => {
-                issues.push("税率グループを解釈できません。原本を確認してください。".to_owned())
+                issues.push("税率グループを解釈できません。原本を確認してください。".to_owned());
+                issue_codes.push(VerificationIssueCode::TaxUnresolved);
             }
         }
     }
     let Some(mut items) = object.get("items").and_then(Value::as_array).cloned() else {
         issues.push("品目を抽出できませんでした。原本を確認してください。".to_owned());
-        return (0, false);
+        issue_codes.push(VerificationIssueCode::MissingItem);
+        return (0, false, issue_codes);
     };
     if items.is_empty() || items.len() > 1000 {
         issues.push("品目数が有効範囲外です。原本を確認してください。".to_owned());
-        return (0, false);
+        issue_codes.push(VerificationIssueCode::MissingItem);
+        return (0, false, issue_codes);
     }
     let mut excluded = HashMap::<String, Vec<usize>>::new();
     let mut included = HashMap::<String, Vec<usize>>::new();
@@ -2122,6 +2173,7 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
                     included.entry(tax_group.clone()).or_default().push(index);
                 } else if !tax_group.is_empty() {
                     issues.push(format!("品目{}の税率が未確定です。", index + 1));
+                    issue_codes.push(VerificationIssueCode::TaxUnresolved);
                 }
             }
             "TAX_EXCLUDED" => {
@@ -2129,10 +2181,14 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
                     excluded.entry(tax_group.clone()).or_default().push(index);
                 } else {
                     issues.push(format!("品目{}の税率が未確定です。", index + 1));
+                    issue_codes.push(VerificationIssueCode::TaxUnresolved);
                 }
             }
             "EXEMPT" | "NON_TAXABLE" => {}
-            _ => issues.push(format!("品目{}の税込・税抜区分が未確定です。", index + 1)),
+            _ => {
+                issues.push(format!("品目{}の税込・税抜区分が未確定です。", index + 1));
+                issue_codes.push(VerificationIssueCode::TaxUnresolved);
+            }
         }
         if item
             .get("confidence")
@@ -2157,9 +2213,10 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
             if excluded.contains_key(id) || !group.basis.is_empty() && group.basis != "TAX_INCLUDED"
             {
                 issues.push("税率グループの税込・税抜区分が一致しません。".to_owned());
+                issue_codes.push(VerificationIssueCode::TaxMismatch);
             }
             let subtotal = positions.iter().map(|index| computed[*index]).sum::<i64>();
-            verify_printed_subtotal(group, subtotal, issues, true);
+            verify_printed_subtotal(group, subtotal, issues, &mut issue_codes, true);
             let inclusive_denominator = group.denominator.saturating_add(group.numerator);
             if inclusive_denominator > 0
                 && let Some((tax, known)) = calculate_tax(
@@ -2174,17 +2231,20 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
                     && tax != printed_tax
                 {
                     issues.push("印字内税額と計算内税額が一致しません。".to_owned());
+                    issue_codes.push(VerificationIssueCode::TaxMismatch);
                 } else if group.printed_tax.is_none() && !known {
                     issues.push("内税の端数処理が未確定です。".to_owned());
+                    issue_codes.push(VerificationIssueCode::TaxRoundingUnknown);
                 }
             }
         }
         if let Some(positions) = excluded.get(id) {
             if !group.basis.is_empty() && group.basis != "TAX_EXCLUDED" {
                 issues.push("税率グループの税込・税抜区分が一致しません。".to_owned());
+                issue_codes.push(VerificationIssueCode::TaxMismatch);
             }
             let subtotal = positions.iter().map(|index| computed[*index]).sum::<i64>();
-            verify_printed_subtotal(group, subtotal, issues, false);
+            verify_printed_subtotal(group, subtotal, issues, &mut issue_codes, false);
             let (tax, known) = calculate_tax(
                 subtotal,
                 group.numerator,
@@ -2195,9 +2255,11 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
             if let Some(printed_tax) = group.printed_tax {
                 if known && tax != printed_tax {
                     issues.push("印字税額と計算税額が一致しません。".to_owned());
+                    issue_codes.push(VerificationIssueCode::TaxMismatch);
                 }
                 if distribute_tax(printed_tax, positions, &computed).is_none() {
                     issues.push("税額を品目に配賦できません。".to_owned());
+                    issue_codes.push(VerificationIssueCode::TaxMismatch);
                 } else if let Some(shares) = distribute_tax(printed_tax, positions, &computed) {
                     for (position, share) in positions.iter().zip(shares) {
                         computed[*position] = computed[*position].saturating_add(share);
@@ -2211,6 +2273,7 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
                 }
             } else {
                 issues.push("税の端数処理が未確定です。".to_owned());
+                issue_codes.push(VerificationIssueCode::TaxRoundingUnknown);
             }
         }
         if !included.contains_key(id)
@@ -2218,6 +2281,7 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
             && (group.printed_tax.is_some() || group.printed_subtotal.is_some())
         {
             issues.push("印字税率グループに対応する品目がありません。".to_owned());
+            issue_codes.push(VerificationIssueCode::TaxMismatch);
         }
     }
     let receipt_discount = object
@@ -2250,10 +2314,12 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
         .try_fold(0_i64, |sum, amount| sum.checked_add(*amount))
     else {
         issues.push("品目合計が有効範囲を超えています。".to_owned());
-        return (0, false);
+        issue_codes.push(VerificationIssueCode::TotalMismatch);
+        return (0, false, issue_codes);
     };
     if computed_total != total {
         issues.push("品目の合計と印字合計が一致しません。".to_owned());
+        issue_codes.push(VerificationIssueCode::TotalMismatch);
     }
     if let Some(payments) = object
         .get("payments")
@@ -2266,15 +2332,17 @@ fn verify_receipt(receipt: &mut Value, issues: &mut Vec<String>) -> (i64, bool) 
             .sum::<i64>();
         if sum != total {
             issues.push("決済額の合計と印字合計が一致しません。".to_owned());
+            issue_codes.push(VerificationIssueCode::TotalMismatch);
         }
     }
-    (computed_total, computed_total == total)
+    (computed_total, computed_total == total, issue_codes)
 }
 
 fn verify_printed_subtotal(
     group: &TaxGroup,
     subtotal: i64,
     issues: &mut Vec<String>,
+    issue_codes: &mut Vec<VerificationIssueCode>,
     included: bool,
 ) {
     if group
@@ -2286,6 +2354,7 @@ fn verify_printed_subtotal(
         } else {
             "税率別小計が一致しません。".to_owned()
         });
+        issue_codes.push(VerificationIssueCode::SubtotalMismatch);
     }
 }
 
@@ -2736,7 +2805,9 @@ fn extraction_run(run: ExtractionRun<'_>) -> Value {
         "serviceTier":"standard",
         "inputTokens":run.input_tokens,
         "outputTokens":run.output_tokens,
-        "estimatedCostJPY":0,
+        "estimatedCostJPY":(run.route == "free").then_some(0),
+        "inputUsdPerMillionTokens":null,
+        "outputUsdPerMillionTokens":null,
         "pricingCurrency":"USD",
         "priceTableVersion":"gemini-prices-2026-10-v2",
         "priceEstimateStatus":if run.route == "free" { "free_tier" } else { "unknown_model_price" },
@@ -2945,7 +3016,14 @@ fn statement_kind_instruction(source_kind: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::truncate_to_byte_limit;
+    use chrono::Utc;
+    use serde_json::{Value, json};
+
+    use super::{
+        ProcessConfig, apply_cost_snapshot, model_prices, needs_pro_review, truncate_to_byte_limit,
+        verify_receipt,
+    };
+    use std::collections::HashMap;
 
     #[test]
     fn truncates_multibyte_text_at_the_last_valid_boundary() {
@@ -2956,5 +3034,85 @@ mod tests {
         assert_eq!(value.len(), 5_999);
         assert!(value.is_char_boundary(value.len()));
         assert!(value.ends_with('x'));
+    }
+
+    #[test]
+    fn pro_review_uses_verification_codes_instead_of_display_messages() {
+        assert!(needs_pro_review(&json!({
+            "issues": ["表示文は変更されても判定に影響しない"],
+            "issueCodes": ["TOTAL_MISMATCH"]
+        })));
+        assert!(!needs_pro_review(&json!({
+            "issues": ["税額を確認してください"],
+            "issueCodes": []
+        })));
+    }
+
+    #[test]
+    fn receipt_validation_emits_a_total_mismatch_code() {
+        let mut receipt = json!({
+            "currency": "JPY",
+            "total": 2,
+            "items": [{
+                "printedName": "品目",
+                "printedAmount": 1,
+                "discount": 0,
+                "priceBasis": "EXEMPT",
+                "taxGroup": "",
+                "confidence": 1.0
+            }]
+        });
+        let mut issues = Vec::new();
+
+        let (_, total_matches, codes) = verify_receipt(&mut receipt, &mut issues);
+
+        assert!(!total_matches);
+        assert_eq!(
+            serde_json::to_value(codes).unwrap(),
+            json!(["TOTAL_MISMATCH"])
+        );
+    }
+
+    #[test]
+    fn unknown_model_has_no_price() {
+        assert!(model_prices("unconfigured-model", 1_000, Utc::now()).is_none());
+    }
+
+    #[test]
+    fn unknown_paid_model_keeps_cost_and_rates_unset() {
+        let config = ProcessConfig {
+            gemini_enabled: true,
+            free_api_key: String::new(),
+            paid_api_key: String::new(),
+            free_project: String::new(),
+            paid_project: String::new(),
+            flash_model: String::new(),
+            lite_model: String::new(),
+            pro_model: String::new(),
+            usd_jpy_rate: 150.0,
+            usd_jpy_rate_source: "test".to_owned(),
+            usd_jpy_rate_as_of: "2026-10-16".to_owned(),
+            quota_limits: HashMap::new(),
+            ocr_url: String::new(),
+        };
+        let mut run = serde_json::Map::new();
+
+        apply_cost_snapshot(
+            &mut run,
+            &config,
+            "unconfigured-model",
+            "paid",
+            1_000,
+            100,
+            Utc::now(),
+        );
+
+        assert_eq!(
+            run.get("priceEstimateStatus"),
+            Some(&json!("unknown_model_price"))
+        );
+        assert_eq!(run.get("estimatedCostJPY"), Some(&Value::Null));
+        assert_eq!(run.get("inputUsdPerMillionTokens"), Some(&Value::Null));
+        assert_eq!(run.get("outputUsdPerMillionTokens"), Some(&Value::Null));
     }
 }

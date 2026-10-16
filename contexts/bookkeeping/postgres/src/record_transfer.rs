@@ -6,7 +6,7 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
-use bookkeeping_application::{
+use bookkeeping_domain::{
     record_transfer::{JournalTarget, PostingSide, RecordTransferDecision, TransferKind},
     statement_transfer::{
         LinkStatementTransferCommand, StatementTransferObservation, decide_link_statement_transfer,

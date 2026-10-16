@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::update_purchase_item::UpdatePurchaseItemCommand;
+use super::update_purchase_item::UpdatePurchaseItemCommand;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SavePurchaseItemEditsCommand {

@@ -1,6 +1,7 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_postgres::account_card_last4::{self, SetCardLast4PersistenceError};
+use bookkeeping_application::workflow_failure::WorkflowFailure;
+use bookkeeping_postgres::account_card_last4;
 use horse_postgres_common::PgPool;
 use uuid::Uuid;
 
@@ -72,9 +73,11 @@ pub async fn set_account_card_last4(
             }
             .into())
         }
-        Err(error) => match user_error_code(&error) {
-            Some(code) => Ok(user_error(code).into()),
-            None => Err(crate::internal_error(error)),
+        Err(error) => match error {
+            WorkflowFailure::Decision(_) => Ok(user_error(MutationErrorCode::BadInput).into()),
+            WorkflowFailure::NotFound => Ok(user_error(MutationErrorCode::NotFound).into()),
+            WorkflowFailure::Conflict => Ok(user_error(MutationErrorCode::Conflict).into()),
+            WorkflowFailure::Infrastructure(error) => Err(crate::internal_error(error)),
         },
     }
 }
@@ -104,15 +107,6 @@ fn encode_node_id(kind: &str, raw_id: &str) -> Result<String> {
     payload.push(b':');
     payload.extend_from_slice(id.as_bytes());
     Ok(URL_SAFE_NO_PAD.encode(payload))
-}
-
-fn user_error_code(error: &SetCardLast4PersistenceError) -> Option<MutationErrorCode> {
-    use SetCardLast4PersistenceError as E;
-    match error {
-        E::InvalidUuid(_) | E::InvalidWorkflow(_) => Some(MutationErrorCode::BadInput),
-        E::AccountNotFound => Some(MutationErrorCode::NotFound),
-        E::Pool(_) | E::Database(_) | E::InvalidDecision => None,
-    }
 }
 
 fn user_error(code: MutationErrorCode) -> SetAccountCardLast4UserError {

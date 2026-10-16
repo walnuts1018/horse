@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use bookkeeping_application::bulk_update_purchases::{
+use bookkeeping_domain::purchase_commands::{
     BulkUpdatePurchaseTarget, BulkUpdatePurchasesError, decide_bulk_update_purchases,
 };
-use bookkeeping_application::update_purchase::{UpdatePurchaseCommand, UpdatePurchaseDraft};
+use bookkeeping_domain::purchase_commands::{UpdatePurchaseCommand, UpdatePurchaseDraft};
 use chrono::{DateTime, Utc};
 use diesel::{ExpressionMethods, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -206,7 +206,7 @@ pub async fn persist_bulk_update_purchases<
                     _ => {
                         return Err(BulkUpdatePurchasesPersistenceError::InvalidUpdate(
                             update_purchase::UpdatePurchasePersistenceError::InvalidDecision(
-                                bookkeeping_application::update_purchase::UpdatePurchaseError::NotEditable,
+                                bookkeeping_domain::purchase_commands::UpdatePurchaseError::NotEditable,
                             ),
                         ));
                     }

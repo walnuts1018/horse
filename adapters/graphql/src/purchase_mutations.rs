@@ -2,11 +2,13 @@ use async_graphql::{
     ComplexObject, Context, Enum, ID, InputObject, Interface, Result, SimpleObject, Union,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::create_purchase::{
-    AllocationRuleVersion, CreatePurchaseAllocation, CreatePurchaseCommand, CreatePurchaseItem,
-    CreatePurchasePayment, DatePrecision, Measure, PrintedUnitPrice, PurchaseOccurredAt,
-    PurchaseOrigin as WorkflowPurchaseOrigin, QuantityUnit,
+use bookkeeping_domain::purchase_commands::{
+    AllocationRuleVersion, CategoryId, CreatePurchaseAllocation, CreatePurchaseCommand,
+    CreatePurchaseItem, CreatePurchasePayment, DatePrecision, Measure, PrintedUnitPrice,
+    ProductVariantId, PurchaseAllocationWeight, PurchaseOccurredAt,
+    PurchaseOrigin as WorkflowPurchaseOrigin, QuantityUnit, ReceiptCandidateId, SourceDocumentId,
 };
+use bookkeeping_domain::{AccountId, ItemId, MemberId, PoolId, PurchaseId};
 use bookkeeping_postgres::{
     create_purchase as postgres_create_persistence, post_purchase as postgres_post,
     post_purchase_loader::PostPurchaseLoadError,
@@ -457,8 +459,8 @@ pub async fn create_purchase(
     let pool = ctx.data::<PgPool>()?;
     let workflow_command =
         bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowCommand {
-            household_id: parsed.persistence.household_id.clone(),
-            actor_id: parsed.persistence.actor_id.clone(),
+            household_id: parsed.household_id,
+            actor_id: MemberId::new(actor.0.to_string()).expect("UUID is nonempty"),
             purchase: parsed.command,
             persistence:
                 bookkeeping_application::create_and_post_purchase::CreatePurchasePersistence {
@@ -508,7 +510,7 @@ pub async fn create_and_post_purchase(
         Err(error) => return Ok(error.into()),
     };
     let pool = ctx.data::<PgPool>()?;
-    let post_fingerprint = post_fingerprint(&parsed.command.purchase_id, 1)?;
+    let post_fingerprint = post_fingerprint(parsed.command.purchase_id.as_str(), 1)?;
     let workflow_command =
         bookkeeping_application::create_and_post_purchase::CreateAndPostPurchaseCommand {
             actor_id: parsed.persistence.actor_id,
@@ -748,18 +750,18 @@ fn parse_create_input(
             PurchaseOrigin::Unknown => WorkflowPurchaseOrigin::Unknown,
         })
         .unwrap_or(WorkflowPurchaseOrigin::Manual);
-    let purchase_id = Uuid::now_v7().to_string();
+    let purchase_id = PurchaseId::new(Uuid::now_v7().to_string()).expect("UUID is nonempty");
     let mut items = Vec::with_capacity(input.items.len());
     for item in &input.items {
         let category_id = item
             .category_id
             .as_ref()
-            .map(|id| decode_node_id(id, "Category").map(|id| id.to_string()))
+            .map(|id| decode_node_id(id, "Category").map(CategoryId::new))
             .transpose()?;
         let product_variant_id = item
             .product_variant_id
             .as_ref()
-            .map(|id| decode_node_id(id, "ProductVariant").map(|id| id.to_string()))
+            .map(|id| decode_node_id(id, "ProductVariant").map(ProductVariantId::new))
             .transpose()?;
         let quantity = item
             .quantity
@@ -779,7 +781,8 @@ fn parse_create_input(
             .as_ref()
             .map(|value| {
                 Ok(PrintedUnitPrice {
-                    amount_yen: value.amount_yen.0,
+                    amount_yen: bookkeeping_domain::Yen::new(value.amount_yen.0)
+                        .map_err(|_| bad_input())?,
                     basis: {
                         let unit =
                             QuantityUnit::parse(&value.basis.unit).map_err(|_| bad_input())?;
@@ -799,18 +802,22 @@ fn parse_create_input(
             .unwrap_or_default()
             .iter()
             .map(|value| {
-                decode_node_id(&value.pool_id, "Pool").map(|id| CreatePurchaseAllocation {
-                    pool_id: id.to_string(),
-                    weight: value.weight.0,
-                    rule_version: 1,
-                    rule_id: None,
+                decode_node_id(&value.pool_id, "Pool").and_then(|id| {
+                    let weight =
+                        PurchaseAllocationWeight::new(value.weight.0).ok_or_else(bad_input)?;
+                    Ok(CreatePurchaseAllocation {
+                        pool_id: PoolId::new(id.to_string()).expect("UUID is nonempty"),
+                        weight,
+                        rule_version: AllocationRuleVersion::new(1).expect("positive constant"),
+                        rule_id: None,
+                    })
                 })
             })
             .collect::<std::result::Result<Vec<_>, _>>()?;
         items.push(CreatePurchaseItem {
-            item_id: Uuid::now_v7().to_string(),
+            item_id: ItemId::new(Uuid::now_v7().to_string()).expect("UUID is nonempty"),
             name: item.name.clone(),
-            amount_yen: item.amount_yen.0,
+            amount_yen: bookkeeping_domain::Yen::new(item.amount_yen.0).map_err(|_| bad_input())?,
             category_id,
             product_variant_id,
             quantity,
@@ -825,9 +832,13 @@ fn parse_create_input(
         .unwrap_or_default()
         .iter()
         .map(|payment| {
-            decode_node_id(&payment.payment_account_id, "Account").map(|id| CreatePurchasePayment {
-                account_id: id.to_string(),
-                amount_yen: payment.amount_yen.0,
+            decode_node_id(&payment.payment_account_id, "Account").and_then(|id| {
+                bookkeeping_domain::PositiveYen::new(payment.amount_yen.0)
+                    .map(|amount_yen| CreatePurchasePayment {
+                        account_id: AccountId::new(id.to_string()).expect("UUID is nonempty"),
+                        amount_yen,
+                    })
+                    .map_err(|_| bad_input())
             })
         })
         .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -842,9 +853,19 @@ fn parse_create_input(
             merchant: input.merchant.clone(),
             origin,
             allocation_rule_version: AllocationRuleVersion::new(1).expect("positive constant"),
-            source_document_id: input.source_document_id.clone(),
+            source_document_id: input
+                .source_document_id
+                .as_deref()
+                .map(Uuid::parse_str)
+                .transpose()
+                .map_err(|_| bad_input())?
+                .map(SourceDocumentId::new),
             source_reference: input.source_reference.clone(),
-            receipt_candidate_id: input.receipt_candidate_id.clone(),
+            receipt_candidate_id: input
+                .receipt_candidate_id
+                .as_deref()
+                .map(|id| ReceiptCandidateId::new(id.to_owned()).ok_or_else(bad_input))
+                .transpose()?,
             manual_amount_override_reason: input.manual_amount_override_reason.clone(),
             items,
             payments,
@@ -1091,7 +1112,7 @@ impl TryFrom<purchase_command_result::PurchaseCommandResult> for PurchaseObject 
                         .tags
                         .iter()
                         .map(|(id, name, archived, revision)| {
-                            crate::catalog_mutations::map_tag(catalog_application::tag::Tag {
+                            crate::catalog_mutations::map_tag(catalog_domain::tag::Tag {
                                 id: id.to_string(),
                                 household_id: value.household_id.to_string(),
                                 name: name.clone(),
@@ -1293,6 +1314,7 @@ fn post_load_user_error(error: &PostPurchaseLoadError) -> Option<PurchaseMutatio
         PostPurchaseLoadError::MissingPurchase | PostPurchaseLoadError::HouseholdMismatch(_) => {
             Some(not_found())
         }
+        PostPurchaseLoadError::AccountingPeriodClosed => Some(conflict()),
         PostPurchaseLoadError::Database(_) => None,
         _ => Some(bad_input()),
     }

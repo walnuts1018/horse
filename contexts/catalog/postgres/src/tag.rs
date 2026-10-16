@@ -1,4 +1,4 @@
-use catalog_application::tag::{
+use catalog_domain::tag::{
     CreateTagCommand, SetTagArchivedCommand, Tag, TagError, UpdateTagCommand, decide_create_tag,
     decide_set_tag_archived, decide_update_tag, validate_tag_name,
 };

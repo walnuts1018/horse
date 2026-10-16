@@ -35,6 +35,10 @@ export type ItemPriceObservation = {
 };
 export type MonthlyEntry = { month: string; id: string; amount: number };
 
+export function signedBarScale(amount: number, maxAmount: number) {
+  return maxAmount === 0 ? 0 : Math.abs(amount) / maxAmount;
+}
+
 export function topPriceItemIDs(rows: Iterable<AnalyticsRow>) {
   const topRows: AnalyticsRow[] = [];
   for (const row of rows) {

@@ -17,7 +17,7 @@ export const settingsTabs: { id: SettingsTab; label: string }[] = [
   { id: "accounts", label: "口座" },
   { id: "allocation", label: "負担" },
   { id: "catalog", label: "分類" },
-  { id: "planning", label: "予算" },
+  { id: "planning", label: "予算・予定" },
   { id: "members", label: "メンバー" },
 ];
 

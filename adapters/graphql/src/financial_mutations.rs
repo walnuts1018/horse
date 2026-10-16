@@ -647,6 +647,7 @@ fn transfer_context_error(
         E::HouseholdNotFound | E::AccountNotFound | E::LoanNotFound => {
             Ok(not_found_transfer_error().into())
         }
+        E::AccountingPeriodClosed => Ok(conflict_transfer_error().into()),
         E::InvalidAccountKind(_)
         | E::InvalidPoolKind(_)
         | E::InvalidAccountingPeriod(_)
@@ -664,6 +665,7 @@ fn repayment_context_error(
         E::HouseholdNotFound | E::AccountNotFound | E::LoanNotFound => {
             Ok(not_found_repayment_error().into())
         }
+        E::AccountingPeriodClosed => Ok(conflict_repayment_error().into()),
         E::InvalidAccountKind(_)
         | E::InvalidPoolKind(_)
         | E::InvalidAccountingPeriod(_)

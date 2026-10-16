@@ -1,5 +1,5 @@
 use crate::schema::public;
-use bookkeeping_application::create_purchase::CreatePurchaseDecision;
+use bookkeeping_domain::purchase_commands::CreatePurchaseDecision;
 use bookkeeping_postgres::create_purchase::{
     CreatePurchasePersistenceError, PersistPurchaseSourceConfirmation,
     PersistPurchaseSourceEvidence, PurchaseCreationCrossContext,
@@ -47,7 +47,7 @@ async fn validate_catalog_references(
     }
 
     for payment in &decision.payments {
-        let account_id = parse_uuid(&payment.account_id, "account_id")?;
+        let account_id = parse_uuid(payment.account_id.as_str(), "account_id")?;
         let found = accounts::accounts
             .filter(accounts::household_id.eq(household_id))
             .filter(accounts::id.eq(account_id))
@@ -62,8 +62,7 @@ async fn validate_catalog_references(
     }
 
     for item in &decision.items {
-        if let Some(category_id) = item.category_id.as_deref() {
-            let category_id = parse_uuid(category_id, "category_id")?;
+        if let Some(category_id) = item.category_id.map(|id| id.value()) {
             let found = categories::categories
                 .filter(categories::household_id.eq(household_id))
                 .filter(categories::id.eq(category_id))
@@ -79,8 +78,7 @@ async fn validate_catalog_references(
             }
         }
         let mut concept_id = None;
-        if let Some(variant_id) = item.product_variant_id.as_deref() {
-            let variant_id = parse_uuid(variant_id, "product_variant_id")?;
+        if let Some(variant_id) = item.product_variant_id.map(|id| id.value()) {
             let found_concept_id = variants::product_variants
                 .filter(variants::household_id.eq(household_id))
                 .filter(variants::id.eq(variant_id))
@@ -109,7 +107,7 @@ async fn validate_catalog_references(
             return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
         }
         for allocation in &item.allocations {
-            let pool_id = parse_uuid(&allocation.pool_id, "pool_id")?;
+            let pool_id = parse_uuid(allocation.pool_id.as_str(), "pool_id")?;
             let found = pools::pools
                 .filter(pools::household_id.eq(household_id))
                 .filter(pools::id.eq(pool_id))
@@ -124,7 +122,7 @@ async fn validate_catalog_references(
         }
         if item.allocation_override {
             if first.rule_id.is_some()
-                || first.rule_version != decision.allocation_rule_version.value()
+                || first.rule_version.value() != decision.allocation_rule_version.value()
             {
                 return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
             }
@@ -137,34 +135,41 @@ async fn validate_catalog_references(
             .collect::<Vec<_>>()
             .join(" ")
             .to_lowercase();
+        let category_id = item.category_id.map(|id| id.value().to_string());
+        let variant_id = item.product_variant_id.map(|id| id.value().to_string());
         let candidates = eligible_allocation_rule_candidates(
             conn,
             household_id,
             concept_id,
-            item.category_id.as_deref(),
-            item.product_variant_id.as_deref(),
+            category_id.as_deref(),
+            variant_id.as_deref(),
             &merchant_key,
         )
         .await?;
-        let selected_rule = bookkeeping_application::create_purchase::select_allocation_rule(
+        let selected_rule = bookkeeping_domain::purchase_commands::select_allocation_rule(
             &candidates,
-            item.product_variant_id.as_deref(),
+            variant_id.as_deref(),
             concept_id.map(|id| id.to_string()).as_deref(),
-            item.category_id.as_deref(),
+            category_id.as_deref(),
             &merchant_key,
         );
-        if selected_rule.map(|candidate| candidate.rule_id.as_str()) != first.rule_id.as_deref() {
+        let selected_rule_id = selected_rule
+            .map(|candidate| candidate.rule_id.as_str())
+            .map(|id| parse_uuid(id, "allocation_rule_id"))
+            .transpose()?;
+        if selected_rule_id != first.rule_id.map(|id| id.value()) {
             return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
         }
-        if first.rule_id.is_none() && first.rule_version != decision.allocation_rule_version.value()
+        if first.rule_id.is_none()
+            && first.rule_version.value() != decision.allocation_rule_version.value()
         {
             return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
         }
 
-        let expected = if let Some(rule_id) = first.rule_id.as_deref() {
-            let rule_id = parse_uuid(rule_id, "allocation_rule_id")?;
+        let expected = if let Some(rule_id) = first.rule_id.map(|id| id.value()) {
             let revision_matches = candidates.iter().any(|candidate| {
-                candidate.rule_id == rule_id.to_string() && candidate.revision == first.rule_version
+                candidate.rule_id == rule_id.to_string()
+                    && candidate.revision == first.rule_version.value()
             });
             if !revision_matches {
                 return Err(CreatePurchasePersistenceError::AllocationRuleMismatch);
@@ -176,7 +181,7 @@ async fn validate_catalog_references(
                 .load::<(Uuid, i64)>(conn)
                 .await?
         } else {
-            let version = i64::try_from(first.rule_version)
+            let version = i64::try_from(first.rule_version.value())
                 .map_err(|_| CreatePurchasePersistenceError::NumericOutOfRange("rule_version"))?;
             defaults::allocation_defaults
                 .filter(defaults::household_id.eq(household_id))
@@ -191,8 +196,8 @@ async fn validate_catalog_references(
             .iter()
             .map(|allocation| {
                 Ok((
-                    parse_uuid(&allocation.pool_id, "pool_id")?,
-                    allocation.weight,
+                    parse_uuid(allocation.pool_id.as_str(), "pool_id")?,
+                    allocation.weight.value(),
                 ))
             })
             .collect::<Result<Vec<_>, CreatePurchasePersistenceError>>()?;
@@ -213,7 +218,7 @@ async fn eligible_allocation_rule_candidates(
     variant_id: Option<&str>,
     merchant_key: &str,
 ) -> Result<
-    Vec<bookkeeping_application::create_purchase::AllocationRuleCandidate>,
+    Vec<bookkeeping_domain::purchase_commands::AllocationRuleCandidate>,
     CreatePurchasePersistenceError,
 > {
     use public::allocation_rules::dsl as rules;
@@ -268,7 +273,7 @@ async fn eligible_allocation_rule_candidates(
         .map(
             |(id, revision, variant_id, concept_id, category_id, merchant)| {
                 Ok(
-                    bookkeeping_application::create_purchase::AllocationRuleCandidate {
+                    bookkeeping_domain::purchase_commands::AllocationRuleCandidate {
                         rule_id: id.to_string(),
                         revision: u64::try_from(revision)
                             .map_err(|_| CreatePurchasePersistenceError::AllocationRuleMismatch)?,
@@ -376,7 +381,11 @@ async fn persist_source_evidence(
                 .and_then(serde_json::Value::as_array)
                 .cloned()
                 .unwrap_or_default();
-            let candidate_id = decision.receipt_candidate_id.as_deref().unwrap_or("");
+            let candidate_id = decision
+                .receipt_candidate_id
+                .as_ref()
+                .map(|id| id.as_str())
+                .unwrap_or("");
             let override_reason = decision
                 .manual_amount_override_reason
                 .as_deref()
@@ -389,7 +398,7 @@ async fn persist_source_evidence(
             let amounts = decision
                 .items
                 .iter()
-                .map(|item| item.amount_yen)
+                .map(|item| item.amount_yen.value())
                 .collect::<Vec<_>>();
             if !candidate_id.is_empty() {
                 let candidates = result
@@ -517,7 +526,8 @@ async fn persist_source_evidence(
             if let Some(total) = receipt_total {
                 value["receiptTotal"] = serde_json::json!(total);
             }
-            if let Some(candidate_id) = decision.receipt_candidate_id.as_deref() {
+            if let Some(candidate_id) = decision.receipt_candidate_id.as_ref().map(|id| id.as_str())
+            {
                 value["receiptCandidateId"] = serde_json::Value::String(candidate_id.to_owned());
             }
             if let Some(reason) = decision
@@ -528,7 +538,7 @@ async fn persist_source_evidence(
                 value["manualAmountOverrideReason"] =
                     serde_json::Value::String(reason.trim().to_owned());
             }
-            let item_id = parse_uuid(&item.item_id, "item_id")?;
+            let item_id = parse_uuid(item.item_id.as_str(), "item_id")?;
             horse_postgres_common::insert_evidence_link(
                 conn,
                 evidence_application::EvidenceLink {
@@ -551,7 +561,7 @@ async fn persist_source_evidence(
             .await?;
         }
     } else {
-        if let Some(candidate_id) = decision.receipt_candidate_id.as_deref() {
+        if let Some(candidate_id) = decision.receipt_candidate_id.as_ref().map(|id| id.as_str()) {
             observation["receiptCandidateId"] = serde_json::Value::String(candidate_id.to_owned());
         }
         if let Some(reason) = decision
@@ -587,17 +597,17 @@ async fn persist_source_evidence(
 }
 
 fn confirmed_item_json(
-    item: &bookkeeping_application::create_purchase::DecidedPurchaseItem,
+    item: &bookkeeping_domain::purchase_commands::DecidedPurchaseItem,
 ) -> serde_json::Value {
     serde_json::json!({
-        "purchaseItemId": item.item_id,
+        "purchaseItemId": item.item_id.as_str(),
         "name": item.name,
-        "amountYen": item.amount_yen,
-        "categoryId": item.category_id,
-        "productVariantId": item.product_variant_id,
+        "amountYen": item.amount_yen.value(),
+        "categoryId": item.category_id.map(|id| id.value().to_string()),
+        "productVariantId": item.product_variant_id.map(|id| id.value().to_string()),
         "allocations": item.allocations.iter().map(|allocation| serde_json::json!({
-            "poolId": allocation.pool_id,
-            "weight": allocation.weight,
+            "poolId": allocation.pool_id.as_str(),
+            "weight": allocation.weight.value(),
         })).collect::<Vec<_>>(),
         "quantity": item.quantity.as_ref().map(|measure| serde_json::json!({
             "numerator": measure.numerator(),
@@ -605,7 +615,7 @@ fn confirmed_item_json(
             "unit": quantity_unit(measure.unit()),
         })),
         "printedUnitPrice": item.printed_unit_price.as_ref().map(|price| serde_json::json!({
-            "amountYen": price.amount_yen,
+            "amountYen": price.amount_yen.value(),
             "basis": {
                 "numerator": price.basis.numerator(),
                 "denominator": price.basis.denominator(),
@@ -732,8 +742,8 @@ impl PurchaseCreationCrossContext for PurchaseCreationContext {
     }
 }
 
-fn quantity_unit(value: bookkeeping_application::create_purchase::QuantityUnit) -> &'static str {
-    use bookkeeping_application::create_purchase::QuantityUnit as U;
+fn quantity_unit(value: bookkeeping_domain::purchase_commands::QuantityUnit) -> &'static str {
+    use bookkeeping_domain::purchase_commands::QuantityUnit as U;
     match value {
         U::Piece => "個",
         U::Bottle => "本",

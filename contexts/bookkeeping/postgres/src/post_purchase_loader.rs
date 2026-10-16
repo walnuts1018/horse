@@ -35,6 +35,7 @@ pub enum PostPurchaseLoadError {
     NumericOutOfRange(&'static str),
     InvalidAmount(&'static str),
     InvalidEnum { field: &'static str, value: String },
+    AccountingPeriodClosed,
     MissingPurchase,
     MissingRow(&'static str),
     HouseholdMismatch(&'static str),
@@ -157,7 +158,9 @@ pub async fn load_post_purchase_command<C: PostPurchaseReferenceData>(
     .map_err(|_| PostPurchaseLoadError::InvalidEnum {
         field: "accounting_period.revision",
         value: period_revision.to_string(),
-    })?;
+    })?
+    .into_open()
+    .map_err(|_| PostPurchaseLoadError::AccountingPeriodClosed)?;
 
     let purchase = purchases::purchases
         .filter(purchases::id.eq(purchase_id))

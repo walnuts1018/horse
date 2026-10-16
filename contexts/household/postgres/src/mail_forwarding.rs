@@ -4,8 +4,10 @@ use diesel::{
 };
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_household_change::UiChangeDescriptor;
-use household_application::mail_forwarding::{
-    self, Command, ForwardingAddress, IssueCommand, Status,
+use household_application::mail_forwarding::{Command, ForwardingAddress, IssueCommand, Status};
+use household_domain::mail_forwarding::{
+    self, ActorId, ForwardingId, HouseholdId, IssueCommand as DomainIssueCommand,
+    MailForwardingError as DomainError,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -17,7 +19,7 @@ pub enum MailForwardingError {
     Pool(String),
     Database(DieselError),
     InvalidUuid(&'static str),
-    Workflow(mail_forwarding::Error),
+    Workflow(DomainError),
     HouseholdNotFound,
     ForwardingNotFound,
     Conflict,
@@ -119,12 +121,17 @@ async fn create(
                 .await
                 .optional()?;
             let decision = mail_forwarding::decide_issue(
-                command.clone(),
+                DomainIssueCommand {
+                    actor_id: ActorId::from(actor_id),
+                    household_id: HouseholdId::from(household_id),
+                    forwarding_id: ForwardingId::from(forwarding_id),
+                    mailbox_domain: command.mailbox_domain.clone(),
+                    local_part_prefix: command.local_part_prefix.clone(),
+                    token: token.clone(),
+                    rotate,
+                },
                 role.as_deref(),
                 active.is_some(),
-                forwarding_id,
-                &token,
-                rotate,
             )
             .map_err(map_workflow_error)?;
             if let Some((active_id, _)) = active {
@@ -146,7 +153,7 @@ async fn create(
             record_change(conn, household_id, forwarding_id, actor_id, decision.change).await?;
             Ok(ForwardingAddress {
                 id: forwarding_id.to_string(),
-                address: decision.address,
+                address: decision.address.value().to_owned(),
                 created_at: created,
             })
         })
@@ -180,7 +187,7 @@ pub async fn revoke(pool: &PgPool, command: Command) -> Result<Status, MailForwa
                 .first::<(Uuid, DateTime<Utc>)>(&mut *conn)
                 .await
                 .optional()?;
-            mail_forwarding::decide_revoke(command, role.as_deref(), active.is_some())
+            mail_forwarding::decide_revoke(role.as_deref(), active.is_some())
                 .map_err(map_workflow_error)?;
             let (forwarding_id, created_at) =
                 active.ok_or(MailForwardingError::ForwardingNotFound)?;
@@ -235,15 +242,9 @@ async fn require_owner(
     actor_id: Uuid,
 ) -> Result<(), MailForwardingError> {
     let role = owner_role(conn, household_id, actor_id).await?;
-    mail_forwarding::decide_active(
-        Command {
-            actor_id: actor_id.to_string(),
-            household_id: household_id.to_string(),
-        },
-        role.as_deref(),
-    )
-    .map(|_| ())
-    .map_err(map_workflow_error)
+    mail_forwarding::decide_access(role.as_deref())
+        .map(|_| ())
+        .map_err(map_workflow_error)
 }
 
 async fn record_change(
@@ -275,12 +276,10 @@ async fn record_change(
     Ok(())
 }
 
-fn map_workflow_error(error: mail_forwarding::Error) -> MailForwardingError {
+fn map_workflow_error(error: DomainError) -> MailForwardingError {
     match error {
-        mail_forwarding::Error::Forbidden | mail_forwarding::Error::NotActive => {
-            MailForwardingError::ForwardingNotFound
-        }
-        mail_forwarding::Error::AlreadyActive => MailForwardingError::Conflict,
+        DomainError::Forbidden | DomainError::NotActive => MailForwardingError::ForwardingNotFound,
+        DomainError::AlreadyActive => MailForwardingError::Conflict,
         other => MailForwardingError::Workflow(other),
     }
 }

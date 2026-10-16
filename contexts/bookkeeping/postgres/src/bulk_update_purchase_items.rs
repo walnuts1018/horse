@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use bookkeeping_application::bulk_update_items::{
-    BulkUpdateItemPatch, BulkUpdateItemState, BulkUpdateItemTarget, BulkUpdateItemsCommand,
-    BulkUpdateItemsError, BulkUpdatePurchaseState, ItemAllocationWeight, decide_bulk_update_items,
-};
 use bookkeeping_application::{
     MemberFundingBasis, MemberId, MemberWeight, PostingTarget, SettlementPolicy,
+};
+use bookkeeping_domain::purchase_commands::{
+    BulkUpdateItemPatch, BulkUpdateItemState, BulkUpdateItemTarget, BulkUpdateItemsCommand,
+    BulkUpdateItemsError, BulkUpdatePurchaseState, ItemAllocationWeight, decide_bulk_update_items,
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
@@ -491,7 +491,7 @@ async fn validate_tags<C: crate::update_purchase_item::UpdatePurchaseItemReferen
 async fn validate_pools(
     conn: &mut crate::AsyncPgConnection,
     household_id: Uuid,
-    decisions: &[bookkeeping_application::bulk_update_items::BulkUpdateItemDecision],
+    decisions: &[bookkeeping_domain::purchase_commands::BulkUpdateItemDecision],
 ) -> Result<(), BulkUpdatePurchaseItemsPersistenceError> {
     let ids = decisions
         .iter()

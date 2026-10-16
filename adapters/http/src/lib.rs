@@ -13,7 +13,8 @@ use diesel::{BoolExpressionMethods, ExpressionMethods, JoinOnDsl, OptionalExtens
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use futures_util::{Stream, StreamExt, stream};
 use horse_auth::{
-    AuthService, Cookie, OidcError, SESSION_COOKIE_NAME, resolve_cookie, revoke_cookie,
+    AuthService, Cookie, OidcError, SESSION_COOKIE_NAME, origins_match, resolve_cookie,
+    revoke_cookie,
 };
 use horse_extraction_queue::ExtractionQueue;
 use horse_graphql_api::{
@@ -4027,12 +4028,10 @@ fn same_origin(headers: &HeaderMap, config: &Config) -> bool {
     let Some(origin) = headers
         .get(header::ORIGIN)
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| Url::parse(value).ok())
     else {
         return false;
     };
     [&config.public_origin, &config.frontend_origin]
         .into_iter()
-        .filter_map(|value| Url::parse(value).ok())
-        .any(|expected| origin.origin() == expected.origin())
+        .any(|expected| origins_match(origin, expected))
 }

@@ -1,13 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use bookkeeping_application::update_purchase::{
-    UpdatePurchaseDecision, UpdatePurchaseDraft, UpdatePurchaseError, decide_update_purchase,
-};
 use bookkeeping_application::{
     MemberFundingBasis, MemberId, MemberWeight, PostingTarget, SettlementPolicy,
     decide_post_purchase,
 };
-use bookkeeping_domain::{AccountingPeriod, YearMonth};
+use bookkeeping_domain::purchase_commands::{
+    UpdatePurchaseDecision, UpdatePurchaseDraft, UpdatePurchaseError, decide_update_purchase,
+};
+use bookkeeping_domain::{AccountingPeriod, OpenAccountingPeriod, YearMonth};
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::now, result::Error as DieselError,
@@ -69,7 +69,7 @@ impl From<DieselError> for UpdatePurchasePersistenceError {
 pub async fn persist_update_purchase<C: crate::post_purchase_loader::PostPurchaseReferenceData>(
     pool: &PgPool,
     input: PersistUpdatePurchase,
-    command: bookkeeping_application::update_purchase::UpdatePurchaseCommand,
+    command: bookkeeping_domain::purchase_commands::UpdatePurchaseCommand,
     decision: UpdatePurchaseDecision,
     reference_data: &mut C,
 ) -> Result<PersistedUpdatePurchase, UpdatePurchasePersistenceError> {
@@ -103,7 +103,7 @@ pub async fn persist_update_purchase_in_transaction<
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     actor_id: Uuid,
-    command: bookkeeping_application::update_purchase::UpdatePurchaseCommand,
+    command: bookkeeping_domain::purchase_commands::UpdatePurchaseCommand,
     decision: UpdatePurchaseDecision,
     defer_accounting_sync: bool,
     reference_data: &mut C,
@@ -244,7 +244,9 @@ pub async fn persist_update_purchase_in_transaction<
             .map_err(|_| UpdatePurchasePersistenceError::NumericOutOfRange("revision"))?,
         lifecycle,
         accounting_period: original_accounting_period
-            .ok_or(UpdatePurchasePersistenceError::InvalidOccurredAt)?,
+            .ok_or(UpdatePurchasePersistenceError::InvalidOccurredAt)?
+            .into_open()
+            .map_err(|_| UpdatePurchasePersistenceError::AccountingPeriodClosed)?,
         occurred_at: locked.3.to_rfc3339(),
         date_precision: locked.4.clone(),
         merchant: locked.5.clone(),
@@ -890,7 +892,7 @@ pub(crate) fn accounting_period(
     status: &str,
     revision: i64,
     occurred_at: DateTime<Utc>,
-) -> Result<AccountingPeriod, UpdatePurchasePersistenceError> {
+) -> Result<OpenAccountingPeriod, UpdatePurchasePersistenceError> {
     let start = period_start(occurred_at)?;
     let year = u16::try_from(start.year())
         .map_err(|_| UpdatePurchasePersistenceError::InvalidOccurredAt)?;
@@ -903,14 +905,18 @@ pub(crate) fn accounting_period(
     })?;
     match status {
         "OPEN" => AccountingPeriod::open(year_month, revision),
-        "CLOSED" => AccountingPeriod::closed(year_month, revision),
+        "CLOSED" => {
+            return Err(UpdatePurchasePersistenceError::AccountingPeriodClosed);
+        }
         _ => {
             return Err(UpdatePurchasePersistenceError::InvalidDecision(
                 UpdatePurchaseError::NotEditable,
             ));
         }
     }
-    .map_err(|_| UpdatePurchasePersistenceError::InvalidDecision(UpdatePurchaseError::NotEditable))
+    .map_err(|_| UpdatePurchasePersistenceError::InvalidDecision(UpdatePurchaseError::NotEditable))?
+    .into_open()
+    .map_err(|_| UpdatePurchasePersistenceError::AccountingPeriodClosed)
 }
 
 pub(crate) fn json_revisions(

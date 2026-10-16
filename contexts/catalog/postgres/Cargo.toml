@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 catalog-application = { path = "../application" }
+catalog-domain = { path = "../domain" }
 chrono = { workspace = true }
 diesel = { workspace = true, features = ["32-column-tables"] }
 diesel-async = { workspace = true }

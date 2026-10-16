@@ -1,4 +1,4 @@
-use bookkeeping_application::create_purchase::{DatePrecision, PurchaseOrigin, QuantityUnit};
+use bookkeeping_domain::purchase_commands::{DatePrecision, PurchaseOrigin, QuantityUnit};
 
 pub(super) const fn date_precision(value: DatePrecision) -> &'static str {
     match value {

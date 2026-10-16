@@ -1,6 +1,6 @@
 use async_graphql::{Context, ID, InputObject, MaybeUndefined, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::update_purchase::{UpdatePurchaseCommand, UpdatePurchasePayment};
+use bookkeeping_domain::purchase_commands::{UpdatePurchaseCommand, UpdatePurchasePayment};
 use bookkeeping_postgres::{
     bulk_update_purchases,
     bulk_update_purchases::PersistBulkUpdatePurchases,
@@ -364,13 +364,15 @@ fn bulk_update_persistence_error(
     use bulk_update_purchases::BulkUpdatePurchasesPersistenceError as E;
     match error {
         E::InvalidUuid(_) => Some(MutationErrorCode::BadInput),
-        E::HouseholdMismatch | E::MemberNotFound | E::PurchaseNotFound => Some(MutationErrorCode::NotFound),
+        E::HouseholdMismatch | E::MemberNotFound | E::PurchaseNotFound => {
+            Some(MutationErrorCode::NotFound)
+        }
         E::RevisionConflict => Some(MutationErrorCode::Conflict),
         E::AccountingPeriodClosed => Some(MutationErrorCode::Conflict),
         E::InvalidWorkflow(error) => Some(match error {
-            bookkeeping_application::bulk_update_purchases::BulkUpdatePurchasesError::InvalidTarget(
-                bookkeeping_application::update_purchase::UpdatePurchaseError::Conflict
-                | bookkeeping_application::update_purchase::UpdatePurchaseError::NotEditable,
+            bookkeeping_domain::purchase_commands::BulkUpdatePurchasesError::InvalidTarget(
+                bookkeeping_domain::purchase_commands::UpdatePurchaseError::Conflict
+                | bookkeeping_domain::purchase_commands::UpdatePurchaseError::NotEditable,
             ) => MutationErrorCode::Conflict,
             _ => MutationErrorCode::BadInput,
         }),
@@ -409,8 +411,8 @@ fn update_purchase_persistence_error(
         E::AccountingPeriodClosed | E::InvalidFundingSnapshot => Some(MutationErrorCode::Conflict),
         E::PaymentTotalMismatch => Some(MutationErrorCode::BadInput),
         E::InvalidDecision(error) => Some(match error {
-            bookkeeping_application::update_purchase::UpdatePurchaseError::Conflict
-            | bookkeeping_application::update_purchase::UpdatePurchaseError::NotEditable => {
+            bookkeeping_domain::purchase_commands::UpdatePurchaseError::Conflict
+            | bookkeeping_domain::purchase_commands::UpdatePurchaseError::NotEditable => {
                 MutationErrorCode::Conflict
             }
             _ => MutationErrorCode::BadInput,
@@ -435,7 +437,7 @@ fn update_item_persistence_error(
         E::AccountingPeriodClosed | E::InvalidFundingSnapshot => Some(MutationErrorCode::Conflict),
         E::InvalidPaymentAllocation | E::MerchantRequired => Some(MutationErrorCode::BadInput),
         E::InvalidWorkflow(error) => Some(match error {
-            bookkeeping_application::update_purchase_item::UpdatePurchaseItemError::Conflict => {
+            bookkeeping_domain::purchase_commands::UpdatePurchaseItemError::Conflict => {
                 MutationErrorCode::Conflict
             }
             _ => MutationErrorCode::BadInput,

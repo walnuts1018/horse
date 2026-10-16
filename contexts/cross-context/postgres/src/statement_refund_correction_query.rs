@@ -234,10 +234,12 @@ fn statement_reference(statement: &Value) -> Option<String> {
         })
 }
 
-impl From<bookkeeping_application::correct_purchase::StatementRefundObservation>
+impl From<bookkeeping_domain::statement_refund_correction::StatementRefundObservation>
     for RefundStatement
 {
-    fn from(value: bookkeeping_application::correct_purchase::StatementRefundObservation) -> Self {
+    fn from(
+        value: bookkeeping_domain::statement_refund_correction::StatementRefundObservation,
+    ) -> Self {
         let seconds = value.occurred_at_unix_nanos.div_euclid(1_000_000_000) as i64;
         let nanos = value.occurred_at_unix_nanos.rem_euclid(1_000_000_000) as u32;
         Self {

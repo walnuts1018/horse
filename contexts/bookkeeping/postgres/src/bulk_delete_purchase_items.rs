@@ -2,11 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use bookkeeping_application::{
     MemberFundingBasis, MemberId, MemberWeight, PostingTarget, SettlementPolicy, Side,
-    bulk_delete_items::{
-        BulkDeleteItemCommand, BulkDeleteItemState, BulkDeleteItemTarget, BulkDeleteItemsError,
-        BulkDeletePurchaseState, decide_bulk_delete_items,
-    },
     decide_post_purchase,
+};
+use bookkeeping_domain::purchase_commands::{
+    BulkDeleteItemCommand, BulkDeleteItemState, BulkDeleteItemTarget, BulkDeleteItemsError,
+    BulkDeletePurchaseState, decide_bulk_delete_items,
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{

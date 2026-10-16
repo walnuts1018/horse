@@ -5,7 +5,8 @@ use diesel::{
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
-use bookkeeping_application::{
+use bookkeeping_domain::PositiveYen;
+use bookkeeping_domain::{
     AccountId, MemberId, Side,
     account_movement::{
         AccountKind, AccountMovementKind, LinkStatementMovementCommand,
@@ -14,7 +15,6 @@ use bookkeeping_application::{
         decide_record_account_movement,
     },
 };
-use bookkeeping_domain::PositiveYen;
 
 use crate::evidence_port::EvidenceOperations;
 use crate::{PgPool, schema::public};
@@ -694,9 +694,9 @@ fn parse_account_kind(value: &str) -> Option<AccountKind> {
 }
 
 fn map_statement_workflow_error(
-    error: bookkeeping_application::account_movement::AccountMovementError,
+    error: bookkeeping_domain::account_movement::AccountMovementError,
 ) -> AccountMovementPersistenceError {
-    use bookkeeping_application::account_movement::AccountMovementError as WorkflowError;
+    use bookkeeping_domain::account_movement::AccountMovementError as WorkflowError;
 
     match error {
         WorkflowError::StatementNotBankMovement => {

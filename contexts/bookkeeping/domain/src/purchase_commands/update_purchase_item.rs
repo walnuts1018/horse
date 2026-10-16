@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId, Yen, allocate};
+use crate::{AllocationShares, AllocationWeight, PoolId, Yen, allocate};
 
-use crate::create_purchase::Measure;
+use super::create_purchase::Measure;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdatePurchaseItemCommand {
@@ -179,12 +179,11 @@ pub fn decide_update_purchase_item(
         ValueChange::Unchanged => None,
         ValueChange::Set(amount) => Some(*amount),
     };
-    if amount_yen_change.is_some_and(|amount| !(0..=bookkeeping_domain::MAX_YEN).contains(&amount))
-    {
+    if amount_yen_change.is_some_and(|amount| !(0..=crate::MAX_YEN).contains(&amount)) {
         return Err(UpdatePurchaseItemError::InvalidAmount);
     }
     if let OptionalValueChange::Set(price) = &command.printed_unit_price
-        && !(0..=bookkeeping_domain::MAX_YEN).contains(&price.amount_yen)
+        && !(0..=crate::MAX_YEN).contains(&price.amount_yen)
     {
         return Err(UpdatePurchaseItemError::InvalidMeasure);
     }

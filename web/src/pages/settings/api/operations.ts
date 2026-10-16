@@ -226,29 +226,3 @@ export const setPoolFundingRuleMutation = graphql`
     }
   }
 `;
-
-export const setFundingScheduleMutation = graphql`
-  mutation SetFundingScheduleMutation($input: SetFundingScheduleInput!) {
-    setFundingSchedule(input: $input) {
-      __typename
-      ... on SetFundingScheduleSuccess {
-        result {
-          id
-          householdId
-          memberId
-          poolId
-          amountYen
-          cadence
-          startsOn
-          endsOn
-          active
-          createdAt
-        }
-      }
-      ... on MutationError {
-        code
-        message
-      }
-    }
-  }
-`;

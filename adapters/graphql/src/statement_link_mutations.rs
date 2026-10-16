@@ -1,8 +1,10 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_application::{
-    AccountId, account_income::LinkStatementIncomeDecision,
+    AccountId,
+    account_income::LinkStatementIncomeDecision,
     account_movement::LinkStatementMovementDecision,
+    workflow_failure::{WorkflowFailure, WorkflowRejection},
 };
 use bookkeeping_postgres::{
     account_command_result as postgres_account_result, account_income as postgres_income,
@@ -479,102 +481,53 @@ fn error_message(code: MutationErrorCode) -> &'static str {
 }
 
 fn movement_persistence_error(
-    error: postgres_movement::AccountMovementPersistenceError,
+    error: WorkflowFailure<WorkflowRejection, postgres_movement::AccountMovementPersistenceError>,
 ) -> Result<LinkStatementAccountMovementResult> {
-    use postgres_movement::AccountMovementPersistenceError as E;
     match error {
-        E::HouseholdNotFound
-        | E::MemberNotFound
-        | E::AccountNotFound
-        | E::SourceDocumentNotFound => Ok(movement_error(MutationErrorCode::NotFound).into()),
-        E::StatementAlreadyConfirmed => Ok(movement_error(MutationErrorCode::Conflict).into()),
-        E::InvalidUuid(_)
-        | E::InvalidDecision
-        | E::StatementExtractionUnavailable
-        | E::StatementReferenceNotFound
-        | E::StatementIsNotBankMovement
-        | E::StatementMovementMismatch => Ok(movement_error(MutationErrorCode::BadInput).into()),
-        E::AccountingPeriodClosed | E::InvalidIdempotencyKey | E::IdempotencyConflict => {
-            Ok(movement_error(MutationErrorCode::Conflict).into())
+        WorkflowFailure::NotFound => Ok(movement_error(MutationErrorCode::NotFound).into()),
+        WorkflowFailure::Conflict => Ok(movement_error(MutationErrorCode::Conflict).into()),
+        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => {
+            Ok(movement_error(MutationErrorCode::BadInput).into())
         }
-        E::Pool(_) | E::Database(_) => Err(crate::internal_error(error)),
+        WorkflowFailure::Infrastructure(error) => Err(crate::internal_error(error)),
     }
 }
 
 fn income_persistence_error(
-    error: postgres_income::AccountIncomePersistenceError,
+    error: WorkflowFailure<WorkflowRejection, postgres_income::AccountIncomePersistenceError>,
 ) -> Result<LinkStatementAccountIncomeResult> {
-    use postgres_income::AccountIncomePersistenceError as E;
     match error {
-        E::HouseholdNotFound
-        | E::MemberNotFound
-        | E::AccountNotFound
-        | E::SourceDocumentNotFound => Ok(income_error(MutationErrorCode::NotFound).into()),
-        E::StatementAlreadyConfirmed => Ok(income_error(MutationErrorCode::Conflict).into()),
-        E::InvalidUuid(_)
-        | E::InvalidDecision
-        | E::StatementExtractionUnavailable
-        | E::StatementReferenceNotFound
-        | E::StatementIsNotExternalIncome
-        | E::StatementIncomeMismatch => Ok(income_error(MutationErrorCode::BadInput).into()),
-        E::AccountingPeriodClosed | E::InvalidIdempotencyKey | E::IdempotencyConflict => {
-            Ok(income_error(MutationErrorCode::Conflict).into())
+        WorkflowFailure::NotFound => Ok(income_error(MutationErrorCode::NotFound).into()),
+        WorkflowFailure::Conflict => Ok(income_error(MutationErrorCode::Conflict).into()),
+        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => {
+            Ok(income_error(MutationErrorCode::BadInput).into())
         }
-        E::Pool(_) | E::Database(_) => Err(crate::internal_error(error)),
+        WorkflowFailure::Infrastructure(error) => Err(crate::internal_error(error)),
     }
 }
 
 fn transfer_persistence_error(
-    error: postgres_transfer::StatementTransferPersistenceError,
+    error: WorkflowFailure<WorkflowRejection, postgres_transfer::StatementTransferPersistenceError>,
 ) -> Result<LinkStatementTransferResult> {
-    use postgres_transfer::StatementTransferPersistenceError as E;
     match error {
-        E::HouseholdNotFound
-        | E::MemberNotFound
-        | E::LedgerEntryNotFound
-        | E::TransferNotFound
-        | E::SourceDocumentNotFound
-        | E::StatementReferenceNotFound
-        | E::AccountNotFound => Ok(transfer_error(MutationErrorCode::NotFound).into()),
-        E::StatementAlreadyConfirmed => Ok(transfer_error(MutationErrorCode::Conflict).into()),
-        E::InvalidUuid(_)
-        | E::InvalidSource
-        | E::InvalidDecision
-        | E::SourceIsNotBankStatement
-        | E::StatementExtractionUnavailable
-        | E::StatementDoesNotMatchTransfer
-        | E::AccountIsNotBank
-        | E::JournalEntryMismatch => Ok(transfer_error(MutationErrorCode::BadInput).into()),
-        E::Pool(_) | E::Database(_) => Err(crate::internal_error(error)),
+        WorkflowFailure::NotFound => Ok(transfer_error(MutationErrorCode::NotFound).into()),
+        WorkflowFailure::Conflict => Ok(transfer_error(MutationErrorCode::Conflict).into()),
+        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => {
+            Ok(transfer_error(MutationErrorCode::BadInput).into())
+        }
+        WorkflowFailure::Infrastructure(error) => Err(crate::internal_error(error)),
     }
 }
 
 fn refund_persistence_error(
-    error: postgres_correction::CorrectPurchasePersistenceError,
+    error: WorkflowFailure<WorkflowRejection, postgres_correction::CorrectPurchasePersistenceError>,
 ) -> Result<LinkStatementRefundCorrectionResult> {
-    use postgres_correction::CorrectPurchasePersistenceError as E;
     match error {
-        E::HouseholdMismatch
-        | E::MemberNotFound
-        | E::CorrectionNotFound
-        | E::PurchaseNotFound
-        | E::SourceDocumentNotFound => Ok(refund_error(MutationErrorCode::NotFound).into()),
-        E::StatementAlreadyConfirmed => Ok(refund_error(MutationErrorCode::Conflict).into()),
-        E::InvalidUuid(_)
-        | E::InvalidDecision
-        | E::StatementNotRefundable
-        | E::StatementExtractionUnavailable
-        | E::StatementReferenceNotFound
-        | E::RefundDoesNotMatchCorrection => Ok(refund_error(MutationErrorCode::BadInput).into()),
-        E::Pool(_) | E::Database(_) => Err(crate::internal_error(error)),
-        E::InvalidPeriod
-        | E::NumericOutOfRange(_)
-        | E::IdempotencyConflict
-        | E::AccountingPeriodClosed
-        | E::PurchaseNotPosted
-        | E::RefundExceedsPurchaseBalance
-        | E::RefundExceedsItemBalance
-        | E::InvalidIdempotencyKey
-        | E::InvalidFundingSnapshot => Err(crate::internal_error(error)),
+        WorkflowFailure::NotFound => Ok(refund_error(MutationErrorCode::NotFound).into()),
+        WorkflowFailure::Conflict => Ok(refund_error(MutationErrorCode::Conflict).into()),
+        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => {
+            Ok(refund_error(MutationErrorCode::BadInput).into())
+        }
+        WorkflowFailure::Infrastructure(error) => Err(crate::internal_error(error)),
     }
 }

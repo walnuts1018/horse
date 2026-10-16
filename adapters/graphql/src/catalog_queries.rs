@@ -71,7 +71,7 @@ pub async fn graphql_tags(
         .into_iter()
         .map(|row| {
             let cursor = encode_cursor("Tag", &row.name, row.id);
-            let node = catalog_mutations::map_tag(catalog_application::tag::Tag {
+            let node = catalog_mutations::map_tag(catalog_domain::tag::Tag {
                 id: row.id.to_string(),
                 household_id: row.household_id.to_string(),
                 name: row.name,

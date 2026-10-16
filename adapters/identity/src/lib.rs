@@ -11,6 +11,29 @@ mod oidc;
 
 pub use oidc::{AuthConfig, AuthService, Cookie, LoginStart, OidcError, OidcResult};
 
+pub fn origins_match(actual: &str, expected: &str) -> bool {
+    fn parse_origin(value: &str) -> Option<url::Url> {
+        let url = url::Url::parse(value).ok()?;
+        if !url.username().is_empty()
+            || url.password().is_some()
+            || url.path() != "/"
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return None;
+        }
+        Some(url)
+    }
+
+    let Some(actual) = parse_origin(actual) else {
+        return false;
+    };
+    let Some(expected) = parse_origin(expected) else {
+        return false;
+    };
+    actual.origin() == expected.origin()
+}
+
 pub const SESSION_COOKIE_NAME: &str = "horse_session";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,4 +115,38 @@ fn cookie_value<'a>(header: &'a str, name: &str) -> Option<&'a str> {
         let (key, value) = part.trim().split_once('=')?;
         (key.trim() == name).then_some(value.trim())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::origins_match;
+
+    #[test]
+    fn origins_match_after_scheme_host_and_default_port_normalization() {
+        assert!(origins_match(
+            "HTTPS://Example.COM",
+            "https://example.com:443/"
+        ));
+        assert!(origins_match(
+            "http://example.com:80",
+            "http://EXAMPLE.com/"
+        ));
+        assert!(!origins_match(
+            "https://example.com:444",
+            "https://example.com"
+        ));
+    }
+
+    #[test]
+    fn origins_reject_non_origin_urls() {
+        assert!(!origins_match(
+            "https://example.com/path",
+            "https://example.com"
+        ));
+        assert!(!origins_match(
+            "https://user@example.com",
+            "https://example.com"
+        ));
+        assert!(!origins_match("null", "https://example.com"));
+    }
 }

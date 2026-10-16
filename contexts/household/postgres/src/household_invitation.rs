@@ -7,10 +7,13 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_household_change::UiChangeDescriptor;
 use household_application::authorization::{self, Operation};
 use household_application::invitation::{
-    AcceptInvitationDecision, AcceptInvitationFacts, AcceptInvitationOperations,
-    CreateInvitationCommand, CreateInvitationDecision, CreateInvitationOperations, InvitationError,
-    MembershipStatus, RevokeInvitationCommand, RevokeInvitationDecision,
-    RevokeInvitationOperations,
+    AcceptInvitationDecision, AcceptInvitationFacts, AcceptInvitationOperations, ActorId,
+    CreateInvitationCommand, CreateInvitationDecision, CreateInvitationOperations, HouseholdId,
+    InvitationError, InvitationId, MemberId, MembershipStatus, RevokeInvitationCommand,
+    RevokeInvitationDecision, RevokeInvitationOperations,
+};
+use household_application::invitation::{
+    invitation_created_change, invitation_revoked_change, member_joined_change,
 };
 use uuid::Uuid;
 
@@ -287,12 +290,12 @@ impl CreateInvitationOperations for PostgresCreateInvitationOperations<'_> {
 
     async fn load_actor_role(
         &mut self,
-        household_id: &str,
-        actor_id: &str,
+        household_id: &HouseholdId,
+        actor_id: &ActorId,
     ) -> Result<Option<String>, Self::Error> {
         use public::{household_members as members, households};
-        let household_id = parse_uuid(household_id, "household_id")?;
-        let actor_id = parse_uuid(actor_id, "actor_id")?;
+        let household_id = household_id.value();
+        let actor_id = actor_id.value();
         households::table
             .filter(households::id.eq(household_id))
             .for_update()
@@ -316,9 +319,9 @@ impl CreateInvitationOperations for PostgresCreateInvitationOperations<'_> {
         decision: CreateInvitationDecision,
     ) -> Result<Self::Output, Self::Error> {
         use public::household_invitations as invitations;
-        let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
-        let household_id = parse_uuid(&decision.household_id, "household_id")?;
-        let invitation_id = parse_uuid(&decision.invitation_id, "invitation_id")?;
+        let actor_id = decision.actor_id.value();
+        let household_id = decision.household_id.value();
+        let invitation_id = decision.invitation_id.value();
         let created = diesel::insert_into(invitations::table)
             .values((
                 invitations::id.eq(invitation_id),
@@ -335,7 +338,7 @@ impl CreateInvitationOperations for PostgresCreateInvitationOperations<'_> {
             household_id,
             invitation_id,
             actor_id,
-            decision.ui_change(),
+            invitation_created_change(),
         )
         .await?;
         Ok(CreatedInvitationDto {
@@ -349,17 +352,16 @@ impl CreateInvitationOperations for PostgresCreateInvitationOperations<'_> {
 
 pub async fn accept_invitation_by_token(
     pool: &PgPool,
-    member_id: String,
+    member_id: MemberId,
     token_hash: [u8; 32],
     now_value: DateTime<Utc>,
-) -> Result<String, HouseholdInvitationError> {
-    parse_uuid(&member_id, "member_id")?;
+) -> Result<HouseholdId, HouseholdInvitationError> {
     let mut pooled = pool
         .get()
         .await
         .map_err(|error| HouseholdInvitationError::Pool(error.to_string()))?;
     (*pooled)
-        .transaction::<String, HouseholdInvitationError, _>(async |conn| {
+        .transaction::<HouseholdId, HouseholdInvitationError, _>(async |conn| {
             let mut operations = PostgresAcceptInvitationOperations { conn, token_hash };
             household_application::invitation::accept_invitation_by_token(
                 &mut operations,
@@ -403,17 +405,17 @@ impl AcceptInvitationOperations for PostgresAcceptInvitationOperations<'_> {
             .optional()?
             .ok_or(HouseholdInvitationError::InvitationNotFound)?;
         Ok(AcceptInvitationFacts {
-            invitation_id: row.0.to_string(),
-            household_id: row.1.to_string(),
+            invitation_id: InvitationId::from(row.0),
+            household_id: HouseholdId::from(row.1),
             expires_at: row.2,
             revoked: row.3.is_some(),
             accepted: row.4.is_some(),
         })
     }
 
-    async fn lock_household(&mut self, household_id: &str) -> Result<(), Self::Error> {
+    async fn lock_household(&mut self, household_id: &HouseholdId) -> Result<(), Self::Error> {
         use public::households;
-        let household_id = parse_uuid(household_id, "household_id")?;
+        let household_id = household_id.value();
         households::table
             .filter(households::id.eq(household_id))
             .for_update()
@@ -427,12 +429,12 @@ impl AcceptInvitationOperations for PostgresAcceptInvitationOperations<'_> {
 
     async fn load_membership(
         &mut self,
-        household_id: &str,
-        member_id: &str,
+        household_id: &HouseholdId,
+        member_id: &MemberId,
     ) -> Result<MembershipStatus, Self::Error> {
         use public::household_members as members;
-        let household_id = parse_uuid(household_id, "household_id")?;
-        let member_id = parse_uuid(member_id, "member_id")?;
+        let household_id = household_id.value();
+        let member_id = member_id.value();
         let left_at = members::table
             .filter(members::household_id.eq(household_id))
             .filter(members::member_id.eq(member_id))
@@ -452,11 +454,11 @@ impl AcceptInvitationOperations for PostgresAcceptInvitationOperations<'_> {
         decision: AcceptInvitationDecision,
         membership: MembershipStatus,
         now_value: DateTime<Utc>,
-    ) -> Result<String, Self::Error> {
+    ) -> Result<(), Self::Error> {
         use public::{household_invitations as invitations, household_members as members};
-        let member_id = parse_uuid(&decision.member_id, "member_id")?;
-        let household_id = parse_uuid(&decision.household_id, "household_id")?;
-        let invitation_id = parse_uuid(&decision.invitation_id, "invitation_id")?;
+        let member_id = decision.member_id.value();
+        let household_id = decision.household_id.value();
+        let invitation_id = decision.invitation_id.value();
         if decision.restore_membership {
             if membership.exists {
                 diesel::update(
@@ -501,10 +503,10 @@ impl AcceptInvitationOperations for PostgresAcceptInvitationOperations<'_> {
             household_id,
             member_id,
             member_id,
-            decision.ui_change(),
+            member_joined_change(),
         )
         .await?;
-        Ok(household_id.to_string())
+        Ok(())
     }
 }
 
@@ -550,9 +552,9 @@ impl RevokeInvitationOperations for PostgresRevokeInvitationOperations<'_> {
     type Error = HouseholdInvitationError;
     type Output = InvitationStateDto;
 
-    async fn load_household(&mut self, household_id: &str) -> Result<(), Self::Error> {
+    async fn load_household(&mut self, household_id: &HouseholdId) -> Result<(), Self::Error> {
         use public::households;
-        let household_id = parse_uuid(household_id, "household_id")?;
+        let household_id = household_id.value();
         households::table
             .filter(households::id.eq(household_id))
             .for_update()
@@ -566,12 +568,12 @@ impl RevokeInvitationOperations for PostgresRevokeInvitationOperations<'_> {
 
     async fn load_actor_role(
         &mut self,
-        household_id: &str,
-        actor_id: &str,
+        household_id: &HouseholdId,
+        actor_id: &ActorId,
     ) -> Result<Option<String>, Self::Error> {
         use public::household_members as members;
-        let household_id = parse_uuid(household_id, "household_id")?;
-        let actor_id = parse_uuid(actor_id, "actor_id")?;
+        let household_id = household_id.value();
+        let actor_id = actor_id.value();
         Ok(members::table
             .filter(members::household_id.eq(household_id))
             .filter(members::member_id.eq(actor_id))
@@ -585,12 +587,12 @@ impl RevokeInvitationOperations for PostgresRevokeInvitationOperations<'_> {
 
     async fn load_invitation(
         &mut self,
-        household_id: &str,
-        invitation_id: &str,
+        household_id: &HouseholdId,
+        invitation_id: &InvitationId,
     ) -> Result<(DateTime<Utc>, DateTime<Utc>, bool, bool), Self::Error> {
         use public::household_invitations as invitations;
-        let household_id = parse_uuid(household_id, "household_id")?;
-        let invitation_id = parse_uuid(invitation_id, "invitation_id")?;
+        let household_id = household_id.value();
+        let invitation_id = invitation_id.value();
         let row = invitations::table
             .filter(invitations::household_id.eq(household_id))
             .filter(invitations::id.eq(invitation_id))
@@ -621,9 +623,9 @@ impl RevokeInvitationOperations for PostgresRevokeInvitationOperations<'_> {
         now_value: DateTime<Utc>,
     ) -> Result<Self::Output, Self::Error> {
         use public::household_invitations as invitations;
-        let household_id = parse_uuid(&decision.household_id, "household_id")?;
-        let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
-        let invitation_id = parse_uuid(&decision.invitation_id, "invitation_id")?;
+        let household_id = decision.household_id.value();
+        let actor_id = decision.actor_id.value();
+        let invitation_id = decision.invitation_id.value();
         let row = self
             .row
             .take()
@@ -638,7 +640,7 @@ impl RevokeInvitationOperations for PostgresRevokeInvitationOperations<'_> {
                 household_id,
                 invitation_id,
                 actor_id,
-                decision.ui_change(),
+                invitation_revoked_change(),
             )
             .await?;
         }

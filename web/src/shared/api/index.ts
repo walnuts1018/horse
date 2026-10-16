@@ -97,6 +97,11 @@ export type { SettlementRecordFundingMutation } from "./__generated__/Settlement
 export type { SettlementRecordRepaymentMutation } from "./__generated__/SettlementRecordRepaymentMutation.graphql";
 export type { SettlementRecordTransferMutation } from "./__generated__/SettlementRecordTransferMutation.graphql";
 export type {
+  FundingSchedulesQuery,
+  FundingSchedulesQuery$data,
+} from "./__generated__/FundingSchedulesQuery.graphql";
+export type { SetFundingScheduleMutation } from "./__generated__/SetFundingScheduleMutation.graphql";
+export type {
   AccountMovementsQuery,
   AccountMovementsQuery$data,
 } from "./__generated__/AccountMovementsQuery.graphql";

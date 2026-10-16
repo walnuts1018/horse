@@ -1,4 +1,4 @@
-use bookkeeping_application::create_purchase::CreatePurchaseDecision;
+use bookkeeping_domain::purchase_commands::CreatePurchaseDecision;
 use chrono::{Datelike, FixedOffset, NaiveDate};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::RunQueryDsl;
@@ -123,7 +123,7 @@ pub async fn persist_create_purchase_in_transaction<C: PurchaseCreationCrossCont
     }
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
-    let purchase_id = parse_uuid(&decision.purchase_id, "purchase_id")?;
+    let purchase_id = parse_uuid(decision.purchase_id.as_str(), "purchase_id")?;
     let occurred_at = decision.occurred_at.value();
     let tokyo_offset = FixedOffset::east_opt(9 * 60 * 60)
         .ok_or(CreatePurchasePersistenceError::InvalidDecision)?;
@@ -202,11 +202,12 @@ pub async fn persist_create_purchase_in_transaction<C: PurchaseCreationCrossCont
         return Err(CreatePurchasePersistenceError::AccountingPeriodClosed);
     }
 
+    let source_document_id = decision.source_document_id.map(|id| id.value().to_string());
     let confirmed_purchase = cross_context
         .resolve_source_confirmation(
             conn,
             household_id,
-            decision.source_document_id.as_deref(),
+            source_document_id.as_deref(),
             decision.source_reference.as_deref().unwrap_or(""),
         )
         .await?;
@@ -273,17 +274,9 @@ pub async fn persist_create_purchase_in_transaction<C: PurchaseCreationCrossCont
         .await?;
 
     for item in &decision.items {
-        let item_id = parse_uuid(&item.item_id, "item_id")?;
-        let category_id = item
-            .category_id
-            .as_deref()
-            .map(|value| parse_uuid(value, "category_id"))
-            .transpose()?;
-        let product_variant_id = item
-            .product_variant_id
-            .as_deref()
-            .map(|value| parse_uuid(value, "product_variant_id"))
-            .transpose()?;
+        let item_id = parse_uuid(item.item_id.as_str(), "item_id")?;
+        let category_id = item.category_id.map(|id| id.value());
+        let product_variant_id = item.product_variant_id.map(|id| id.value());
         let (quantity_numerator, quantity_denominator, quantity_unit) = item
             .quantity
             .as_ref()
@@ -300,7 +293,7 @@ pub async fn persist_create_purchase_in_transaction<C: PurchaseCreationCrossCont
             .as_ref()
             .map(|price| {
                 (
-                    Some(price.amount_yen),
+                    Some(price.amount_yen.value()),
                     Some(price.basis.numerator()),
                     Some(price.basis.denominator()),
                     Some(persistence_values::quantity_unit(price.basis.unit())),
@@ -313,7 +306,7 @@ pub async fn persist_create_purchase_in_transaction<C: PurchaseCreationCrossCont
                 public::purchase_items::household_id.eq(household_id),
                 public::purchase_items::purchase_id.eq(purchase_id),
                 public::purchase_items::name.eq(&item.name),
-                public::purchase_items::amount_yen.eq(item.amount_yen),
+                public::purchase_items::amount_yen.eq(item.amount_yen.value()),
                 public::purchase_items::category_id.eq(category_id),
                 public::purchase_items::product_variant_id.eq(product_variant_id),
                 public::purchase_items::allocation_override.eq(item.allocation_override),
@@ -328,13 +321,8 @@ pub async fn persist_create_purchase_in_transaction<C: PurchaseCreationCrossCont
             .execute(&mut *conn)
             .await?;
         for allocation in &item.allocations {
-            let pool_id = parse_uuid(&allocation.pool_id, "pool_id")?;
-            let rule_id = allocation
-                .rule_id
-                .as_deref()
-                .map(|value| parse_uuid(value, "rule_id"))
-                .transpose()?;
-            let rule_version = i64::try_from(allocation.rule_version)
+            let pool_id = parse_uuid(allocation.pool_id.as_str(), "pool_id")?;
+            let rule_version = i64::try_from(allocation.rule_version.value())
                 .map_err(|_| CreatePurchasePersistenceError::NumericOutOfRange("rule_version"))?;
             diesel::insert_into(public::purchase_allocations::table)
                 .values((
@@ -342,10 +330,11 @@ pub async fn persist_create_purchase_in_transaction<C: PurchaseCreationCrossCont
                     public::purchase_allocations::purchase_id.eq(purchase_id),
                     public::purchase_allocations::item_id.eq(item_id),
                     public::purchase_allocations::pool_id.eq(pool_id),
-                    public::purchase_allocations::amount_yen.eq(allocation.amount_yen),
-                    public::purchase_allocations::weight.eq(allocation.weight),
+                    public::purchase_allocations::amount_yen.eq(allocation.amount_yen.value()),
+                    public::purchase_allocations::weight.eq(allocation.weight.value()),
                     public::purchase_allocations::rule_version.eq(rule_version),
-                    public::purchase_allocations::rule_id.eq(rule_id),
+                    public::purchase_allocations::rule_id
+                        .eq(allocation.rule_id.map(|id| id.value())),
                 ))
                 .execute(&mut *conn)
                 .await?;
@@ -355,21 +344,21 @@ pub async fn persist_create_purchase_in_transaction<C: PurchaseCreationCrossCont
     for (index, payment) in decision.payments.iter().enumerate() {
         let line_no = i32::try_from(index + 1)
             .map_err(|_| CreatePurchasePersistenceError::NumericOutOfRange("payment line_no"))?;
-        let account_id = parse_uuid(&payment.account_id, "account_id")?;
+        let account_id = parse_uuid(payment.account_id.as_str(), "account_id")?;
         diesel::insert_into(public::purchase_payments::table)
             .values((
                 public::purchase_payments::household_id.eq(household_id),
                 public::purchase_payments::purchase_id.eq(purchase_id),
                 public::purchase_payments::line_no.eq(line_no),
                 public::purchase_payments::account_id.eq(account_id),
-                public::purchase_payments::amount_yen.eq(payment.amount_yen),
+                public::purchase_payments::amount_yen.eq(payment.amount_yen.value()),
             ))
             .execute(&mut *conn)
             .await?;
     }
 
-    if let Some(source_document_id) = decision.source_document_id.as_deref() {
-        let source_document_id = parse_uuid(source_document_id, "source_document_id")?;
+    if let Some(source_document_id) = decision.source_document_id {
+        let source_document_id = source_document_id.value();
         let source_reference = decision.source_reference.as_deref().unwrap_or("");
         cross_context
             .persist_source_confirmation(
@@ -405,7 +394,7 @@ pub async fn persist_create_purchase_in_transaction<C: PurchaseCreationCrossCont
             household_id,
             actor_id,
             purchase_id,
-            decision.ui_change(),
+            bookkeeping_application::ui_changes::purchase_created(),
         )
         .await?;
     Ok(PersistedCreatePurchase {

@@ -3,10 +3,8 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-pub use bookkeeping_application::funding_record::FundingCommandContext;
-use bookkeeping_application::funding_record::{
-    FundingAccount, FundingAccountKind, FundingPoolKind,
-};
+pub use bookkeeping_domain::funding_record::FundingCommandContext;
+use bookkeeping_domain::funding_record::{FundingAccount, FundingAccountKind, FundingPoolKind};
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
 
 use crate::schema::public;
@@ -19,6 +17,7 @@ pub enum FundingCommandContextError {
     PoolNotFound,
     AccountNotFound(Uuid),
     InvalidAccountingPeriodStatus(String),
+    AccountingPeriodClosed,
     InvalidPoolKind(String),
     InvalidAccountKind(String),
 }
@@ -100,9 +99,9 @@ pub(crate) async fn load_funding_command_context_in_transaction(
             }
         }
     }
-    .map_err(|_| {
-        FundingCommandContextError::InvalidAccountingPeriodStatus(local_date.to_string())
-    })?;
+    .map_err(|_| FundingCommandContextError::InvalidAccountingPeriodStatus(local_date.to_string()))?
+    .into_open()
+    .map_err(|_| FundingCommandContextError::AccountingPeriodClosed)?;
 
     let pool_kind = pools::pools
         .filter(pools::household_id.eq(household_id))

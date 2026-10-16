@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId, Yen, allocate};
+use crate::{AllocationShares, AllocationWeight, PoolId, Yen, allocate};
+use uuid::Uuid;
 
 const FIELD_CATEGORY_ID: &str = "categoryId";
 const FIELD_PRODUCT_VARIANT_ID: &str = "productVariantId";
@@ -300,5 +301,3 @@ fn allocation_shares(
         .collect::<Result<Vec<_>, _>>()?;
     AllocationShares::new(weights).map_err(|_| BulkUpdateItemsError::InvalidAllocation)
 }
-
-use uuid::Uuid;

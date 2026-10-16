@@ -1,4 +1,5 @@
-use bookkeeping_application::account_card_last4::{
+use bookkeeping_application::workflow_failure::WorkflowFailure;
+use bookkeeping_domain::account_card_last4::{
     SetCardLast4Command, SetCardLast4Error, decide_set_card_last4,
 };
 use chrono::Utc;
@@ -35,6 +36,24 @@ impl From<DieselError> for SetCardLast4PersistenceError {
 }
 
 pub async fn persist_set_card_last4(
+    pool: &PgPool,
+    actor_id: &str,
+    account_id: &str,
+    card_last4: Option<String>,
+) -> Result<PersistedSetCardLast4, WorkflowFailure<SetCardLast4Error, SetCardLast4PersistenceError>>
+{
+    persist_set_card_last4_inner(pool, actor_id, account_id, card_last4)
+        .await
+        .map_err(|error| match error {
+            SetCardLast4PersistenceError::InvalidWorkflow(error) => {
+                WorkflowFailure::Decision(error)
+            }
+            SetCardLast4PersistenceError::AccountNotFound => WorkflowFailure::NotFound,
+            error => WorkflowFailure::Infrastructure(error),
+        })
+}
+
+async fn persist_set_card_last4_inner(
     pool: &PgPool,
     actor_id: &str,
     account_id: &str,

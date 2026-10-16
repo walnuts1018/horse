@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parsePastedPurchaseItems } from "./pasted-purchase-items";
+import { parsePastedPurchaseItems } from "./parse-pasted-purchase-items";
 
 describe("pasted purchase items", () => {
   it("TSVの金額に含まれるカンマを保持する", () => {

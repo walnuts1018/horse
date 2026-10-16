@@ -1,21 +1,23 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bookkeeping_application::{
-    AccountId, ItemId, MemberId, PurchaseId, PurchaseLifecycle, Side,
+    MemberId,
     correct_purchase::{
-        CorrectPurchaseDecision, CorrectionCommand, CorrectionFundingEffects,
-        CorrectionFundingRule, CorrectionMemberBurdenSnapshot, CorrectionPaymentFundingSnapshot,
-        CorrectionPurchaseBurdenSnapshot, CorrectionPurchasePayment,
-        CorrectionSettlementAdjustment, CorrectionSettlementPolicy, CorrectionTarget,
-        LinkStatementRefundCorrectionCommand, LinkStatementRefundCorrectionError, PostedPurchase,
-        SignedYenDelta, StatementRefundObservation, calculate_correction_funding_effects,
-        decide_link_statement_refund_correction,
+        CorrectionFundingEffects, CorrectionFundingRule, CorrectionMemberBurdenSnapshot,
+        CorrectionPaymentFundingSnapshot, CorrectionPurchaseBurdenSnapshot,
+        CorrectionPurchasePayment, CorrectionSettlementAdjustment, CorrectionSettlementPolicy,
+        calculate_correction_funding_effects,
     },
 };
+use bookkeeping_domain::statement_refund_correction::{
+    LinkStatementRefundCorrectionCommand, LinkStatementRefundCorrectionError,
+    StatementRefundObservation, decide_link_statement_refund_correction,
+};
 use bookkeeping_domain::{
-    AccountingPeriod, AccountingPeriodStatus, AllocationShares, AllocationWeight,
-    CorrectionFundingBasis, CorrectionJournalTarget, PoolId as WorkflowPoolId, PositiveYen,
-    YearMonth, Yen,
+    AccountId, AccountingPeriod, AccountingPeriodStatus, AllocationShares, AllocationWeight,
+    CorrectPurchaseDecision, CorrectionCommand, CorrectionFundingBasis, CorrectionJournalTarget,
+    CorrectionPayment, CorrectionTarget, ItemId, PoolId as WorkflowPoolId, PositiveYen,
+    PostedPurchaseReference, PurchaseId, PurchaseLifecycle, Side, SignedYenDelta, YearMonth, Yen,
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{
@@ -327,8 +329,10 @@ impl<E: EvidenceOperations, P: super::settlement_preview::PolicySettlementData>
         };
         let original_period_model =
             period_model(original_period).ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
-        let effective_period_model =
-            period_model(effective_period).ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?;
+        let effective_period_model = period_model(effective_period)
+            .ok_or(CorrectPurchasePersistenceError::InvalidPeriod)?
+            .into_open()
+            .map_err(|_| CorrectPurchasePersistenceError::AccountingPeriodClosed)?;
         let (occurred_at, status, legacy_payment_account_id) = purchases::table
             .filter(purchases::household_id.eq(household_id))
             .filter(purchases::id.eq(purchase_id))
@@ -568,12 +572,7 @@ impl<E: EvidenceOperations, P: super::settlement_preview::PolicySettlementData>
                     .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
                 let amount = PositiveYen::new(*amount)
                     .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
-                Ok(
-                    bookkeeping_application::correct_purchase::CorrectionPayment {
-                        account_id,
-                        amount,
-                    },
-                )
+                Ok(CorrectionPayment { account_id, amount })
             })
             .collect::<Result<Vec<_>, CorrectPurchasePersistenceError>>()?;
         let item_balance = item_id
@@ -582,7 +581,7 @@ impl<E: EvidenceOperations, P: super::settlement_preview::PolicySettlementData>
             .transpose()
             .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?;
         let command = CorrectionCommand {
-            purchase: PostedPurchase::new(
+            purchase: PostedPurchaseReference::new(
                 PurchaseId::new(purchase_id.to_string())
                     .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
                 match status.as_str() {
@@ -986,10 +985,7 @@ async fn persist_correct_purchase_in_transaction(
         AccountingPeriodStatus::Open => "OPEN",
         AccountingPeriodStatus::Closed => "CLOSED",
     };
-    let expected_effective_status = match decision.effective_period.status() {
-        AccountingPeriodStatus::Open => "OPEN",
-        AccountingPeriodStatus::Closed => "CLOSED",
-    };
+    let expected_effective_status = "OPEN";
     if original_row.1 != expected_original_status
         || effective_row.1 != expected_effective_status
         || u64::try_from(original_row.2).ok() != Some(decision.original_period.revision())

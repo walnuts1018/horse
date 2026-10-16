@@ -10,5 +10,6 @@ diesel-async = { workspace = true }
 horse-postgres-common = { path = "../../../platform/postgres-common" }
 horse-household-change = { path = "../../../platform/household-change" }
 household-application = { path = "../application" }
+household-domain = { path = "../domain" }
 sha2 = { workspace = true }
 uuid = { workspace = true }

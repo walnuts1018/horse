@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { aggregatePurchaseAnalytics, itemPriceSeries, topPriceItemIDs } from "./purchase-analytics";
+import {
+  aggregatePurchaseAnalytics,
+  itemPriceSeries,
+  signedBarScale,
+  topPriceItemIDs,
+} from "./purchase-analytics";
 
 describe("aggregatePurchaseAnalytics", () => {
   it("combines monthly server totals by dimension and keeps the latest label", () => {
@@ -29,6 +34,22 @@ describe("aggregatePurchaseAnalytics", () => {
         amountYen: "400",
         count: 1,
       },
+      {
+        dimension: "pool",
+        id: "pool-1",
+        name: "A個人",
+        period: "2025-05",
+        amountYen: "1000",
+        count: 1,
+      },
+      {
+        dimension: "pool",
+        id: "pool-1",
+        name: "A個人",
+        period: "2025-05",
+        amountYen: "-250",
+        count: 1,
+      },
     ]);
 
     expect(result.rows.merchant.get("store-1")).toEqual({
@@ -42,6 +63,8 @@ describe("aggregatePurchaseAnalytics", () => {
       { month: "2025-05", id: "2025-05", amount: 1500 },
     ]);
     expect(result.rows.item.get("variant\0個")?.amount).toBe(400);
+    expect(result.rows.pool.get("pool-1")?.amount).toBe(750);
+    expect(result.monthly.pool).toEqual([{ month: "2025-05", id: "2025-05", amount: 750 }]);
   });
 });
 
@@ -85,5 +108,17 @@ describe("topPriceItemIDs", () => {
     ]);
 
     expect(ids).toEqual(["item-0\0個", "item-1\0個", "item-2\0個", "item-3\0個", "item-4\0個"]);
+  });
+});
+
+describe("signedBarScale", () => {
+  it("scales positive and negative amounts by their magnitude", () => {
+    expect(signedBarScale(25, 100)).toBe(0.25);
+    expect(signedBarScale(-75, 100)).toBe(0.75);
+    expect(signedBarScale(0, 100)).toBe(0);
+  });
+
+  it("returns zero when there is no scale", () => {
+    expect(signedBarScale(-10, 0)).toBe(0);
   });
 });

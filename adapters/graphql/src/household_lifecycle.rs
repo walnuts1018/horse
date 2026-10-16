@@ -3,8 +3,8 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
 use horse_postgres_common::PgPool;
 use household_application::{
-    create_household::CreateHouseholdCommand,
-    invitation::{CreateInvitationCommand, RevokeInvitationCommand},
+    create_household::{ActorId as CreateHouseholdActorId, CreateHouseholdCommand},
+    invitation::{CreateInvitationCommand, MemberId, RevokeInvitationCommand},
     ports::{CreateHouseholdPortError, HouseholdStore},
 };
 use household_postgres::{
@@ -204,7 +204,7 @@ pub async fn create_household(
     let store = postgres_household::PostgresHouseholds::new(ctx.data::<PgPool>()?.clone());
     match store
         .create_household(CreateHouseholdCommand {
-            actor_id: actor.0.to_string(),
+            actor_id: CreateHouseholdActorId::from(actor.0),
             name: input.name,
             member_names: input.member_names,
         })
@@ -299,14 +299,14 @@ pub async fn accept_household_invitation(
     let token_hash: [u8; 32] = Sha256::digest(token_bytes).into();
     match postgres_invitation::accept_invitation_by_token(
         ctx.data::<PgPool>()?,
-        actor.0.to_string(),
+        MemberId::from(actor.0),
         token_hash,
         Utc::now(),
     )
     .await
     {
         Ok(household_id) => {
-            let household_id = parse_uuid(&household_id)?;
+            let household_id = household_id.value();
             match postgres_household::load_household(ctx.data::<PgPool>()?, actor.0, household_id)
                 .await
             {
@@ -728,7 +728,7 @@ fn parse_uuid(value: &str) -> Result<Uuid> {
 fn create_household_error_code(error: &CreateHouseholdPortError) -> Option<MutationErrorCode> {
     use CreateHouseholdPortError as Error;
     match error {
-        Error::InvalidInput => Some(MutationErrorCode::BadInput),
+        Error::InvalidInput | Error::Workflow(_) => Some(MutationErrorCode::BadInput),
         Error::NotFound => Some(MutationErrorCode::NotFound),
         Error::Infra => None,
     }

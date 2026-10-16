@@ -108,9 +108,9 @@ impl<'a> PostgresMembershipOperations<'a> {
         decision: MembershipChangeDecision,
     ) -> Result<String, HouseholdMembershipError> {
         use public::{household_members as members, households};
-        let household_id = parse_uuid(&decision.household_id, "household_id")?;
-        let actor_id = parse_uuid(&decision.actor_id, "actor_id")?;
-        let member_id = parse_uuid(&decision.member_id, "member_id")?;
+        let household_id = decision.household_id.value();
+        let actor_id = decision.actor_id.value();
+        let member_id = decision.member_id.value();
         households::table
             .filter(households::id.eq(household_id))
             .select(households::id)

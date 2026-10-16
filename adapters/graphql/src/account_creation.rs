@@ -1,6 +1,9 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
-use bookkeeping_application::create_account::{CreateAccountCommand, OpeningBalance};
-use bookkeeping_postgres::create_account::{self, CreateAccountPersistenceError};
+use bookkeeping_application::{
+    create_account::{CreateAccountCommand, OpeningBalance},
+    workflow_failure::WorkflowFailure,
+};
+use bookkeeping_postgres::create_account;
 use horse_postgres_common::PgPool;
 use uuid::Uuid;
 
@@ -108,9 +111,13 @@ pub async fn create_account(
             }
             .into())
         }
-        Err(error) => match user_error_code(&error) {
-            Some(code) => Ok(user_error(code).into()),
-            None => Err(crate::internal_error(error)),
+        Err(error) => match error {
+            WorkflowFailure::Decision(_) => {
+                Ok(user_error(crate::MutationErrorCode::BadInput).into())
+            }
+            WorkflowFailure::NotFound => Ok(user_error(crate::MutationErrorCode::NotFound).into()),
+            WorkflowFailure::Conflict => Ok(user_error(crate::MutationErrorCode::Conflict).into()),
+            WorkflowFailure::Infrastructure(error) => Err(crate::internal_error(error)),
         },
     }
 }
@@ -147,20 +154,6 @@ fn encode_node_id(kind: &str, raw_id: &str) -> std::result::Result<String, async
         &base64::engine::general_purpose::URL_SAFE_NO_PAD,
         payload,
     ))
-}
-
-fn user_error_code(error: &CreateAccountPersistenceError) -> Option<crate::MutationErrorCode> {
-    use CreateAccountPersistenceError as E;
-    match error {
-        E::InvalidUuid(_) | E::InvalidOpeningDate | E::InvalidWorkflow(_) => {
-            Some(crate::MutationErrorCode::BadInput)
-        }
-        E::HouseholdNotFound | E::MemberNotFound | E::PoolNotFound => {
-            Some(crate::MutationErrorCode::NotFound)
-        }
-        E::AccountingPeriodClosed => Some(crate::MutationErrorCode::Conflict),
-        E::Pool(_) | E::Database(_) => None,
-    }
 }
 
 fn user_error(code: crate::MutationErrorCode) -> CreateAccountUserError {

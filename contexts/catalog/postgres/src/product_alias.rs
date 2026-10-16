@@ -1,4 +1,4 @@
-use catalog_application::product_alias::{
+use catalog_domain::product_alias::{
     SetProductAliasCommand, SetProductAliasDecision, SetProductAliasError, decide_set_product_alias,
 };
 use diesel::{

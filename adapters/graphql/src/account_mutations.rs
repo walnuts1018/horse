@@ -9,6 +9,7 @@ use bookkeeping_application::{
         AccountMovementKind as DomainAccountMovementKind, RecordAccountMovementCommand,
         StatementMovementSource, decide_record_account_movement,
     },
+    workflow_failure::{WorkflowFailure, WorkflowRejection},
 };
 use bookkeeping_domain::PositiveYen;
 use bookkeeping_postgres::{
@@ -426,6 +427,11 @@ pub async fn record_account_movement(
     .await
     {
         Ok(value) => value,
+        Err(account_command_context::AccountCommandContextError::AccountingPeriodClosed) => {
+            return Ok(AccountMutationOutcome::UserError(
+                AccountMutationFailure::Conflict,
+            ));
+        }
         Err(error) => return Err(crate::internal_error(error)),
     };
     if !facts.missing_account_ids.is_empty() {
@@ -606,6 +612,11 @@ pub async fn record_external_income(
     .await
     {
         Ok(value) => value,
+        Err(account_command_context::AccountCommandContextError::AccountingPeriodClosed) => {
+            return Ok(AccountMutationOutcome::UserError(
+                AccountMutationFailure::Conflict,
+            ));
+        }
         Err(error) => return Err(crate::internal_error(error)),
     };
     if !facts.missing_account_ids.is_empty() {
@@ -758,57 +769,35 @@ fn fingerprint(fields: &[&str]) -> [u8; 32] {
 }
 
 fn map_movement_error(
-    error: AccountMovementPersistenceError,
+    error: WorkflowFailure<WorkflowRejection, AccountMovementPersistenceError>,
 ) -> Result<AccountMutationOutcome<PersistedAccountMovementResult>, async_graphql::Error> {
-    use AccountMovementPersistenceError as E;
     match error {
-        E::IdempotencyConflict | E::AccountingPeriodClosed => Ok(
-            AccountMutationOutcome::UserError(AccountMutationFailure::Conflict),
-        ),
-        E::HouseholdNotFound
-        | E::MemberNotFound
-        | E::AccountNotFound
-        | E::SourceDocumentNotFound => Ok(AccountMutationOutcome::UserError(
+        WorkflowFailure::Conflict => Ok(AccountMutationOutcome::UserError(
+            AccountMutationFailure::Conflict,
+        )),
+        WorkflowFailure::NotFound => Ok(AccountMutationOutcome::UserError(
             AccountMutationFailure::NotFound,
         )),
-        E::InvalidIdempotencyKey
-        | E::InvalidDecision
-        | E::InvalidUuid(_)
-        | E::StatementExtractionUnavailable
-        | E::StatementReferenceNotFound
-        | E::StatementAlreadyConfirmed
-        | E::StatementIsNotBankMovement
-        | E::StatementMovementMismatch => Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::BadInput,
-        )),
-        E::Pool(_) | E::Database(_) => Err(crate::internal_error(error)),
+        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => Ok(
+            AccountMutationOutcome::UserError(AccountMutationFailure::BadInput),
+        ),
+        WorkflowFailure::Infrastructure(error) => Err(crate::internal_error(error)),
     }
 }
 
 fn map_income_error(
-    error: AccountIncomePersistenceError,
+    error: WorkflowFailure<WorkflowRejection, AccountIncomePersistenceError>,
 ) -> Result<AccountMutationOutcome<PersistedAccountIncomeResult>, async_graphql::Error> {
-    use AccountIncomePersistenceError as E;
     match error {
-        E::IdempotencyConflict | E::AccountingPeriodClosed => Ok(
-            AccountMutationOutcome::UserError(AccountMutationFailure::Conflict),
-        ),
-        E::HouseholdNotFound
-        | E::MemberNotFound
-        | E::AccountNotFound
-        | E::SourceDocumentNotFound => Ok(AccountMutationOutcome::UserError(
+        WorkflowFailure::Conflict => Ok(AccountMutationOutcome::UserError(
+            AccountMutationFailure::Conflict,
+        )),
+        WorkflowFailure::NotFound => Ok(AccountMutationOutcome::UserError(
             AccountMutationFailure::NotFound,
         )),
-        E::InvalidIdempotencyKey
-        | E::InvalidDecision
-        | E::InvalidUuid(_)
-        | E::StatementExtractionUnavailable
-        | E::StatementReferenceNotFound
-        | E::StatementAlreadyConfirmed
-        | E::StatementIsNotExternalIncome
-        | E::StatementIncomeMismatch => Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::BadInput,
-        )),
-        E::Pool(_) | E::Database(_) => Err(crate::internal_error(error)),
+        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => Ok(
+            AccountMutationOutcome::UserError(AccountMutationFailure::BadInput),
+        ),
+        WorkflowFailure::Infrastructure(error) => Err(crate::internal_error(error)),
     }
 }

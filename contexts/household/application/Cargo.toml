@@ -8,3 +8,4 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 horse-household-change = { path = "../../../platform/household-change" }
 horse-authorization = { path = "../../../platform/authorization" }
+household-domain = { path = "../domain" }

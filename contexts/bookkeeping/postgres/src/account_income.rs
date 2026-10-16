@@ -5,7 +5,7 @@ use diesel::{
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
-use bookkeeping_application::{
+use bookkeeping_domain::{
     Side,
     account_income::{
         AccountIncomeError, LinkStatementIncomeCommand, LinkStatementIncomeDecision,

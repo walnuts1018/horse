@@ -3,7 +3,7 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as Di
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use uuid::Uuid;
 
-use bookkeeping_application::statement_transfer::{
+use bookkeeping_domain::statement_transfer::{
     LinkStatementTransferCommand, StatementTransferObservation, decide_link_statement_transfer,
 };
 

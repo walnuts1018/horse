@@ -1,7 +1,8 @@
 use async_graphql::{Context, ID, InputObject, Interface, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::close_period::{ClosePeriodError, ClosePeriodWorkflowError};
+use bookkeeping_application::close_period::ClosePeriodWorkflowError;
 use bookkeeping_application::settlement_query::GetSettlementQuery;
+use bookkeeping_domain::close_period::ClosePeriodError;
 use bookkeeping_postgres::close_period as postgres_close_period;
 use bookkeeping_postgres::loan_balance_query as postgres_loan_balances;
 use chrono::{DateTime as ChronoDateTime, Utc};
@@ -128,11 +129,9 @@ pub async fn close_period(ctx: &Context<'_>, input: ClosePeriodInput) -> Result<
             Ok(ClosePeriodResult::Success(ClosePeriodSuccess { result }))
         }
         Err(ClosePeriodWorkflowError::Decision(error)) => match error {
-            ClosePeriodError::PeriodAlreadyClosed | ClosePeriodError::RevisionMismatch { .. } => {
-                Ok(ClosePeriodResult::UserError(user_error(
-                    MutationErrorCode::Conflict,
-                )))
-            }
+            ClosePeriodError::RevisionMismatch { .. } => Ok(ClosePeriodResult::UserError(
+                user_error(MutationErrorCode::Conflict),
+            )),
             ClosePeriodError::DraftPurchasesExist => {
                 Ok(ClosePeriodResult::UserError(ClosePeriodUserError {
                     code: MutationErrorCode::Conflict,

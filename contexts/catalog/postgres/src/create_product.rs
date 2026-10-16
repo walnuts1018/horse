@@ -1,6 +1,7 @@
-use catalog_application::create_product::{
-    CreateConceptCommand, CreateConceptDecision, CreateProductError, CreateProductOperations,
-    CreateVariantCommand, CreateVariantDecision,
+use catalog_application::create_product::CreateProductOperations;
+use catalog_domain::product_creation::{
+    CreateConceptCommand, CreateConceptDecision, CreateProductError, CreateVariantCommand,
+    CreateVariantDecision,
 };
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{AsyncConnection, RunQueryDsl};

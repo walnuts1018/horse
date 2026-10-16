@@ -1,8 +1,12 @@
 use std::collections::BTreeSet;
 use std::num::NonZeroU64;
 
-use bookkeeping_domain::{AllocationShares, AllocationWeight, PoolId, Yen, allocate};
+use crate::{
+    AccountId, AllocationShares, AllocationWeight as ShareWeight, ItemId, PoolId, PositiveYen,
+    PurchaseId, Yen, allocate,
+};
 use chrono::{DateTime, Utc};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PurchaseOccurredAt(DateTime<Utc>);
@@ -43,6 +47,62 @@ impl AllocationRuleVersion {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReceiptCandidateId(String);
+
+impl ReceiptCandidateId {
+    pub fn new(value: impl Into<String>) -> Option<Self> {
+        let value = value.into();
+        (!value.is_empty()).then_some(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PurchaseAllocationWeight(NonZeroU64);
+
+impl PurchaseAllocationWeight {
+    pub fn new(value: i64) -> Option<Self> {
+        u64::try_from(value)
+            .ok()
+            .and_then(NonZeroU64::new)
+            .map(Self)
+    }
+
+    pub const fn value(self) -> i64 {
+        self.0.get() as i64
+    }
+
+    const fn as_u64(self) -> u64 {
+        self.0.get()
+    }
+}
+
+macro_rules! uuid_identifier {
+    ($name:ident) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub struct $name(Uuid);
+
+        impl $name {
+            pub const fn new(value: Uuid) -> Self {
+                Self(value)
+            }
+
+            pub const fn value(self) -> Uuid {
+                self.0
+            }
+        }
+    };
+}
+
+uuid_identifier!(CategoryId);
+uuid_identifier!(ProductVariantId);
+uuid_identifier!(AllocationRuleId);
+uuid_identifier!(SourceDocumentId);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuantityUnit {
     Piece,
@@ -81,15 +141,15 @@ pub enum MeasureError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatePurchaseCommand {
-    pub purchase_id: String,
+    pub purchase_id: PurchaseId,
     pub occurred_at: PurchaseOccurredAt,
     pub date_precision: DatePrecision,
     pub merchant: String,
     pub origin: PurchaseOrigin,
     pub allocation_rule_version: AllocationRuleVersion,
-    pub source_document_id: Option<String>,
+    pub source_document_id: Option<SourceDocumentId>,
     pub source_reference: Option<String>,
-    pub receipt_candidate_id: Option<String>,
+    pub receipt_candidate_id: Option<ReceiptCandidateId>,
     pub manual_amount_override_reason: Option<String>,
     pub items: Vec<CreatePurchaseItem>,
     pub payments: Vec<CreatePurchasePayment>,
@@ -97,11 +157,11 @@ pub struct CreatePurchaseCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatePurchaseItem {
-    pub item_id: String,
+    pub item_id: ItemId,
     pub name: String,
-    pub amount_yen: i64,
-    pub category_id: Option<String>,
-    pub product_variant_id: Option<String>,
+    pub amount_yen: Yen,
+    pub category_id: Option<CategoryId>,
+    pub product_variant_id: Option<ProductVariantId>,
     pub quantity: Option<Measure>,
     pub printed_unit_price: Option<PrintedUnitPrice>,
     pub allocation_override: bool,
@@ -145,57 +205,47 @@ impl Measure {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrintedUnitPrice {
-    pub amount_yen: i64,
+    pub amount_yen: Yen,
     pub basis: Measure,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatePurchaseAllocation {
-    pub pool_id: String,
-    pub weight: i64,
-    pub rule_version: u64,
-    pub rule_id: Option<String>,
+    pub pool_id: PoolId,
+    pub weight: PurchaseAllocationWeight,
+    pub rule_version: AllocationRuleVersion,
+    pub rule_id: Option<AllocationRuleId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatePurchasePayment {
-    pub account_id: String,
-    pub amount_yen: i64,
+    pub account_id: AccountId,
+    pub amount_yen: PositiveYen,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatePurchaseDecision {
-    pub purchase_id: String,
+    pub purchase_id: PurchaseId,
     pub occurred_at: PurchaseOccurredAt,
     pub date_precision: DatePrecision,
     pub merchant: String,
     pub origin: PurchaseOrigin,
     pub allocation_rule_version: AllocationRuleVersion,
-    pub source_document_id: Option<String>,
+    pub source_document_id: Option<SourceDocumentId>,
     pub source_reference: Option<String>,
-    pub receipt_candidate_id: Option<String>,
+    pub receipt_candidate_id: Option<ReceiptCandidateId>,
     pub manual_amount_override_reason: Option<String>,
     pub items: Vec<DecidedPurchaseItem>,
     pub payments: Vec<CreatePurchasePayment>,
 }
 
-impl CreatePurchaseDecision {
-    pub fn ui_change(&self) -> horse_household_change::UiChangeDescriptor {
-        horse_household_change::UiChangeDescriptor::new(
-            "purchase.created",
-            "purchase",
-            Vec::<String>::new(),
-        )
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecidedPurchaseItem {
-    pub item_id: String,
+    pub item_id: ItemId,
     pub name: String,
-    pub amount_yen: i64,
-    pub category_id: Option<String>,
-    pub product_variant_id: Option<String>,
+    pub amount_yen: Yen,
+    pub category_id: Option<CategoryId>,
+    pub product_variant_id: Option<ProductVariantId>,
     pub quantity: Option<Measure>,
     pub printed_unit_price: Option<PrintedUnitPrice>,
     pub allocation_override: bool,
@@ -204,11 +254,11 @@ pub struct DecidedPurchaseItem {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecidedPurchaseAllocation {
-    pub pool_id: String,
-    pub amount_yen: i64,
-    pub weight: i64,
-    pub rule_version: u64,
-    pub rule_id: Option<String>,
+    pub pool_id: PoolId,
+    pub amount_yen: Yen,
+    pub weight: PurchaseAllocationWeight,
+    pub rule_version: AllocationRuleVersion,
+    pub rule_id: Option<AllocationRuleId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -261,7 +311,6 @@ pub fn select_allocation_rule<'a>(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CreatePurchaseError {
-    InvalidPurchaseId,
     InvalidSourceReference,
     InvalidReceiptOverrideReason,
     InvalidMerchant,
@@ -271,7 +320,6 @@ pub enum CreatePurchaseError {
     InvalidAmount,
     InvalidAllocation,
     DuplicateAllocationPool,
-    InvalidPayment,
     DuplicatePaymentAccount,
     AmountOverflow,
 }
@@ -279,9 +327,6 @@ pub enum CreatePurchaseError {
 pub fn decide_create_purchase(
     command: CreatePurchaseCommand,
 ) -> Result<CreatePurchaseDecision, CreatePurchaseError> {
-    if command.purchase_id.is_empty() {
-        return Err(CreatePurchaseError::InvalidPurchaseId);
-    }
     if let Some(reference) = &command.source_reference
         && (command.source_document_id.is_none()
             || reference.len() > 256
@@ -309,67 +354,56 @@ pub fn decide_create_purchase(
     let mut item_ids = BTreeSet::new();
     let mut items = Vec::with_capacity(command.items.len());
     for item in command.items {
-        if item.item_id.is_empty() || !item_ids.insert(item.item_id.clone()) {
+        if !item_ids.insert(item.item_id.as_str().to_owned()) {
             return Err(CreatePurchaseError::InvalidItemId);
         }
         let name = item.name.trim();
         if name.is_empty() || name.chars().count() > 240 {
             return Err(CreatePurchaseError::InvalidItemName);
         }
-        if !(0..=1_000_000_000_000).contains(&item.amount_yen) {
+        if !(0..=crate::MAX_YEN).contains(&item.amount_yen.value()) {
             return Err(CreatePurchaseError::InvalidAmount);
         }
         total = total
-            .checked_add(item.amount_yen)
+            .checked_add(item.amount_yen.value())
             .ok_or(CreatePurchaseError::AmountOverflow)?;
-        if let Some(price) = &item.printed_unit_price
-            && !(0..=1_000_000_000_000).contains(&price.amount_yen)
+        if item
+            .printed_unit_price
+            .as_ref()
+            .is_some_and(|price| !(0..=crate::MAX_YEN).contains(&price.amount_yen.value()))
         {
             return Err(CreatePurchaseError::InvalidAmount);
         }
         let mut seen_pools = BTreeSet::new();
         let mut weights = Vec::with_capacity(item.allocations.len());
         for allocation in &item.allocations {
-            if allocation.pool_id.is_empty()
-                || allocation.weight <= 0
-                || allocation.rule_version == 0
-            {
-                return Err(CreatePurchaseError::InvalidAllocation);
-            }
-            if !seen_pools.insert(allocation.pool_id.clone()) {
+            if !seen_pools.insert(allocation.pool_id.as_str().to_owned()) {
                 return Err(CreatePurchaseError::DuplicateAllocationPool);
             }
             weights.push(
-                AllocationWeight::new(
-                    PoolId::new(allocation.pool_id.clone())
-                        .map_err(|_| CreatePurchaseError::InvalidAllocation)?,
-                    allocation.weight as u64,
-                )
-                .map_err(|_| CreatePurchaseError::InvalidAllocation)?,
+                ShareWeight::new(allocation.pool_id.clone(), allocation.weight.as_u64())
+                    .map_err(|_| CreatePurchaseError::InvalidAllocation)?,
             );
         }
         let shares =
             AllocationShares::new(weights).map_err(|_| CreatePurchaseError::InvalidAllocation)?;
-        let allocations = allocate(
-            Yen::new(item.amount_yen).map_err(|_| CreatePurchaseError::InvalidAmount)?,
-            &shares,
-        )
-        .into_iter()
-        .map(|allocation| {
-            let source = item
-                .allocations
-                .iter()
-                .find(|candidate| candidate.pool_id == allocation.pool_id().as_str())
-                .expect("allocation preserves its pool id");
-            DecidedPurchaseAllocation {
-                pool_id: allocation.pool_id().as_str().to_owned(),
-                amount_yen: allocation.amount().value(),
-                weight: source.weight,
-                rule_version: source.rule_version,
-                rule_id: source.rule_id.clone(),
-            }
-        })
-        .collect();
+        let allocations = allocate(item.amount_yen, &shares)
+            .into_iter()
+            .map(|allocation| {
+                let source = item
+                    .allocations
+                    .iter()
+                    .find(|candidate| candidate.pool_id.as_str() == allocation.pool_id().as_str())
+                    .expect("allocation preserves its pool id");
+                DecidedPurchaseAllocation {
+                    pool_id: allocation.pool_id().clone(),
+                    amount_yen: allocation.amount(),
+                    weight: source.weight,
+                    rule_version: source.rule_version,
+                    rule_id: source.rule_id,
+                }
+            })
+            .collect();
         items.push(DecidedPurchaseItem {
             item_id: item.item_id,
             name: name.to_owned(),
@@ -385,10 +419,7 @@ pub fn decide_create_purchase(
 
     let mut payment_accounts = BTreeSet::new();
     for payment in &command.payments {
-        if payment.account_id.is_empty() || !(1..=1_000_000_000_000).contains(&payment.amount_yen) {
-            return Err(CreatePurchaseError::InvalidPayment);
-        }
-        if !payment_accounts.insert(payment.account_id.clone()) {
+        if !payment_accounts.insert(payment.account_id.as_str().to_owned()) {
             return Err(CreatePurchaseError::DuplicatePaymentAccount);
         }
     }
@@ -424,7 +455,7 @@ mod tests {
 
     fn command() -> CreatePurchaseCommand {
         CreatePurchaseCommand {
-            purchase_id: "purchase-1".to_owned(),
+            purchase_id: PurchaseId::new("purchase-1").unwrap(),
             occurred_at: PurchaseOccurredAt::new("2026-10-15T12:00:00Z".parse().unwrap()),
             date_precision: DatePrecision::DateTime,
             merchant: "  Market  ".to_owned(),
@@ -435,18 +466,18 @@ mod tests {
             receipt_candidate_id: None,
             manual_amount_override_reason: None,
             items: vec![CreatePurchaseItem {
-                item_id: "item-1".to_owned(),
+                item_id: ItemId::new("item-1").unwrap(),
                 name: "  milk  ".to_owned(),
-                amount_yen: 101,
+                amount_yen: Yen::new(101).unwrap(),
                 category_id: None,
                 product_variant_id: None,
                 quantity: None,
                 printed_unit_price: None,
                 allocation_override: false,
                 allocations: vec![CreatePurchaseAllocation {
-                    pool_id: "pool-1".to_owned(),
-                    weight: 1,
-                    rule_version: 1,
+                    pool_id: PoolId::new("pool-1").unwrap(),
+                    weight: PurchaseAllocationWeight::new(1).unwrap(),
+                    rule_version: AllocationRuleVersion::new(1).unwrap(),
                     rule_id: None,
                 }],
             }],
@@ -461,24 +492,30 @@ mod tests {
         assert_eq!(decision.date_precision, DatePrecision::DateTime);
         assert_eq!(decision.origin, PurchaseOrigin::Manual);
         assert_eq!(decision.items[0].name, "milk");
-        assert_eq!(decision.items[0].allocations[0].amount_yen, 101);
+        assert_eq!(decision.items[0].allocations[0].amount_yen.value(), 101);
     }
 
     #[test]
     fn create_rejects_duplicate_payment_accounts() {
         let mut input = command();
         input.payments.push(CreatePurchasePayment {
-            account_id: "account-1".to_owned(),
-            amount_yen: 50,
+            account_id: AccountId::new("account-1").unwrap(),
+            amount_yen: PositiveYen::new(50).unwrap(),
         });
         input.payments.push(CreatePurchasePayment {
-            account_id: "account-1".to_owned(),
-            amount_yen: 50,
+            account_id: AccountId::new("account-1").unwrap(),
+            amount_yen: PositiveYen::new(50).unwrap(),
         });
         assert_eq!(
             decide_create_purchase(input),
             Err(CreatePurchaseError::DuplicatePaymentAccount)
         );
+    }
+
+    #[test]
+    fn allocation_weight_rejects_nonpositive_values() {
+        assert_eq!(PurchaseAllocationWeight::new(0), None);
+        assert_eq!(PurchaseAllocationWeight::new(-1), None);
     }
 
     #[test]

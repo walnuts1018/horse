@@ -1,7 +1,9 @@
 use catalog_application::category::{
+    CreateCategoryOperations, SetCategoryArchivedOperations, UpdateCategoryNameOperations,
+};
+use catalog_domain::category::{
     ActorId, CategoryError, CategoryId, CategoryName, CategoryView, CreateCategoryDecision,
-    CreateCategoryOperations, HouseholdId, LoadedCategory, SetCategoryArchivedDecision,
-    SetCategoryArchivedOperations, UpdateCategoryNameDecision, UpdateCategoryNameOperations,
+    HouseholdId, LoadedCategory, SetCategoryArchivedDecision, UpdateCategoryNameDecision,
 };
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::{
@@ -406,9 +408,9 @@ fn loaded_category(
             .map_err(|_| CategoryWorkflowError::CorruptStoredData)?,
         name: CategoryName::new(row.3).map_err(|_| CategoryWorkflowError::CorruptStoredData)?,
         status: if row.4 {
-            catalog_application::category::CategoryStatus::Archived
+            catalog_domain::category::CategoryStatus::Archived
         } else {
-            catalog_application::category::CategoryStatus::Active
+            catalog_domain::category::CategoryStatus::Active
         },
     })
 }

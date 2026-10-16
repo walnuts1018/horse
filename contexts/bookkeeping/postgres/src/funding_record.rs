@@ -8,8 +8,7 @@ use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use bookkeeping_application::funding_record as application;
-use bookkeeping_application::funding_record::{PostingSide, RecordFundingDecision};
-use bookkeeping_domain::AccountingPeriodStatus;
+use bookkeeping_domain::funding_record::{PostingSide, RecordFundingDecision};
 
 use crate::{PgPool, schema::public};
 
@@ -342,9 +341,7 @@ async fn persist_record_funding_in_transaction(
         1,
     )
     .ok_or(RecordFundingPersistenceError::InvalidDecision)?;
-    if period_start != decision_period_start
-        || decision.accounting_period.status() != AccountingPeriodStatus::Open
-    {
+    if period_start != decision_period_start {
         return Err(RecordFundingPersistenceError::InvalidDecision);
     }
     let ledger_entry_id = Uuid::now_v7();

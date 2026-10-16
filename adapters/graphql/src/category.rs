@@ -1,8 +1,8 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use catalog_application::category as application_category;
-use catalog_application::category::CategoryView as DomainCategory;
-use catalog_application::category::{
+use catalog_domain::category::CategoryView as DomainCategory;
+use catalog_domain::category::{
     CreateCategoryCommand, SetCategoryArchivedCommand, UpdateCategoryNameCommand,
 };
 use catalog_postgres::category as postgres_category;

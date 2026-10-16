@@ -12,6 +12,7 @@ csv = { workspace = true }
 horse-gemini-developer-api = { path = "../ai" }
 horse-postgres-common = { path = "../../platform/postgres-common" }
 evidence-application = { path = "../../contexts/evidence/application" }
+evidence-domain = { path = "../../contexts/evidence/domain" }
 evidence-postgres = { path = "../../contexts/evidence/postgres" }
 futures-util = { workspace = true }
 mail-parser = { workspace = true }

@@ -1233,6 +1233,10 @@ dependencies = [
 [[package]]
 name = "bookkeeping-domain"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "uuid",
+]
 
 [[package]]
 name = "bookkeeping-postgres"
@@ -1301,6 +1305,15 @@ dependencies = [
 name = "catalog-application"
 version = "0.1.0"
 dependencies = [
+ "catalog-domain",
+ "horse-household-change",
+ "uuid",
+]
+
+[[package]]
+name = "catalog-domain"
+version = "0.1.0"
+dependencies = [
  "horse-household-change",
  "uuid",
 ]
@@ -1310,6 +1323,7 @@ name = "catalog-postgres"
 version = "0.1.0"
 dependencies = [
  "catalog-application",
+ "catalog-domain",
  "chrono",
  "diesel",
  "diesel-async",
@@ -2258,10 +2272,15 @@ name = "evidence-application"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "evidence-domain",
  "horse-household-change",
  "serde_json",
  "uuid",
 ]
+
+[[package]]
+name = "evidence-domain"
+version = "0.1.0"
 
 [[package]]
 name = "evidence-postgres"
@@ -2271,6 +2290,7 @@ dependencies = [
  "diesel",
  "diesel-async",
  "evidence-application",
+ "evidence-domain",
  "horse-household-change",
  "horse-postgres-common",
  "serde_json",
@@ -2841,6 +2861,7 @@ dependencies = [
  "bookkeeping-domain",
  "bookkeeping-postgres",
  "catalog-application",
+ "catalog-domain",
  "catalog-postgres",
  "chrono",
  "cross-context-postgres",
@@ -2978,6 +2999,7 @@ dependencies = [
  "diesel",
  "diesel-async",
  "evidence-application",
+ "evidence-domain",
  "evidence-postgres",
  "futures-util",
  "horse-gemini-developer-api",
@@ -3003,6 +3025,17 @@ dependencies = [
  "chrono",
  "horse-authorization",
  "horse-household-change",
+ "household-domain",
+ "uuid",
+]
+
+[[package]]
+name = "household-domain"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "horse-authorization",
+ "horse-household-change",
  "uuid",
 ]
 
@@ -3016,6 +3049,7 @@ dependencies = [
  "horse-household-change",
  "horse-postgres-common",
  "household-application",
+ "household-domain",
  "sha2 0.11.1",
  "uuid",
 ]
@@ -4464,6 +4498,16 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "horse-household-change",
+ "policy-domain",
+]
+
+[[package]]
+name = "policy-domain"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "horse-household-change",
+ "uuid",
 ]
 
 [[package]]

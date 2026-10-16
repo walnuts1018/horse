@@ -3,14 +3,12 @@ use async_graphql::{
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_application::{AccountingPeriod, PurchaseLifecycle, YearMonth};
-use bookkeeping_application::{
-    bulk_delete_items::BulkDeleteItemTarget,
-    bulk_update_items::{BulkUpdateItemPatch, BulkUpdateItemTarget, ItemAllocationWeight},
-    update_purchase::{UpdatePurchaseCommand, UpdatePurchaseDraft, UpdatePurchasePayment},
-    update_purchase_item::{
-        ItemAllocationWeight as UpdateItemAllocationWeight, OptionalValueChange, PrintedUnitPrice,
-        ProductLearning, UpdatePurchaseItemCommand, UpdatePurchaseItemError, ValueChange,
-    },
+use bookkeeping_domain::purchase_commands::{
+    BulkDeleteItemTarget, BulkUpdateItemPatch, BulkUpdateItemTarget,
+    ItemAllocationWeight as BulkItemAllocationWeight, OptionalValueChange, ProductLearning,
+    UpdatePurchaseCommand, UpdatePurchaseDraft, UpdatePurchaseItemCommand, UpdatePurchaseItemError,
+    UpdatePurchasePayment, UpdatedItemAllocationWeight as UpdateItemAllocationWeight,
+    UpdatedPrintedUnitPrice as PrintedUnitPrice, ValueChange,
 };
 use bookkeeping_postgres::{
     bulk_delete_purchase_items::{self, PersistBulkDeletePurchaseItems},
@@ -219,12 +217,15 @@ pub async fn update_purchase(
         Ok(value) => value,
         Err(()) => return Ok(update_error(MutationErrorCode::BadInput).into()),
     };
+    if context.status == "CLOSED" {
+        return Ok(update_error(MutationErrorCode::Conflict).into());
+    }
     command.base_revision = base_revision;
     let current = match update_purchase_draft(context) {
         Ok(current) => current,
         Err(()) => return Err(crate::internal_error("invalid purchase edit context")),
     };
-    let decision = match bookkeeping_application::update_purchase::decide_update_purchase(
+    let decision = match bookkeeping_domain::purchase_commands::decide_update_purchase(
         command.clone(),
         current,
     ) {
@@ -515,11 +516,10 @@ fn update_purchase_draft(
                 u8::try_from(local_date.month()).map_err(|_| ())?,
             )
             .map_err(|_| ())?;
-            if value.status == "CLOSED" {
-                AccountingPeriod::closed(year_month, 1).map_err(|_| ())?
-            } else {
-                AccountingPeriod::open(year_month, 1).map_err(|_| ())?
-            }
+            AccountingPeriod::open(year_month, 1)
+                .map_err(|_| ())?
+                .into_open()
+                .map_err(|_| ())?
         },
         occurred_at: value.occurred_at.to_rfc3339(),
         date_precision: value.date_precision,
@@ -613,10 +613,10 @@ pub(crate) fn item_update_command(
 
 fn parse_measure(
     value: UpdatePurchaseItemQuantityInput,
-) -> std::result::Result<bookkeeping_application::create_purchase::Measure, ()> {
-    let unit = bookkeeping_application::create_purchase::QuantityUnit::parse(&value.unit)
-        .map_err(|_| ())?;
-    bookkeeping_application::create_purchase::Measure::new(
+) -> std::result::Result<bookkeeping_domain::purchase_commands::Measure, ()> {
+    let unit =
+        bookkeeping_domain::purchase_commands::QuantityUnit::parse(&value.unit).map_err(|_| ())?;
+    bookkeeping_domain::purchase_commands::Measure::new(
         value.numerator.parse().map_err(|_| ())?,
         value.denominator.parse().map_err(|_| ())?,
         unit,
@@ -677,7 +677,7 @@ fn bulk_update_patch(value: BulkPurchaseItemPatch) -> std::result::Result<BulkUp
             values
                 .into_iter()
                 .map(|value| {
-                    Ok(ItemAllocationWeight {
+                    Ok(BulkItemAllocationWeight {
                         pool_id: decode_node_id(&value.pool_id, "Pool")?.to_string(),
                         weight: value.weight.0,
                     })
@@ -849,9 +849,9 @@ fn error_message(code: MutationErrorCode) -> String {
 }
 
 fn update_error_code(
-    error: bookkeeping_application::update_purchase::UpdatePurchaseError,
+    error: bookkeeping_domain::purchase_commands::UpdatePurchaseError,
 ) -> MutationErrorCode {
-    use bookkeeping_application::update_purchase::UpdatePurchaseError as E;
+    use bookkeeping_domain::purchase_commands::UpdatePurchaseError as E;
     match error {
         E::Conflict | E::NotEditable => MutationErrorCode::Conflict,
         _ => MutationErrorCode::BadInput,
@@ -943,9 +943,9 @@ fn update_item_workflow_error_code(error: UpdatePurchaseItemError) -> MutationEr
 }
 
 fn bulk_update_workflow_error_code(
-    error: bookkeeping_application::bulk_update_items::BulkUpdateItemsError,
+    error: bookkeeping_domain::purchase_commands::BulkUpdateItemsError,
 ) -> MutationErrorCode {
-    use bookkeeping_application::bulk_update_items::BulkUpdateItemsError as E;
+    use bookkeeping_domain::purchase_commands::BulkUpdateItemsError as E;
     match error {
         E::MissingItem => MutationErrorCode::NotFound,
         E::Conflict => MutationErrorCode::Conflict,
@@ -954,9 +954,9 @@ fn bulk_update_workflow_error_code(
 }
 
 fn bulk_delete_workflow_error_code(
-    error: bookkeeping_application::bulk_delete_items::BulkDeleteItemsError,
+    error: bookkeeping_domain::purchase_commands::BulkDeleteItemsError,
 ) -> MutationErrorCode {
-    use bookkeeping_application::bulk_delete_items::BulkDeleteItemsError as E;
+    use bookkeeping_domain::purchase_commands::BulkDeleteItemsError as E;
     match error {
         E::MissingItem => MutationErrorCode::NotFound,
         E::Conflict | E::CorrectedItem | E::LastItem => MutationErrorCode::Conflict,

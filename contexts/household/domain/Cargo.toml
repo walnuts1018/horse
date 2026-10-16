@@ -1,0 +1,10 @@
+[package]
+name = "household-domain"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = { workspace = true }
+horse-authorization = { path = "../../../platform/authorization" }
+horse-household-change = { path = "../../../platform/household-change" }
+uuid = { workspace = true }

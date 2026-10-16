@@ -1,4 +1,4 @@
-use bookkeeping_domain::{ItemId, PurchaseId};
+use crate::{ItemId, PurchaseId};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
@@ -120,7 +120,7 @@ pub fn decide_bulk_delete_items(
             }
             deleted_amount_yen = deleted_amount_yen
                 .checked_add(item.amount_yen)
-                .filter(|amount| *amount <= bookkeeping_domain::MAX_YEN)
+                .filter(|amount| *amount <= crate::MAX_YEN)
                 .ok_or(BulkDeleteItemsError::InvalidAmount)?;
             deleted_item_ids.push(item.item_id.clone());
         }

@@ -31,7 +31,7 @@ pub enum CreateAndPostPurchaseError {
     Create(CreatePurchasePersistenceError),
     Load(PostPurchaseLoadError),
     Post(PostPurchasePersistenceError),
-    CreateDecision(bookkeeping_application::create_purchase::CreatePurchaseError),
+    CreateDecision(bookkeeping_domain::purchase_commands::CreatePurchaseError),
     PostDecision(bookkeeping_application::PostPurchaseError),
     AllocationContextMismatch,
     CreatedPurchaseMissing,
@@ -232,7 +232,7 @@ impl application::CreateAndPostPurchaseOperations for PurchaseCreateAndPostOpera
     async fn persist_create(
         &mut self,
         persistence: application::CreatePurchasePersistence,
-        decision: bookkeeping_application::create_purchase::CreatePurchaseDecision,
+        decision: bookkeeping_domain::purchase_commands::CreatePurchaseDecision,
     ) -> Result<application::CreatedPurchase, Self::Error> {
         let mut cross_context = crate::purchase_creation_context::PurchaseCreationContext;
         let persisted = persist_create_purchase_in_transaction(

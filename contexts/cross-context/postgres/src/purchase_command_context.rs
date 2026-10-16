@@ -4,7 +4,7 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-use bookkeeping_application::create_purchase::{AllocationRuleCandidate, select_allocation_rule};
+use bookkeeping_domain::purchase_commands::{AllocationRuleCandidate, select_allocation_rule};
 
 use crate::{PgPool, schema::public};
 

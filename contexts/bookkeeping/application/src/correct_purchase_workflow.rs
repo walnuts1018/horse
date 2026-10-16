@@ -1,4 +1,6 @@
-use crate::correct_purchase::{CorrectPurchaseDecision, CorrectPurchaseError, CorrectionCommand};
+use bookkeeping_domain::{
+    CorrectPurchaseDecision, CorrectPurchaseError, CorrectionCommand, decide_correct_purchase,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorrectedPurchase {
@@ -44,8 +46,8 @@ pub async fn correct_purchase<O: CorrectPurchaseOperations>(
     let command = loaded
         .command
         .ok_or(CorrectPurchaseWorkflowError::InvalidLoadedCorrection)?;
-    let decision = crate::correct_purchase::decide_correct_purchase(command)
-        .map_err(CorrectPurchaseWorkflowError::Decision)?;
+    let decision =
+        decide_correct_purchase(command).map_err(CorrectPurchaseWorkflowError::Decision)?;
     operations
         .persist(decision)
         .await

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use bookkeeping_domain::{AccountingPeriod, YearMonth};
+use bookkeeping_domain::{AccountingPeriod, OpenAccountingPeriod, YearMonth};
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
@@ -16,6 +16,7 @@ pub enum AccountCommandContextError {
     Database(diesel::result::Error),
     InvalidTokyoOffset,
     InvalidAccountingPeriodStatus(String),
+    AccountingPeriodClosed,
     InvalidAccountKind(String),
 }
 
@@ -27,7 +28,7 @@ impl From<diesel::result::Error> for AccountCommandContextError {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AccountCommandContext {
-    pub accounting_period: AccountingPeriod,
+    pub accounting_period: OpenAccountingPeriod,
     pub account_kinds: BTreeMap<Uuid, AccountKind>,
     pub missing_account_ids: BTreeSet<Uuid>,
 }
@@ -90,7 +91,9 @@ pub async fn load_account_command_context(
     }
     .map_err(|_| {
         AccountCommandContextError::InvalidAccountingPeriodStatus(period_start.to_string())
-    })?;
+    })?
+    .into_open()
+    .map_err(|_| AccountCommandContextError::AccountingPeriodClosed)?;
 
     let ids = account_ids.iter().copied().collect::<BTreeSet<_>>();
     let rows = if ids.is_empty() {

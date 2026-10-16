@@ -62,8 +62,8 @@ pub async fn purchase_analytics(
         .map_err(|error| PurchaseAnalyticsQueryError::Pool(error.to_string()))?;
     require_member(&mut conn, actor_id, household_id).await?;
     use public::{
-        accounts, pools, purchase_allocations, purchase_corrections, purchase_items,
-        purchase_payments, purchases,
+        accounts, pools, purchase_allocations, purchase_correction_allocations,
+        purchase_corrections, purchase_items, purchase_payments, purchases,
     };
 
     let purchases_in_range = purchases::table
@@ -105,11 +105,28 @@ pub async fn purchase_analytics(
         .filter(purchases::household_id.eq(household_id))
         .filter(purchases::id.eq_any(&purchase_ids))
         .select((
+            purchase_corrections::id,
             purchase_corrections::item_id,
             purchase_corrections::amount_delta_yen,
             purchase_corrections::purchase_id,
         ))
-        .load::<(Option<Uuid>, i64, Uuid)>(&mut conn)
+        .load::<(Uuid, Option<Uuid>, i64, Uuid)>(&mut conn)
+        .await?;
+    let correction_allocation_rows = purchase_correction_allocations::table
+        .inner_join(
+            purchase_corrections::table
+                .on(purchase_corrections::id.eq(purchase_correction_allocations::correction_id)),
+        )
+        .inner_join(pools::table.on(pools::id.eq(purchase_correction_allocations::pool_id)))
+        .filter(purchase_corrections::household_id.eq(household_id))
+        .filter(purchase_corrections::purchase_id.eq_any(&purchase_ids))
+        .select((
+            purchase_correction_allocations::correction_id,
+            purchase_correction_allocations::pool_id,
+            pools::name,
+            purchase_correction_allocations::amount_yen,
+        ))
+        .load::<(Uuid, Uuid, String, i64)>(&mut conn)
         .await?;
     let allocation_rows = purchase_allocations::table
         .inner_join(purchases::table.on(purchases::id.eq(purchase_allocations::purchase_id)))
@@ -161,7 +178,9 @@ pub async fn purchase_analytics(
     let mut correction_by_item = BTreeMap::<Uuid, i64>::new();
     let mut correction_by_purchase = BTreeMap::<Uuid, i64>::new();
     let mut wide_correction_by_purchase = BTreeMap::<Uuid, i64>::new();
-    for (item_id, amount, purchase_id) in correction_rows {
+    let mut correction_amounts = BTreeMap::<Uuid, (Uuid, i64)>::new();
+    for (correction_id, item_id, amount, purchase_id) in correction_rows {
+        correction_amounts.insert(correction_id, (purchase_id, amount));
         checked_add(&mut correction_by_purchase, purchase_id, amount)?;
         if let Some(item_id) = item_id {
             checked_add(&mut correction_by_item, item_id, amount)?;
@@ -279,6 +298,53 @@ pub async fn purchase_analytics(
     }
     let mut correction_totals = BTreeMap::<String, (i64, i64)>::new();
     let mut wide_correction_totals = BTreeMap::<String, (i64, i64)>::new();
+    let mut unallocated_pool_correction_totals = BTreeMap::<String, (i64, i64)>::new();
+    let mut correction_allocated_by_id = BTreeMap::<Uuid, i64>::new();
+    for (correction_id, pool_id, pool_name, allocated_amount) in correction_allocation_rows {
+        let Some((purchase_id, correction_amount)) = correction_amounts.get(&correction_id) else {
+            continue;
+        };
+        let period = purchase_periods
+            .get(purchase_id)
+            .cloned()
+            .ok_or(PurchaseAnalyticsQueryError::InvalidPeriod)?;
+        let signed_allocation = allocated_amount
+            .checked_mul(correction_amount.signum())
+            .ok_or(PurchaseAnalyticsQueryError::AmountOutOfRange)?;
+        checked_add(
+            &mut correction_allocated_by_id,
+            correction_id,
+            signed_allocation,
+        )?;
+        add_row(
+            &mut totals,
+            ("pool".into(), pool_id.to_string(), pool_name, period),
+            signed_allocation,
+            1,
+        )?;
+    }
+    for (correction_id, (purchase_id, correction_amount)) in &correction_amounts {
+        let allocated_amount = correction_allocated_by_id
+            .get(correction_id)
+            .copied()
+            .unwrap_or(0);
+        let unallocated_amount = correction_amount
+            .checked_sub(allocated_amount)
+            .ok_or(PurchaseAnalyticsQueryError::AmountOutOfRange)?;
+        if unallocated_amount == 0 {
+            continue;
+        }
+        let period = purchase_periods
+            .get(purchase_id)
+            .cloned()
+            .ok_or(PurchaseAnalyticsQueryError::InvalidPeriod)?;
+        add_amount_pair(
+            &mut unallocated_pool_correction_totals,
+            period,
+            unallocated_amount,
+            1,
+        )?;
+    }
     for (purchase_id, amount) in &correction_by_purchase {
         if *amount == 0 {
             continue;
@@ -287,19 +353,19 @@ pub async fn purchase_analytics(
             .get(purchase_id)
             .cloned()
             .ok_or(PurchaseAnalyticsQueryError::InvalidPeriod)?;
-        add_amount_pair(&mut correction_totals, period.clone(), *amount, 1)?;
+        add_amount_pair(&mut correction_totals, period, *amount, 1)?;
     }
-    for (purchase_id, wide_amount) in &wide_correction_by_purchase {
-        if *wide_amount == 0 {
+    for (purchase_id, amount) in &wide_correction_by_purchase {
+        if *amount == 0 {
             continue;
         }
         let period = purchase_periods
             .get(purchase_id)
             .cloned()
             .ok_or(PurchaseAnalyticsQueryError::InvalidPeriod)?;
-        add_amount_pair(&mut wide_correction_totals, period, *wide_amount, 1)?;
+        add_amount_pair(&mut wide_correction_totals, period, *amount, 1)?;
     }
-    for (period, (amount, count)) in correction_totals {
+    for (period, (amount, count)) in unallocated_pool_correction_totals {
         add_row(
             &mut totals,
             (
@@ -311,6 +377,8 @@ pub async fn purchase_analytics(
             amount,
             count,
         )?;
+    }
+    for (period, (amount, count)) in correction_totals {
         add_row(
             &mut totals,
             (

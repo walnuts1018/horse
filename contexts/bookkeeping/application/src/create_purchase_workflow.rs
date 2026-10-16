@@ -1,17 +1,16 @@
-use crate::{
-    create_and_post_purchase::{
-        CreatePurchasePersistence, CreatedPurchase, PurchaseAllocationContext,
-        PurchaseItemAllocationRequest, apply_allocation_context, normalize_merchant,
-    },
-    create_purchase::{
-        CreatePurchaseCommand, CreatePurchaseDecision, CreatePurchaseError, decide_create_purchase,
-    },
+use crate::create_and_post_purchase::{
+    CreatePurchasePersistence, CreatedPurchase, PurchaseAllocationContext,
+    PurchaseItemAllocationRequest, apply_allocation_context, normalize_merchant,
+};
+use bookkeeping_domain::MemberId;
+use bookkeeping_domain::purchase_commands::{
+    CreatePurchaseCommand, CreatePurchaseDecision, CreatePurchaseError, decide_create_purchase,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatePurchaseWorkflowCommand {
-    pub household_id: String,
-    pub actor_id: String,
+    pub household_id: uuid::Uuid,
+    pub actor_id: MemberId,
     pub purchase: CreatePurchaseCommand,
     pub persistence: CreatePurchasePersistence,
 }
@@ -56,7 +55,7 @@ pub async fn create_purchase<O: CreatePurchaseOperations>(
     command: CreatePurchaseWorkflowCommand,
 ) -> Result<CreatedPurchase, CreatePurchaseWorkflowError<O::Error>> {
     operations
-        .require_active_member(&command.household_id, &command.actor_id)
+        .require_active_member(&command.household_id.to_string(), command.actor_id.as_str())
         .await
         .map_err(CreatePurchaseWorkflowError::Operations)?;
     if let Some(existing) = operations
@@ -73,22 +72,26 @@ pub async fn create_purchase<O: CreatePurchaseOperations>(
         .items
         .iter()
         .map(|item| PurchaseItemAllocationRequest {
-            category_id: item.category_id.clone(),
-            product_variant_id: item.product_variant_id.clone(),
+            category_id: item.category_id.map(|id| id.value().to_string()),
+            product_variant_id: item.product_variant_id.map(|id| id.value().to_string()),
             allocations: item
                 .allocations
                 .iter()
                 .map(
                     |allocation| crate::create_and_post_purchase::RequestedPoolAllocation {
-                        pool_id: allocation.pool_id.clone(),
-                        weight: allocation.weight,
+                        pool_id: allocation.pool_id.as_str().to_owned(),
+                        weight: allocation.weight.value(),
                     },
                 )
                 .collect(),
         })
         .collect::<Vec<_>>();
     let context = operations
-        .load_allocation_context(&command.household_id, &merchant_key, &allocation_inputs)
+        .load_allocation_context(
+            &command.household_id.to_string(),
+            &merchant_key,
+            &allocation_inputs,
+        )
         .await
         .map_err(CreatePurchaseWorkflowError::Operations)?;
     let purchase = apply_allocation_context(command.purchase, context)

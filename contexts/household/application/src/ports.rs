@@ -13,11 +13,12 @@ pub enum CreateHouseholdPortError {
     InvalidInput,
     NotFound,
     Infra,
+    Workflow(CreateHouseholdError),
 }
 
 impl CreateHouseholdPortError {
-    pub const fn from_workflow(_: CreateHouseholdError) -> Self {
-        Self::InvalidInput
+    pub const fn from_workflow(error: CreateHouseholdError) -> Self {
+        Self::Workflow(error)
     }
 }
 

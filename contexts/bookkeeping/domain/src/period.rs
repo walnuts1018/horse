@@ -51,39 +51,101 @@ pub enum AccountingPeriodStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountingPeriod {
+pub enum AccountingPeriod {
+    Open(OpenAccountingPeriod),
+    Closed(ClosedAccountingPeriod),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenAccountingPeriod {
     year_month: YearMonth,
     revision: u64,
-    status: AccountingPeriodStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClosedAccountingPeriod {
+    year_month: YearMonth,
+    revision: u64,
 }
 
 impl AccountingPeriod {
     pub fn open(year_month: YearMonth, revision: u64) -> Result<Self, AccountingPeriodError> {
-        if revision == 0 {
-            return Err(AccountingPeriodError::InvalidRevision);
-        }
-        Ok(Self {
-            year_month,
-            revision,
-            status: AccountingPeriodStatus::Open,
-        })
+        OpenAccountingPeriod::new(year_month, revision).map(Self::from)
     }
 
     pub fn closed(year_month: YearMonth, revision: u64) -> Result<Self, AccountingPeriodError> {
+        ClosedAccountingPeriod::new(year_month, revision).map(Self::from)
+    }
+
+    pub fn into_open(self) -> Result<OpenAccountingPeriod, Self> {
+        match self {
+            Self::Open(period) => Ok(period),
+            closed => Err(closed),
+        }
+    }
+
+    pub fn into_closed(self) -> Result<ClosedAccountingPeriod, Self> {
+        match self {
+            Self::Closed(period) => Ok(period),
+            open => Err(open),
+        }
+    }
+
+    pub fn open_period(&self) -> Option<&OpenAccountingPeriod> {
+        match self {
+            Self::Open(period) => Some(period),
+            Self::Closed(_) => None,
+        }
+    }
+
+    pub fn closed_period(&self) -> Option<&ClosedAccountingPeriod> {
+        match self {
+            Self::Closed(period) => Some(period),
+            Self::Open(_) => None,
+        }
+    }
+
+    pub const fn year_month(&self) -> YearMonth {
+        match self {
+            Self::Open(period) => period.year_month,
+            Self::Closed(period) => period.year_month,
+        }
+    }
+
+    pub const fn revision(&self) -> u64 {
+        match self {
+            Self::Open(period) => period.revision,
+            Self::Closed(period) => period.revision,
+        }
+    }
+
+    pub const fn status(&self) -> AccountingPeriodStatus {
+        match self {
+            Self::Open(_) => AccountingPeriodStatus::Open,
+            Self::Closed(_) => AccountingPeriodStatus::Closed,
+        }
+    }
+
+    pub fn as_string(&self) -> String {
+        self.year_month().as_string()
+    }
+}
+
+impl OpenAccountingPeriod {
+    pub fn new(year_month: YearMonth, revision: u64) -> Result<Self, AccountingPeriodError> {
         if revision == 0 {
             return Err(AccountingPeriodError::InvalidRevision);
         }
         Ok(Self {
             year_month,
             revision,
-            status: AccountingPeriodStatus::Closed,
         })
     }
 
-    pub fn close(self, expected_revision: u64) -> Result<Self, AccountingPeriodTransitionError> {
-        if self.status == AccountingPeriodStatus::Closed {
-            return Err(AccountingPeriodTransitionError::AlreadyClosed);
-        }
+    pub fn close(
+        self,
+        expected_revision: u64,
+    ) -> Result<ClosedAccountingPeriod, AccountingPeriodTransitionError> {
         if self.revision != expected_revision {
             return Err(AccountingPeriodTransitionError::RevisionMismatch);
         }
@@ -91,10 +153,9 @@ impl AccountingPeriod {
             .revision
             .checked_add(1)
             .ok_or(AccountingPeriodTransitionError::RevisionOverflow)?;
-        Ok(Self {
+        Ok(ClosedAccountingPeriod {
             year_month: self.year_month,
             revision,
-            status: AccountingPeriodStatus::Closed,
         })
     }
 
@@ -107,7 +168,7 @@ impl AccountingPeriod {
     }
 
     pub const fn status(&self) -> AccountingPeriodStatus {
-        self.status
+        AccountingPeriodStatus::Open
     }
 
     pub fn as_string(&self) -> String {
@@ -115,9 +176,48 @@ impl AccountingPeriod {
     }
 }
 
+impl ClosedAccountingPeriod {
+    pub fn new(year_month: YearMonth, revision: u64) -> Result<Self, AccountingPeriodError> {
+        if revision == 0 {
+            return Err(AccountingPeriodError::InvalidRevision);
+        }
+        Ok(Self {
+            year_month,
+            revision,
+        })
+    }
+
+    pub const fn year_month(&self) -> YearMonth {
+        self.year_month
+    }
+
+    pub const fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub const fn status(&self) -> AccountingPeriodStatus {
+        AccountingPeriodStatus::Closed
+    }
+
+    pub fn as_string(&self) -> String {
+        self.year_month.as_string()
+    }
+}
+
+impl From<OpenAccountingPeriod> for AccountingPeriod {
+    fn from(period: OpenAccountingPeriod) -> Self {
+        Self::Open(period)
+    }
+}
+
+impl From<ClosedAccountingPeriod> for AccountingPeriod {
+    fn from(period: ClosedAccountingPeriod) -> Self {
+        Self::Closed(period)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccountingPeriodTransitionError {
-    AlreadyClosed,
     RevisionMismatch,
     RevisionOverflow,
 }

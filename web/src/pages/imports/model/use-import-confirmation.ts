@@ -8,37 +8,24 @@ import type {
   ReceiptPaymentDraft,
   ReceiptConfirmationState,
   ReviewTarget,
-  StatementEntry,
 } from "./imports";
+import type { ReceiptItemDeletionUndo } from "./receipt-review-draft";
 
+import { confirmReceiptPurchase } from "./confirm-receipt-purchase";
 import {
-  createReceiptPurchaseInput,
   effectiveReceiptItemAmount,
   receiptOverrideReasonRequired,
   uniqueConsistentReceiptCandidate,
 } from "./receipt-confirmation";
 import { receiptItemsNeedingReview } from "./receipt-item-review";
 import { receiptPaymentAccountId, soleReceiptPaymentAccountId } from "./receipt-payment-account";
-import {
-  addManualReceiptItem as appendManualReceiptItem,
-  deleteReceiptItemByKey,
-  ensureReceiptItemKeys,
-  rekeyReceiptConfirmationAfterStructureChange,
-  rekeyReceiptItemValues,
-  restoreReceiptItemDeletion,
-  type ReceiptItemDeletionUndo,
-} from "./receipt-review-draft";
-import {
-  createStatementExternalIncomeInput,
-  createStatementPurchaseInput,
-  statementConfirmationKey,
-  statementOccurredAt,
-} from "./statement-confirmation";
+import { useReceiptEditingWorkflow } from "./use-receipt-editing-workflow";
+import { useStatementConfirmation } from "./use-statement-confirmation";
 export { effectiveReceiptItemAmount } from "./receipt-confirmation";
 
 import {
-  useCorrectPurchaseFromStatementMutation,
   useCreateAndPostPurchase,
+  useCorrectPurchaseFromStatementMutation,
   useHouseholdPurchases,
 } from "../../../entities/purchase";
 
@@ -47,25 +34,11 @@ function normalizeName(name: string) {
 }
 
 import {
-  importIdempotencyKey,
-  linkStatementTransfer as linkStatementTransferRequest,
-  linkStatementAccountMovement as linkStatementAccountMovementRequest,
-  linkStatementRefundCorrection as linkStatementRefundCorrectionRequest,
-  linkStatementAccountIncome as linkStatementAccountIncomeRequest,
-  recordStatementAccountMovement,
-  recordStatementExternalIncome,
-  recordStatementLoan,
-  recordStatementRepayment,
-} from "../api/documents";
-import {
   purchaseDatePrecisionFor,
   purchaseOccurredAtFor,
   receiptDateInputValue,
-  receiptOccurredAt,
   receiptTimeInputValue,
   persistedStatementConfirmationKeys,
-  statementConfirmationIssue,
-  statementSourceReference,
 } from "./imports";
 
 export const manualAmountOverrideReasonOptions = [
@@ -74,8 +47,6 @@ export const manualAmountOverrideReasonOptions = [
   "レシートの印字が不明瞭",
   "その他",
 ] as const;
-
-type ReceiptItemAllocation = { poolId: string; weight: number };
 
 function receiptItemsChanged(document?: DocumentReview) {
   return Boolean(
@@ -417,582 +388,48 @@ export function useImportConfirmation({
     });
   };
 
-  const editItem = (documentId: string, index: number, patch: Partial<ExtractedItem>) => {
-    editedReceiptDocuments.current.add(documentId);
-    markUnsaved();
-    const document = selectedDocument?.id === documentId ? selectedDocument : undefined;
-    const originalItems = document?.result?.receipt?.items;
-    if (originalItems) {
-      const keyedItems = ensureReceiptItemKeys(originalItems);
-      const survivingKeys = new Set(keyedItems.flatMap((item) => (item.key ? [item.key] : [])));
-      const editedItem = keyedItems[index];
-      const editChangesItem =
-        JSON.stringify(editedItem) !== JSON.stringify({ ...editedItem, ...patch });
-      updateReceiptConfirmationState(documentId, (state) => {
-        const rekeyedManualAmountOverrides = rekeyReceiptItemValues(
-          state.manualAmountOverrides,
-          originalItems,
-          keyedItems,
-          survivingKeys,
-        );
-        const rekeyedItemAllocations = rekeyReceiptItemValues(
-          state.itemAllocations,
-          originalItems,
-          keyedItems,
-          survivingKeys,
-        );
-        const rekeyedReviewStates = rekeyReceiptItemValues(
-          state.receiptItemReviewStates,
-          originalItems,
-          keyedItems,
-          survivingKeys,
-        );
-        const nextReviewStates =
-          editChangesItem && editedItem.key
-            ? { ...rekeyedReviewStates, [editedItem.key]: "CORRECTED" as const }
-            : rekeyedReviewStates;
-        return {
-          ...state,
-          ...(rekeyedManualAmountOverrides
-            ? { manualAmountOverrides: rekeyedManualAmountOverrides }
-            : {}),
-          ...(rekeyedItemAllocations ? { itemAllocations: rekeyedItemAllocations } : {}),
-          ...(nextReviewStates ? { receiptItemReviewStates: nextReviewStates } : {}),
-        };
-      });
-    }
-    setDocuments((current) =>
-      current.map((entry) => {
-        if (entry.id !== documentId || !entry.result?.receipt?.items) return entry;
-        const items = ensureReceiptItemKeys(entry.result.receipt.items).map((item, itemIndex) => {
-          if (itemIndex !== index) return item;
-          const nameChanged = patch.name !== undefined && patch.name !== item.name;
-          return Object.assign({}, item, patch, nameChanged ? { productVariantId: null } : {});
-        });
-        return {
-          ...entry,
-          result: { ...entry.result, receipt: { ...entry.result.receipt, items } },
-        };
-      }),
-    );
-  };
+  const receiptEditing = useReceiptEditingWorkflow({
+    selectedDocument,
+    setDocuments,
+    editedReceiptDocuments,
+    markUnsaved,
+    updateReceiptConfirmationState,
+    reviewTargetIndex,
+    setReviewTargetIndex,
+    receiptItemDeletionUndo,
+    setReceiptItemDeletionUndo,
+    receiptItemsChanged,
+  });
 
-  const changeReceiptItemStructure = (
-    documentId: string,
-    action: "add" | { deleteKey: string },
-  ) => {
-    if (!selectedDocument || selectedDocument.id !== documentId) return;
-    const originalItems = selectedDocument.result?.receipt?.items;
-    if (!originalItems) return;
-    const keyedItems = ensureReceiptItemKeys(originalItems);
-    const nextItems =
-      action === "add"
-        ? appendManualReceiptItem(keyedItems, `manual:${crypto.randomUUID()}`)
-        : deleteReceiptItemByKey(keyedItems, action.deleteKey);
-    if (nextItems.length === keyedItems.length) return;
-    if (action === "add") {
-      setReceiptItemDeletionUndo(undefined);
-    } else {
-      const deletedIndex = keyedItems.findIndex((item) => item.key === action.deleteKey);
-      if (deletedIndex < 0) return;
-      setReceiptItemDeletionUndo({
-        documentId,
-        item: keyedItems[deletedIndex],
-        index: deletedIndex,
-        reviewTargetIndex,
-        remainingItemKeys: nextItems.flatMap((item) => (item.key ? [item.key] : [])),
-        remainingItems: nextItems,
-        confirmationState: selectedDocument.receiptConfirmationState ?? {},
-        balanced: selectedDocument.result?.balanced,
-        reviewReceiptItemsChanged: receiptItemsChanged(selectedDocument),
-      });
-    }
-    editedReceiptDocuments.current.add(documentId);
-    markUnsaved();
-    updateReceiptConfirmationState(documentId, (state) => {
-      return rekeyReceiptConfirmationAfterStructureChange(
-        state,
-        originalItems,
-        keyedItems,
-        nextItems,
-      );
-    });
-    setDocuments((current) =>
-      current.map((entry) => {
-        if (entry.id !== documentId || !entry.result?.receipt) return entry;
-        const result = Object.assign(
-          {
-            ...entry.result,
-            balanced: false,
-            receipt: { ...entry.result.receipt, items: nextItems },
-          },
-          { reviewReceiptItemsChanged: true },
-        );
-        return { ...entry, result };
-      }),
-    );
-  };
-
-  const addReceiptItem = (documentId: string) => changeReceiptItemStructure(documentId, "add");
-  const deleteReceiptItem = (documentId: string, itemKey: string) =>
-    changeReceiptItemStructure(documentId, { deleteKey: itemKey });
-
-  const undoReceiptItemDeletion = () => {
-    const undo = receiptItemDeletionUndo;
-    const document = selectedDocument;
-    if (!undo || !document) return;
-    const restored = restoreReceiptItemDeletion(document, undo);
-    if (!restored) {
-      setReceiptItemDeletionUndo(undefined);
-      return;
-    }
-    editedReceiptDocuments.current.add(restored.id);
-    markUnsaved();
-    setDocuments((current) =>
-      current.map((entry) => (entry.id === restored.id ? restored : entry)),
-    );
-    setReviewTargetIndex(undo.reviewTargetIndex);
-    setReceiptItemDeletionUndo(undefined);
-  };
-
-  const editReceiptItemAllocations = (
-    documentId: string,
-    itemKey: string,
-    allocations: ReceiptItemAllocation[],
-  ) => {
-    editedReceiptDocuments.current.add(documentId);
-    markUnsaved();
-    updateReceiptConfirmationState(documentId, (state) => ({
-      ...state,
-      itemAllocations: { ...state.itemAllocations, [itemKey]: allocations },
-    }));
-  };
-
-  const editMerchant = (documentId: string, merchant: string) => {
-    editedReceiptDocuments.current.add(documentId);
-    markUnsaved();
-    setDocuments((current) =>
-      current.map((document) =>
-        document.id === documentId && document.result
-          ? {
-              ...document,
-              result: {
-                ...document.result,
-                receipt: { ...document.result.receipt, merchant },
-              },
-            }
-          : document,
-      ),
-    );
-  };
-
-  const editPurchaseDate = (documentId: string, date: string) => {
-    editedReceiptDocuments.current.add(documentId);
-    markUnsaved();
-    updateReceiptConfirmationState(documentId, (state) => ({ ...state, purchaseDate: date }));
-    setDocuments((current) =>
-      current.map((document) => {
-        if (document.id !== documentId || !document.result) return document;
-        const purchaseTime = document.receiptConfirmationState?.purchaseTime;
-        const purchasedAt = receiptOccurredAt(
-          document.result.receipt?.purchasedAt,
-          date,
-          purchaseTime || undefined,
-          purchaseDatePrecisionFor(document),
-        );
-        return purchasedAt
-          ? {
-              ...document,
-              result: {
-                ...document.result,
-                receipt: {
-                  ...document.result.receipt,
-                  purchasedAt,
-                  datePrecision: purchaseDatePrecisionFor(document),
-                },
-              },
-            }
-          : document;
-      }),
-    );
-  };
-
-  const editPurchaseTime = (documentId: string, time: string) => {
-    editedReceiptDocuments.current.add(documentId);
-    markUnsaved();
-    updateReceiptConfirmationState(documentId, (state) => ({ ...state, purchaseTime: time }));
-    setDocuments((current) =>
-      current.map((document) => {
-        if (document.id !== documentId || !document.result) return document;
-        const purchasedAt = receiptOccurredAt(
-          document.result.receipt?.purchasedAt,
-          document.receiptConfirmationState?.purchaseDate ??
-            receiptDateInputValue(document.result.receipt?.purchasedAt),
-          time || undefined,
-          time ? "DATE_TIME" : "DATE_ONLY",
-        );
-        return purchasedAt
-          ? {
-              ...document,
-              result: {
-                ...document.result,
-                receipt: {
-                  ...document.result.receipt,
-                  purchasedAt,
-                  datePrecision: time ? "DATE_TIME" : "DATE_ONLY",
-                },
-              },
-            }
-          : document;
-      }),
-    );
-  };
-
-  const confirm = async (document: DocumentReview) => {
-    const receipt = document.result?.receipt;
-    const occurredAt = purchaseOccurredAtFor(document);
-    const items = receipt?.items ?? [];
-    const candidateID = selectedCandidates[document.id] ?? "";
-    const candidate = document.result?.candidates?.find((item) => item.id === candidateID);
-    const overrideReason = manualAmountOverrideReasons[document.id]?.trim() ?? "";
-    const confirmationTotal = items.reduce(
-      (total, item, index) =>
-        total +
-        effectiveReceiptItemAmount(
-          item,
-          index,
-          candidate?.amounts,
-          manualAmountOverrides[document.id],
-        ),
-      0,
-    );
-    const requiresOverrideReason = receiptOverrideReasonRequired(receipt?.total, confirmationTotal);
-    if (
-      items.some(
-        (item) =>
-          !item.name.trim() ||
-          !Number.isSafeInteger(item.grossAmount) ||
-          item.grossAmount < (item.verification === "MANUAL" ? 1 : 0),
-      )
-    ) {
-      throw new Error("品名と金額を確認してください");
-    }
-    const paymentDraft = paymentDraftFor(document);
-    const purchaseInput = createReceiptPurchaseInput({
+  const confirm = (document: DocumentReview) =>
+    confirmReceiptPurchase({
       document,
-      householdId: household.id,
-      occurredAt,
-      datePrecision: purchaseDatePrecisionFor(document),
-      candidateId: candidateID,
-      requiresCandidateSelection: Boolean(
-        !receiptItemsChanged(document) && document.result?.candidates?.length && !candidate,
-      ),
-      requiresOverrideReason,
-      overrideReason,
-      paymentDraft,
-      accountCount: household.accounts.length,
-      manualAmounts: manualAmountOverrides[document.id],
-      allocations: receiptItemAllocations[document.id],
-      suggestedCategoryIds: items.map((item) => suggestedCategoryId(item)),
+      household,
+      selectedCandidates,
+      manualAmountOverrideReasons,
+      manualAmountOverrides,
+      receiptItemAllocations,
+      paymentDraftFor,
+      suggestedCategoryId,
+      itemsWereChanged: receiptItemsChanged(document),
+      createAndPostPurchase,
+      clearReceiptDraft,
+      setReceiptItemDeletionUndo,
+      setHasUnsavedChanges,
+      refreshPurchases,
+      onAdded,
     });
-    await createAndPostPurchase({
-      ...purchaseInput,
-      idempotencyKey: await importIdempotencyKey(document.id, "receipt"),
-    });
-    await clearReceiptDraft(document.id);
-    setReceiptItemDeletionUndo(undefined);
-    setHasUnsavedChanges(false);
-    refreshPurchases();
-    onAdded();
-  };
 
-  const confirmStatement = async (
-    document: DocumentReview,
-    entry: StatementEntry,
-    paymentAccountId: string,
-  ) => {
-    if (!document.result || (entry.kind !== "CARD_PURCHASE" && entry.kind !== "EXTERNAL_INCOME"))
-      return;
-    const issue = statementConfirmationIssue(entry);
-    if (issue) throw new Error(issue);
-    const account = household.accounts.find((candidate) => candidate.id === paymentAccountId);
-    const isExternalIncome = entry.kind === "EXTERNAL_INCOME";
-    if (!account || (isExternalIncome ? account.kind !== "BANK" : false)) {
-      throw new Error(
-        isExternalIncome ? "入金先の銀行口座を選択してください" : "決済口座を選択してください",
-      );
-    }
-    const reference = statementSourceReference(entry);
-    const key = statementConfirmationKey(document.id, entry);
-    if (confirmedStatements.has(key)) return;
-    if (isExternalIncome) {
-      await recordStatementExternalIncome(
-        createStatementExternalIncomeInput({
-          document,
-          householdId: household.id,
-          accountId: account.id,
-          entry,
-          idempotencyKey: await importIdempotencyKey(document.id, reference),
-        }),
-      );
-      setConfirmedStatements((current) => new Set(current).add(key));
-      setHasUnsavedChanges(false);
-      onAdded(true);
-      return;
-    }
-    await createAndPostPurchase(
-      createStatementPurchaseInput({
-        document,
-        householdId: household.id,
-        idempotencyKey: await importIdempotencyKey(document.id, reference),
-        entry,
-        paymentAccountId,
-      }),
-    );
-    refreshPurchases();
-    setConfirmedStatements((current) => new Set(current).add(key));
-    setHasUnsavedChanges(false);
-    onAdded(true);
-  };
-
-  const confirmStatementRefund = async (
-    document: DocumentReview,
-    entry: StatementEntry,
-    purchaseId: string,
-    itemId?: string,
-  ) => {
-    if (entry.kind !== "REFUND") throw new Error("返金明細を選択してください");
-    const issue = statementConfirmationIssue(entry);
-    if (issue) throw new Error(issue);
-    const reference = statementSourceReference(entry);
-    const key = statementConfirmationKey(document.id, entry);
-    if (confirmedStatements.has(key)) return;
-    const target = itemId ? { item: { purchaseId, itemId } } : { purchase: { purchaseId } };
-    await correctPurchaseFromStatement({
-      input: {
-        householdId: household.id,
-        sourceDocumentId: document.id,
-        sourceReference: reference,
-        target,
-        reason: "明細の返品・返金",
-        idempotencyKey: await importIdempotencyKey(document.id, reference),
-      },
-    });
-    refreshPurchases();
-    setConfirmedStatements((current) => new Set(current).add(key));
-    setHasUnsavedChanges(false);
-    onAdded(true);
-  };
-
-  const linkStatementRefundCorrection = async (
-    document: DocumentReview,
-    entry: StatementEntry,
-    correctionId: string,
-  ) => {
-    if (entry.kind !== "REFUND" || entry.amount >= 0) throw new Error("返金明細を選択してください");
-    const reference = statementSourceReference(entry);
-    const key = statementConfirmationKey(document.id, entry);
-    if (confirmedStatements.has(key)) return;
-    await linkStatementRefundCorrectionRequest({
-      householdId: household.id,
-      correctionId,
-      sourceDocumentId: document.id,
-      sourceReference: reference,
-    });
-    setConfirmedStatements((current) => new Set(current).add(key));
-    setHasUnsavedChanges(false);
-    onAdded(true);
-  };
-
-  const confirmStatementTransfer = async (
-    document: DocumentReview,
-    entry: StatementEntry,
-    statementAccountId: string,
-    otherAccountId: string,
-  ) => {
-    if (entry.kind !== "ACCOUNT_TRANSFER" && entry.kind !== "CARD_BILL_PAYMENT") {
-      throw new Error("口座移動の明細を選択してください");
-    }
-    const issue = statementConfirmationIssue(entry);
-    if (issue) throw new Error(issue);
-    const statementAccount = household.accounts.find(
-      (account) => account.id === statementAccountId,
-    );
-    const otherAccount = household.accounts.find((account) => account.id === otherAccountId);
-    const isCardBillPayment = entry.kind === "CARD_BILL_PAYMENT";
-    if (!statementAccount || !otherAccount || statementAccount.id === otherAccount.id) {
-      throw new Error("振替元と振替先の口座を選択してください");
-    }
-    if (
-      (isCardBillPayment && (statementAccount.kind === "CARD" || otherAccount.kind !== "CARD")) ||
-      (!isCardBillPayment && (statementAccount.kind === "CARD" || otherAccount.kind === "CARD"))
-    ) {
-      throw new Error("明細の口座種別に合う口座を選択してください");
-    }
-    const reference = statementSourceReference(entry);
-    const key = statementConfirmationKey(document.id, entry);
-    if (confirmedStatements.has(key)) return;
-    const fromAccountId =
-      isCardBillPayment || entry.amount < 0 ? statementAccount.id : otherAccount.id;
-    const toAccountId =
-      isCardBillPayment || entry.amount < 0 ? otherAccount.id : statementAccount.id;
-    await recordStatementAccountMovement({
-      householdId: household.id,
-      kind: isCardBillPayment ? "CARD_BILL_PAYMENT" : "TRANSFER",
-      fromAccountId,
-      toAccountId,
-      amountYen: Math.abs(entry.amount),
-      occurredAt: statementOccurredAt(entry),
-      description: entry.merchant,
-      idempotencyKey: await importIdempotencyKey(document.id, reference),
-      sourceDocumentId: document.id,
-      sourceReference: reference,
-      sourceAccountId: statementAccount.id,
-    });
-    setConfirmedStatements((current) => new Set(current).add(key));
-    setHasUnsavedChanges(false);
-    onAdded(true);
-  };
-
-  const confirmStatementLoan = async (
-    document: DocumentReview,
-    entry: StatementEntry,
-    statementAccountId: string,
-    fromMemberId: string,
-    toMemberId: string,
-    loanId?: string,
-  ) => {
-    if (entry.kind !== "LOAN" && entry.kind !== "REPAYMENT")
-      throw new Error("貸付または返済の明細を選択してください");
-    const issue = statementConfirmationIssue(entry);
-    if (issue) throw new Error(issue);
-    if (
-      !household.accounts.some(
-        (account) => account.id === statementAccountId && account.kind === "BANK",
-      )
-    )
-      throw new Error("銀行口座を選択してください");
-    const reference = statementSourceReference(entry);
-    const key = statementConfirmationKey(document.id, entry);
-    if (confirmedStatements.has(key)) return;
-    const input = {
-      householdId: household.id,
-      fromMemberId,
-      toMemberId,
-      amountYen: Math.abs(entry.amount),
-      occurredAt: statementOccurredAt(entry),
-      description: entry.merchant,
-      idempotencyKey: await importIdempotencyKey(document.id, reference),
-      sourceDocumentId: document.id,
-      sourceReference: reference,
-      sourceAccountId: statementAccountId,
-      ...(entry.amount < 0
-        ? { paymentAccountId: statementAccountId }
-        : { destinationAccountId: statementAccountId }),
-    };
-    if (entry.kind === "LOAN") {
-      await recordStatementLoan({ ...input, kind: "LOAN" });
-    } else {
-      if (!loanId) throw new Error("返済対象の貸付を選択してください");
-      await recordStatementRepayment({ ...input, loanId });
-    }
-    setConfirmedStatements((current) => new Set(current).add(key));
-    setHasUnsavedChanges(false);
-    onAdded(true);
-  };
-
-  const linkStatementTransfer = async (
-    document: DocumentReview,
-    entry: StatementEntry,
-    statementAccountId: string,
-    transferId: string,
-  ) => {
-    if (entry.kind !== "LOAN" && entry.kind !== "REPAYMENT")
-      throw new Error("貸付または返済の明細を選択してください");
-    const issue = statementConfirmationIssue(entry);
-    if (issue) throw new Error(issue);
-    if (
-      !household.accounts.some(
-        (account) => account.id === statementAccountId && account.kind === "BANK",
-      )
-    )
-      throw new Error("銀行口座を選択してください");
-    const reference = statementSourceReference(entry);
-    const key = statementConfirmationKey(document.id, entry);
-    if (confirmedStatements.has(key)) return;
-    await linkStatementTransferRequest({
-      householdId: household.id,
-      ledgerEntryId: transferId,
-      sourceDocumentId: document.id,
-      sourceReference: reference,
-      sourceAccountId: statementAccountId,
-    });
-    setConfirmedStatements((current) => new Set(current).add(key));
-    setHasUnsavedChanges(false);
-    onAdded(true);
-  };
-
-  const linkStatementAccountMovement = async (
-    document: DocumentReview,
-    entry: StatementEntry,
-    statementAccountId: string,
-    movementId: string,
-  ) => {
-    if (entry.kind !== "ACCOUNT_TRANSFER" && entry.kind !== "CARD_BILL_PAYMENT")
-      throw new Error("口座移動の明細を選択してください");
-    const issue = statementConfirmationIssue(entry);
-    if (issue) throw new Error(issue);
-    if (
-      !household.accounts.some(
-        (account) => account.id === statementAccountId && account.kind === "BANK",
-      )
-    )
-      throw new Error("銀行口座を選択してください");
-    const reference = statementSourceReference(entry);
-    const key = statementConfirmationKey(document.id, entry);
-    if (confirmedStatements.has(key)) return;
-    await linkStatementAccountMovementRequest({
-      householdId: household.id,
-      accountMovementId: movementId,
-      sourceDocumentId: document.id,
-      sourceReference: reference,
-      sourceAccountId: statementAccountId,
-    });
-    setConfirmedStatements((current) => new Set(current).add(key));
-    setHasUnsavedChanges(false);
-    onAdded(true);
-  };
-
-  const linkStatementAccountIncome = async (
-    document: DocumentReview,
-    entry: StatementEntry,
-    statementAccountId: string,
-    incomeId: string,
-  ) => {
-    if (entry.kind !== "EXTERNAL_INCOME") throw new Error("外部入金の明細を選択してください");
-    const issue = statementConfirmationIssue(entry);
-    if (issue) throw new Error(issue);
-    if (
-      !household.accounts.some(
-        (account) => account.id === statementAccountId && account.kind === "BANK",
-      )
-    )
-      throw new Error("銀行口座を選択してください");
-    const reference = statementSourceReference(entry);
-    const key = statementConfirmationKey(document.id, entry);
-    if (confirmedStatements.has(key)) return;
-    await linkStatementAccountIncomeRequest({
-      householdId: household.id,
-      accountIncomeId: incomeId,
-      sourceDocumentId: document.id,
-      sourceReference: reference,
-      sourceAccountId: statementAccountId,
-    });
-    setConfirmedStatements((current) => new Set(current).add(key));
-    setHasUnsavedChanges(false);
-    onAdded(true);
-  };
-
+  const statementConfirmation = useStatementConfirmation({
+    household,
+    confirmedStatements,
+    setConfirmedStatements,
+    createAndPostPurchase,
+    correctPurchaseFromStatement,
+    refreshPurchases,
+    setHasUnsavedChanges,
+    onAdded,
+  });
   return {
     recentPurchases,
     confirmedStatements,
@@ -1016,53 +453,24 @@ export function useImportConfirmation({
     setReceiptAmountDrafts: setReceiptAmountDraftsPersisted,
     itemAllocationsFor: (documentId: string, itemKey: string) =>
       receiptItemAllocations[documentId]?.[itemKey] ?? [],
-    editReceiptItemAllocations,
+    editReceiptItemAllocations: receiptEditing.editReceiptItemAllocations,
     purchaseDateFor,
     purchaseTimeFor,
     purchaseOccurredAtFor,
-    editPurchaseDate,
-    editPurchaseTime,
+    editPurchaseDate: receiptEditing.editPurchaseDate,
+    editPurchaseTime: receiptEditing.editPurchaseTime,
     suggestedCategoryId,
     receiptItemAmount,
     receiptTotal,
     paymentDraftFor,
-    editItem,
-    addReceiptItem,
-    deleteReceiptItem,
+    editItem: receiptEditing.editItem,
+    addReceiptItem: receiptEditing.addReceiptItem,
+    deleteReceiptItem: receiptEditing.deleteReceiptItem,
     canUndoReceiptItemDeletion: receiptItemDeletionUndo?.documentId === selectedDocumentId,
-    undoReceiptItemDeletion,
-    editMerchant,
+    undoReceiptItemDeletion: receiptEditing.undoReceiptItemDeletion,
+    editMerchant: receiptEditing.editMerchant,
     resetConfirmation,
     confirm,
-    confirmStatement,
-    confirmStatementRefund,
-    linkStatementRefundCorrection,
-    confirmStatementTransfer,
-    confirmStatementLoan: (
-      document: DocumentReview,
-      entry: StatementEntry,
-      accountId: string,
-      fromMemberId: string,
-      toMemberId: string,
-      loanId?: string,
-    ) => confirmStatementLoan(document, entry, accountId, fromMemberId, toMemberId, loanId),
-    linkStatementTransfer: (
-      document: DocumentReview,
-      entry: StatementEntry,
-      accountId: string,
-      transferId: string,
-    ) => linkStatementTransfer(document, entry, accountId, transferId),
-    linkStatementAccountMovement: (
-      document: DocumentReview,
-      entry: StatementEntry,
-      accountId: string,
-      movementId: string,
-    ) => linkStatementAccountMovement(document, entry, accountId, movementId),
-    linkStatementAccountIncome: (
-      document: DocumentReview,
-      entry: StatementEntry,
-      accountId: string,
-      incomeId: string,
-    ) => linkStatementAccountIncome(document, entry, accountId, incomeId),
+    ...statementConfirmation,
   };
 }

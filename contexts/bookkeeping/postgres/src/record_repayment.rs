@@ -6,14 +6,13 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
-use bookkeeping_application::{
+use bookkeeping_domain::{
     Side,
     record_repayment::RecordRepaymentDecision,
     statement_transfer::{
         LinkStatementTransferCommand, StatementTransferObservation, decide_link_statement_transfer,
     },
 };
-use bookkeeping_domain::AccountingPeriodStatus;
 
 use crate::evidence_port::EvidenceOperations;
 use crate::{PgPool, schema::public};
@@ -96,9 +95,6 @@ pub async fn persist_record_repayment(
     let household_id = parse_uuid(&input.household_id, "household_id")?;
     let actor_id = parse_uuid(&input.actor_id, "actor_id")?;
     let loan_id = parse_uuid(decision.loan_id.as_str(), "loan_id")?;
-    if decision.accounting_period.status() != AccountingPeriodStatus::Open {
-        return Err(RecordRepaymentPersistenceError::AccountingPeriodClosed);
-    }
     let period_start = NaiveDate::from_ymd_opt(
         i32::from(decision.accounting_period.year_month().year()),
         u32::from(decision.accounting_period.year_month().month()),

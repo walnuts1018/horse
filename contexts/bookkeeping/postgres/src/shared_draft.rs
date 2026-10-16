@@ -9,7 +9,7 @@ use horse_authorization::{Operation, authorize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use bookkeeping_application::shared_draft::{
+use bookkeeping_domain::purchase_commands::{
     CreateSharedPurchaseDraftCommand, DraftReference, DraftReferenceKind,
     GetSharedPurchaseDraftCommand, SharedPurchaseDraftError, UpdateSharedPurchaseDraftCommand,
     decide_create_shared_purchase_draft, decide_get_shared_purchase_draft,

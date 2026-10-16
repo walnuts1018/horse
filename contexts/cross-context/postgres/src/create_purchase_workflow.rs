@@ -216,7 +216,7 @@ impl application::CreatePurchaseOperations for PgCreatePurchaseOperations<'_> {
     async fn persist_create(
         &mut self,
         persistence: CreatePurchasePersistence,
-        decision: bookkeeping_application::create_purchase::CreatePurchaseDecision,
+        decision: bookkeeping_domain::purchase_commands::CreatePurchaseDecision,
     ) -> Result<CreatedPurchase, Self::Error> {
         let mut cross_context = crate::purchase_creation_context::PurchaseCreationContext;
         let persisted = persist_create_purchase_in_transaction(

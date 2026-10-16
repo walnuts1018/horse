@@ -1,4 +1,4 @@
-use crate::{AccountingPeriod, AccountingPeriodStatus, PurchaseLifecycle};
+use crate::{OpenAccountingPeriod, PurchaseLifecycle};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,7 +22,7 @@ pub struct UpdatePurchasePayment {
 pub struct UpdatePurchaseDraft {
     pub revision: u64,
     pub lifecycle: PurchaseLifecycle,
-    pub accounting_period: AccountingPeriod,
+    pub accounting_period: OpenAccountingPeriod,
     pub occurred_at: String,
     pub date_precision: String,
     pub merchant: String,
@@ -61,9 +61,6 @@ pub fn decide_update_purchase(
 ) -> Result<UpdatePurchaseDecision, UpdatePurchaseError> {
     if command.purchase_id.is_empty() {
         return Err(UpdatePurchaseError::InvalidPurchaseId);
-    }
-    if current.accounting_period.status() == AccountingPeriodStatus::Closed {
-        return Err(UpdatePurchaseError::NotEditable);
     }
     if command.base_revision == 0 || command.base_revision > current.revision {
         return Err(UpdatePurchaseError::Conflict);
@@ -152,12 +149,13 @@ pub fn decide_update_purchase(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::YearMonth;
 
     fn current() -> UpdatePurchaseDraft {
         UpdatePurchaseDraft {
             revision: 4,
             lifecycle: PurchaseLifecycle::Draft,
-            accounting_period: AccountingPeriod::open(crate::YearMonth::new(2026, 10).unwrap(), 1)
+            accounting_period: OpenAccountingPeriod::new(YearMonth::new(2026, 10).unwrap(), 1)
                 .unwrap(),
             occurred_at: "2026-10-01T00:00:00+09:00".to_owned(),
             date_precision: "DATE_TIME".to_owned(),
@@ -201,14 +199,6 @@ mod tests {
         assert_eq!(
             decide_update_purchase(command.clone(), current()),
             Err(UpdatePurchaseError::Conflict)
-        );
-
-        let mut closed = current();
-        closed.accounting_period =
-            AccountingPeriod::closed(crate::YearMonth::new(2026, 10).unwrap(), 2).unwrap();
-        assert_eq!(
-            decide_update_purchase(command, closed),
-            Err(UpdatePurchaseError::NotEditable)
         );
     }
 }

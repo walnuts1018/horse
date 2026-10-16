@@ -1,12 +1,14 @@
-use bookkeeping_domain::PositiveYen;
+use bookkeeping_domain::purchase_commands::{
+    AllocationRuleId, AllocationRuleVersion, CategoryId, CreatePurchaseAllocation,
+    CreatePurchaseCommand, CreatePurchaseDecision, CreatePurchaseError, PurchaseAllocationWeight,
+    decide_create_purchase,
+};
+use bookkeeping_domain::{PoolId, PositiveYen};
 use chrono::DateTime;
+use uuid::Uuid;
 
 use crate::{
     AccountId, PostPurchaseCommand, PostPurchaseDecision, PostPurchaseError, PurchaseLifecycle,
-    create_purchase::{
-        AllocationRuleVersion, CreatePurchaseAllocation, CreatePurchaseCommand,
-        CreatePurchaseDecision, CreatePurchaseError, decide_create_purchase,
-    },
     decide_post_purchase,
 };
 
@@ -184,14 +186,14 @@ pub async fn create_and_post_purchase<O: CreateAndPostPurchaseOperations>(
         .items
         .iter()
         .map(|item| PurchaseItemAllocationRequest {
-            category_id: item.category_id.clone(),
-            product_variant_id: item.product_variant_id.clone(),
+            category_id: item.category_id.map(|id| id.value().to_string()),
+            product_variant_id: item.product_variant_id.map(|id| id.value().to_string()),
             allocations: item
                 .allocations
                 .iter()
                 .map(|allocation| RequestedPoolAllocation {
-                    pool_id: allocation.pool_id.clone(),
-                    weight: allocation.weight,
+                    pool_id: allocation.pool_id.as_str().to_owned(),
+                    weight: allocation.weight.value(),
                 })
                 .collect(),
         })
@@ -274,19 +276,33 @@ pub(crate) fn apply_allocation_context(
         AllocationRuleVersion::new(context.allocation_rule_version).ok_or(())?;
     for (item, resolved) in command.items.iter_mut().zip(context.items) {
         if item.category_id.is_none() {
-            item.category_id = resolved.category_id;
+            item.category_id = resolved
+                .category_id
+                .as_deref()
+                .map(Uuid::parse_str)
+                .transpose()
+                .map_err(|_| ())?
+                .map(CategoryId::new);
         }
         item.allocation_override = resolved.allocation_override;
         item.allocations = resolved
             .allocations
             .into_iter()
-            .map(|allocation| CreatePurchaseAllocation {
-                pool_id: allocation.pool_id,
-                weight: allocation.weight,
-                rule_version: allocation.rule_version,
-                rule_id: allocation.rule_id,
+            .map(|allocation| {
+                Ok(CreatePurchaseAllocation {
+                    pool_id: PoolId::new(allocation.pool_id).map_err(|_| ())?,
+                    weight: PurchaseAllocationWeight::new(allocation.weight).ok_or(())?,
+                    rule_version: AllocationRuleVersion::new(allocation.rule_version).ok_or(())?,
+                    rule_id: allocation
+                        .rule_id
+                        .as_deref()
+                        .map(Uuid::parse_str)
+                        .transpose()
+                        .map_err(|_| ())?
+                        .map(AllocationRuleId::new),
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, ()>>()?;
     }
     Ok(command)
 }
