@@ -5,7 +5,7 @@
 
 ## 現在の状態
 
-2026年10月16日時点でGoの実行コードはRustへ移行済みである。最新のCatalog・Evidence・Policy変更を含むworkspaceで`mise run rust:check`、`mise run rust:test`、`mise run lint`、`mise run rust:architecture:check`、`mise run rust:fmt:check`、`git diff --check`が成功した。今回の変更は未commitで、公開環境へは未反映である。
+2026年10月16日時点でGoの実行コードはRustへ移行済みである。commit`90b15c21`でCatalog・Evidence・Policy変更、原本保存期限、Application契約を反映した。workspaceで`mise run rust:check`、`mise run rust:test`、`mise run lint`、`mise run rust:architecture:check`、`mise run rust:fmt:check`、`git diff --check`が成功した。Horse CI run `38857596263`は実行中であり、kurumiでは`v0.0.954`が稼働しているため、このcommitのimageは未配備である。
 
 kurumiのArgo CD Applicationはinfra commit `559c1cd`で`Synced`かつ`Healthy`である。API・Worker・Web・OCRは`v0.0.950`でReadyになっており、Workerは`GEMINI_MODEL_PRICES` ConfigMapを参照する。ConfigMapのversionは`gemini-prices-2026-10-v2`である。`https://horse.walnuts.dev/healthz`はHTTP 200を返す。実行中のimageがHorse mainの最新commit由来だとは確認できていない。Chromeで公開トップを開くとログインリンクが表示され、認証後の操作はこの確認では行っていない。
 
