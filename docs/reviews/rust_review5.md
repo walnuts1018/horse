@@ -109,26 +109,9 @@ DMMFの第4章 §4.3、第5章 §5.3、第6章 §6.1、第7章 §7.2に対応す
 
 Bookkeepingの中でも、より強くDMMFへ寄せられます。
 
-### 状態をフラグで渡す設計
+### AccountingPeriodの状態型
 
-[`CorrectionCommand`](https://github.com/walnuts1018/horse/blob/784f4cbd152cbc5d139e5404ac4e0089b7f9745c/contexts/bookkeeping/application/src/correct_purchase.rs#L45-L59) には `purchase_lifecycle: PurchaseLifecycle` があり、`decide_correct_purchase` で `Draft` なら失敗にしています。
-
-しかし、訂正の対象が必ずPostedでなければならないのであれば、
-
-```
-pub struct CorrectionCommand {
-    pub purchase: PostedPurchaseFacts,
-    // ...
-}
-```
-
-のような構造を検討できます。
-
-つまり、訂正できない対象を受け取って後から拒否するのではなく、訂正可能な状態だけを受け取る型にする考え方です。
-
-もちろん、対象全体の集約をロードする必要はありません。訂正に必要な事実だけを集めた、構築経路が保護された型でも成立します。
-
-AccountingPeriodにも `OpenPeriod` と `ClosedPeriod` を分離する余地があります。これは現在のenumが誤りという意味ではなく、許可される操作を状態型で制約できるという改善です。
+AccountingPeriodは `OpenPeriod` と `ClosedPeriod` を分離する余地があります。これは現在のenumが誤りという意味ではなく、許可される操作を状態型で制約できるという改善です。
 
 根拠はDMMF第6章 §6.3–6.4、第7章 §7.2–7.3です。
 

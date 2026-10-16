@@ -36,6 +36,18 @@ pub enum CorrectionTarget {
     Item(ItemId),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PostedPurchase(());
+
+impl PostedPurchase {
+    pub fn from_lifecycle(lifecycle: PurchaseLifecycle) -> Result<Self, CorrectPurchaseError> {
+        match lifecycle {
+            PurchaseLifecycle::Posted => Ok(Self(())),
+            PurchaseLifecycle::Draft => Err(CorrectPurchaseError::PurchaseNotPosted),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorrectionPayment {
     pub account_id: AccountId,
@@ -45,7 +57,7 @@ pub struct CorrectionPayment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorrectionCommand {
     pub purchase_id: PurchaseId,
-    pub purchase_lifecycle: PurchaseLifecycle,
+    pub purchase: PostedPurchase,
     pub target: CorrectionTarget,
     pub amount_delta: SignedYenDelta,
     pub reason: String,
@@ -272,9 +284,6 @@ pub fn decide_correct_purchase(
             return Err(CorrectPurchaseError::EffectivePeriodMismatch);
         }
         AccountingPeriodStatus::Open | AccountingPeriodStatus::Closed => {}
-    }
-    if command.purchase_lifecycle == PurchaseLifecycle::Draft {
-        return Err(CorrectPurchaseError::PurchaseNotPosted);
     }
     if command.effective_period.status() != AccountingPeriodStatus::Open {
         return Err(CorrectPurchaseError::AccountingPeriodClosed);
@@ -948,7 +957,7 @@ mod tests {
     fn command(delta: i64) -> CorrectionCommand {
         CorrectionCommand {
             purchase_id: id(PurchaseId::new, "purchase-1"),
-            purchase_lifecycle: PurchaseLifecycle::Posted,
+            purchase: PostedPurchase::from_lifecycle(PurchaseLifecycle::Posted).unwrap(),
             target: CorrectionTarget::Item(id(ItemId::new, "item-1")),
             amount_delta: SignedYenDelta::new(delta).unwrap(),
             reason: "refund".into(),
@@ -1089,10 +1098,8 @@ mod tests {
 
     #[test]
     fn correction_requires_posted_purchase_open_period_and_matching_payment_total() {
-        let mut draft = command(50);
-        draft.purchase_lifecycle = PurchaseLifecycle::Draft;
         assert_eq!(
-            decide_correct_purchase(draft),
+            PostedPurchase::from_lifecycle(PurchaseLifecycle::Draft),
             Err(CorrectPurchaseError::PurchaseNotPosted)
         );
 

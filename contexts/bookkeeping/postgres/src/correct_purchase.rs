@@ -7,8 +7,8 @@ use bookkeeping_application::{
         CorrectionFundingRule, CorrectionMemberBurdenSnapshot, CorrectionPaymentFundingSnapshot,
         CorrectionPurchaseBurdenSnapshot, CorrectionPurchasePayment,
         CorrectionSettlementAdjustment, CorrectionSettlementPolicy, CorrectionTarget,
-        LinkStatementRefundCorrectionCommand, LinkStatementRefundCorrectionError, SignedYenDelta,
-        StatementRefundObservation, calculate_correction_funding_effects,
+        LinkStatementRefundCorrectionCommand, LinkStatementRefundCorrectionError, PostedPurchase,
+        SignedYenDelta, StatementRefundObservation, calculate_correction_funding_effects,
         decide_link_statement_refund_correction,
     },
 };
@@ -584,11 +584,12 @@ impl<E: EvidenceOperations, P: super::settlement_preview::PolicySettlementData>
         let command = CorrectionCommand {
             purchase_id: PurchaseId::new(purchase_id.to_string())
                 .map_err(|_| CorrectPurchasePersistenceError::InvalidDecision)?,
-            purchase_lifecycle: match status.as_str() {
+            purchase: PostedPurchase::from_lifecycle(match status.as_str() {
                 "DRAFT" => PurchaseLifecycle::Draft,
                 "POSTED" => PurchaseLifecycle::Posted,
                 _ => return Err(CorrectPurchasePersistenceError::InvalidDecision),
-            },
+            })
+            .map_err(|_| CorrectPurchasePersistenceError::PurchaseNotPosted)?,
             target: match item_id {
                 Some(id) => CorrectionTarget::Item(
                     ItemId::new(id.to_string())
