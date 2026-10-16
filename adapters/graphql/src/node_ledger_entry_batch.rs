@@ -1,4 +1,4 @@
-use async_graphql::{Context, Error, Result};
+use async_graphql::{Context, Result};
 use bookkeeping_application::ledger_entry_batch_query::LedgerEntryBatchQuery;
 use chrono::{Datelike, Duration, NaiveDate, Utc};
 use std::collections::HashMap;
@@ -142,7 +142,11 @@ pub(crate) async fn load(
                     crate::internal_error(format!("invalid transfer ledger entry: {error:?}"))
                 })?
             }
-            value => return Err(Error::new(format!("unknown ledger entry kind {value:?}"))),
+            value => {
+                return Err(crate::internal_error(format!(
+                    "unknown ledger entry kind {value:?}"
+                )));
+            }
         };
         loaded.insert(id, Node::LedgerEntry(entry));
     }
