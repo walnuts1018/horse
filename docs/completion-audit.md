@@ -5,9 +5,9 @@
 
 ## 現在の状態
 
-CLI以外のGo実行コードはRustへ移行済みである。Horse CI run `38876737440`はcommit`d8e0dd74`で成功したが、後続のmain commitを検証した結果ではない。現在のRust変更には、家計分離、精算金額上限、個人カードによる共用購入、カード返金訂正のTestcontainers統合テストを追加した。追加テストはまだ実行していない。
+CLI以外のGo実行コードはRustへ移行済みで、リポジトリに`.go`ファイルは残っていない。Horseのmain commitは`53dab2cc`で、CI run `38929114251`は確認時点でpendingだった。直前に完了したrun `38928370529`はRust統合テストの所有権エラーで失敗したため、その後の`53dab2cc`で接続Poolのcloneを追加した。家計分離、精算金額上限、個人カードによる共用購入、カード返金訂正、締め後の購入訂正に関するTestcontainers統合テストを追加し、購入訂正を次回精算へ反映するテストは実行に成功した。
 
-確認時点のkurumi Argo CD Applicationはinfra commit `fc79257f`で`Synced`かつ`Healthy`である。API・Workerはimage `v0.0.1006`、Webは`v0.0.1006`、OCRは`v0.0.1005`で、4つのPodがそれぞれ1/1 Readyである。Horseの現在のmain commit`3f5a8c6a`はまだ配備されていない。`https://horse.walnuts.dev/healthz`とトップページがHTTP 200を返す記録は過去の確認結果である。2026年10月16日にZITADELのID tokenが返す複数audienceを検証できるようAPIを修正し、Chromeでログイン後のHorseトップ画面とログアウト操作を確認した。修正commitは`63516bb9`である。
+確認時点のkurumi Argo CD Applicationはinfra commit `fc79257f`で`Synced`かつ`Healthy`である。API・Workerはimage `v0.0.1006`、Webは`v0.0.1006`、OCRは`v0.0.1005`で、4つのDeploymentがAvailableである。Horseのmain commit`53dab2cc`はまだ配備されていない。`https://horse.walnuts.dev/healthz`はHTTP 200を返す。2026年10月16日にZITADELのID tokenが返す複数audienceを検証できるようAPIを修正し、Chromeでログイン後の画面を確認した。2026年10月17日にChromeで認証済みの家計台帳を表示できることを再確認した。ログイン修正commitは`63516bb9`である。
 
 2026年10月16日にChromeで新しい`/auth/login?returnTo=%2Fhouseholds`からログインし、認証コールバック後に認証済みの`/households`へ到達した。API直近5分のログに認証拒否はなかった。先に観測したコールバックのHTTP 401は再現しておらず、単回利用の認証コードを再読込した可能性があるが、当時のログがなく原因は特定できていない。
 
