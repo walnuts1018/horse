@@ -1,3 +1,4 @@
+use bookkeeping_application::workflow_failure::{WorkflowFailure, WorkflowRejection};
 use bookkeeping_application::{
     post_purchase::{PostPurchaseWorkflowError, PostPurchaseWorkflowResult},
     post_purchase_entry::{
@@ -9,6 +10,7 @@ use uuid::Uuid;
 
 use crate::{PgPool, purchase_command_result};
 
+#[derive(Debug)]
 pub enum PostPurchaseEntryAdapterError {
     HouseholdId(purchase_command_result::PurchaseCommandResultError),
     Access(household_postgres::household_access::HouseholdAccessError),
@@ -25,18 +27,79 @@ pub struct PostPurchaseEntryOutput {
 pub async fn post_purchase_entry(
     pool: &PgPool,
     command: PostPurchaseEntryCommand,
-) -> Result<PostPurchaseEntryOutput, PostPurchaseWorkflowError<PostPurchaseEntryAdapterError>> {
+) -> Result<
+    PostPurchaseEntryOutput,
+    WorkflowFailure<WorkflowRejection, PostPurchaseEntryAdapterError>,
+> {
     let mut operations = PostPurchaseEntryAdapter {
         pool,
         household_id: None,
     };
     let result =
         bookkeeping_application::post_purchase_entry::post_purchase_entry(&mut operations, command)
-            .await?;
+            .await
+            .map_err(|error| match error {
+                PostPurchaseWorkflowError::Decision(_) => WorkflowFailure::Conflict,
+                PostPurchaseWorkflowError::Operations(error) => classify_entry_error(error),
+            })?;
     Ok(PostPurchaseEntryOutput {
         household_id: operations.household_id,
         result,
     })
+}
+
+fn classify_entry_error(
+    error: PostPurchaseEntryAdapterError,
+) -> WorkflowFailure<WorkflowRejection, PostPurchaseEntryAdapterError> {
+    match error {
+        error @ (PostPurchaseEntryAdapterError::HouseholdId(_)
+        | PostPurchaseEntryAdapterError::Projection(_)) => WorkflowFailure::Infrastructure(error),
+        PostPurchaseEntryAdapterError::Idempotency(error) => classify_post_error(error)
+            .map_infrastructure(PostPurchaseEntryAdapterError::Idempotency),
+        PostPurchaseEntryAdapterError::Post(error) => match error {
+            postgres_post::PostPurchaseWorkflowAdapterError::Load(error) => match error {
+                bookkeeping_postgres::post_purchase_loader::PostPurchaseLoadError::MissingPurchase
+                | bookkeeping_postgres::post_purchase_loader::PostPurchaseLoadError::HouseholdMismatch(_) => WorkflowFailure::NotFound,
+                bookkeeping_postgres::post_purchase_loader::PostPurchaseLoadError::AccountingPeriodClosed => WorkflowFailure::Conflict,
+                database @ bookkeeping_postgres::post_purchase_loader::PostPurchaseLoadError::Database(_) => WorkflowFailure::Infrastructure(PostPurchaseEntryAdapterError::Post(postgres_post::PostPurchaseWorkflowAdapterError::Load(database))),
+                _ => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+            },
+            postgres_post::PostPurchaseWorkflowAdapterError::Persistence(error) => classify_post_error(error)
+                .map_infrastructure(|error| PostPurchaseEntryAdapterError::Post(postgres_post::PostPurchaseWorkflowAdapterError::Persistence(error))),
+            error @ (postgres_post::PostPurchaseWorkflowAdapterError::Pool(_)
+            | postgres_post::PostPurchaseWorkflowAdapterError::Database(_)) => WorkflowFailure::Infrastructure(PostPurchaseEntryAdapterError::Post(error)),
+        },
+        error @ PostPurchaseEntryAdapterError::Access(_) => WorkflowFailure::Infrastructure(error),
+    }
+}
+
+fn classify_post_error(
+    error: postgres_post::PostPurchasePersistenceError,
+) -> WorkflowFailure<WorkflowRejection, postgres_post::PostPurchasePersistenceError> {
+    use postgres_post::PostPurchasePersistenceError as E;
+    match error {
+        E::AccountingPeriodClosed | E::StalePurchase | E::IdempotencyConflict => {
+            WorkflowFailure::Conflict
+        }
+        E::HouseholdMismatch => WorkflowFailure::NotFound,
+        E::Pool(_) | E::Database(_) => WorkflowFailure::Infrastructure(error),
+        _ => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+    }
+}
+
+trait MapInfrastructure<T, U> {
+    fn map_infrastructure(self, map: impl FnOnce(T) -> U) -> WorkflowFailure<WorkflowRejection, U>;
+}
+
+impl<T, U> MapInfrastructure<T, U> for WorkflowFailure<WorkflowRejection, T> {
+    fn map_infrastructure(self, map: impl FnOnce(T) -> U) -> WorkflowFailure<WorkflowRejection, U> {
+        match self {
+            WorkflowFailure::Decision(error) => WorkflowFailure::Decision(error),
+            WorkflowFailure::NotFound => WorkflowFailure::NotFound,
+            WorkflowFailure::Conflict => WorkflowFailure::Conflict,
+            WorkflowFailure::Infrastructure(error) => WorkflowFailure::Infrastructure(map(error)),
+        }
+    }
 }
 
 struct PostPurchaseEntryAdapter<'a> {

@@ -6,6 +6,7 @@ use bookkeeping_application::{
     record_transfer::{
         RecordTransferCommand, RecordTransferError, TransferBase, decide_record_transfer,
     },
+    workflow_failure::{WorkflowFailure, WorkflowRejection},
 };
 use bookkeeping_domain::PositiveYen;
 use bookkeeping_postgres::{
@@ -176,14 +177,14 @@ pub async fn record_transfer(
             .await
         {
             Ok(value) => value,
-            Err(error) => return transfer_persistence_error(error),
+            Err(error) => return transfer_failure(error),
         };
     if let Some(ledger_entry_id) = replay {
         let entry =
             load_ledger_entry(ctx.data::<PgPool>()?, parsed.household_id, &ledger_entry_id).await?;
         return Ok(Box::new(RecordTransferSuccess { result: entry }).into());
     }
-    let command_context = match postgres_context::load_transfer_command_context(
+    let command_context = match evidence_workflows::load_transfer_command_context(
         ctx.data::<PgPool>()?,
         parsed.household_id,
         parsed.from_member_id,
@@ -195,7 +196,7 @@ pub async fn record_transfer(
     .await
     {
         Ok(value) => value,
-        Err(error) => return transfer_context_error(error),
+        Err(error) => return transfer_context_failure(error),
     };
     let amount = match PositiveYen::new(parsed.amount_yen) {
         Ok(value) => value,
@@ -238,7 +239,7 @@ pub async fn record_transfer(
     .await
     {
         Ok(value) => value,
-        Err(error) => return transfer_persistence_error(error),
+        Err(error) => return transfer_failure(error),
     };
     let entry = load_ledger_entry(
         ctx.data::<PgPool>()?,
@@ -283,16 +284,16 @@ pub async fn record_repayment(
     .await
     {
         Ok(value) => value,
-        Err(error) => return repayment_persistence_error(error),
+        Err(error) => return repayment_failure(error),
     };
     if let Some(ledger_entry_id) = replay {
         let entry =
             load_ledger_entry(ctx.data::<PgPool>()?, parsed.household_id, &ledger_entry_id).await?;
         return Ok(Box::new(RecordRepaymentSuccess { result: entry }).into());
     }
-    let command_context = match postgres_context::load_repayment_command_context(
+    let command_context = match evidence_workflows::load_repayment_command_context(
         ctx.data::<PgPool>()?,
-        postgres_context::RepaymentCommandContextInput {
+        cross_context_postgres::policy_data::RepaymentCommandContextInput {
             household_id: parsed.household_id,
             loan_id: parsed.loan_id,
             payment_account_id: parsed.payment_account_id,
@@ -305,7 +306,7 @@ pub async fn record_repayment(
     .await
     {
         Ok(value) => value,
-        Err(error) => return repayment_context_error(error),
+        Err(error) => return repayment_context_failure(error),
     };
     let amount = match PositiveYen::new(parsed.amount_yen) {
         Ok(value) => value,
@@ -342,7 +343,7 @@ pub async fn record_repayment(
     .await
     {
         Ok(value) => value,
-        Err(error) => return repayment_persistence_error(error),
+        Err(error) => return repayment_failure(error),
     };
     let entry = load_ledger_entry(
         ctx.data::<PgPool>()?,
@@ -639,97 +640,55 @@ fn repayment_workflow_error(error: RepaymentError) -> RecordRepaymentUserError {
     }
 }
 
-fn transfer_context_error(
-    error: postgres_context::FinancialCommandContextError,
+fn transfer_context_failure(
+    error: WorkflowFailure<WorkflowRejection, postgres_context::FinancialCommandContextError>,
 ) -> Result<RecordTransferResult> {
-    use postgres_context::FinancialCommandContextError as E;
     match error {
-        E::HouseholdNotFound | E::AccountNotFound | E::LoanNotFound => {
-            Ok(not_found_transfer_error().into())
+        WorkflowFailure::NotFound => Ok(not_found_transfer_error().into()),
+        WorkflowFailure::Conflict => Ok(conflict_transfer_error().into()),
+        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => {
+            Ok(bad_transfer_error().into())
         }
-        E::AccountingPeriodClosed => Ok(conflict_transfer_error().into()),
-        E::InvalidAccountKind(_)
-        | E::InvalidPoolKind(_)
-        | E::InvalidAccountingPeriod(_)
-        | E::InvalidLoan => Ok(bad_transfer_error().into()),
-        E::InvalidTokyoOffset => Err(internal_error("invalid Tokyo offset")),
-        E::Pool(_) | E::Database(_) => Err(internal_error(error)),
+        WorkflowFailure::Infrastructure(error) => Err(internal_error(error)),
     }
 }
 
-fn repayment_context_error(
-    error: postgres_context::FinancialCommandContextError,
+fn repayment_context_failure(
+    error: WorkflowFailure<WorkflowRejection, postgres_context::FinancialCommandContextError>,
 ) -> Result<RecordRepaymentResult> {
-    use postgres_context::FinancialCommandContextError as E;
     match error {
-        E::HouseholdNotFound | E::AccountNotFound | E::LoanNotFound => {
-            Ok(not_found_repayment_error().into())
+        WorkflowFailure::NotFound => Ok(not_found_repayment_error().into()),
+        WorkflowFailure::Conflict => Ok(conflict_repayment_error().into()),
+        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => {
+            Ok(bad_repayment_error().into())
         }
-        E::AccountingPeriodClosed => Ok(conflict_repayment_error().into()),
-        E::InvalidAccountKind(_)
-        | E::InvalidPoolKind(_)
-        | E::InvalidAccountingPeriod(_)
-        | E::InvalidLoan => Ok(bad_repayment_error().into()),
-        E::InvalidTokyoOffset => Err(internal_error("invalid Tokyo offset")),
-        E::Pool(_) | E::Database(_) => Err(internal_error(error)),
+        WorkflowFailure::Infrastructure(error) => Err(internal_error(error)),
     }
 }
 
-fn transfer_persistence_error(
-    error: postgres_transfer::RecordTransferPersistenceError,
+fn transfer_failure(
+    error: WorkflowFailure<WorkflowRejection, postgres_transfer::RecordTransferPersistenceError>,
 ) -> Result<RecordTransferResult> {
-    use postgres_transfer::RecordTransferPersistenceError as E;
     match error {
-        E::IdempotencyConflict | E::AccountingPeriodClosed => Ok(conflict_transfer_error().into()),
-        E::HouseholdNotFound
-        | E::MemberNotFound
-        | E::AccountNotFound
-        | E::PoolNotFound
-        | E::LoanNotFound
-        | E::SourceDocumentNotFound
-        | E::StatementReferenceNotFound => Ok(not_found_transfer_error().into()),
-        E::StatementAlreadyConfirmed => Ok(conflict_transfer_error().into()),
-        E::InvalidUuid(_)
-        | E::InvalidIdempotencyKey
-        | E::NumericOutOfRange(_)
-        | E::LoanDirectionMismatch
-        | E::RepaymentExceedsOutstanding
-        | E::InvalidAccountKind
-        | E::AccountWithoutPool
-        | E::AccountOwnershipMismatch
-        | E::SourceIsNotBankStatement
-        | E::StatementExtractionUnavailable
-        | E::StatementDoesNotMatchTransfer
-        | E::InvalidDecision => Ok(bad_transfer_error().into()),
-        E::Pool(_) | E::Database(_) => Err(internal_error(error)),
+        WorkflowFailure::NotFound => Ok(not_found_transfer_error().into()),
+        WorkflowFailure::Conflict => Ok(conflict_transfer_error().into()),
+        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => {
+            Ok(bad_transfer_error().into())
+        }
+        WorkflowFailure::Infrastructure(error) => Err(internal_error(error)),
     }
 }
 
-fn repayment_persistence_error(
-    error: postgres_repayment::RecordRepaymentPersistenceError,
+fn repayment_failure(
+    error: WorkflowFailure<WorkflowRejection, postgres_repayment::RecordRepaymentPersistenceError>,
 ) -> Result<RecordRepaymentResult> {
-    use postgres_repayment::RecordRepaymentPersistenceError as E;
     match error {
-        E::IdempotencyConflict | E::AccountingPeriodClosed => Ok(conflict_repayment_error().into()),
-        E::StatementAlreadyConfirmed => Ok(conflict_repayment_error().into()),
-        E::HouseholdNotFound
-        | E::LoanNotFound
-        | E::MemberNotFound
-        | E::SourceDocumentNotFound
-        | E::StatementReferenceNotFound => Ok(not_found_repayment_error().into()),
-        E::InvalidUuid(_)
-        | E::InvalidPeriod
-        | E::InvalidIdempotencyKey
-        | E::NumericOutOfRange(_)
-        | E::LoanDirectionMismatch
-        | E::RepaymentExceedsOutstanding
-        | E::AccountNotFound
-        | E::InvalidAccountKind
-        | E::SourceIsNotBankStatement
-        | E::StatementExtractionUnavailable
-        | E::StatementDoesNotMatchTransfer
-        | E::InvalidDecision => Ok(bad_repayment_error().into()),
-        E::Pool(_) | E::Database(_) => Err(internal_error(error)),
+        WorkflowFailure::NotFound => Ok(not_found_repayment_error().into()),
+        WorkflowFailure::Conflict => Ok(conflict_repayment_error().into()),
+        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => {
+            Ok(bad_repayment_error().into())
+        }
+        WorkflowFailure::Infrastructure(error) => Err(internal_error(error)),
     }
 }
 

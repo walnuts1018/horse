@@ -853,23 +853,14 @@ fn encode_node_id(kind: &str, raw_id: &str) -> std::result::Result<String, ()> {
 }
 
 fn policy_error<T: From<MutationErrorCode>>(
-    error: postgres_policy::PolicyPersistenceError,
+    error: policy_application::WorkflowFailure,
 ) -> Result<T> {
-    use postgres_policy::PolicyPersistenceError as Error;
+    use policy_application::WorkflowFailure as Error;
     match error {
-        Error::InvalidUuid(_)
-        | Error::InvalidWorkflow
-        | Error::InvalidBudget(_)
-        | Error::InvalidRecurringExpense(_) => Ok(MutationErrorCode::BadInput.into()),
+        Error::Decision => Ok(MutationErrorCode::BadInput.into()),
         Error::Conflict => Ok(MutationErrorCode::Conflict.into()),
-        Error::HouseholdNotFound
-        | Error::MemberNotFound
-        | Error::BudgetNotFound
-        | Error::RecurringExpenseNotFound
-        | Error::PurchaseNotFound
-        | Error::CategoryNotFound
-        | Error::AccountNotFound => Ok(MutationErrorCode::NotFound.into()),
-        error @ (Error::Pool(_) | Error::Database(_)) => Err(crate::internal_error(error)),
+        Error::NotFound => Ok(MutationErrorCode::NotFound.into()),
+        error @ Error::Infrastructure(_) => Err(crate::internal_error(error)),
     }
 }
 

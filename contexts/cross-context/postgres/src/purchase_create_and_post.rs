@@ -1,4 +1,5 @@
 use bookkeeping_application::create_and_post_purchase as application;
+use bookkeeping_application::workflow_failure::{WorkflowFailure, WorkflowRejection};
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
@@ -61,6 +62,90 @@ pub async fn create_and_post_purchase(
             },
         )
         .await
+}
+
+pub async fn create_and_post_purchase_workflow(
+    pool: &PgPool,
+    command: application::CreateAndPostPurchaseCommand,
+) -> Result<
+    application::CreateAndPostPurchaseResult,
+    WorkflowFailure<WorkflowRejection, CreateAndPostPurchaseError>,
+> {
+    create_and_post_purchase(pool, command)
+        .await
+        .map_err(classify_create_and_post_failure)
+}
+
+fn classify_create_and_post_failure(
+    error: CreateAndPostPurchaseError,
+) -> WorkflowFailure<WorkflowRejection, CreateAndPostPurchaseError> {
+    match error {
+        CreateAndPostPurchaseError::Context(PurchaseCommandContextError::HouseholdNotFound) => {
+            WorkflowFailure::NotFound
+        }
+        CreateAndPostPurchaseError::Context(
+            PurchaseCommandContextError::MissingDefaultAllocation
+            | PurchaseCommandContextError::MissingProductVariant
+            | PurchaseCommandContextError::MissingAllocationRule,
+        ) => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        CreateAndPostPurchaseError::Context(PurchaseCommandContextError::InvalidVersion) => {
+            WorkflowFailure::Decision(WorkflowRejection::InvalidInput)
+        }
+        CreateAndPostPurchaseError::Context(
+            error @ (PurchaseCommandContextError::Pool(_)
+            | PurchaseCommandContextError::Database(_)),
+        ) => WorkflowFailure::Infrastructure(CreateAndPostPurchaseError::Context(error)),
+        CreateAndPostPurchaseError::Create(error) => match error {
+            CreatePurchasePersistenceError::HouseholdNotFound
+            | CreatePurchasePersistenceError::MemberNotFound
+            | CreatePurchasePersistenceError::ReferenceNotFound(_) => WorkflowFailure::NotFound,
+            CreatePurchasePersistenceError::AccountingPeriodClosed
+            | CreatePurchasePersistenceError::IdempotencyConflict
+            | CreatePurchasePersistenceError::AllocationRuleMismatch => WorkflowFailure::Conflict,
+            CreatePurchasePersistenceError::InvalidUuid(_)
+            | CreatePurchasePersistenceError::InvalidOccurredAt
+            | CreatePurchasePersistenceError::InvalidIdempotencyKey
+            | CreatePurchasePersistenceError::NumericOutOfRange(_)
+            | CreatePurchasePersistenceError::MissingDefaultAllocation
+            | CreatePurchasePersistenceError::SourceAlreadyConfirmedAsCorrection
+            | CreatePurchasePersistenceError::InvalidDecision
+            | CreatePurchasePersistenceError::ReceiptConfirmationInvalid => {
+                WorkflowFailure::Decision(WorkflowRejection::InvalidInput)
+            }
+            error => WorkflowFailure::Infrastructure(CreateAndPostPurchaseError::Create(error)),
+        },
+        CreateAndPostPurchaseError::Load(error) => match error {
+            PostPurchaseLoadError::MissingPurchase
+            | PostPurchaseLoadError::HouseholdMismatch(_) => WorkflowFailure::NotFound,
+            PostPurchaseLoadError::AccountingPeriodClosed => WorkflowFailure::Conflict,
+            database @ PostPurchaseLoadError::Database(_) => {
+                WorkflowFailure::Infrastructure(CreateAndPostPurchaseError::Load(database))
+            }
+            _ => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        },
+        CreateAndPostPurchaseError::Post(error) => match error {
+            PostPurchasePersistenceError::AccountingPeriodClosed
+            | PostPurchasePersistenceError::StalePurchase
+            | PostPurchasePersistenceError::IdempotencyConflict => WorkflowFailure::Conflict,
+            PostPurchasePersistenceError::HouseholdMismatch => WorkflowFailure::NotFound,
+            infrastructure @ (PostPurchasePersistenceError::Pool(_)
+            | PostPurchasePersistenceError::Database(_)) => {
+                WorkflowFailure::Infrastructure(CreateAndPostPurchaseError::Post(infrastructure))
+            }
+            _ => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        },
+        CreateAndPostPurchaseError::CreateDecision(_)
+        | CreateAndPostPurchaseError::PostDecision(_) => {
+            WorkflowFailure::Decision(WorkflowRejection::InvalidInput)
+        }
+        CreateAndPostPurchaseError::CreatedPurchaseMissing => WorkflowFailure::NotFound,
+        CreateAndPostPurchaseError::AllocationContextMismatch => {
+            WorkflowFailure::Infrastructure(CreateAndPostPurchaseError::AllocationContextMismatch)
+        }
+        error @ (CreateAndPostPurchaseError::Pool(_) | CreateAndPostPurchaseError::Database(_)) => {
+            WorkflowFailure::Infrastructure(error)
+        }
+    }
 }
 
 struct PurchaseCreateAndPostOperations<'a> {

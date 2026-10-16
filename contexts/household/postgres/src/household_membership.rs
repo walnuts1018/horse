@@ -10,6 +10,7 @@ use household_application::membership::{
     MembershipError, MembershipFacts, RemoveHouseholdMemberCommand,
     RemoveHouseholdMemberOperations, TransferHouseholdOwnerOperations, TransferOwnerCommand,
 };
+use household_application::workflow_failure::WorkflowFailure;
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -240,6 +241,22 @@ pub async fn leave_household(
     pool: &PgPool,
     command: LeaveHouseholdCommand,
 ) -> Result<PersistedMembershipChange, HouseholdMembershipError> {
+    leave_household_inner(pool, command).await
+}
+
+pub async fn leave_household_workflow(
+    pool: &PgPool,
+    command: LeaveHouseholdCommand,
+) -> Result<PersistedMembershipChange, WorkflowFailure<MembershipError, HouseholdMembershipError>> {
+    leave_household_inner(pool, command)
+        .await
+        .map_err(map_workflow_failure)
+}
+
+async fn leave_household_inner(
+    pool: &PgPool,
+    command: LeaveHouseholdCommand,
+) -> Result<PersistedMembershipChange, HouseholdMembershipError> {
     let mut pooled = pool
         .get()
         .await
@@ -256,6 +273,22 @@ pub async fn leave_household(
 }
 
 pub async fn remove_household_member(
+    pool: &PgPool,
+    command: RemoveHouseholdMemberCommand,
+) -> Result<PersistedMembershipChange, HouseholdMembershipError> {
+    remove_household_member_inner(pool, command).await
+}
+
+pub async fn remove_household_member_workflow(
+    pool: &PgPool,
+    command: RemoveHouseholdMemberCommand,
+) -> Result<PersistedMembershipChange, WorkflowFailure<MembershipError, HouseholdMembershipError>> {
+    remove_household_member_inner(pool, command)
+        .await
+        .map_err(map_workflow_failure)
+}
+
+async fn remove_household_member_inner(
     pool: &PgPool,
     command: RemoveHouseholdMemberCommand,
 ) -> Result<PersistedMembershipChange, HouseholdMembershipError> {
@@ -280,6 +313,22 @@ pub async fn transfer_owner(
     pool: &PgPool,
     command: TransferOwnerCommand,
 ) -> Result<PersistedMembershipChange, HouseholdMembershipError> {
+    transfer_owner_inner(pool, command).await
+}
+
+pub async fn transfer_owner_workflow(
+    pool: &PgPool,
+    command: TransferOwnerCommand,
+) -> Result<PersistedMembershipChange, WorkflowFailure<MembershipError, HouseholdMembershipError>> {
+    transfer_owner_inner(pool, command)
+        .await
+        .map_err(map_workflow_failure)
+}
+
+async fn transfer_owner_inner(
+    pool: &PgPool,
+    command: TransferOwnerCommand,
+) -> Result<PersistedMembershipChange, HouseholdMembershipError> {
     let mut pooled = pool
         .get()
         .await
@@ -292,6 +341,27 @@ pub async fn transfer_owner(
             Ok(PersistedMembershipChange { household_id })
         })
         .await
+}
+
+fn map_workflow_failure(
+    error: HouseholdMembershipError,
+) -> WorkflowFailure<MembershipError, HouseholdMembershipError> {
+    match error {
+        HouseholdMembershipError::InvalidUuid(_) => {
+            WorkflowFailure::Decision(MembershipError::InvalidIdentifier)
+        }
+        HouseholdMembershipError::Workflow(MembershipError::InvalidIdentifier) => {
+            WorkflowFailure::Decision(MembershipError::InvalidIdentifier)
+        }
+        HouseholdMembershipError::HouseholdNotFound | HouseholdMembershipError::MemberNotFound => {
+            WorkflowFailure::NotFound
+        }
+        HouseholdMembershipError::Conflict => WorkflowFailure::Conflict,
+        HouseholdMembershipError::Workflow(error) => WorkflowFailure::Decision(error),
+        error @ (HouseholdMembershipError::Pool(_) | HouseholdMembershipError::Database(_)) => {
+            WorkflowFailure::Infrastructure(error)
+        }
+    }
 }
 
 async fn has_active_funding_reference(

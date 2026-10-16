@@ -6,6 +6,7 @@ use household_application::{
     create_household::{ActorId as CreateHouseholdActorId, CreateHouseholdCommand},
     invitation::{CreateInvitationCommand, MemberId, RevokeInvitationCommand},
     ports::{CreateHouseholdPortError, HouseholdStore},
+    workflow_failure::{WorkflowFailure, WorkflowRejection},
 };
 use household_postgres::{
     create_household as postgres_household, household_invitation as postgres_invitation,
@@ -212,12 +213,14 @@ pub async fn create_household(
     {
         Ok(created) => {
             let id = parse_uuid(&created.household_id)?;
-            match postgres_household::load_household(ctx.data::<PgPool>()?, actor.0, id).await {
+            match postgres_household::load_household_workflow(ctx.data::<PgPool>()?, actor.0, id)
+                .await
+            {
                 Ok(household) => Ok(CreateHouseholdSuccess {
                     result: map_household(household)?,
                 }
                 .into()),
-                Err(error) => Err(crate::internal_error(error)),
+                Err(error) => Err(household_load_internal_error(error)),
             }
         }
         Err(error) => match create_household_error_code(&error) {
@@ -256,7 +259,7 @@ pub async fn create_household_invitation(
         invitation_id: Uuid::now_v7().to_string(),
         expires_at,
     };
-    match postgres_invitation::create_invitation(
+    match postgres_invitation::create_invitation_workflow(
         ctx.data::<PgPool>()?,
         command,
         token,
@@ -297,7 +300,7 @@ pub async fn accept_household_invitation(
         }
     };
     let token_hash: [u8; 32] = Sha256::digest(token_bytes).into();
-    match postgres_invitation::accept_invitation_by_token(
+    match postgres_invitation::accept_invitation_by_token_workflow(
         ctx.data::<PgPool>()?,
         MemberId::from(actor.0),
         token_hash,
@@ -307,14 +310,18 @@ pub async fn accept_household_invitation(
     {
         Ok(household_id) => {
             let household_id = household_id.value();
-            match postgres_household::load_household(ctx.data::<PgPool>()?, actor.0, household_id)
-                .await
+            match postgres_household::load_household_workflow(
+                ctx.data::<PgPool>()?,
+                actor.0,
+                household_id,
+            )
+            .await
             {
                 Ok(household) => Ok(AcceptHouseholdInvitationSuccess {
                     result: map_household(household)?,
                 }
                 .into()),
-                Err(error) => Err(crate::internal_error(error)),
+                Err(error) => Err(household_load_internal_error(error)),
             }
         }
         Err(error) => match invitation_error_code(&error) {
@@ -341,7 +348,7 @@ pub async fn revoke_household_invitation(
             return Ok(RevokeHouseholdInvitationUserError::new(MutationErrorCode::BadInput).into());
         }
     };
-    match postgres_invitation::revoke_invitation(
+    match postgres_invitation::revoke_invitation_workflow(
         ctx.data::<PgPool>()?,
         RevokeInvitationCommand {
             actor_id: actor.0.to_string(),
@@ -375,7 +382,7 @@ pub async fn household_invitations(
     let household_id = crate::decode_household_id(&household_id)?;
     let after_id = after.as_deref().map(decode_cursor).transpose()?;
     let before_id = before.as_deref().map(decode_cursor).transpose()?;
-    let page = match postgres_invitation::list_invitations(
+    let page = match postgres_invitation::list_invitations_workflow(
         ctx.data::<PgPool>()?,
         actor.0,
         household_id,
@@ -387,17 +394,20 @@ pub async fn household_invitations(
     .await
     {
         Ok(page) => page,
-        Err(postgres_invitation::HouseholdInvitationError::HouseholdNotFound)
-        | Err(postgres_invitation::HouseholdInvitationError::MemberNotFound) => {
+        Err(WorkflowFailure::NotFound) => {
             return Err(Error::new("not found"));
         }
-        Err(postgres_invitation::HouseholdInvitationError::InvalidPagination) => {
+        Err(WorkflowFailure::Decision(WorkflowRejection::InvalidPagination)) => {
             return Err(Error::new("invalid pagination"));
         }
-        Err(postgres_invitation::HouseholdInvitationError::InvalidCursor) => {
+        Err(WorkflowFailure::Decision(WorkflowRejection::InvalidCursor)) => {
             return Err(Error::new("invalid cursor"));
         }
-        Err(error) => return Err(crate::internal_error(error)),
+        Err(WorkflowFailure::Decision(WorkflowRejection::InvalidInput)) => {
+            return Err(Error::new("invalid pagination"));
+        }
+        Err(WorkflowFailure::Conflict) => return Err(Error::new("conflict")),
+        Err(WorkflowFailure::Infrastructure(error)) => return Err(crate::internal_error(error)),
     };
     let rows = page
         .rows
@@ -565,12 +575,15 @@ pub(crate) async fn load_household_graphql(
     actor_id: Uuid,
     household_id: Uuid,
 ) -> Result<Household> {
-    postgres_household::load_household(pool, actor_id, household_id)
+    postgres_household::load_household_workflow(pool, actor_id, household_id)
         .await
         .map_err(|error| {
-            load_household_error_code(&error)
+            household_load_error_code(&error)
                 .map(|code| async_graphql::Error::new(error_message(code)))
-                .unwrap_or_else(|| crate::internal_error(error))
+                .unwrap_or_else(|| match error {
+                    WorkflowFailure::Infrastructure(error) => crate::internal_error(error),
+                    _ => crate::internal_error("unexpected household load failure"),
+                })
         })
         .and_then(map_household)
 }
@@ -734,42 +747,48 @@ fn create_household_error_code(error: &CreateHouseholdPortError) -> Option<Mutat
     }
 }
 
-// 読み取り系はport対象外のため、postgresのエラーを直接 mapping する。
-fn load_household_error_code(
-    error: &postgres_household::CreateHouseholdPersistenceError,
+// 読み取り系の失敗もPostgres AdapterでWorkflowFailureへ分類する。
+fn household_load_error_code(
+    error: &WorkflowFailure<WorkflowRejection, postgres_household::CreateHouseholdPersistenceError>,
 ) -> Option<MutationErrorCode> {
-    use postgres_household::CreateHouseholdPersistenceError as Error;
     match error {
-        Error::InvalidWorkflow(_) | Error::InvalidUuid => Some(MutationErrorCode::BadInput),
-        Error::HouseholdNotFound | Error::MemberNotFound => Some(MutationErrorCode::NotFound),
-        Error::Pool(_) | Error::Database(_) | Error::InvalidPersistedData => None,
+        WorkflowFailure::Decision(_) => Some(MutationErrorCode::BadInput),
+        WorkflowFailure::NotFound => Some(MutationErrorCode::NotFound),
+        WorkflowFailure::Conflict => Some(MutationErrorCode::Conflict),
+        WorkflowFailure::Infrastructure(_) => None,
+    }
+}
+
+fn household_load_internal_error(
+    error: WorkflowFailure<WorkflowRejection, postgres_household::CreateHouseholdPersistenceError>,
+) -> async_graphql::Error {
+    match error {
+        WorkflowFailure::Infrastructure(error) => crate::internal_error(error),
+        _ => crate::internal_error("household load failed"),
     }
 }
 
 fn invitation_error_code(
-    error: &postgres_invitation::HouseholdInvitationError,
+    error: &WorkflowFailure<
+        household_application::invitation::InvitationError,
+        postgres_invitation::HouseholdInvitationError,
+    >,
 ) -> Option<MutationErrorCode> {
     use household_application::invitation::InvitationError as WorkflowError;
-    use postgres_invitation::HouseholdInvitationError as Error;
     match error {
-        Error::InvalidUuid(_) => Some(MutationErrorCode::BadInput),
-        Error::Workflow(WorkflowError::InvalidIdentifier | WorkflowError::InvalidExpiry) => {
-            Some(MutationErrorCode::BadInput)
-        }
-        Error::Workflow(WorkflowError::Forbidden) => Some(MutationErrorCode::NotFound),
-        Error::Workflow(
+        WorkflowFailure::Decision(
+            WorkflowError::InvalidIdentifier | WorkflowError::InvalidExpiry,
+        ) => Some(MutationErrorCode::BadInput),
+        WorkflowFailure::Decision(WorkflowError::Forbidden | WorkflowError::NotFound)
+        | WorkflowFailure::NotFound => Some(MutationErrorCode::NotFound),
+        WorkflowFailure::Decision(
             WorkflowError::Expired
             | WorkflowError::Revoked
             | WorkflowError::AlreadyAccepted
             | WorkflowError::AlreadyMember,
-        ) => Some(MutationErrorCode::Conflict),
-        Error::Workflow(WorkflowError::NotFound)
-        | Error::HouseholdNotFound
-        | Error::InvitationNotFound
-        | Error::MemberNotFound => Some(MutationErrorCode::NotFound),
-        Error::Conflict => Some(MutationErrorCode::Conflict),
-        Error::InvalidCursor | Error::InvalidPagination => Some(MutationErrorCode::BadInput),
-        Error::Pool(_) | Error::Database(_) => None,
+        )
+        | WorkflowFailure::Conflict => Some(MutationErrorCode::Conflict),
+        WorkflowFailure::Infrastructure(_) => None,
     }
 }
 

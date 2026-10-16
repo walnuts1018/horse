@@ -8,7 +8,8 @@ use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use bookkeeping_application::funding_record as application;
-use bookkeeping_domain::funding_record::{PostingSide, RecordFundingDecision};
+use bookkeeping_application::workflow_failure::WorkflowFailure;
+use bookkeeping_domain::funding_record::{PostingSide, RecordFundingDecision, RecordFundingError};
 
 use crate::{PgPool, schema::public};
 
@@ -162,14 +163,12 @@ pub async fn record_funding_workflow<P: crate::policy_data::PolicyData>(
     policy: P,
 ) -> Result<
     application::RecordedFunding,
-    application::RecordFundingWorkflowError<RecordFundingWorkflowAdapterError>,
+    WorkflowFailure<RecordFundingError, RecordFundingWorkflowAdapterError>,
 > {
     let mut pooled = pool.get().await.map_err(|error| {
-        application::RecordFundingWorkflowError::Operations(
-            RecordFundingWorkflowAdapterError::Persistence(RecordFundingPersistenceError::Pool(
-                error.to_string(),
-            )),
-        )
+        WorkflowFailure::Infrastructure(RecordFundingWorkflowAdapterError::Persistence(
+            RecordFundingPersistenceError::Pool(error.to_string()),
+        ))
     })?;
     match (*pooled)
         .transaction::<_, RecordFundingTransactionError, _>(async |conn| {
@@ -181,14 +180,31 @@ pub async fn record_funding_workflow<P: crate::policy_data::PolicyData>(
         .await
     {
         Ok(result) => Ok(result),
-        Err(RecordFundingTransactionError::Workflow(error)) => Err(error),
-        Err(RecordFundingTransactionError::Database(error)) => {
-            Err(application::RecordFundingWorkflowError::Operations(
-                RecordFundingWorkflowAdapterError::Persistence(
-                    RecordFundingPersistenceError::Database(error),
-                ),
-            ))
-        }
+        Err(RecordFundingTransactionError::Workflow(
+            application::RecordFundingWorkflowError::Decision(error),
+        )) => Err(WorkflowFailure::Decision(error)),
+        Err(RecordFundingTransactionError::Workflow(
+            application::RecordFundingWorkflowError::Operations(error),
+        )) => Err(classify_funding_failure(error)),
+        Err(RecordFundingTransactionError::Database(error)) => Err(
+            WorkflowFailure::Infrastructure(RecordFundingWorkflowAdapterError::Persistence(
+                RecordFundingPersistenceError::Database(error),
+            )),
+        ),
+    }
+}
+
+fn classify_funding_failure(
+    error: RecordFundingWorkflowAdapterError,
+) -> WorkflowFailure<RecordFundingError, RecordFundingWorkflowAdapterError> {
+    match error {
+        RecordFundingWorkflowAdapterError::Context(crate::funding_command_context::FundingCommandContextError::HouseholdNotFound | crate::funding_command_context::FundingCommandContextError::PoolNotFound | crate::funding_command_context::FundingCommandContextError::AccountNotFound(_)) => WorkflowFailure::NotFound,
+        RecordFundingWorkflowAdapterError::Context(crate::funding_command_context::FundingCommandContextError::AccountingPeriodClosed) => WorkflowFailure::Conflict,
+        RecordFundingWorkflowAdapterError::Context(crate::funding_command_context::FundingCommandContextError::InvalidTokyoOffset | crate::funding_command_context::FundingCommandContextError::InvalidAccountingPeriodStatus(_) | crate::funding_command_context::FundingCommandContextError::InvalidPoolKind(_) | crate::funding_command_context::FundingCommandContextError::InvalidAccountKind(_) | crate::funding_command_context::FundingCommandContextError::Database(_)) => WorkflowFailure::Infrastructure(error),
+        RecordFundingWorkflowAdapterError::Persistence(RecordFundingPersistenceError::HouseholdNotFound | RecordFundingPersistenceError::MemberNotFound | RecordFundingPersistenceError::PoolNotFound | RecordFundingPersistenceError::AccountNotFound) => WorkflowFailure::NotFound,
+        RecordFundingWorkflowAdapterError::Persistence(RecordFundingPersistenceError::IdempotencyConflict | RecordFundingPersistenceError::AccountingPeriodClosed) => WorkflowFailure::Conflict,
+        RecordFundingWorkflowAdapterError::Persistence(RecordFundingPersistenceError::InvalidUuid(_) | RecordFundingPersistenceError::InvalidIdempotencyKey | RecordFundingPersistenceError::InvalidOccurredAt | RecordFundingPersistenceError::InvalidAccountKind | RecordFundingPersistenceError::AccountOwnershipMismatch) => WorkflowFailure::Decision(RecordFundingError::InvalidIdentifier),
+        RecordFundingWorkflowAdapterError::Persistence(RecordFundingPersistenceError::Pool(_) | RecordFundingPersistenceError::Database(_) | RecordFundingPersistenceError::InvalidDecision | RecordFundingPersistenceError::CorruptPersistedData(_) | RecordFundingPersistenceError::NumericOutOfRange(_)) => WorkflowFailure::Infrastructure(error),
     }
 }
 

@@ -2,25 +2,15 @@ use async_graphql::{Context, Enum, ID, InputObject, Result, SimpleObject, Union}
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_application::{
     AccountId, MemberId,
-    account_income::{
-        RecordAccountIncomeCommand, StatementIncomeSource, decide_record_account_income,
-    },
-    account_movement::{
-        AccountMovementKind as DomainAccountMovementKind, RecordAccountMovementCommand,
-        StatementMovementSource, decide_record_account_movement,
-    },
-    workflow_failure::{WorkflowFailure, WorkflowRejection},
+    account_income::StatementIncomeSource,
+    account_movement::{AccountMovementKind as DomainAccountMovementKind, StatementMovementSource},
+    workflow_failure::WorkflowFailure,
 };
 use bookkeeping_domain::PositiveYen;
-use bookkeeping_postgres::{
-    account_command_context, account_command_result,
-    account_income::{AccountIncomePersistenceError, PersistRecordAccountIncome},
-    account_movement::{AccountMovementPersistenceError, PersistRecordAccountMovement},
-};
+use bookkeeping_postgres::account_command_result;
 use chrono::{DateTime as ChronoDateTime, Utc};
 use cross_context_postgres::evidence_workflows;
 use horse_postgres_common::PgPool;
-use household_postgres::household_access;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -402,52 +392,16 @@ pub async fn record_account_movement(
             ));
         }
     };
-    let household_uuid = parse_uuid(&household_id)?;
-    let from_account_uuid = parse_uuid(&from_account_id)?;
-    let to_account_uuid = parse_uuid(&to_account_id)?;
-    let mut account_ids = vec![from_account_uuid, to_account_uuid];
-    if let Some(source) = &statement_source {
-        account_ids.push(parse_uuid(source.statement_account_id.as_str())?);
-    }
-    match household_access::is_active_member(pool, household_uuid, actor_id).await {
-        Ok(true) => {}
-        Ok(false) => {
-            return Ok(AccountMutationOutcome::UserError(
-                AccountMutationFailure::NotFound,
-            ));
-        }
-        Err(error) => return Err(crate::internal_error(error)),
-    }
-    let facts = match account_command_context::load_account_command_context(
-        pool,
-        household_uuid,
-        &account_ids,
-        occurred_at,
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(account_command_context::AccountCommandContextError::AccountingPeriodClosed) => {
-            return Ok(AccountMutationOutcome::UserError(
-                AccountMutationFailure::Conflict,
-            ));
-        }
-        Err(error) => return Err(crate::internal_error(error)),
-    };
-    if !facts.missing_account_ids.is_empty() {
-        return Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::NotFound,
-        ));
-    }
-    let (Some(from_account_kind), Some(to_account_kind)) = (
-        facts.account_kinds.get(&from_account_uuid),
-        facts.account_kinds.get(&to_account_uuid),
-    ) else {
-        return Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::NotFound,
-        ));
-    };
-    let command = RecordAccountMovementCommand {
+    let account_ids = std::iter::once(from_account_id.clone())
+        .chain(std::iter::once(to_account_id.clone()))
+        .chain(
+            statement_source
+                .as_ref()
+                .map(|source| source.statement_account_id.as_str().to_owned()),
+        )
+        .collect();
+    let fingerprint = movement_fingerprint(&input);
+    let command = bookkeeping_application::account_movement::RecordAccountMovementWorkflowCommand {
         actor_id: match MemberId::new(actor_id.to_string()) {
             Ok(value) => value,
             Err(_) => {
@@ -464,7 +418,6 @@ pub async fn record_account_movement(
                 ));
             }
         },
-        from_account_kind: *from_account_kind,
         to_account_id: match AccountId::new(to_account_id.clone()) {
             Ok(value) => value,
             Err(_) => {
@@ -473,49 +426,40 @@ pub async fn record_account_movement(
                 ));
             }
         },
-        to_account_kind: *to_account_kind,
         kind: input.kind.into(),
         occurred_at_unix_micros: occurred_at.timestamp_micros(),
         amount,
         description: input.description.clone(),
-        accounting_period: facts.accounting_period.clone(),
         statement_source,
+        household_id: household_id.clone(),
+        occurred_at,
+        idempotency_key: input.idempotency_key,
+        request_fingerprint: fingerprint,
+        account_ids,
     };
-    let decision = match decide_record_account_movement(command) {
-        Ok(value) => value,
-        Err(_) => {
-            return Ok(AccountMutationOutcome::UserError(
-                AccountMutationFailure::BadInput,
-            ));
-        }
-    };
-    let fingerprint = movement_fingerprint(&input);
-    match evidence_workflows::persist_record_account_movement(
-        pool,
-        PersistRecordAccountMovement {
-            household_id: household_id.clone(),
-            actor_id: actor_id.to_string(),
-            occurred_at,
-            idempotency_key: input.idempotency_key,
-            request_fingerprint: fingerprint,
-        },
-        decision,
-    )
-    .await
-    {
+    match evidence_workflows::record_account_movement_workflow(pool, command).await {
         Ok(value) => Ok(AccountMutationOutcome::Persisted(
             PersistedAccountMovementResult {
                 id: value.id,
                 household_id,
                 kind: input.kind,
-                occurred_at: input.occurred_at.clone(),
+                occurred_at: input.occurred_at,
                 from_account_id,
                 to_account_id,
                 amount_yen: value.amount_yen,
                 description: value.description,
             },
         )),
-        Err(error) => map_movement_error(error),
+        Err(WorkflowFailure::Conflict) => Ok(AccountMutationOutcome::UserError(
+            AccountMutationFailure::Conflict,
+        )),
+        Err(WorkflowFailure::NotFound) => Ok(AccountMutationOutcome::UserError(
+            AccountMutationFailure::NotFound,
+        )),
+        Err(WorkflowFailure::Decision(_)) => Ok(AccountMutationOutcome::UserError(
+            AccountMutationFailure::BadInput,
+        )),
+        Err(WorkflowFailure::Infrastructure(error)) => Err(crate::internal_error(error)),
     }
 }
 
@@ -592,44 +536,8 @@ pub async fn record_external_income(
             ));
         }
     };
-    let household_uuid = parse_uuid(&household_id)?;
-    let account_uuid = parse_uuid(&account_id)?;
-    match household_access::is_active_member(pool, household_uuid, actor_id).await {
-        Ok(true) => {}
-        Ok(false) => {
-            return Ok(AccountMutationOutcome::UserError(
-                AccountMutationFailure::NotFound,
-            ));
-        }
-        Err(error) => return Err(crate::internal_error(error)),
-    }
-    let facts = match account_command_context::load_account_command_context(
-        pool,
-        household_uuid,
-        &[account_uuid],
-        occurred_at,
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(account_command_context::AccountCommandContextError::AccountingPeriodClosed) => {
-            return Ok(AccountMutationOutcome::UserError(
-                AccountMutationFailure::Conflict,
-            ));
-        }
-        Err(error) => return Err(crate::internal_error(error)),
-    };
-    if !facts.missing_account_ids.is_empty() {
-        return Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::NotFound,
-        ));
-    }
-    let Some(account_kind) = facts.income_kind(account_uuid) else {
-        return Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::NotFound,
-        ));
-    };
-    let decision = match decide_record_account_income(RecordAccountIncomeCommand {
+    let request_fingerprint = income_fingerprint(&input);
+    let command = bookkeeping_application::account_income::RecordAccountIncomeWorkflowCommand {
         actor_id: match MemberId::new(actor_id.to_string()) {
             Ok(value) => value,
             Err(_) => {
@@ -646,33 +554,15 @@ pub async fn record_external_income(
                 ));
             }
         },
-        account_kind,
         amount,
         description,
-        accounting_period: facts.accounting_period,
         statement_source,
-    }) {
-        Ok(value) => value,
-        Err(_) => {
-            return Ok(AccountMutationOutcome::UserError(
-                AccountMutationFailure::BadInput,
-            ));
-        }
+        household_id: household_id.clone(),
+        occurred_at,
+        idempotency_key: input.idempotency_key,
+        request_fingerprint,
     };
-    let request_fingerprint = income_fingerprint(&input);
-    match evidence_workflows::persist_record_account_income(
-        pool,
-        PersistRecordAccountIncome {
-            household_id: household_id.clone(),
-            actor_id: actor_id.to_string(),
-            occurred_at,
-            idempotency_key: input.idempotency_key,
-            request_fingerprint,
-        },
-        decision,
-    )
-    .await
-    {
+    match evidence_workflows::record_account_income_workflow(pool, command).await {
         Ok(value) => Ok(AccountMutationOutcome::Persisted(
             PersistedAccountIncomeResult {
                 id: value.id,
@@ -683,12 +573,17 @@ pub async fn record_external_income(
                 description: value.description,
             },
         )),
-        Err(error) => map_income_error(error),
+        Err(WorkflowFailure::Conflict) => Ok(AccountMutationOutcome::UserError(
+            AccountMutationFailure::Conflict,
+        )),
+        Err(WorkflowFailure::NotFound) => Ok(AccountMutationOutcome::UserError(
+            AccountMutationFailure::NotFound,
+        )),
+        Err(WorkflowFailure::Decision(_)) => Ok(AccountMutationOutcome::UserError(
+            AccountMutationFailure::BadInput,
+        )),
+        Err(WorkflowFailure::Infrastructure(error)) => Err(crate::internal_error(error)),
     }
-}
-
-fn parse_uuid(value: &str) -> Result<Uuid, async_graphql::Error> {
-    Uuid::parse_str(value).map_err(|_| async_graphql::Error::new("invalid UUID"))
 }
 
 fn decode_node_id(id: &ID, expected: &str) -> Result<String, async_graphql::Error> {
@@ -766,38 +661,4 @@ fn fingerprint(fields: &[&str]) -> [u8; 32] {
         hash.update(field.as_bytes());
     }
     hash.finalize().into()
-}
-
-fn map_movement_error(
-    error: WorkflowFailure<WorkflowRejection, AccountMovementPersistenceError>,
-) -> Result<AccountMutationOutcome<PersistedAccountMovementResult>, async_graphql::Error> {
-    match error {
-        WorkflowFailure::Conflict => Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::Conflict,
-        )),
-        WorkflowFailure::NotFound => Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::NotFound,
-        )),
-        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => Ok(
-            AccountMutationOutcome::UserError(AccountMutationFailure::BadInput),
-        ),
-        WorkflowFailure::Infrastructure(error) => Err(crate::internal_error(error)),
-    }
-}
-
-fn map_income_error(
-    error: WorkflowFailure<WorkflowRejection, AccountIncomePersistenceError>,
-) -> Result<AccountMutationOutcome<PersistedAccountIncomeResult>, async_graphql::Error> {
-    match error {
-        WorkflowFailure::Conflict => Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::Conflict,
-        )),
-        WorkflowFailure::NotFound => Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::NotFound,
-        )),
-        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => Ok(
-            AccountMutationOutcome::UserError(AccountMutationFailure::BadInput),
-        ),
-        WorkflowFailure::Infrastructure(error) => Err(crate::internal_error(error)),
-    }
 }

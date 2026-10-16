@@ -914,6 +914,10 @@ fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, PolicyPersistenc
 impl budget::BudgetOperations for PolicyOperations<'_> {
     type Error = PolicyPersistenceError;
 
+    fn classify_error(error: Self::Error) -> policy_application::WorkflowFailure {
+        classify_policy_error(error)
+    }
+
     async fn persist_create(
         &mut self,
         decision: budget::CreateBudgetDecision,
@@ -938,6 +942,10 @@ impl budget::BudgetOperations for PolicyOperations<'_> {
 
 impl recurring_expense::RecurringExpenseOperations for PolicyOperations<'_> {
     type Error = PolicyPersistenceError;
+
+    fn classify_error(error: Self::Error) -> policy_application::WorkflowFailure {
+        classify_policy_error(error)
+    }
 
     async fn persist_create(
         &mut self,
@@ -965,5 +973,27 @@ impl recurring_expense::RecurringExpenseOperations for PolicyOperations<'_> {
         decision: recurring_expense::MatchRecurringExpenseDecision,
     ) -> Result<recurring_expense::RecurringExpense, Self::Error> {
         persist_match_recurring_expense(self.pool, decision).await
+    }
+}
+
+fn classify_policy_error(error: PolicyPersistenceError) -> policy_application::WorkflowFailure {
+    use policy_application::WorkflowFailure;
+    match error {
+        PolicyPersistenceError::InvalidUuid(_)
+        | PolicyPersistenceError::InvalidWorkflow
+        | PolicyPersistenceError::InvalidBudget(_)
+        | PolicyPersistenceError::InvalidRecurringExpense(_) => WorkflowFailure::Decision,
+        PolicyPersistenceError::HouseholdNotFound
+        | PolicyPersistenceError::MemberNotFound
+        | PolicyPersistenceError::BudgetNotFound
+        | PolicyPersistenceError::RecurringExpenseNotFound
+        | PolicyPersistenceError::PurchaseNotFound
+        | PolicyPersistenceError::CategoryNotFound
+        | PolicyPersistenceError::AccountNotFound => WorkflowFailure::NotFound,
+        PolicyPersistenceError::Conflict => WorkflowFailure::Conflict,
+        PolicyPersistenceError::Pool(error) => WorkflowFailure::Infrastructure(error),
+        PolicyPersistenceError::Database(error) => {
+            WorkflowFailure::Infrastructure(error.to_string())
+        }
     }
 }

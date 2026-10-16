@@ -1,3 +1,4 @@
+use catalog_application::workflow_failure::WorkflowFailure;
 use catalog_domain::tag::{
     CreateTagCommand, SetTagArchivedCommand, Tag, TagError, UpdateTagCommand, decide_create_tag,
     decide_set_tag_archived, decide_update_tag, validate_tag_name,
@@ -52,7 +53,7 @@ impl From<DieselError> for TagPersistenceError {
 pub async fn persist_create_tag(
     pool: &PgPool,
     command: CreateTagCommand,
-) -> Result<Tag, TagPersistenceError> {
+) -> Result<Tag, WorkflowFailure<TagError, TagPersistenceError>> {
     validate_tag_name(&command.name).map_err(TagPersistenceError::InvalidWorkflow)?;
     let tag_id = Uuid::now_v7();
     let decision = decide_create_tag(command, tag_id.to_string())
@@ -110,12 +111,13 @@ pub async fn persist_create_tag(
             .into())
         })
         .await
+        .map_err(map_workflow_failure)
 }
 
 pub async fn persist_update_tag(
     pool: &PgPool,
     command: UpdateTagCommand,
-) -> Result<Tag, TagPersistenceError> {
+) -> Result<Tag, WorkflowFailure<TagError, TagPersistenceError>> {
     validate_tag_name(&command.name).map_err(TagPersistenceError::InvalidWorkflow)?;
     let actor_id = parse_uuid(&command.actor_id, "actor_id")?;
     let tag_id = parse_uuid(&command.tag_id, "tag_id")?;
@@ -183,12 +185,13 @@ pub async fn persist_update_tag(
             .into())
         })
         .await
+        .map_err(map_workflow_failure)
 }
 
 pub async fn persist_set_tag_archived(
     pool: &PgPool,
     command: SetTagArchivedCommand,
-) -> Result<Tag, TagPersistenceError> {
+) -> Result<Tag, WorkflowFailure<TagError, TagPersistenceError>> {
     let actor_id = parse_uuid(&command.actor_id, "actor_id")?;
     let tag_id = parse_uuid(&command.tag_id, "tag_id")?;
 
@@ -255,6 +258,7 @@ pub async fn persist_set_tag_archived(
             .into())
         })
         .await
+        .map_err(map_workflow_failure)
 }
 
 async fn require_member(
@@ -303,6 +307,28 @@ fn map_workflow_error(error: TagError) -> TagPersistenceError {
     match error {
         TagError::RevisionConflict => TagPersistenceError::RevisionConflict,
         other => TagPersistenceError::InvalidWorkflow(other),
+    }
+}
+
+fn map_workflow_failure(
+    error: TagPersistenceError,
+) -> WorkflowFailure<TagError, TagPersistenceError> {
+    match error {
+        TagPersistenceError::InvalidUuid(_) => WorkflowFailure::InvalidInput,
+        TagPersistenceError::InvalidWorkflow(error) => WorkflowFailure::Decision(error),
+        TagPersistenceError::HouseholdNotFound | TagPersistenceError::TagNotFound => {
+            WorkflowFailure::NotFound
+        }
+        TagPersistenceError::RevisionConflict => WorkflowFailure::Conflict,
+        error @ (TagPersistenceError::Pool(_) | TagPersistenceError::Database(_)) => {
+            WorkflowFailure::Infrastructure(error)
+        }
+    }
+}
+
+impl From<TagPersistenceError> for WorkflowFailure<TagError, TagPersistenceError> {
+    fn from(error: TagPersistenceError) -> Self {
+        map_workflow_failure(error)
     }
 }
 

@@ -15,6 +15,7 @@ use household_application::invitation::{
 use household_application::invitation::{
     invitation_created_change, invitation_revoked_change, member_joined_change,
 };
+use household_application::workflow_failure::{WorkflowFailure, WorkflowRejection};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -60,6 +61,50 @@ pub enum HouseholdInvitationError {
 }
 
 pub async fn list_invitations(
+    pool: &PgPool,
+    actor_id: Uuid,
+    household_id: Uuid,
+    after_id: Option<Uuid>,
+    before_id: Option<Uuid>,
+    first: Option<i32>,
+    last: Option<i32>,
+) -> Result<HouseholdInvitationPageDto, HouseholdInvitationError> {
+    list_invitations_inner(
+        pool,
+        actor_id,
+        household_id,
+        after_id,
+        before_id,
+        first,
+        last,
+    )
+    .await
+}
+
+pub async fn list_invitations_workflow(
+    pool: &PgPool,
+    actor_id: Uuid,
+    household_id: Uuid,
+    after_id: Option<Uuid>,
+    before_id: Option<Uuid>,
+    first: Option<i32>,
+    last: Option<i32>,
+) -> Result<HouseholdInvitationPageDto, WorkflowFailure<WorkflowRejection, HouseholdInvitationError>>
+{
+    list_invitations_inner(
+        pool,
+        actor_id,
+        household_id,
+        after_id,
+        before_id,
+        first,
+        last,
+    )
+    .await
+    .map_err(map_list_workflow_failure)
+}
+
+async fn list_invitations_inner(
     pool: &PgPool,
     actor_id: Uuid,
     household_id: Uuid,
@@ -254,6 +299,28 @@ pub async fn create_invitation(
     token_hash: [u8; 32],
     now_value: DateTime<Utc>,
 ) -> Result<CreatedInvitationDto, HouseholdInvitationError> {
+    create_invitation_inner(pool, command, token, token_hash, now_value).await
+}
+
+pub async fn create_invitation_workflow(
+    pool: &PgPool,
+    command: CreateInvitationCommand,
+    token: String,
+    token_hash: [u8; 32],
+    now_value: DateTime<Utc>,
+) -> Result<CreatedInvitationDto, WorkflowFailure<InvitationError, HouseholdInvitationError>> {
+    create_invitation_inner(pool, command, token, token_hash, now_value)
+        .await
+        .map_err(map_invitation_workflow_failure)
+}
+
+async fn create_invitation_inner(
+    pool: &PgPool,
+    command: CreateInvitationCommand,
+    token: String,
+    token_hash: [u8; 32],
+    now_value: DateTime<Utc>,
+) -> Result<CreatedInvitationDto, HouseholdInvitationError> {
     parse_uuid(&command.household_id, "household_id")?;
     parse_uuid(&command.actor_id, "actor_id")?;
     parse_uuid(&command.invitation_id, "invitation_id")?;
@@ -351,6 +418,26 @@ impl CreateInvitationOperations for PostgresCreateInvitationOperations<'_> {
 }
 
 pub async fn accept_invitation_by_token(
+    pool: &PgPool,
+    member_id: MemberId,
+    token_hash: [u8; 32],
+    now_value: DateTime<Utc>,
+) -> Result<HouseholdId, HouseholdInvitationError> {
+    accept_invitation_by_token_inner(pool, member_id, token_hash, now_value).await
+}
+
+pub async fn accept_invitation_by_token_workflow(
+    pool: &PgPool,
+    member_id: MemberId,
+    token_hash: [u8; 32],
+    now_value: DateTime<Utc>,
+) -> Result<HouseholdId, WorkflowFailure<InvitationError, HouseholdInvitationError>> {
+    accept_invitation_by_token_inner(pool, member_id, token_hash, now_value)
+        .await
+        .map_err(map_invitation_workflow_failure)
+}
+
+async fn accept_invitation_by_token_inner(
     pool: &PgPool,
     member_id: MemberId,
     token_hash: [u8; 32],
@@ -515,6 +602,24 @@ pub async fn revoke_invitation(
     command: RevokeInvitationCommand,
     now_value: DateTime<Utc>,
 ) -> Result<InvitationStateDto, HouseholdInvitationError> {
+    revoke_invitation_inner(pool, command, now_value).await
+}
+
+pub async fn revoke_invitation_workflow(
+    pool: &PgPool,
+    command: RevokeInvitationCommand,
+    now_value: DateTime<Utc>,
+) -> Result<InvitationStateDto, WorkflowFailure<InvitationError, HouseholdInvitationError>> {
+    revoke_invitation_inner(pool, command, now_value)
+        .await
+        .map_err(map_invitation_workflow_failure)
+}
+
+async fn revoke_invitation_inner(
+    pool: &PgPool,
+    command: RevokeInvitationCommand,
+    now_value: DateTime<Utc>,
+) -> Result<InvitationStateDto, HouseholdInvitationError> {
     parse_uuid(&command.household_id, "household_id")?;
     parse_uuid(&command.actor_id, "actor_id")?;
     parse_uuid(&command.invitation_id, "invitation_id")?;
@@ -533,6 +638,54 @@ pub async fn revoke_invitation(
             .await
         })
         .await
+}
+
+fn map_invitation_workflow_failure(
+    error: HouseholdInvitationError,
+) -> WorkflowFailure<InvitationError, HouseholdInvitationError> {
+    match error {
+        HouseholdInvitationError::InvalidUuid(_) => {
+            WorkflowFailure::Decision(InvitationError::InvalidIdentifier)
+        }
+        HouseholdInvitationError::Workflow(InvitationError::InvalidIdentifier) => {
+            WorkflowFailure::Decision(InvitationError::InvalidIdentifier)
+        }
+        HouseholdInvitationError::Workflow(InvitationError::Forbidden)
+        | HouseholdInvitationError::Workflow(InvitationError::NotFound)
+        | HouseholdInvitationError::HouseholdNotFound
+        | HouseholdInvitationError::InvitationNotFound
+        | HouseholdInvitationError::MemberNotFound => WorkflowFailure::NotFound,
+        HouseholdInvitationError::Workflow(
+            InvitationError::Expired
+            | InvitationError::Revoked
+            | InvitationError::AlreadyAccepted
+            | InvitationError::AlreadyMember,
+        )
+        | HouseholdInvitationError::Conflict => WorkflowFailure::Conflict,
+        HouseholdInvitationError::Workflow(error) => WorkflowFailure::Decision(error),
+        error @ (HouseholdInvitationError::Pool(_) | HouseholdInvitationError::Database(_)) => {
+            WorkflowFailure::Infrastructure(error)
+        }
+        error @ (HouseholdInvitationError::InvalidPagination
+        | HouseholdInvitationError::InvalidCursor) => WorkflowFailure::Infrastructure(error),
+    }
+}
+
+fn map_list_workflow_failure(
+    error: HouseholdInvitationError,
+) -> WorkflowFailure<WorkflowRejection, HouseholdInvitationError> {
+    match error {
+        HouseholdInvitationError::HouseholdNotFound | HouseholdInvitationError::MemberNotFound => {
+            WorkflowFailure::NotFound
+        }
+        HouseholdInvitationError::InvalidPagination => {
+            WorkflowFailure::Decision(WorkflowRejection::InvalidPagination)
+        }
+        HouseholdInvitationError::InvalidCursor => {
+            WorkflowFailure::Decision(WorkflowRejection::InvalidCursor)
+        }
+        error => WorkflowFailure::Infrastructure(error),
+    }
 }
 
 struct PostgresRevokeInvitationOperations<'a> {

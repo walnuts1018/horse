@@ -1,4 +1,5 @@
 use catalog_application::create_product::CreateProductOperations;
+use catalog_application::workflow_failure::WorkflowFailure;
 use catalog_domain::product_creation::{
     CreateConceptCommand, CreateConceptDecision, CreateProductError, CreateVariantCommand,
     CreateVariantDecision,
@@ -47,7 +48,10 @@ pub enum CreateProductPersistenceError {
 pub async fn create_concept(
     pool: &PgPool,
     command: CreateConceptCommand,
-) -> Result<(String, CreateConceptDecision), CreateProductPersistenceError> {
+) -> Result<
+    (String, CreateConceptDecision),
+    WorkflowFailure<CreateProductError, CreateProductPersistenceError>,
+> {
     let mut operations = PostgresCreateProductOperations { pool };
     catalog_application::create_product::create_concept(&mut operations, command)
         .await
@@ -59,12 +63,16 @@ pub async fn create_concept(
                 error
             }
         })
+        .map_err(map_workflow_failure)
 }
 
 pub async fn create_variant(
     pool: &PgPool,
     command: CreateVariantCommand,
-) -> Result<(String, CreateVariantDecision), CreateProductPersistenceError> {
+) -> Result<
+    (String, CreateVariantDecision),
+    WorkflowFailure<CreateProductError, CreateProductPersistenceError>,
+> {
     let mut operations = PostgresCreateProductOperations { pool };
     catalog_application::create_product::create_variant(&mut operations, command)
         .await
@@ -76,6 +84,7 @@ pub async fn create_variant(
                 error
             }
         })
+        .map_err(map_workflow_failure)
 }
 
 struct PostgresCreateProductOperations<'a> {
@@ -103,6 +112,21 @@ impl CreateProductOperations for PostgresCreateProductOperations<'_> {
 impl From<DieselError> for CreateProductPersistenceError {
     fn from(error: DieselError) -> Self {
         Self::Database(error)
+    }
+}
+
+fn map_workflow_failure(
+    error: CreateProductPersistenceError,
+) -> WorkflowFailure<CreateProductError, CreateProductPersistenceError> {
+    match error {
+        CreateProductPersistenceError::InvalidUuid(_) => WorkflowFailure::InvalidInput,
+        CreateProductPersistenceError::InvalidWorkflow(error) => WorkflowFailure::Decision(error),
+        CreateProductPersistenceError::HouseholdNotFound
+        | CreateProductPersistenceError::MemberNotFound
+        | CreateProductPersistenceError::CategoryNotFound
+        | CreateProductPersistenceError::ConceptNotFound => WorkflowFailure::NotFound,
+        error @ (CreateProductPersistenceError::Pool(_)
+        | CreateProductPersistenceError::Database(_)) => WorkflowFailure::Infrastructure(error),
     }
 }
 

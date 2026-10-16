@@ -27,7 +27,8 @@ pub async fn close_period(
     expected_revision: u64,
 ) -> Result<
     bookkeeping_postgres::close_period::PersistedClosePeriod,
-    bookkeeping_application::close_period::ClosePeriodWorkflowError<
+    bookkeeping_application::workflow_failure::WorkflowFailure<
+        bookkeeping_domain::close_period::ClosePeriodError,
         bookkeeping_postgres::close_period::ClosePeriodPersistenceError,
     >,
 > {

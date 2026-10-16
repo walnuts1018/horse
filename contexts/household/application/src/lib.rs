@@ -6,3 +6,4 @@ pub mod invitation;
 pub mod mail_forwarding;
 pub mod membership;
 pub mod ports;
+pub mod workflow_failure;

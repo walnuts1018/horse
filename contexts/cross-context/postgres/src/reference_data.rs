@@ -1,3 +1,4 @@
+use bookkeeping_application::workflow_failure::{WorkflowFailure, WorkflowRejection};
 use bookkeeping_postgres::{
     bulk_delete_purchase_items::{
         BulkDeletePurchaseItemsPersistenceError, PersistBulkDeletePurchaseItems,
@@ -34,7 +35,10 @@ pub async fn persist_bulk_update_purchase_items(
     patch: bookkeeping_domain::purchase_commands::BulkUpdateItemPatch,
 ) -> Result<
     bookkeeping_postgres::bulk_update_purchase_items::PersistedBulkUpdatePurchaseItems,
-    bookkeeping_postgres::bulk_update_purchase_items::BulkUpdatePurchaseItemsPersistenceError,
+    WorkflowFailure<
+        WorkflowRejection,
+        bookkeeping_postgres::bulk_update_purchase_items::BulkUpdatePurchaseItemsPersistenceError,
+    >,
 > {
     bookkeeping_postgres::bulk_update_purchase_items::persist_bulk_update_purchase_items(
         pool,
@@ -44,6 +48,7 @@ pub async fn persist_bulk_update_purchase_items(
         &mut UpdatePurchaseItemReferences,
     )
     .await
+    .map_err(classify_bulk_update_purchase_items_error)
 }
 
 pub async fn persist_bulk_update_purchases(
@@ -52,7 +57,10 @@ pub async fn persist_bulk_update_purchases(
     commands: Vec<bookkeeping_domain::purchase_commands::UpdatePurchaseCommand>,
 ) -> Result<
     Vec<String>,
-    bookkeeping_postgres::bulk_update_purchases::BulkUpdatePurchasesPersistenceError,
+    WorkflowFailure<
+        WorkflowRejection,
+        bookkeeping_postgres::bulk_update_purchases::BulkUpdatePurchasesPersistenceError,
+    >,
 > {
     bookkeeping_postgres::bulk_update_purchases::persist_bulk_update_purchases(
         pool,
@@ -61,6 +69,7 @@ pub async fn persist_bulk_update_purchases(
         &mut UpdatePurchaseItemReferences,
     )
     .await
+    .map_err(classify_bulk_update_purchases_error)
 }
 
 pub async fn post_purchase_workflow(
@@ -85,7 +94,10 @@ pub async fn persist_update_purchase(
     input: PersistUpdatePurchase,
     command: bookkeeping_domain::purchase_commands::UpdatePurchaseCommand,
     decision: bookkeeping_domain::purchase_commands::UpdatePurchaseDecision,
-) -> Result<PersistedUpdatePurchase, UpdatePurchasePersistenceError> {
+) -> Result<
+    PersistedUpdatePurchase,
+    WorkflowFailure<WorkflowRejection, UpdatePurchasePersistenceError>,
+> {
     bookkeeping_postgres::update_purchase::persist_update_purchase(
         pool,
         input,
@@ -94,13 +106,17 @@ pub async fn persist_update_purchase(
         &mut UpdatePurchaseItemReferences,
     )
     .await
+    .map_err(classify_update_purchase_error)
 }
 
 pub async fn persist_bulk_delete_purchase_items(
     pool: &horse_postgres_common::PgPool,
     input: PersistBulkDeletePurchaseItems,
     targets: Vec<bookkeeping_domain::purchase_commands::BulkDeleteItemTarget>,
-) -> Result<PersistedBulkDeletePurchaseItems, BulkDeletePurchaseItemsPersistenceError> {
+) -> Result<
+    PersistedBulkDeletePurchaseItems,
+    WorkflowFailure<WorkflowRejection, BulkDeletePurchaseItemsPersistenceError>,
+> {
     bookkeeping_postgres::bulk_delete_purchase_items::persist_bulk_delete_purchase_items(
         pool,
         input,
@@ -108,6 +124,7 @@ pub async fn persist_bulk_delete_purchase_items(
         &mut UpdatePurchaseItemReferences,
     )
     .await
+    .map_err(classify_bulk_delete_purchase_items_error)
 }
 
 pub async fn persist_save_purchase_item_edits(
@@ -115,7 +132,8 @@ pub async fn persist_save_purchase_item_edits(
     input: PersistSavePurchaseItemEdits,
     items: Vec<bookkeeping_domain::purchase_commands::UpdatePurchaseItemCommand>,
     purchase_patch: Option<bookkeeping_domain::purchase_commands::UpdatePurchaseCommand>,
-) -> Result<Vec<String>, SavePurchaseItemEditsPersistenceError> {
+) -> Result<Vec<String>, WorkflowFailure<WorkflowRejection, SavePurchaseItemEditsPersistenceError>>
+{
     bookkeeping_postgres::save_purchase_item_edits::persist_save_purchase_item_edits(
         pool,
         input,
@@ -124,13 +142,17 @@ pub async fn persist_save_purchase_item_edits(
         &mut UpdatePurchaseItemReferences,
     )
     .await
+    .map_err(classify_save_purchase_item_edits_error)
 }
 
 pub async fn persist_update_purchase_item(
     pool: &horse_postgres_common::PgPool,
     input: PersistUpdatePurchaseItem,
     command: bookkeeping_domain::purchase_commands::UpdatePurchaseItemCommand,
-) -> Result<PersistedUpdatePurchaseItem, UpdatePurchaseItemPersistenceError> {
+) -> Result<
+    PersistedUpdatePurchaseItem,
+    WorkflowFailure<WorkflowRejection, UpdatePurchaseItemPersistenceError>,
+> {
     bookkeeping_postgres::update_purchase_item::persist_update_purchase_item(
         pool,
         input,
@@ -138,6 +160,177 @@ pub async fn persist_update_purchase_item(
         &mut UpdatePurchaseItemReferences,
     )
     .await
+    .map_err(classify_update_purchase_item_error)
+}
+
+fn classify_update_purchase_error(
+    error: UpdatePurchasePersistenceError,
+) -> WorkflowFailure<WorkflowRejection, UpdatePurchasePersistenceError> {
+    use UpdatePurchasePersistenceError as E;
+    match error {
+        E::InvalidUuid(_)
+        | E::InvalidOccurredAt
+        | E::NumericOutOfRange(_)
+        | E::PaymentTotalMismatch => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        E::HouseholdMismatch | E::MemberNotFound | E::PurchaseNotFound | E::AccountNotFound => {
+            WorkflowFailure::NotFound
+        }
+        E::AccountingPeriodClosed | E::InvalidFundingSnapshot => WorkflowFailure::Conflict,
+        E::InvalidDecision(error) => match error {
+            bookkeeping_domain::purchase_commands::UpdatePurchaseError::Conflict
+            | bookkeeping_domain::purchase_commands::UpdatePurchaseError::NotEditable => {
+                WorkflowFailure::Conflict
+            }
+            _ => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        },
+        error @ (E::Pool(_) | E::Database(_)) => WorkflowFailure::Infrastructure(error),
+    }
+}
+
+fn classify_update_purchase_item_error(
+    error: UpdatePurchaseItemPersistenceError,
+) -> WorkflowFailure<WorkflowRejection, UpdatePurchaseItemPersistenceError> {
+    use UpdatePurchaseItemPersistenceError as E;
+    match error {
+        E::InvalidUuid(_)
+        | E::NumericOutOfRange(_)
+        | E::InvalidPaymentAllocation
+        | E::MerchantRequired
+        | E::InvalidDecision => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        E::PurchaseNotFound
+        | E::ItemNotFound
+        | E::HouseholdMismatch
+        | E::MemberNotFound
+        | E::ReferenceNotFound(_) => WorkflowFailure::NotFound,
+        E::AccountingPeriodClosed | E::InvalidFundingSnapshot => WorkflowFailure::Conflict,
+        E::InvalidWorkflow(error) => match error {
+            bookkeeping_domain::purchase_commands::UpdatePurchaseItemError::Conflict => {
+                WorkflowFailure::Conflict
+            }
+            _ => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        },
+        error @ (E::Pool(_) | E::Database(_)) => WorkflowFailure::Infrastructure(error),
+    }
+}
+
+fn classify_bulk_update_purchase_items_error(
+    error: bookkeeping_postgres::bulk_update_purchase_items::BulkUpdatePurchaseItemsPersistenceError,
+) -> WorkflowFailure<
+    WorkflowRejection,
+    bookkeeping_postgres::bulk_update_purchase_items::BulkUpdatePurchaseItemsPersistenceError,
+> {
+    use bookkeeping_postgres::bulk_update_purchase_items::BulkUpdatePurchaseItemsPersistenceError as E;
+    match error {
+        E::InvalidUuid(_) | E::NumericOutOfRange(_) | E::InvalidDecision => {
+            WorkflowFailure::Decision(WorkflowRejection::InvalidInput)
+        }
+        E::ItemNotFound
+        | E::PurchaseNotFound
+        | E::HouseholdMismatch
+        | E::MemberNotFound
+        | E::ReferenceNotFound(_) => WorkflowFailure::NotFound,
+        E::AccountingPeriodClosed => WorkflowFailure::Conflict,
+        E::InvalidWorkflow(error) => match error {
+            bookkeeping_domain::purchase_commands::BulkUpdateItemsError::MissingItem => {
+                WorkflowFailure::NotFound
+            }
+            bookkeeping_domain::purchase_commands::BulkUpdateItemsError::Conflict => {
+                WorkflowFailure::Conflict
+            }
+            _ => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        },
+        error @ (E::Pool(_) | E::Database(_)) => WorkflowFailure::Infrastructure(error),
+    }
+}
+
+fn classify_bulk_delete_purchase_items_error(
+    error: BulkDeletePurchaseItemsPersistenceError,
+) -> WorkflowFailure<WorkflowRejection, BulkDeletePurchaseItemsPersistenceError> {
+    use BulkDeletePurchaseItemsPersistenceError as E;
+    match error {
+        E::InvalidUuid(_) | E::NumericOutOfRange(_) | E::InvalidDecision => {
+            WorkflowFailure::Decision(WorkflowRejection::InvalidInput)
+        }
+        E::ItemNotFound | E::PurchaseNotFound | E::HouseholdMismatch | E::MemberNotFound => {
+            WorkflowFailure::NotFound
+        }
+        E::AccountingPeriodClosed | E::InvalidPaymentAllocation | E::InvalidFundingSnapshot => {
+            WorkflowFailure::Conflict
+        }
+        E::InvalidWorkflow(error) => match error {
+            bookkeeping_domain::purchase_commands::BulkDeleteItemsError::MissingItem => {
+                WorkflowFailure::NotFound
+            }
+            bookkeeping_domain::purchase_commands::BulkDeleteItemsError::Conflict
+            | bookkeeping_domain::purchase_commands::BulkDeleteItemsError::CorrectedItem
+            | bookkeeping_domain::purchase_commands::BulkDeleteItemsError::LastItem => {
+                WorkflowFailure::Conflict
+            }
+            _ => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        },
+        error @ (E::Pool(_) | E::Database(_)) => WorkflowFailure::Infrastructure(error),
+    }
+}
+
+fn classify_bulk_update_purchases_error(
+    error: bookkeeping_postgres::bulk_update_purchases::BulkUpdatePurchasesPersistenceError,
+) -> WorkflowFailure<
+    WorkflowRejection,
+    bookkeeping_postgres::bulk_update_purchases::BulkUpdatePurchasesPersistenceError,
+> {
+    use bookkeeping_postgres::bulk_update_purchases::BulkUpdatePurchasesPersistenceError as E;
+    match error {
+        E::InvalidUuid(_) => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        E::HouseholdMismatch | E::MemberNotFound | E::PurchaseNotFound => WorkflowFailure::NotFound,
+        E::RevisionConflict | E::AccountingPeriodClosed => WorkflowFailure::Conflict,
+        E::InvalidWorkflow(error) => match error {
+            bookkeeping_domain::purchase_commands::BulkUpdatePurchasesError::InvalidTarget(
+                bookkeeping_domain::purchase_commands::UpdatePurchaseError::Conflict
+                | bookkeeping_domain::purchase_commands::UpdatePurchaseError::NotEditable,
+            ) => WorkflowFailure::Conflict,
+            _ => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        },
+        E::InvalidUpdate(error) => match classify_update_purchase_error(error) {
+            WorkflowFailure::Decision(error) => WorkflowFailure::Decision(error),
+            WorkflowFailure::NotFound => WorkflowFailure::NotFound,
+            WorkflowFailure::Conflict => WorkflowFailure::Conflict,
+            WorkflowFailure::Infrastructure(error) => {
+                WorkflowFailure::Infrastructure(E::InvalidUpdate(error))
+            }
+        },
+        error @ (E::Pool(_) | E::Database(_)) => WorkflowFailure::Infrastructure(error),
+    }
+}
+
+fn classify_save_purchase_item_edits_error(
+    error: SavePurchaseItemEditsPersistenceError,
+) -> WorkflowFailure<WorkflowRejection, SavePurchaseItemEditsPersistenceError> {
+    use SavePurchaseItemEditsPersistenceError as E;
+    match error {
+        E::InvalidUuid(_) | E::InvalidWorkflow(_) => {
+            WorkflowFailure::Decision(WorkflowRejection::InvalidInput)
+        }
+        E::PurchaseNotFound | E::ItemNotFound | E::HouseholdMismatch | E::MemberNotFound => {
+            WorkflowFailure::NotFound
+        }
+        E::InvalidPurchaseUpdate(error) => match classify_update_purchase_error(error) {
+            WorkflowFailure::Decision(error) => WorkflowFailure::Decision(error),
+            WorkflowFailure::NotFound => WorkflowFailure::NotFound,
+            WorkflowFailure::Conflict => WorkflowFailure::Conflict,
+            WorkflowFailure::Infrastructure(error) => {
+                WorkflowFailure::Infrastructure(E::InvalidPurchaseUpdate(error))
+            }
+        },
+        E::InvalidItemUpdate(error) => match classify_update_purchase_item_error(error) {
+            WorkflowFailure::Decision(error) => WorkflowFailure::Decision(error),
+            WorkflowFailure::NotFound => WorkflowFailure::NotFound,
+            WorkflowFailure::Conflict => WorkflowFailure::Conflict,
+            WorkflowFailure::Infrastructure(error) => {
+                WorkflowFailure::Infrastructure(E::InvalidItemUpdate(error))
+            }
+        },
+        error @ (E::Pool(_) | E::Database(_)) => WorkflowFailure::Infrastructure(error),
+    }
 }
 
 pub async fn create_shared_purchase_draft(

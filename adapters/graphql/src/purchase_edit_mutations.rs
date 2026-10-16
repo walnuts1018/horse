@@ -6,16 +6,14 @@ use bookkeeping_application::{AccountingPeriod, PurchaseLifecycle, YearMonth};
 use bookkeeping_domain::purchase_commands::{
     BulkDeleteItemTarget, BulkUpdateItemPatch, BulkUpdateItemTarget,
     ItemAllocationWeight as BulkItemAllocationWeight, OptionalValueChange, ProductLearning,
-    UpdatePurchaseCommand, UpdatePurchaseDraft, UpdatePurchaseItemCommand, UpdatePurchaseItemError,
-    UpdatePurchasePayment, UpdatedItemAllocationWeight as UpdateItemAllocationWeight,
+    UpdatePurchaseCommand, UpdatePurchaseDraft, UpdatePurchaseItemCommand, UpdatePurchasePayment,
+    UpdatedItemAllocationWeight as UpdateItemAllocationWeight,
     UpdatedPrintedUnitPrice as PrintedUnitPrice, ValueChange,
 };
 use bookkeeping_postgres::{
-    bulk_delete_purchase_items::{self, PersistBulkDeletePurchaseItems},
-    bulk_update_purchase_items,
+    bulk_delete_purchase_items::PersistBulkDeletePurchaseItems,
     bulk_update_purchase_items::PersistBulkUpdatePurchaseItems,
-    update_purchase::{self, PersistUpdatePurchase},
-    update_purchase_item::{self, PersistUpdatePurchaseItem},
+    update_purchase::PersistUpdatePurchase, update_purchase_item::PersistUpdatePurchaseItem,
 };
 use chrono::Datelike;
 use cross_context_postgres::purchase_command_result;
@@ -247,10 +245,18 @@ pub async fn update_purchase(
             result: load_purchase(pool, household_id, purchase_id).await?,
         })
         .into()),
-        Err(error) => match update_persistence_error(&error) {
-            Some(code) => Ok(update_error(code).into()),
-            None => Err(crate::internal_error(error)),
-        },
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
+            Ok(update_error(MutationErrorCode::BadInput).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
+            Ok(update_error(MutationErrorCode::NotFound).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
+            Ok(update_error(MutationErrorCode::Conflict).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
+            Err(crate::internal_error(error))
+        }
     }
 }
 
@@ -304,10 +310,18 @@ pub async fn update_purchase_item(
             };
             Ok(Box::new(UpdatePurchaseItemSuccess { result: item }).into())
         }
-        Err(error) => match update_item_persistence_error(&error) {
-            Some(code) => Ok(update_item_error(code).into()),
-            None => Err(crate::internal_error(error)),
-        },
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
+            Ok(update_item_error(MutationErrorCode::BadInput).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
+            Ok(update_item_error(MutationErrorCode::NotFound).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
+            Ok(update_item_error(MutationErrorCode::Conflict).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
+            Err(crate::internal_error(error))
+        }
     }
 }
 
@@ -366,10 +380,18 @@ pub async fn bulk_update_purchase_items(
             }
             Ok(Box::new(BulkUpdatePurchaseItemsSuccess { items }).into())
         }
-        Err(error) => match bulk_update_persistence_error(&error) {
-            Some(code) => Ok(bulk_update_error(code).into()),
-            None => Err(crate::internal_error(error)),
-        },
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
+            Ok(bulk_update_error(MutationErrorCode::BadInput).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
+            Ok(bulk_update_error(MutationErrorCode::NotFound).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
+            Ok(bulk_update_error(MutationErrorCode::Conflict).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
+            Err(crate::internal_error(error))
+        }
     }
 }
 
@@ -415,10 +437,18 @@ pub async fn bulk_delete_purchase_items(
                 .collect::<Result<Vec<_>>>()?,
         }
         .into()),
-        Err(error) => match bulk_delete_persistence_error(&error) {
-            Some(code) => Ok(bulk_delete_error(code).into()),
-            None => Err(crate::internal_error(error)),
-        },
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
+            Ok(bulk_delete_error(MutationErrorCode::BadInput).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
+            Ok(bulk_delete_error(MutationErrorCode::NotFound).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
+            Ok(bulk_delete_error(MutationErrorCode::Conflict).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
+            Err(crate::internal_error(error))
+        }
     }
 }
 
@@ -854,112 +884,6 @@ fn update_error_code(
     use bookkeeping_domain::purchase_commands::UpdatePurchaseError as E;
     match error {
         E::Conflict | E::NotEditable => MutationErrorCode::Conflict,
-        _ => MutationErrorCode::BadInput,
-    }
-}
-
-fn update_persistence_error(
-    error: &update_purchase::UpdatePurchasePersistenceError,
-) -> Option<MutationErrorCode> {
-    use update_purchase::UpdatePurchasePersistenceError as E;
-    match error {
-        E::InvalidUuid(_) | E::InvalidOccurredAt | E::NumericOutOfRange(_) => {
-            Some(MutationErrorCode::BadInput)
-        }
-        E::HouseholdMismatch | E::MemberNotFound | E::PurchaseNotFound | E::AccountNotFound => {
-            Some(MutationErrorCode::NotFound)
-        }
-        E::AccountingPeriodClosed | E::InvalidFundingSnapshot => Some(MutationErrorCode::Conflict),
-        E::PaymentTotalMismatch => Some(MutationErrorCode::BadInput),
-        E::InvalidDecision(error) => Some(update_error_code(*error)),
-        E::Pool(_) | E::Database(_) => None,
-    }
-}
-
-fn update_item_persistence_error(
-    error: &update_purchase_item::UpdatePurchaseItemPersistenceError,
-) -> Option<MutationErrorCode> {
-    use update_purchase_item::UpdatePurchaseItemPersistenceError as E;
-    match error {
-        E::InvalidUuid(_) | E::NumericOutOfRange(_) | E::InvalidDecision => {
-            Some(MutationErrorCode::BadInput)
-        }
-        E::PurchaseNotFound
-        | E::ItemNotFound
-        | E::HouseholdMismatch
-        | E::MemberNotFound
-        | E::ReferenceNotFound(_) => Some(MutationErrorCode::NotFound),
-        E::AccountingPeriodClosed | E::InvalidFundingSnapshot => Some(MutationErrorCode::Conflict),
-        E::InvalidPaymentAllocation | E::MerchantRequired => Some(MutationErrorCode::BadInput),
-        E::InvalidWorkflow(error) => Some(update_item_workflow_error_code(*error)),
-        E::Pool(_) | E::Database(_) => None,
-    }
-}
-
-fn bulk_update_persistence_error(
-    error: &bulk_update_purchase_items::BulkUpdatePurchaseItemsPersistenceError,
-) -> Option<MutationErrorCode> {
-    use bulk_update_purchase_items::BulkUpdatePurchaseItemsPersistenceError as E;
-    match error {
-        E::InvalidUuid(_) | E::NumericOutOfRange(_) | E::InvalidDecision => {
-            Some(MutationErrorCode::BadInput)
-        }
-        E::ItemNotFound
-        | E::PurchaseNotFound
-        | E::HouseholdMismatch
-        | E::MemberNotFound
-        | E::ReferenceNotFound(_) => Some(MutationErrorCode::NotFound),
-        E::AccountingPeriodClosed => Some(MutationErrorCode::Conflict),
-        E::InvalidWorkflow(error) => Some(bulk_update_workflow_error_code(*error)),
-        E::Pool(_) | E::Database(_) => None,
-    }
-}
-
-fn bulk_delete_persistence_error(
-    error: &bulk_delete_purchase_items::BulkDeletePurchaseItemsPersistenceError,
-) -> Option<MutationErrorCode> {
-    use bulk_delete_purchase_items::BulkDeletePurchaseItemsPersistenceError as E;
-    match error {
-        E::InvalidUuid(_) | E::NumericOutOfRange(_) | E::InvalidDecision => {
-            Some(MutationErrorCode::BadInput)
-        }
-        E::ItemNotFound | E::PurchaseNotFound | E::HouseholdMismatch | E::MemberNotFound => {
-            Some(MutationErrorCode::NotFound)
-        }
-        E::AccountingPeriodClosed | E::InvalidPaymentAllocation | E::InvalidFundingSnapshot => {
-            Some(MutationErrorCode::Conflict)
-        }
-        E::InvalidWorkflow(error) => Some(bulk_delete_workflow_error_code(*error)),
-        E::Pool(_) | E::Database(_) => None,
-    }
-}
-
-fn update_item_workflow_error_code(error: UpdatePurchaseItemError) -> MutationErrorCode {
-    use UpdatePurchaseItemError as E;
-    match error {
-        E::Conflict => MutationErrorCode::Conflict,
-        _ => MutationErrorCode::BadInput,
-    }
-}
-
-fn bulk_update_workflow_error_code(
-    error: bookkeeping_domain::purchase_commands::BulkUpdateItemsError,
-) -> MutationErrorCode {
-    use bookkeeping_domain::purchase_commands::BulkUpdateItemsError as E;
-    match error {
-        E::MissingItem => MutationErrorCode::NotFound,
-        E::Conflict => MutationErrorCode::Conflict,
-        _ => MutationErrorCode::BadInput,
-    }
-}
-
-fn bulk_delete_workflow_error_code(
-    error: bookkeeping_domain::purchase_commands::BulkDeleteItemsError,
-) -> MutationErrorCode {
-    use bookkeeping_domain::purchase_commands::BulkDeleteItemsError as E;
-    match error {
-        E::MissingItem => MutationErrorCode::NotFound,
-        E::Conflict | E::CorrectedItem | E::LastItem => MutationErrorCode::Conflict,
         _ => MutationErrorCode::BadInput,
     }
 }

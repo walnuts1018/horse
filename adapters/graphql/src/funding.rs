@@ -1,10 +1,10 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_application::funding_record::RecordFundingWorkflowCommand;
+use bookkeeping_application::workflow_failure::WorkflowFailure;
 use bookkeeping_domain::funding_record::{RecordFundingCommand, RecordFundingError};
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
-use bookkeeping_postgres::funding_command_context as postgres_funding_context;
-use bookkeeping_postgres::funding_record::{PersistRecordFunding, RecordFundingPersistenceError};
+use bookkeeping_postgres::funding_record::PersistRecordFunding;
 use chrono::{Datelike, FixedOffset};
 use cross_context_postgres::{
     funding_command_result as postgres_funding_result, policy_data as postgres_funding,
@@ -88,23 +88,10 @@ pub async fn record_funding(
             .await?,
         )
         .into()),
-        Err(bookkeeping_application::funding_record::RecordFundingWorkflowError::Decision(
-            error,
-        )) => Ok(workflow_error(error).into()),
-        Err(bookkeeping_application::funding_record::RecordFundingWorkflowError::Operations(
-            bookkeeping_postgres::funding_record::RecordFundingWorkflowAdapterError::Context(error),
-        )) => match command_context_error(&error) {
-            Some(error) => Ok(error.into()),
-            None => Err(internal_error(error)),
-        },
-        Err(bookkeeping_application::funding_record::RecordFundingWorkflowError::Operations(
-            bookkeeping_postgres::funding_record::RecordFundingWorkflowAdapterError::Persistence(
-                error,
-            ),
-        )) => match persistence_error(&error) {
-            Some(error) => Ok(error.into()),
-            None => Err(internal_error(error)),
-        },
+        Err(WorkflowFailure::Decision(error)) => Ok(workflow_error(error).into()),
+        Err(WorkflowFailure::NotFound) => Ok(not_found_error().into()),
+        Err(WorkflowFailure::Conflict) => Ok(conflict_error().into()),
+        Err(WorkflowFailure::Infrastructure(error)) => Err(internal_error(error)),
     }
 }
 
@@ -231,41 +218,6 @@ fn workflow_error(error: RecordFundingError) -> RecordFundingUserError {
     match error {
         RecordFundingError::AccountingPeriodClosed => conflict_error(),
         _ => bad_input_error(),
-    }
-}
-
-fn persistence_error(error: &RecordFundingPersistenceError) -> Option<RecordFundingUserError> {
-    use RecordFundingPersistenceError as E;
-    match error {
-        E::InvalidUuid(_)
-        | E::InvalidIdempotencyKey
-        | E::InvalidOccurredAt
-        | E::InvalidAccountKind
-        | E::AccountOwnershipMismatch => Some(bad_input_error()),
-        E::IdempotencyConflict | E::AccountingPeriodClosed => Some(conflict_error()),
-        E::HouseholdNotFound | E::MemberNotFound | E::PoolNotFound | E::AccountNotFound => {
-            Some(not_found_error())
-        }
-        E::Pool(_)
-        | E::Database(_)
-        | E::InvalidDecision
-        | E::CorruptPersistedData(_)
-        | E::NumericOutOfRange(_) => None,
-    }
-}
-
-fn command_context_error(
-    error: &postgres_funding_context::FundingCommandContextError,
-) -> Option<RecordFundingUserError> {
-    use postgres_funding_context::FundingCommandContextError as E;
-    match error {
-        E::HouseholdNotFound | E::PoolNotFound | E::AccountNotFound(_) => Some(not_found_error()),
-        E::AccountingPeriodClosed => Some(conflict_error()),
-        E::Database(_) => None,
-        E::InvalidTokyoOffset
-        | E::InvalidAccountingPeriodStatus(_)
-        | E::InvalidPoolKind(_)
-        | E::InvalidAccountKind(_) => None,
     }
 }
 

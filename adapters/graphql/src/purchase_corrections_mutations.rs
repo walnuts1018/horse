@@ -260,10 +260,26 @@ async fn execute(
             .await?,
         })
         .into()),
-        Err(error) => match user_error(&error) {
-            Some(error) => Ok(error.into()),
-            None => Err(crate::internal_error(error)),
-        },
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
+            Ok(bad_input().into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
+            Ok(CorrectPurchaseUserError {
+                code: MutationErrorCode::NotFound,
+                message: "対象が見つかりません。".to_owned(),
+            }
+            .into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
+            Ok(CorrectPurchaseUserError {
+                code: MutationErrorCode::Conflict,
+                message: "最新の状態を読み込んでから再試行してください。".to_owned(),
+            }
+            .into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
+            Err(crate::internal_error(error))
+        }
     }
 }
 
@@ -394,44 +410,4 @@ fn bad_input() -> CorrectPurchaseUserError {
         code: MutationErrorCode::BadInput,
         message: "入力を確認してください。".to_owned(),
     }
-}
-
-fn user_error(
-    error: &postgres_correct_purchase::CorrectPurchasePersistenceError,
-) -> Option<CorrectPurchaseUserError> {
-    use postgres_correct_purchase::CorrectPurchasePersistenceError as E;
-    let code = match error {
-        E::InvalidUuid(_) | E::InvalidIdempotencyKey | E::InvalidDecision => {
-            MutationErrorCode::BadInput
-        }
-        E::StatementNotRefundable => MutationErrorCode::BadInput,
-        E::PurchaseNotFound
-        | E::SourceDocumentNotFound
-        | E::StatementReferenceNotFound
-        | E::MemberNotFound => MutationErrorCode::NotFound,
-        E::IdempotencyConflict
-        | E::AccountingPeriodClosed
-        | E::PurchaseNotPosted
-        | E::RefundExceedsPurchaseBalance
-        | E::RefundExceedsItemBalance
-        | E::StatementAlreadyConfirmed
-        | E::RefundDoesNotMatchCorrection => MutationErrorCode::Conflict,
-        E::StatementExtractionUnavailable => MutationErrorCode::BadInput,
-        E::HouseholdMismatch => MutationErrorCode::NotFound,
-        E::Pool(_)
-        | E::Database(_)
-        | E::InvalidPeriod
-        | E::NumericOutOfRange(_)
-        | E::InvalidFundingSnapshot
-        | E::CorrectionNotFound => return None,
-    };
-    Some(CorrectPurchaseUserError {
-        code,
-        message: match code {
-            MutationErrorCode::BadInput => "入力を確認してください。",
-            MutationErrorCode::NotFound => "対象が見つかりません。",
-            _ => "最新の状態を読み込んでから再試行してください。",
-        }
-        .to_owned(),
-    })
 }

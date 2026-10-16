@@ -54,7 +54,8 @@ pub async fn record_funding_workflow(
     command: bookkeeping_application::funding_record::RecordFundingWorkflowCommand,
 ) -> Result<
     bookkeeping_application::funding_record::RecordedFunding,
-    bookkeeping_application::funding_record::RecordFundingWorkflowError<
+    bookkeeping_application::workflow_failure::WorkflowFailure<
+        bookkeeping_domain::funding_record::RecordFundingError,
         bookkeeping_postgres::funding_record::RecordFundingWorkflowAdapterError,
     >,
 > {

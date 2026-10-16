@@ -1,3 +1,4 @@
+use catalog_application::workflow_failure::WorkflowFailure;
 use catalog_domain::product_alias::{
     SetProductAliasCommand, SetProductAliasDecision, SetProductAliasError, decide_set_product_alias,
 };
@@ -39,7 +40,10 @@ impl From<DieselError> for SetProductAliasPersistenceError {
 pub async fn persist_set_product_alias(
     pool: &PgPool,
     command: SetProductAliasCommand,
-) -> Result<PersistedProductAlias, SetProductAliasPersistenceError> {
+) -> Result<
+    PersistedProductAlias,
+    WorkflowFailure<SetProductAliasError, SetProductAliasPersistenceError>,
+> {
     let decision = decide_set_product_alias(command)
         .map_err(SetProductAliasPersistenceError::InvalidWorkflow)?;
     let ui_change = decision.ui_change();
@@ -142,6 +146,31 @@ pub async fn persist_set_product_alias(
             },
         )
         .await
+        .map_err(map_workflow_failure)
+}
+
+fn map_workflow_failure(
+    error: SetProductAliasPersistenceError,
+) -> WorkflowFailure<SetProductAliasError, SetProductAliasPersistenceError> {
+    match error {
+        SetProductAliasPersistenceError::InvalidUuid(_)
+        | SetProductAliasPersistenceError::NumericOutOfRange(_)
+        | SetProductAliasPersistenceError::InvalidDecision => WorkflowFailure::InvalidInput,
+        SetProductAliasPersistenceError::InvalidWorkflow(error) => WorkflowFailure::Decision(error),
+        SetProductAliasPersistenceError::HouseholdNotFound
+        | SetProductAliasPersistenceError::ActorNotFound
+        | SetProductAliasPersistenceError::VariantNotFound => WorkflowFailure::NotFound,
+        error @ (SetProductAliasPersistenceError::Pool(_)
+        | SetProductAliasPersistenceError::Database(_)) => WorkflowFailure::Infrastructure(error),
+    }
+}
+
+impl From<SetProductAliasPersistenceError>
+    for WorkflowFailure<SetProductAliasError, SetProductAliasPersistenceError>
+{
+    fn from(error: SetProductAliasPersistenceError) -> Self {
+        map_workflow_failure(error)
+    }
 }
 
 fn validate_decision(

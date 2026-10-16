@@ -9,6 +9,7 @@ use household_application::create_household::{
     CreateHouseholdOperations,
 };
 use household_application::ports::{CreateHouseholdPortError, CreatedHousehold, HouseholdStore};
+use household_application::workflow_failure::{WorkflowFailure, WorkflowRejection};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -106,6 +107,33 @@ impl From<CreateHouseholdError> for CreateHouseholdPersistenceError {
 }
 
 pub async fn load_household(
+    pool: &PgPool,
+    actor_id: Uuid,
+    household_id: Uuid,
+) -> Result<HouseholdReadModel, CreateHouseholdPersistenceError> {
+    load_household_inner(pool, actor_id, household_id).await
+}
+
+pub async fn load_household_workflow(
+    pool: &PgPool,
+    actor_id: Uuid,
+    household_id: Uuid,
+) -> Result<HouseholdReadModel, WorkflowFailure<WorkflowRejection, CreateHouseholdPersistenceError>>
+{
+    load_household_inner(pool, actor_id, household_id)
+        .await
+        .map_err(|error| match error {
+            CreateHouseholdPersistenceError::InvalidWorkflow(_)
+            | CreateHouseholdPersistenceError::InvalidUuid => {
+                WorkflowFailure::Decision(WorkflowRejection::InvalidInput)
+            }
+            CreateHouseholdPersistenceError::HouseholdNotFound
+            | CreateHouseholdPersistenceError::MemberNotFound => WorkflowFailure::NotFound,
+            error => WorkflowFailure::Infrastructure(error),
+        })
+}
+
+async fn load_household_inner(
     pool: &PgPool,
     actor_id: Uuid,
     household_id: Uuid,
@@ -350,7 +378,7 @@ async fn persist_create_household_decision(
             diesel::insert_into(households::households)
                 .values((
                     households::id.eq(household_id),
-                    households::name.eq(&decision.name),
+                    households::name.eq(decision.name.as_str()),
                     households::revision.eq(1_i64),
                     households::default_allocation_version.eq(1_i64),
                     households::created_at.eq(now),
@@ -375,7 +403,7 @@ async fn persist_create_household_decision(
                     .values((
                         people::id.eq(member_id),
                         people::oidc_subject.eq(subject),
-                        people::display_name.eq(member_name),
+                        people::display_name.eq(member_name.as_str()),
                         people::created_at.eq(now),
                     ))
                     .execute(&mut *conn)

@@ -3,6 +3,7 @@ use bookkeeping_application::create_and_post_purchase::{
     PurchaseItemAllocationRequest,
 };
 use bookkeeping_application::create_purchase_workflow as application;
+use bookkeeping_application::workflow_failure::{WorkflowFailure, WorkflowRejection};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::RunQueryDsl;
 use horse_postgres_common::{TransactionError, with_transaction};
@@ -18,6 +19,7 @@ pub enum CreatePurchaseWorkflowAdapterError {
     Database(DieselError),
     Context(crate::purchase_command_context::PurchaseCommandContextError),
     Persistence(CreatePurchasePersistenceError),
+    InvalidAllocationContext,
 }
 
 const OPERATION: &str = "createPurchase";
@@ -25,10 +27,8 @@ const OPERATION: &str = "createPurchase";
 pub async fn create_purchase_workflow(
     pool: &PgPool,
     command: application::CreatePurchaseWorkflowCommand,
-) -> Result<
-    CreatedPurchase,
-    application::CreatePurchaseWorkflowError<CreatePurchaseWorkflowAdapterError>,
-> {
+) -> Result<CreatedPurchase, WorkflowFailure<WorkflowRejection, CreatePurchaseWorkflowAdapterError>>
+{
     match with_transaction(pool, |conn| {
         Box::pin(async move {
             let mut operations = PgCreatePurchaseOperations { conn };
@@ -40,19 +40,62 @@ pub async fn create_purchase_workflow(
     .await
     {
         Ok(result) => Ok(result),
-        Err(TransactionError::Workflow(error)) => Err(error),
-        Err(TransactionError::Pool(error)) => {
-            Err(application::CreatePurchaseWorkflowError::Operations(
-                CreatePurchaseWorkflowAdapterError::Persistence(
-                    CreatePurchasePersistenceError::Pool(error.to_string()),
-                ),
-            ))
-        }
-        Err(TransactionError::Database(error)) => {
-            Err(application::CreatePurchaseWorkflowError::Operations(
-                CreatePurchaseWorkflowAdapterError::Database(error),
-            ))
-        }
+        Err(TransactionError::Workflow(error)) => Err(match error {
+            application::CreatePurchaseWorkflowError::Decision(_) => {
+                WorkflowFailure::Decision(WorkflowRejection::InvalidInput)
+            }
+            application::CreatePurchaseWorkflowError::AllocationContextMismatch => {
+                WorkflowFailure::Infrastructure(
+                    CreatePurchaseWorkflowAdapterError::InvalidAllocationContext,
+                )
+            }
+            application::CreatePurchaseWorkflowError::Operations(error) => {
+                classify_create_purchase_failure(error)
+            }
+        }),
+        Err(TransactionError::Pool(error)) => Err(WorkflowFailure::Infrastructure(
+            CreatePurchaseWorkflowAdapterError::Persistence(CreatePurchasePersistenceError::Pool(
+                error.to_string(),
+            )),
+        )),
+        Err(TransactionError::Database(error)) => Err(WorkflowFailure::Infrastructure(
+            CreatePurchaseWorkflowAdapterError::Database(error),
+        )),
+    }
+}
+
+fn classify_create_purchase_failure(
+    error: CreatePurchaseWorkflowAdapterError,
+) -> WorkflowFailure<WorkflowRejection, CreatePurchaseWorkflowAdapterError> {
+    match error {
+        CreatePurchaseWorkflowAdapterError::Context(
+            crate::purchase_command_context::PurchaseCommandContextError::HouseholdNotFound,
+        ) => WorkflowFailure::NotFound,
+        CreatePurchaseWorkflowAdapterError::Context(
+            crate::purchase_command_context::PurchaseCommandContextError::MissingDefaultAllocation
+            | crate::purchase_command_context::PurchaseCommandContextError::MissingProductVariant
+            | crate::purchase_command_context::PurchaseCommandContextError::MissingAllocationRule,
+        ) => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        CreatePurchaseWorkflowAdapterError::Persistence(error) => match error {
+            CreatePurchasePersistenceError::HouseholdNotFound
+            | CreatePurchasePersistenceError::MemberNotFound
+            | CreatePurchasePersistenceError::ReferenceNotFound(_) => WorkflowFailure::NotFound,
+            CreatePurchasePersistenceError::AccountingPeriodClosed
+            | CreatePurchasePersistenceError::IdempotencyConflict
+            | CreatePurchasePersistenceError::AllocationRuleMismatch => WorkflowFailure::Conflict,
+            CreatePurchasePersistenceError::InvalidUuid(_)
+            | CreatePurchasePersistenceError::InvalidOccurredAt
+            | CreatePurchasePersistenceError::InvalidIdempotencyKey
+            | CreatePurchasePersistenceError::NumericOutOfRange(_)
+            | CreatePurchasePersistenceError::InvalidDecision
+            | CreatePurchasePersistenceError::ReceiptConfirmationInvalid => {
+                WorkflowFailure::Decision(WorkflowRejection::InvalidInput)
+            }
+            error => WorkflowFailure::Infrastructure(
+                CreatePurchaseWorkflowAdapterError::Persistence(error),
+            ),
+        },
+        error => WorkflowFailure::Infrastructure(error),
     }
 }
 

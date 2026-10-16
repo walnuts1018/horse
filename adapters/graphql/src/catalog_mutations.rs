@@ -1,5 +1,6 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use catalog_application::workflow_failure::WorkflowFailure;
 use catalog_domain::{
     product_alias::SetProductAliasCommand,
     product_alias::decide_set_product_alias,
@@ -358,7 +359,7 @@ pub async fn create_tag(ctx: &Context<'_>, input: CreateTagInput) -> Result<Crea
             result: map_tag(tag).map_err(crate::internal_error)?,
         }
         .into()),
-        Err(error) => match tag_error_code(&error) {
+        Err(error) => match catalog_error_code(&error) {
             Some(code) => Ok(create_tag_error(code).into()),
             None => Err(crate::internal_error(error)),
         },
@@ -386,7 +387,7 @@ pub async fn update_tag(ctx: &Context<'_>, input: UpdateTagInput) -> Result<Upda
             result: map_tag(tag).map_err(crate::internal_error)?,
         }
         .into()),
-        Err(error) => match tag_error_code(&error) {
+        Err(error) => match catalog_error_code(&error) {
             Some(code) => Ok(update_tag_error(code).into()),
             None => Err(crate::internal_error(error)),
         },
@@ -414,7 +415,7 @@ pub async fn archive_tag(ctx: &Context<'_>, input: ArchiveTagInput) -> Result<Ar
             result: map_tag(tag).map_err(crate::internal_error)?,
         }
         .into()),
-        Err(error) => match tag_error_code(&error) {
+        Err(error) => match catalog_error_code(&error) {
             Some(code) => Ok(archive_tag_error(code).into()),
             None => Err(crate::internal_error(error)),
         },
@@ -466,7 +467,7 @@ pub async fn create_product_concept(
             },
         }
         .into()),
-        Err(error) => match create_product_error_code(&error) {
+        Err(error) => match catalog_error_code(&error) {
             Some(code) => Ok(create_product_concept_error(code).into()),
             None => Err(crate::internal_error(error)),
         },
@@ -514,7 +515,7 @@ pub async fn create_product_variant(
             },
         }
         .into()),
-        Err(error) => match create_product_error_code(&error) {
+        Err(error) => match catalog_error_code(&error) {
             Some(code) => Ok(create_product_variant_error(code).into()),
             None => Err(crate::internal_error(error)),
         },
@@ -567,7 +568,7 @@ pub async fn set_product_alias(
             }
             .into())
         }
-        Err(error) => match product_alias_error_code(&error) {
+        Err(error) => match catalog_error_code(&error) {
             Some(code) => Ok(set_product_alias_error(code).into()),
             None => Err(crate::internal_error(error)),
         },
@@ -614,43 +615,16 @@ pub(crate) fn encode_node_id(kind: &str, raw_id: &str) -> std::result::Result<ID
     Ok(ID(URL_SAFE_NO_PAD.encode(payload)))
 }
 
-fn tag_error_code(error: &postgres_tag::TagPersistenceError) -> Option<MutationErrorCode> {
-    use postgres_tag::TagPersistenceError as Error;
-    match error {
-        Error::InvalidUuid(_) | Error::InvalidWorkflow(_) => Some(MutationErrorCode::BadInput),
-        Error::HouseholdNotFound | Error::TagNotFound => Some(MutationErrorCode::NotFound),
-        Error::RevisionConflict => Some(MutationErrorCode::Conflict),
-        Error::Pool(_) | Error::Database(_) => None,
-    }
-}
-
-fn create_product_error_code(
-    error: &postgres_product::CreateProductPersistenceError,
+fn catalog_error_code<DecisionError, InfrastructureError>(
+    error: &WorkflowFailure<DecisionError, InfrastructureError>,
 ) -> Option<MutationErrorCode> {
-    use postgres_product::CreateProductPersistenceError as Error;
     match error {
-        Error::InvalidUuid(_) | Error::InvalidWorkflow(_) => Some(MutationErrorCode::BadInput),
-        Error::HouseholdNotFound
-        | Error::MemberNotFound
-        | Error::CategoryNotFound
-        | Error::ConceptNotFound => Some(MutationErrorCode::NotFound),
-        Error::Pool(_) | Error::Database(_) => None,
-    }
-}
-
-fn product_alias_error_code(
-    error: &postgres_alias::SetProductAliasPersistenceError,
-) -> Option<MutationErrorCode> {
-    use postgres_alias::SetProductAliasPersistenceError as Error;
-    match error {
-        Error::InvalidUuid(_) | Error::InvalidDecision | Error::InvalidWorkflow(_) => {
+        WorkflowFailure::Decision(_) | WorkflowFailure::InvalidInput => {
             Some(MutationErrorCode::BadInput)
         }
-        Error::HouseholdNotFound | Error::ActorNotFound | Error::VariantNotFound => {
-            Some(MutationErrorCode::NotFound)
-        }
-        Error::NumericOutOfRange(_) => Some(MutationErrorCode::BadInput),
-        Error::Pool(_) | Error::Database(_) => None,
+        WorkflowFailure::NotFound => Some(MutationErrorCode::NotFound),
+        WorkflowFailure::Conflict => Some(MutationErrorCode::Conflict),
+        WorkflowFailure::Infrastructure(_) => None,
     }
 }
 

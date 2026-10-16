@@ -9,13 +9,9 @@ use bookkeeping_domain::purchase_commands::{
     PurchaseOrigin as WorkflowPurchaseOrigin, QuantityUnit, ReceiptCandidateId, SourceDocumentId,
 };
 use bookkeeping_domain::{AccountId, ItemId, MemberId, PoolId, PurchaseId};
-use bookkeeping_postgres::{
-    create_purchase as postgres_create_persistence, post_purchase as postgres_post,
-    post_purchase_loader::PostPurchaseLoadError,
-};
+use bookkeeping_postgres::create_purchase as postgres_create_persistence;
 use cross_context_postgres::{
-    create_purchase_workflow as postgres_create, purchase_command_context, purchase_command_result,
-    purchase_create_and_post,
+    create_purchase_workflow as postgres_create, purchase_command_result, purchase_create_and_post,
 };
 use horse_postgres_common::PgPool;
 use serde::Serialize;
@@ -472,27 +468,18 @@ pub async fn create_purchase(
         };
     let persisted = match postgres_create::create_purchase_workflow(pool, workflow_command).await {
         Ok(value) => value,
-        Err(bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowError::Decision(_)) => {
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
             return Ok(bad_input().into());
         }
-        Err(bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowError::AllocationContextMismatch) => {
-            return Err(crate::internal_error("purchase allocation context mismatch"));
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
+            return Ok(not_found().into());
         }
-        Err(bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowError::Operations(
-            postgres_create::CreatePurchaseWorkflowAdapterError::Context(error),
-        )) => match context_user_error(&error) {
-            Some(error) => return Ok(error.into()),
-            None => return Err(crate::internal_error(error)),
-        },
-        Err(bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowError::Operations(
-            postgres_create::CreatePurchaseWorkflowAdapterError::Persistence(error),
-        )) => match create_user_error(&error) {
-            Some(error) => return Ok(error.into()),
-            None => return Err(crate::internal_error(error)),
-        },
-        Err(bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowError::Operations(
-            postgres_create::CreatePurchaseWorkflowAdapterError::Database(error),
-        )) => return Err(crate::internal_error(error)),
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
+            return Ok(conflict().into());
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
+            return Err(crate::internal_error(error));
+        }
     };
     Ok(Box::new(CreatePurchaseSuccess {
         result: purchase_result(pool, parsed.household_id, &persisted.purchase_id).await?,
@@ -520,55 +507,26 @@ pub async fn create_and_post_purchase(
             post_request_fingerprint: post_fingerprint,
             purchase: parsed.command,
         };
-    let persisted = match purchase_create_and_post::create_and_post_purchase(pool, workflow_command)
-        .await
-    {
-        Ok(value) => value,
-        Err(purchase_create_and_post::CreateAndPostPurchaseError::Context(error)) => {
-            return match context_user_error(&error) {
-                Some(error) => Ok(error.into()),
-                None => Err(crate::internal_error(error)),
-            };
-        }
-        Err(purchase_create_and_post::CreateAndPostPurchaseError::Create(error)) => {
-            return match create_user_error(&error) {
-                Some(error) => Ok(error.into()),
-                None => Err(crate::internal_error(error)),
-            };
-        }
-        Err(purchase_create_and_post::CreateAndPostPurchaseError::Load(error)) => {
-            return match post_load_user_error(&error) {
-                Some(error) => Ok(error.into()),
-                None => Err(crate::internal_error(error)),
-            };
-        }
-        Err(purchase_create_and_post::CreateAndPostPurchaseError::Post(error)) => {
-            return match post_user_error(&error) {
-                Some(error) => Ok(error.into()),
-                None => Err(crate::internal_error(error)),
-            };
-        }
-        Err(
-            purchase_create_and_post::CreateAndPostPurchaseError::CreateDecision(_)
-            | purchase_create_and_post::CreateAndPostPurchaseError::PostDecision(_),
-        ) => {
-            return Ok(bad_input().into());
-        }
-        Err(purchase_create_and_post::CreateAndPostPurchaseError::CreatedPurchaseMissing) => {
-            return Ok(not_found().into());
-        }
-        Err(purchase_create_and_post::CreateAndPostPurchaseError::AllocationContextMismatch) => {
-            return Err(crate::internal_error(
-                "purchase allocation context mismatch",
-            ));
-        }
-        Err(purchase_create_and_post::CreateAndPostPurchaseError::Pool(error)) => {
-            return Err(crate::internal_error(error));
-        }
-        Err(purchase_create_and_post::CreateAndPostPurchaseError::Database(error)) => {
-            return Err(crate::internal_error(error));
-        }
-    };
+    let persisted =
+        match purchase_create_and_post::create_and_post_purchase_workflow(pool, workflow_command)
+            .await
+        {
+            Ok(value) => value,
+            Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
+                return Ok(bad_input().into());
+            }
+            Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
+                return Ok(not_found().into());
+            }
+            Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
+                return Ok(conflict().into());
+            }
+            Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(
+                error,
+            )) => {
+                return Err(crate::internal_error(error));
+            }
+        };
     Ok(Box::new(CreateAndPostPurchaseSuccess {
         result: purchase_result(pool, parsed.household_id, &persisted.purchase_id).await?,
     })
@@ -620,40 +578,18 @@ pub async fn post_purchase(
                 .into())
             }
         },
-        Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Decision(_)) => {
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
+            Ok(bad_input().into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
+            Ok(not_found().into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
             Ok(conflict().into())
         }
-        Err(bookkeeping_application::post_purchase::PostPurchaseWorkflowError::Operations(
-            error,
-        )) => match error {
-            cross_context_postgres::post_purchase_entry::PostPurchaseEntryAdapterError::HouseholdId(error)
-            | cross_context_postgres::post_purchase_entry::PostPurchaseEntryAdapterError::Projection(error) => Err(crate::internal_error(error)),
-            cross_context_postgres::post_purchase_entry::PostPurchaseEntryAdapterError::Access(error) => Err(crate::internal_error(error)),
-            cross_context_postgres::post_purchase_entry::PostPurchaseEntryAdapterError::Idempotency(error) => match post_user_error(&error) {
-                Some(error) => Ok(error.into()),
-                None => Err(crate::internal_error(error)),
-            },
-            cross_context_postgres::post_purchase_entry::PostPurchaseEntryAdapterError::Post(error) => match error {
-                postgres_post::PostPurchaseWorkflowAdapterError::Load(error) => {
-                    match post_load_user_error(&error) {
-                        Some(error) => Ok(error.into()),
-                        None => Err(crate::internal_error(error)),
-                    }
-                }
-                postgres_post::PostPurchaseWorkflowAdapterError::Persistence(error) => {
-                    match post_user_error(&error) {
-                        Some(error) => Ok(error.into()),
-                        None => Err(crate::internal_error(error)),
-                    }
-                }
-                postgres_post::PostPurchaseWorkflowAdapterError::Pool(error) => {
-                    Err(crate::internal_error(error))
-                }
-                postgres_post::PostPurchaseWorkflowAdapterError::Database(error) => {
-                    Err(crate::internal_error(error))
-                }
-            },
-        },
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
+            Err(crate::internal_error(error))
+        }
     }
 }
 
@@ -1275,58 +1211,5 @@ fn correction_error(
             async_graphql::Error::new("入力を確認してください。")
         }
         E::Pool(_) | E::Database(_) | E::NumericOutOfRange => crate::internal_error(error),
-    }
-}
-
-fn context_user_error(
-    error: &purchase_command_context::PurchaseCommandContextError,
-) -> Option<PurchaseMutationUserError> {
-    use purchase_command_context::PurchaseCommandContextError as E;
-    match error {
-        E::HouseholdNotFound => Some(not_found()),
-        E::MissingDefaultAllocation | E::MissingProductVariant | E::MissingAllocationRule => {
-            Some(bad_input())
-        }
-        E::Pool(_) | E::Database(_) | E::InvalidVersion => None,
-    }
-}
-fn create_user_error(
-    error: &postgres_create_persistence::CreatePurchasePersistenceError,
-) -> Option<PurchaseMutationUserError> {
-    use postgres_create_persistence::CreatePurchasePersistenceError as E;
-    match error {
-        E::HouseholdNotFound | E::MemberNotFound | E::ReferenceNotFound(_) => Some(not_found()),
-        E::AccountingPeriodClosed | E::IdempotencyConflict | E::AllocationRuleMismatch => {
-            Some(conflict())
-        }
-        E::InvalidUuid(_)
-        | E::InvalidOccurredAt
-        | E::InvalidIdempotencyKey
-        | E::NumericOutOfRange(_)
-        | E::InvalidDecision
-        | E::ReceiptConfirmationInvalid => Some(bad_input()),
-        E::Pool(_) | E::Database(_) => None,
-        _ => Some(bad_input()),
-    }
-}
-fn post_load_user_error(error: &PostPurchaseLoadError) -> Option<PurchaseMutationUserError> {
-    match error {
-        PostPurchaseLoadError::MissingPurchase | PostPurchaseLoadError::HouseholdMismatch(_) => {
-            Some(not_found())
-        }
-        PostPurchaseLoadError::AccountingPeriodClosed => Some(conflict()),
-        PostPurchaseLoadError::Database(_) => None,
-        _ => Some(bad_input()),
-    }
-}
-fn post_user_error(
-    error: &postgres_post::PostPurchasePersistenceError,
-) -> Option<PurchaseMutationUserError> {
-    use postgres_post::PostPurchasePersistenceError as E;
-    match error {
-        E::AccountingPeriodClosed | E::StalePurchase | E::IdempotencyConflict => Some(conflict()),
-        E::HouseholdMismatch => Some(not_found()),
-        E::Pool(_) | E::Database(_) => None,
-        _ => Some(bad_input()),
     }
 }

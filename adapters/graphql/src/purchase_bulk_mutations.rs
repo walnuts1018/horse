@@ -2,9 +2,8 @@ use async_graphql::{Context, ID, InputObject, MaybeUndefined, Result, SimpleObje
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_domain::purchase_commands::{UpdatePurchaseCommand, UpdatePurchasePayment};
 use bookkeeping_postgres::{
-    bulk_update_purchases,
     bulk_update_purchases::PersistBulkUpdatePurchases,
-    save_purchase_item_edits::{self, PersistSavePurchaseItemEdits},
+    save_purchase_item_edits::PersistSavePurchaseItemEdits,
 };
 use cross_context_postgres::purchase_command_result;
 use horse_postgres_common::PgPool;
@@ -127,10 +126,18 @@ pub async fn bulk_update_purchases(
             }
             Ok(BulkUpdatePurchasesSuccess { purchases }.into())
         }
-        Err(error) => match bulk_update_persistence_error(&error) {
-            Some(code) => Ok(bulk_update_error(code).into()),
-            None => Err(crate::internal_error(error)),
-        },
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
+            Ok(bulk_update_error(MutationErrorCode::BadInput).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
+            Ok(bulk_update_error(MutationErrorCode::NotFound).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
+            Ok(bulk_update_error(MutationErrorCode::Conflict).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
+            Err(crate::internal_error(error))
+        }
     }
 }
 
@@ -229,10 +236,18 @@ pub async fn save_purchase_item_edits(
                 .collect::<Result<Vec<_>>>()?;
             Ok(SavePurchaseItemEditsSuccess { items }.into())
         }
-        Err(error) => match save_edits_persistence_error(&error) {
-            Some(code) => Ok(save_edits_error(code).into()),
-            None => Err(crate::internal_error(error)),
-        },
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
+            Ok(save_edits_error(MutationErrorCode::BadInput).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
+            Ok(save_edits_error(MutationErrorCode::NotFound).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
+            Ok(save_edits_error(MutationErrorCode::Conflict).into())
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
+            Err(crate::internal_error(error))
+        }
     }
 }
 
@@ -355,93 +370,5 @@ fn error_message(code: MutationErrorCode) -> String {
         MutationErrorCode::Conflict => "最新の状態を読み込んでから再試行してください。".to_owned(),
         MutationErrorCode::NotFound => "対象が見つかりません。".to_owned(),
         MutationErrorCode::MailForwardingDisabled => "この操作は現在利用できません。".to_owned(),
-    }
-}
-
-fn bulk_update_persistence_error(
-    error: &bulk_update_purchases::BulkUpdatePurchasesPersistenceError,
-) -> Option<MutationErrorCode> {
-    use bulk_update_purchases::BulkUpdatePurchasesPersistenceError as E;
-    match error {
-        E::InvalidUuid(_) => Some(MutationErrorCode::BadInput),
-        E::HouseholdMismatch | E::MemberNotFound | E::PurchaseNotFound => {
-            Some(MutationErrorCode::NotFound)
-        }
-        E::RevisionConflict => Some(MutationErrorCode::Conflict),
-        E::AccountingPeriodClosed => Some(MutationErrorCode::Conflict),
-        E::InvalidWorkflow(error) => Some(match error {
-            bookkeeping_domain::purchase_commands::BulkUpdatePurchasesError::InvalidTarget(
-                bookkeeping_domain::purchase_commands::UpdatePurchaseError::Conflict
-                | bookkeeping_domain::purchase_commands::UpdatePurchaseError::NotEditable,
-            ) => MutationErrorCode::Conflict,
-            _ => MutationErrorCode::BadInput,
-        }),
-        E::InvalidUpdate(error) => update_purchase_persistence_error(error),
-        E::Pool(_) | E::Database(_) => None,
-    }
-}
-
-fn save_edits_persistence_error(
-    error: &save_purchase_item_edits::SavePurchaseItemEditsPersistenceError,
-) -> Option<MutationErrorCode> {
-    use save_purchase_item_edits::SavePurchaseItemEditsPersistenceError as E;
-    match error {
-        E::InvalidUuid(_) => Some(MutationErrorCode::BadInput),
-        E::PurchaseNotFound | E::ItemNotFound | E::HouseholdMismatch | E::MemberNotFound => {
-            Some(MutationErrorCode::NotFound)
-        }
-        E::InvalidWorkflow(_) => Some(MutationErrorCode::BadInput),
-        E::InvalidPurchaseUpdate(error) => update_purchase_persistence_error(error),
-        E::InvalidItemUpdate(error) => update_item_persistence_error(error),
-        E::Pool(_) | E::Database(_) => None,
-    }
-}
-
-fn update_purchase_persistence_error(
-    error: &bookkeeping_postgres::update_purchase::UpdatePurchasePersistenceError,
-) -> Option<MutationErrorCode> {
-    use bookkeeping_postgres::update_purchase::UpdatePurchasePersistenceError as E;
-    match error {
-        E::InvalidUuid(_) | E::InvalidOccurredAt | E::NumericOutOfRange(_) => {
-            Some(MutationErrorCode::BadInput)
-        }
-        E::HouseholdMismatch | E::MemberNotFound | E::PurchaseNotFound | E::AccountNotFound => {
-            Some(MutationErrorCode::NotFound)
-        }
-        E::AccountingPeriodClosed | E::InvalidFundingSnapshot => Some(MutationErrorCode::Conflict),
-        E::PaymentTotalMismatch => Some(MutationErrorCode::BadInput),
-        E::InvalidDecision(error) => Some(match error {
-            bookkeeping_domain::purchase_commands::UpdatePurchaseError::Conflict
-            | bookkeeping_domain::purchase_commands::UpdatePurchaseError::NotEditable => {
-                MutationErrorCode::Conflict
-            }
-            _ => MutationErrorCode::BadInput,
-        }),
-        E::Pool(_) | E::Database(_) => None,
-    }
-}
-
-fn update_item_persistence_error(
-    error: &bookkeeping_postgres::update_purchase_item::UpdatePurchaseItemPersistenceError,
-) -> Option<MutationErrorCode> {
-    use bookkeeping_postgres::update_purchase_item::UpdatePurchaseItemPersistenceError as E;
-    match error {
-        E::InvalidUuid(_) | E::NumericOutOfRange(_) | E::InvalidDecision => {
-            Some(MutationErrorCode::BadInput)
-        }
-        E::PurchaseNotFound
-        | E::ItemNotFound
-        | E::HouseholdMismatch
-        | E::MemberNotFound
-        | E::ReferenceNotFound(_) => Some(MutationErrorCode::NotFound),
-        E::AccountingPeriodClosed | E::InvalidFundingSnapshot => Some(MutationErrorCode::Conflict),
-        E::InvalidPaymentAllocation | E::MerchantRequired => Some(MutationErrorCode::BadInput),
-        E::InvalidWorkflow(error) => Some(match error {
-            bookkeeping_domain::purchase_commands::UpdatePurchaseItemError::Conflict => {
-                MutationErrorCode::Conflict
-            }
-            _ => MutationErrorCode::BadInput,
-        }),
-        E::Pool(_) | E::Database(_) => None,
     }
 }

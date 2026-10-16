@@ -4,6 +4,7 @@ use horse_postgres_common::PgPool;
 use household_application::membership::{
     LeaveHouseholdCommand, RemoveHouseholdMemberCommand, TransferOwnerCommand,
 };
+use household_application::{membership::MembershipError, workflow_failure::WorkflowFailure};
 use household_postgres::household_membership as postgres_membership;
 use uuid::Uuid;
 
@@ -84,7 +85,7 @@ pub async fn leave_household(
         Ok(id) => id,
         Err(_) => return Ok(leave_error(crate::MutationErrorCode::BadInput).into()),
     };
-    match postgres_membership::leave_household(
+    match postgres_membership::leave_household_workflow(
         ctx.data::<PgPool>()?,
         LeaveHouseholdCommand {
             member_id: actor.0.to_string(),
@@ -117,7 +118,7 @@ pub async fn remove_household_member(
         Ok(id) => id,
         Err(()) => return Ok(remove_error(crate::MutationErrorCode::BadInput).into()),
     };
-    match postgres_membership::remove_household_member(
+    match postgres_membership::remove_household_member_workflow(
         ctx.data::<PgPool>()?,
         RemoveHouseholdMemberCommand {
             actor_id: actor.0.to_string(),
@@ -151,7 +152,7 @@ pub async fn transfer_household_owner(
         Ok(id) => id,
         Err(()) => return Ok(transfer_error(crate::MutationErrorCode::BadInput).into()),
     };
-    match postgres_membership::transfer_owner(
+    match postgres_membership::transfer_owner_workflow(
         ctx.data::<PgPool>()?,
         TransferOwnerCommand {
             actor_id: actor.0.to_string(),
@@ -200,14 +201,13 @@ fn encode_node_id(kind: &str, raw_id: &str) -> Result<String> {
 }
 
 fn user_error_code(
-    error: &postgres_membership::HouseholdMembershipError,
+    error: &WorkflowFailure<MembershipError, postgres_membership::HouseholdMembershipError>,
 ) -> Option<crate::MutationErrorCode> {
-    use postgres_membership::HouseholdMembershipError as E;
     match error {
-        E::InvalidUuid(_) | E::Workflow(_) => Some(crate::MutationErrorCode::BadInput),
-        E::HouseholdNotFound | E::MemberNotFound => Some(crate::MutationErrorCode::NotFound),
-        E::Conflict => Some(crate::MutationErrorCode::Conflict),
-        E::Pool(_) | E::Database(_) => None,
+        WorkflowFailure::Decision(_) => Some(crate::MutationErrorCode::BadInput),
+        WorkflowFailure::NotFound => Some(crate::MutationErrorCode::NotFound),
+        WorkflowFailure::Conflict => Some(crate::MutationErrorCode::Conflict),
+        WorkflowFailure::Infrastructure(_) => None,
     }
 }
 

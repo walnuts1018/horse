@@ -1,10 +1,5 @@
+use crate::workflow_failure::WorkflowFailure;
 use bookkeeping_domain::close_period::{ClosePeriodCommand, ClosePeriodDecision, ClosePeriodError};
-
-#[derive(Debug)]
-pub enum ClosePeriodWorkflowError<E> {
-    Decision(ClosePeriodError),
-    Operations(E),
-}
 
 pub trait ClosePeriodOperations {
     type Error;
@@ -18,15 +13,15 @@ pub trait ClosePeriodOperations {
 
 pub async fn close_period<O: ClosePeriodOperations>(
     operations: &mut O,
-) -> Result<O::Result, ClosePeriodWorkflowError<O::Error>> {
+) -> Result<O::Result, WorkflowFailure<ClosePeriodError, O::Error>> {
     let command = operations
         .load()
         .await
-        .map_err(ClosePeriodWorkflowError::Operations)?;
-    let decision = bookkeeping_domain::decide_close_period(command)
-        .map_err(ClosePeriodWorkflowError::Decision)?;
+        .map_err(WorkflowFailure::Infrastructure)?;
+    let decision =
+        bookkeeping_domain::decide_close_period(command).map_err(WorkflowFailure::Decision)?;
     operations
         .persist(decision)
         .await
-        .map_err(ClosePeriodWorkflowError::Operations)
+        .map_err(WorkflowFailure::Infrastructure)
 }

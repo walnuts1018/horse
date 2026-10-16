@@ -2,6 +2,7 @@ pub use policy_domain::*;
 
 pub trait BudgetOperations {
     type Error: From<BudgetError>;
+    fn classify_error(error: Self::Error) -> super::WorkflowFailure;
     async fn persist_create(
         &mut self,
         decision: CreateBudgetDecision,
@@ -19,24 +20,36 @@ pub trait BudgetOperations {
 pub async fn create_budget<O: BudgetOperations>(
     operations: &mut O,
     command: CreateBudgetCommand,
-) -> Result<Budget, O::Error> {
+) -> Result<Budget, super::WorkflowFailure> {
     operations
-        .persist_create(policy_domain::budget::decide_create(command)?)
+        .persist_create(
+            policy_domain::budget::decide_create(command)
+                .map_err(|_| super::WorkflowFailure::Decision)?,
+        )
         .await
+        .map_err(O::classify_error)
 }
 pub async fn update_budget<O: BudgetOperations>(
     operations: &mut O,
     command: UpdateBudgetCommand,
-) -> Result<Budget, O::Error> {
+) -> Result<Budget, super::WorkflowFailure> {
     operations
-        .persist_update(policy_domain::budget::decide_update(command)?)
+        .persist_update(
+            policy_domain::budget::decide_update(command)
+                .map_err(|_| super::WorkflowFailure::Decision)?,
+        )
         .await
+        .map_err(O::classify_error)
 }
 pub async fn archive_budget<O: BudgetOperations>(
     operations: &mut O,
     command: ArchiveBudgetCommand,
-) -> Result<Budget, O::Error> {
+) -> Result<Budget, super::WorkflowFailure> {
     operations
-        .persist_archive(policy_domain::budget::decide_archive(command)?)
+        .persist_archive(
+            policy_domain::budget::decide_archive(command)
+                .map_err(|_| super::WorkflowFailure::Decision)?,
+        )
         .await
+        .map_err(O::classify_error)
 }

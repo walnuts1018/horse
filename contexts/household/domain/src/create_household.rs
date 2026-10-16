@@ -16,6 +16,24 @@ impl From<Uuid> for ActorId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HouseholdName(String);
+
+impl HouseholdName {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberName(String);
+
+impl MemberName {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateHouseholdCommand {
     pub actor_id: ActorId,
     pub name: String,
@@ -25,8 +43,8 @@ pub struct CreateHouseholdCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateHouseholdDecision {
     pub actor_id: ActorId,
-    pub name: String,
-    pub member_names: Vec<String>,
+    pub name: HouseholdName,
+    pub member_names: Vec<MemberName>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,12 +70,12 @@ pub fn decide_create_household(
         if member_name.is_empty() || member_name.len() > 120 {
             return Err(CreateHouseholdError::InvalidMemberName);
         }
-        member_names.push(member_name.to_owned());
+        member_names.push(MemberName(member_name.to_owned()));
     }
 
     Ok(CreateHouseholdDecision {
         actor_id: command.actor_id,
-        name: name.to_owned(),
+        name: HouseholdName(name.to_owned()),
         member_names,
     })
 }

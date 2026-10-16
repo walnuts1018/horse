@@ -1,9 +1,8 @@
 use async_graphql::{Context, ID, InputObject, Interface, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::close_period::ClosePeriodWorkflowError;
 use bookkeeping_application::settlement_query::GetSettlementQuery;
+use bookkeeping_application::workflow_failure::WorkflowFailure;
 use bookkeeping_domain::close_period::ClosePeriodError;
-use bookkeeping_postgres::close_period as postgres_close_period;
 use bookkeeping_postgres::loan_balance_query as postgres_loan_balances;
 use chrono::{DateTime as ChronoDateTime, Utc};
 use cross_context_postgres::policy_settlement as postgres_settlement;
@@ -128,7 +127,7 @@ pub async fn close_period(ctx: &Context<'_>, input: ClosePeriodInput) -> Result<
                 load_settlement(ctx.data::<PgPool>()?, household_id, input.period.as_str()).await?;
             Ok(ClosePeriodResult::Success(ClosePeriodSuccess { result }))
         }
-        Err(ClosePeriodWorkflowError::Decision(error)) => match error {
+        Err(WorkflowFailure::Decision(error)) => match error {
             ClosePeriodError::RevisionMismatch { .. } => Ok(ClosePeriodResult::UserError(
                 user_error(MutationErrorCode::Conflict),
             )),
@@ -141,30 +140,13 @@ pub async fn close_period(ctx: &Context<'_>, input: ClosePeriodInput) -> Result<
             ClosePeriodError::InvalidPeriod => Ok(ClosePeriodResult::UserError(bad_input())),
             error => Err(crate::internal_error(error)),
         },
-        Err(ClosePeriodWorkflowError::Operations(
-            postgres_close_period::ClosePeriodPersistenceError::PeriodAlreadyClosed
-            | postgres_close_period::ClosePeriodPersistenceError::StalePeriod
-            | postgres_close_period::ClosePeriodPersistenceError::StalePurchase,
-        )) => Ok(ClosePeriodResult::UserError(user_error(
+        Err(WorkflowFailure::Conflict) => Ok(ClosePeriodResult::UserError(user_error(
             MutationErrorCode::Conflict,
         ))),
-        Err(ClosePeriodWorkflowError::Operations(
-            postgres_close_period::ClosePeriodPersistenceError::DraftPurchasesExist,
-        )) => Ok(ClosePeriodResult::UserError(ClosePeriodUserError {
-            code: MutationErrorCode::Conflict,
-            message: "未確定の購入があるため締められません。".to_owned(),
-        })),
-        Err(ClosePeriodWorkflowError::Operations(
-            postgres_close_period::ClosePeriodPersistenceError::InvalidPeriod
-            | postgres_close_period::ClosePeriodPersistenceError::InvalidUuid(_),
-        )) => Ok(ClosePeriodResult::UserError(bad_input())),
-        Err(ClosePeriodWorkflowError::Operations(
-            postgres_close_period::ClosePeriodPersistenceError::HouseholdNotFound
-            | postgres_close_period::ClosePeriodPersistenceError::PeriodNotFound,
-        )) => Ok(ClosePeriodResult::UserError(user_error(
+        Err(WorkflowFailure::NotFound) => Ok(ClosePeriodResult::UserError(user_error(
             MutationErrorCode::NotFound,
         ))),
-        Err(ClosePeriodWorkflowError::Operations(error)) => Err(crate::internal_error(error)),
+        Err(WorkflowFailure::Infrastructure(error)) => Err(crate::internal_error(error)),
     }
 }
 

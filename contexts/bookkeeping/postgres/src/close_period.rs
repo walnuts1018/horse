@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
 use bookkeeping_application::close_period::{
-    ClosePeriodOperations, ClosePeriodWorkflowError, close_period as close_period_workflow,
+    ClosePeriodOperations, close_period as close_period_workflow,
 };
+use bookkeeping_application::workflow_failure::WorkflowFailure;
 use bookkeeping_domain::close_period::{
     ClosePeriodCommand, ClosePeriodDecision, FundingCadence, FundingScheduleInput,
     PurchaseSnapshot, SettlementInput, SettlementLine,
@@ -57,18 +58,23 @@ pub async fn close_period(
     period: &str,
     expected_revision: u64,
     policy: &mut impl super::settlement_preview::PolicySettlementData,
-) -> Result<PersistedClosePeriod, ClosePeriodWorkflowError<ClosePeriodPersistenceError>> {
+) -> Result<
+    PersistedClosePeriod,
+    WorkflowFailure<
+        bookkeeping_domain::close_period::ClosePeriodError,
+        ClosePeriodPersistenceError,
+    >,
+> {
     let household_id =
-        parse_uuid(household_id, "household_id").map_err(ClosePeriodWorkflowError::Operations)?;
-    let actor_id =
-        parse_uuid(actor_id, "actor_id").map_err(ClosePeriodWorkflowError::Operations)?;
+        parse_uuid(household_id, "household_id").map_err(classify_persistence_error)?;
+    let actor_id = parse_uuid(actor_id, "actor_id").map_err(classify_persistence_error)?;
     let year_month = YearMonth::parse(period).map_err(|_| {
-        ClosePeriodWorkflowError::Operations(ClosePeriodPersistenceError::InvalidPeriod)
+        WorkflowFailure::Decision(bookkeeping_domain::close_period::ClosePeriodError::InvalidPeriod)
     })?;
     let (period_start, period_end) =
-        period_bounds(year_month).map_err(ClosePeriodWorkflowError::Operations)?;
+        period_bounds(year_month).map_err(classify_persistence_error)?;
     let mut pooled = pool.get().await.map_err(|error| {
-        ClosePeriodWorkflowError::Operations(ClosePeriodPersistenceError::Pool(error.to_string()))
+        classify_persistence_error(ClosePeriodPersistenceError::Pool(error.to_string()))
     })?;
     let period = period.to_owned();
     let transaction_result = pooled
@@ -92,13 +98,38 @@ pub async fn close_period(
         .await;
     match transaction_result {
         Ok(result) => Ok(result),
-        Err(TransactionError::Workflow(error)) => Err(error),
-        Err(TransactionError::Database(error)) => Err(ClosePeriodWorkflowError::Operations(
+        Err(TransactionError::Workflow(error)) => Err(match error {
+            WorkflowFailure::Infrastructure(error) => classify_persistence_error(error),
+            error => error,
+        }),
+        Err(TransactionError::Database(error)) => Err(classify_persistence_error(
             ClosePeriodPersistenceError::Database(error),
         )),
-        Err(TransactionError::Pool(error)) => Err(ClosePeriodWorkflowError::Operations(
+        Err(TransactionError::Pool(error)) => Err(classify_persistence_error(
             ClosePeriodPersistenceError::Pool(error.to_string()),
         )),
+    }
+}
+
+fn classify_persistence_error(
+    error: ClosePeriodPersistenceError,
+) -> WorkflowFailure<bookkeeping_domain::close_period::ClosePeriodError, ClosePeriodPersistenceError>
+{
+    use bookkeeping_domain::close_period::ClosePeriodError;
+
+    match error {
+        ClosePeriodPersistenceError::InvalidPeriod => {
+            WorkflowFailure::Decision(ClosePeriodError::InvalidPeriod)
+        }
+        ClosePeriodPersistenceError::DraftPurchasesExist => {
+            WorkflowFailure::Decision(ClosePeriodError::DraftPurchasesExist)
+        }
+        ClosePeriodPersistenceError::HouseholdNotFound
+        | ClosePeriodPersistenceError::PeriodNotFound => WorkflowFailure::NotFound,
+        ClosePeriodPersistenceError::PeriodAlreadyClosed
+        | ClosePeriodPersistenceError::StalePeriod
+        | ClosePeriodPersistenceError::StalePurchase => WorkflowFailure::Conflict,
+        error => WorkflowFailure::Infrastructure(error),
     }
 }
 
