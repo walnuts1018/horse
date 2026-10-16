@@ -1,3 +1,5 @@
+use crate::MAX_YEN;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SettlementInput {
     pub scheduled_yen: i64,
@@ -16,12 +18,25 @@ pub struct SettlementAmounts {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettlementError {
     NegativeNonnegativeAmount,
+    AmountOutOfRange,
     AmountOverflow,
 }
 
 pub fn calculate_settlement(input: SettlementInput) -> Result<SettlementAmounts, SettlementError> {
     if input.scheduled_yen < 0 || input.paid_yen < 0 || input.advance_credit_yen < 0 {
         return Err(SettlementError::NegativeNonnegativeAmount);
+    }
+    if [
+        input.scheduled_yen,
+        input.paid_yen,
+        input.previous_owed_yen,
+        input.monthly_adjustment_yen,
+        input.advance_credit_yen,
+    ]
+    .into_iter()
+    .any(|amount| !(-MAX_YEN..=MAX_YEN).contains(&amount))
+    {
+        return Err(SettlementError::AmountOutOfRange);
     }
 
     let amount_due_yen = input
@@ -58,6 +73,20 @@ mod tests {
                 carry_yen: 2_000,
                 amount_due_yen: 4_000,
             })
+        );
+    }
+
+    #[test]
+    fn settlement_rejects_amounts_outside_the_supported_yen_range() {
+        assert_eq!(
+            calculate_settlement(SettlementInput {
+                scheduled_yen: 1_000_000_000_001,
+                paid_yen: 0,
+                previous_owed_yen: 0,
+                monthly_adjustment_yen: 0,
+                advance_credit_yen: 0,
+            }),
+            Err(super::SettlementError::AmountOutOfRange)
         );
     }
 }

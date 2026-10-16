@@ -101,6 +101,7 @@ pub enum ClosePeriodError {
     DuplicateMember,
     DuplicatePurchase,
     NegativeNonnegativeAmount,
+    AmountOutOfRange,
     AmountOverflow,
     RevisionOverflow,
     InvalidFundingSchedule,
@@ -125,6 +126,7 @@ pub fn decide_funding_obligations(
             || schedule.member_id.as_str().is_empty()
             || schedule.pool_id.is_empty()
             || schedule.amount_yen < 0
+            || schedule.amount_yen > crate::MAX_YEN
             || schedule
                 .ends_on_day
                 .is_some_and(|ends_on| ends_on < schedule.starts_on_day)
@@ -319,6 +321,7 @@ fn calculate_close_settlement(input: SettlementInput) -> Result<SettlementLine, 
     })
     .map_err(|error| match error {
         SettlementError::NegativeNonnegativeAmount => ClosePeriodError::NegativeNonnegativeAmount,
+        SettlementError::AmountOutOfRange => ClosePeriodError::AmountOutOfRange,
         SettlementError::AmountOverflow => ClosePeriodError::AmountOverflow,
     })?;
 
@@ -421,15 +424,37 @@ mod tests {
     }
 
     #[test]
-    fn closing_rejects_invalid_period_and_amount_overflow() {
+    fn closing_rejects_invalid_period_and_amounts_outside_the_supported_range() {
         assert!(YearMonth::new(2025, 13).is_err());
 
         let mut overflow = command();
-        overflow.settlements[0].scheduled_yen = i64::MAX;
+        overflow.settlements[0].scheduled_yen = crate::MAX_YEN + 1;
         overflow.settlements[0].previous_owed_yen = 1;
         assert_eq!(
             decide_close_period(overflow),
-            Err(ClosePeriodError::AmountOverflow)
+            Err(ClosePeriodError::AmountOutOfRange)
+        );
+    }
+
+    #[test]
+    fn funding_obligations_reject_amounts_outside_the_supported_range() {
+        assert_eq!(
+            decide_funding_obligations(
+                100,
+                131,
+                vec![FundingScheduleInput {
+                    id: "schedule".into(),
+                    member_id: member("member"),
+                    pool_id: "pool".into(),
+                    amount_yen: crate::MAX_YEN + 1,
+                    cadence: FundingCadence::Monthly,
+                    starts_on_day: 90,
+                    ends_on_day: None,
+                    active: true,
+                    created_at_micros: 1,
+                }]
+            ),
+            Err(ClosePeriodError::InvalidFundingSchedule)
         );
     }
 
