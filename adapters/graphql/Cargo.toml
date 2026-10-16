@@ -24,3 +24,11 @@ sha2 = { workspace = true }
 uuid = { version = "1", features = ["std"] }
 tracing = { workspace = true }
 tokio = { workspace = true }
+
+[dev-dependencies]
+diesel = { workspace = true, features = ["32-column-tables"] }
+diesel-async = { workspace = true }
+horse-postgres-common = { path = "../../platform/postgres-common" }
+horse-test-infra = { path = "../../platform/test-infra" }
+household-postgres = { path = "../../contexts/household/postgres" }
+policy-postgres = { path = "../../contexts/policy/postgres" }

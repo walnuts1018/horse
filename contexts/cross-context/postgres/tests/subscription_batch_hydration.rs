@@ -114,12 +114,23 @@ async fn purchase_events_and_multiple_purchase_snapshots_use_bounded_queries() {
         .unwrap();
     assert_eq!(events.len(), 2);
     let snapshots = query
-        .purchase_snapshots(household_id, purchase_ids.to_vec())
+        .purchase_snapshots(
+            purchase_ids
+                .iter()
+                .map(|purchase_id| (household_id, *purchase_id))
+                .collect(),
+        )
         .await
         .unwrap();
     assert_eq!(snapshots.len(), 2);
-    assert_eq!(snapshots[&purchase_ids[0]].merchant, "Market 0");
-    assert_eq!(snapshots[&purchase_ids[1]].merchant, "Market 1");
+    assert_eq!(
+        snapshots[&(household_id, purchase_ids[0])].merchant,
+        "Market 0"
+    );
+    assert_eq!(
+        snapshots[&(household_id, purchase_ids[1])].merchant,
+        "Market 1"
+    );
     let two_purchase_query_count = AtomicUsize::load(&QUERY_COUNT, Ordering::Relaxed);
     assert!(two_purchase_query_count <= 8);
 
@@ -169,12 +180,80 @@ async fn purchase_events_and_multiple_purchase_snapshots_use_bounded_queries() {
         .await
         .unwrap();
     assert_eq!(events.len(), all_purchase_ids.len());
+    QUERY_COUNT.store(0, Ordering::Relaxed);
     let snapshots = query
-        .purchase_snapshots(household_id, all_purchase_ids.clone())
+        .purchase_snapshots(
+            all_purchase_ids
+                .iter()
+                .map(|purchase_id| (household_id, *purchase_id))
+                .collect(),
+        )
         .await
         .unwrap();
     assert_eq!(snapshots.len(), all_purchase_ids.len());
-    let eight_purchase_query_count = AtomicUsize::load(&QUERY_COUNT, Ordering::Relaxed);
-    assert!(eight_purchase_query_count <= 8);
-    assert_eq!(eight_purchase_query_count, two_purchase_query_count);
+    let eight_purchase_snapshot_query_count = AtomicUsize::load(&QUERY_COUNT, Ordering::Relaxed);
+    assert!(eight_purchase_snapshot_query_count <= 8);
+    assert_eq!(
+        eight_purchase_snapshot_query_count,
+        two_purchase_query_count - 1
+    );
+
+    let second_household_id = Uuid::now_v7();
+    let second_purchase_id = Uuid::now_v7();
+    {
+        let mut conn = pool.get().await.unwrap();
+        insert_into(households::table)
+            .values((
+                households::id.eq(second_household_id),
+                households::name.eq("Another subscription household"),
+                households::default_allocation_version.eq(1_i64),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(household_members::table)
+            .values((
+                household_members::household_id.eq(second_household_id),
+                household_members::member_id.eq(member_id),
+                household_members::role.eq("OWNER"),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        insert_into(purchases::table)
+            .values((
+                purchases::id.eq(second_purchase_id),
+                purchases::household_id.eq(second_household_id),
+                purchases::occurred_at.eq(occurred_at),
+                purchases::merchant.eq("Other household market"),
+                purchases::status.eq("DRAFT"),
+                purchases::revision.eq(1_i64),
+                purchases::created_by.eq(member_id),
+                purchases::allocation_rule_version.eq(0_i64),
+            ))
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+    }
+
+    QUERY_COUNT.store(0, Ordering::Relaxed);
+    let cross_household_snapshots = query
+        .purchase_snapshots(
+            all_purchase_ids
+                .iter()
+                .map(|purchase_id| (household_id, *purchase_id))
+                .chain(std::iter::once((second_household_id, second_purchase_id)))
+                .collect(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(cross_household_snapshots.len(), all_purchase_ids.len() + 1);
+    assert_eq!(
+        cross_household_snapshots[&(second_household_id, second_purchase_id)].merchant,
+        "Other household market"
+    );
+    assert_eq!(
+        AtomicUsize::load(&QUERY_COUNT, Ordering::Relaxed),
+        eight_purchase_snapshot_query_count
+    );
 }

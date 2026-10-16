@@ -196,9 +196,14 @@ async fn allocation_rule_priority_is_variant_concept_category_merchant_then_defa
             .await
             .unwrap();
         }
-        let context = load_purchase_command_context(&pool, household_id, "market", &[item.clone()])
-            .await
-            .unwrap();
+        let context = load_purchase_command_context(
+            &pool,
+            household_id,
+            "market",
+            std::slice::from_ref(&item),
+        )
+        .await
+        .unwrap();
         assert_eq!(context.items[0].allocations[0].rule_id, Some(expected));
         removed = Some(expected);
     }

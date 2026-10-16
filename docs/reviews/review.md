@@ -10,15 +10,15 @@
 
 ## 1. AI・データ取り込み
 
-### P3 — Quota Reservationに使うトークン数の推定精度と性能への影響が未確認
+### P3 — Quota Reservationの実測精度と性能への影響が未確認
 
 対象： `adapters/worker-runtime/src/processing.rs`のQuota Reservation処理
 
-現在のRust実装は、API呼び出し前に本文サイズから入力トークン数を推定してQuotaを予約し、完了後にAPIが返した実使用量で精算します。Go実装にあった`CountTokens` APIの追加呼び出しはありません。予約成功時と精算時に、MIME type、入力byte数、推定token数、実token数、差分、予約処理時間をWorkerの構造化ログへ記録します。
+現在のRust実装は、API呼び出し前に文書サイズ、system instruction、schema、追加promptから入力token数を推定してQuotaを予約し、完了後にAPIが返した実使用量で精算します。`text/plain`本文は重複計上しません。Go実装にあった`CountTokens` APIの追加呼び出しはありません。予約成功時と精算時に、MIME type、入力byte数、推定token数、実token数、差分、予約処理時間をWorkerの構造化ログへ記録します。
 
 2026年10月16日に現行・直前Workerのログを確認しましたが、計測記録はありませんでした。推定誤差と予約処理時間がQuota判定や再試行に与える影響は未確認です。
 
-実使用データが得られた後、入力形式とモデルごとの推定誤差、予約処理時間を評価してください。計測値を得るまでは未解決のまま残します。
+2026年10月16日に予約計算へpromptとschemaの推定を追加しました。現行・直前Workerのログに計測記録はなく、入力形式・モデルごとの推定誤差と予約処理時間の影響は未確認です。実使用データを評価できるまでは未解決のまま残します。
 
 ## 2. 設計上の注意点として残しておきたいもの
 

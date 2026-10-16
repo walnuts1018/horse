@@ -7,9 +7,7 @@
 
 CLI以外のGo実行コードはRustへ移行済みで、リポジトリに`.go`ファイルは残っていない。2026年10月17日の稼働確認時に公開されていたイメージはHorse commit `9d51add3`のCI run `38930345498`で作成され、QualityとRust・Web・OCRイメージ公開が成功していた。E2E jobはリリース条件に含めていない。kurumiのArgo CD Applicationはinfra commit `68f44041850c10f72420a728e2d75022ccf95642`で`Synced`かつ`Healthy`であり、API・Worker・Web・OCRのDeploymentは`v0.0.1098`でそれぞれ1/1 Ready。`https://horse.walnuts.dev/healthz`はHTTP 200を返す。
 
-2026年10月16日にZITADELのID tokenが返す複数audienceを検証できるようAPIを修正し、Chromeでログイン後の画面を確認した。2026年10月17日にChromeで認証済みの家計台帳を表示できることを再確認した。ログイン修正commitは`63516bb9`である。
-
-2026年10月16日にChromeで新しい`/auth/login?returnTo=%2Fhouseholds`からログインし、認証コールバック後に認証済みの`/households`へ到達した。API直近5分のログに認証拒否はなかった。先に観測したコールバックのHTTP 401は再現しておらず、単回利用の認証コードを再読込した可能性があるが、当時のログがなく原因は特定できていない。
+2026年10月16日11:25 UTCに`/auth/callback`でZITADELのID Tokenを`invalid_audience`として拒否し、HTTP 401を返したログを確認した。複数audienceを検証する修正commit `63516bb9`は同日11:28 UTCで、稼働中の`v0.0.1098`に含まれる。同イメージは同日16:47 UTCに全APIへ反映された。元のスクリーンショットに表示された10:19 UTCのリクエストはデプロイ前であり、同時刻のログは保存されていない。16:47 UTCの反映後から17:00 UTCまでにOIDC callback拒否ログはなく、API・Worker・Web・OCRは1/1 Readyだった。
 
 以下の操作記録は記録された日付時点の証拠であり、現在のRust版で未確認の項目を完了扱いにしない。旧Goテストと旧Go CI runは現行Rust実装の検証根拠に含めない。
 

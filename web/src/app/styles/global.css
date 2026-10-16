@@ -1026,32 +1026,32 @@ a {
 }
 
 .field-group label {
-  font-size: 9px;
-  color: #5f6d65;
+  font-size: 12px;
+  color: var(--muted);
   font-weight: 600;
 }
 
 .field-group input,
 .field-group select,
 .select-filter input {
-  height: 36px;
+  height: 40px;
   min-width: 0;
   width: 100%;
-  border: 1px solid #e9ede9;
-  border-radius: 8px;
-  background: #fcfdfb;
-  color: #425249;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
   padding: 0 10px;
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .field-group select:not([multiple]) {
-  min-height: 36px;
+  min-height: 40px;
   padding-inline: 10px;
 }
 
 .field-group input::placeholder {
-  color: #b1bbb5;
+  color: #687970;
 }
 
 .item-measure-details,

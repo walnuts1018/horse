@@ -211,16 +211,27 @@ impl SubscriptionQuery for PostgresSubscriptionQuery {
 
     async fn purchase_snapshots(
         &self,
-        household_id: Uuid,
-        purchase_ids: Vec<Uuid>,
-    ) -> Result<HashMap<Uuid, PurchaseSnapshot>, String> {
+        purchases: Vec<(Uuid, Uuid)>,
+    ) -> Result<HashMap<(Uuid, Uuid), PurchaseSnapshot>, String> {
         use crate::purchase_command_result::load_purchase_command_results;
-        load_purchase_command_results(&self.pool, &[household_id], &purchase_ids)
+        let households = purchases
+            .iter()
+            .map(|(household_id, _)| *household_id)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let purchase_ids = purchases
+            .iter()
+            .map(|(_, purchase_id)| *purchase_id)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        load_purchase_command_results(&self.pool, &households, &purchase_ids)
             .await
             .map(|results| {
                 results
                     .into_iter()
-                    .map(|result| (result.id, purchase_snapshot(result)))
+                    .map(|result| ((result.household_id, result.id), purchase_snapshot(result)))
                     .collect()
             })
             .map_err(|error| format!("{error:?}"))

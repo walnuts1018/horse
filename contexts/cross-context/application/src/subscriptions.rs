@@ -105,13 +105,12 @@ pub trait SubscriptionQuery: Send + Sync {
     ) -> Result<Option<PurchaseSnapshot>, String>;
     async fn purchase_snapshots(
         &self,
-        household_id: Uuid,
-        purchase_ids: Vec<Uuid>,
-    ) -> Result<HashMap<Uuid, PurchaseSnapshot>, String> {
+        purchases: Vec<(Uuid, Uuid)>,
+    ) -> Result<HashMap<(Uuid, Uuid), PurchaseSnapshot>, String> {
         let mut snapshots = HashMap::new();
-        for purchase_id in purchase_ids {
+        for (household_id, purchase_id) in purchases {
             if let Some(snapshot) = self.purchase_snapshot(household_id, purchase_id).await? {
-                snapshots.insert(purchase_id, snapshot);
+                snapshots.insert((household_id, purchase_id), snapshot);
             }
         }
         Ok(snapshots)

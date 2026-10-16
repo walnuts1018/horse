@@ -220,17 +220,18 @@ impl SubscriptionHub {
                 purchase_id,
             });
         }
-        let mut snapshots = HashMap::new();
-        for (household, purchase_ids) in purchase_ids_by_household {
-            snapshots.extend(
-                query
-                    .purchase_snapshots(household, purchase_ids)
-                    .await
-                    .map_err(crate::internal_error)?
+        let purchase_requests = purchase_ids_by_household
+            .into_iter()
+            .flat_map(|(household, purchase_ids)| {
+                purchase_ids
                     .into_iter()
-                    .map(|(purchase_id, snapshot)| ((household, purchase_id), snapshot)),
-            );
-        }
+                    .map(move |purchase_id| (household, purchase_id))
+            })
+            .collect();
+        let snapshots = query
+            .purchase_snapshots(purchase_requests)
+            .await
+            .map_err(crate::internal_error)?;
         let mut purchase_projections = HashMap::new();
         for ((household, purchase_id), snapshot) in snapshots {
             let projection =

@@ -439,6 +439,19 @@ async fn process_inner(
             partial_result(&lines, &issues, Value::Null, code, &model, route, project),
         )
     })?;
+    let input_text_bytes = match &input {
+        InteractionsInput::Text(text) => text.len(),
+        InteractionsInput::Content(content) => content
+            .iter()
+            .map(|part| match part {
+                InputContent::Text(text) => text.len(),
+                InputContent::Image { .. } | InputContent::Document { .. } => 0,
+            })
+            .sum(),
+        InteractionsInput::History(_) => 0,
+    };
+    let schema_bytes = serde_json::to_vec(&extraction_schema(&job.source_kind, is_csv_statement))
+        .map_or(0, |schema| schema.len());
     let thinking_level = request
         .get("thinkingLevel")
         .and_then(Value::as_str)
@@ -517,7 +530,16 @@ async fn process_inner(
             .quota_limits
             .get(&(candidate_route.to_owned(), candidate_model.clone()))
         {
-            let estimate = i64::try_from((document.data.len() / 4).max(256)).unwrap_or(i64::MAX);
+            let estimate = estimate_input_tokens(
+                document.data.len(),
+                input_text_bytes,
+                if document.mime_type == "text/plain" {
+                    document.data.len()
+                } else {
+                    0
+                },
+                schema_bytes,
+            );
             reservation_estimate = Some(estimate);
             let reservation_started = Instant::now();
             let reservation_result = gemini_quota::reserve(
@@ -2216,6 +2238,21 @@ fn is_image_or_pdf(mime_type: &str) -> bool {
     mime_type.starts_with("image/") || mime_type == "application/pdf"
 }
 
+fn estimate_input_tokens(
+    document_bytes: usize,
+    prompt_bytes: usize,
+    embedded_document_bytes: usize,
+    schema_bytes: usize,
+) -> i64 {
+    let document_estimate = i64::try_from((document_bytes / 4).max(256)).unwrap_or(i64::MAX);
+    let text_bytes = prompt_bytes
+        .saturating_sub(embedded_document_bytes)
+        .saturating_add(SYSTEM_INSTRUCTION.len())
+        .saturating_add(schema_bytes);
+    let text_estimate = i64::try_from(text_bytes.div_ceil(4)).unwrap_or(i64::MAX);
+    document_estimate.saturating_add(text_estimate)
+}
+
 fn valid_region(region: &OcrRegion) -> bool {
     region.top.is_finite()
         && region.left.is_finite()
@@ -3256,12 +3293,21 @@ mod tests {
 
     use super::{
         Failure, ModelPriceTable, OcrLine, ProcessConfig, ProcessErrorKind, apply_cost_snapshot,
-        candidate_should_run, compare_receipt_ocr, map_extraction_regions, model_candidates,
-        model_prices, needs_pro_review, parse_model_price_table, process_with_timeout,
-        truncate_to_byte_limit, verify_receipt,
+        candidate_should_run, compare_receipt_ocr, estimate_input_tokens, map_extraction_regions,
+        model_candidates, model_prices, needs_pro_review, parse_model_price_table,
+        process_with_timeout, truncate_to_byte_limit, verify_receipt,
     };
     use std::collections::HashMap;
     use tokio::time::Duration;
+
+    #[test]
+    fn quota_estimate_includes_prompt_and_schema_tokens() {
+        let document_only = estimate_input_tokens(4_000, 0, 0, 0);
+        let with_request_context = estimate_input_tokens(4_000, 4_000, 0, 8_000);
+
+        assert!(with_request_context > document_only);
+        assert_eq!(with_request_context - document_only, 3_000);
+    }
 
     #[tokio::test]
     async fn extraction_timeout_is_retryable() {
