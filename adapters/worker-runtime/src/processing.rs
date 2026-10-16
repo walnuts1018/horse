@@ -126,7 +126,7 @@ impl Failure {
             return spend_cap_retry_delay_ms(now);
         }
         if let Some(delay) = self.retry_after {
-            return delay.as_millis().min(6 * 60 * 60 * 1000) as i64;
+            return delay.as_millis().clamp(1_000, 6 * 60 * 60 * 1000) as i64;
         }
         let exponent = u32::try_from(attempt.clamp(0, 10)).unwrap_or(0);
         5_000_i64
@@ -3307,6 +3307,19 @@ mod tests {
 
         assert!(with_request_context > document_only);
         assert_eq!(with_request_context - document_only, 3_000);
+    }
+
+    #[test]
+    fn retry_after_never_schedules_an_immediate_retry() {
+        let mut failure = Failure::new(
+            ProcessErrorKind::Retryable,
+            "rate_limited",
+            "rate limited",
+            Value::Null,
+        );
+        failure.retry_after = Some(Duration::ZERO);
+
+        assert_eq!(failure.retry_delay_ms(1, Utc::now()), 1_000);
     }
 
     #[tokio::test]
