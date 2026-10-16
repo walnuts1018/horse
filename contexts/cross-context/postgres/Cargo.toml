@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 async-trait = "0.1"
+cross-context-application = { path = "../application" }
 bookkeeping-application = { path = "../../bookkeeping/application" }
 bookkeeping-domain = { path = "../../bookkeeping/domain" }
 bookkeeping-postgres = { path = "../../bookkeeping/postgres" }

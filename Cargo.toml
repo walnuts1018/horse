@@ -18,6 +18,7 @@ members = [
     "contexts/evidence/domain",
     "contexts/evidence/postgres",
     "contexts/cross-context/postgres",
+    "contexts/cross-context/application",
     "platform/postgres-common",
     "platform/authorization",
     "platform/household-change",

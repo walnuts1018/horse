@@ -194,7 +194,7 @@ async fn query(
                 Some((_, None, Some(correction_id)))
                     if correction_purchase_by_id
                         .get(correction_id)
-                        .map_or(true, |(correction_household_id, _)| *correction_household_id != household_id)
+                        .is_none_or(|(correction_household_id, _)| *correction_household_id != household_id)
             );
             ObservationNodeProjection {
                 household_id,

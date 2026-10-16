@@ -1,8 +1,7 @@
 use async_graphql::{Context, Error, ID, Result, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use policy_application::pool_queries::{
-    AllocationRule, AllocationRuleTarget, AllocationRulesQuery, PoolRulesQuery,
-    PoolRulesQueryFailure,
+    AllocationRule, AllocationRulesQuery, PoolRulesQuery, PoolRulesQueryFailure,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -106,48 +105,7 @@ fn map_query_error(error: PoolRulesQueryFailure) -> Error {
 }
 
 fn map_allocation_rule(value: AllocationRule) -> Result<AllocationRuleObject> {
-    let target = crate::catalog_mutations::allocation_rule_target_from_projection(match value.target {
-        AllocationRuleTarget::Category {
-            id,
-            household_id,
-            parent_id,
-            name,
-            archived,
-        } => cross_context_postgres::pool_mutations::AllocationRuleTargetProjection::Category {
-            id,
-            household_id,
-            parent_id,
-            name,
-            archived,
-        },
-        AllocationRuleTarget::Merchant { name } => {
-            cross_context_postgres::pool_mutations::AllocationRuleTargetProjection::Merchant { name }
-        }
-        AllocationRuleTarget::ProductConcept(value) => {
-            cross_context_postgres::pool_mutations::AllocationRuleTargetProjection::ProductConcept(
-                cross_context_postgres::pool_mutations::ProductConceptProjection {
-                    id: value.id,
-                    household_id: value.household_id,
-                    name: value.name,
-                    normalized_name: value.normalized_name,
-                    category_id: value.category_id,
-                    archived: value.archived,
-                    revision: value.revision,
-                    variants: value
-                        .variants
-                        .into_iter()
-                        .map(map_product_variant)
-                        .collect(),
-                },
-            )
-        }
-        AllocationRuleTarget::ProductVariant(value) => {
-            cross_context_postgres::pool_mutations::AllocationRuleTargetProjection::ProductVariant(
-                map_product_variant(value),
-            )
-        }
-    })
-    .map_err(crate::internal_error)?;
+    let target = crate::catalog_mutations::allocation_rule_target_from_policy(value.target)?;
     Ok(AllocationRuleObject {
         id: crate::catalog_mutations::encode_node_id("AllocationRule", &value.id.to_string())
             .map_err(crate::internal_error)?,
@@ -174,36 +132,4 @@ fn map_allocation_rule(value: AllocationRule) -> Result<AllocationRuleObject> {
             })
             .collect::<Result<Vec<_>>>()?,
     })
-}
-
-fn map_product_variant(
-    value: policy_application::pool_queries::ProductVariant,
-) -> cross_context_postgres::pool_mutations::ProductVariantProjection {
-    cross_context_postgres::pool_mutations::ProductVariantProjection {
-        id: value.id,
-        household_id: value.household_id,
-        concept_id: value.concept_id,
-        name: value.name,
-        normalized_name: value.normalized_name,
-        brand: value.brand,
-        package_size: value.package_size,
-        barcode: value.barcode,
-        archived: value.archived,
-        revision: value.revision,
-        aliases: value
-            .aliases
-            .into_iter()
-            .map(
-                |alias| cross_context_postgres::pool_mutations::ProductAliasProjection {
-                    id: alias.id,
-                    household_id: alias.household_id,
-                    variant_id: alias.variant_id,
-                    merchant_key: alias.merchant_key,
-                    alias: alias.alias,
-                    normalized_alias: alias.normalized_alias,
-                    revision: alias.revision,
-                },
-            )
-            .collect(),
-    }
 }

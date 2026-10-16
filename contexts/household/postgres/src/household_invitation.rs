@@ -7,44 +7,26 @@ use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_household_change::UiChangeDescriptor;
 use household_application::authorization::{self, Operation};
 use household_application::invitation::{
-    AcceptInvitationDecision, AcceptInvitationFacts, AcceptInvitationOperations, ActorId,
-    CreateInvitationCommand, CreateInvitationDecision, CreateInvitationOperations, HouseholdId,
-    InvitationError, InvitationId, MemberId, MembershipStatus, RevokeInvitationCommand,
-    RevokeInvitationDecision, RevokeInvitationOperations,
+    AcceptInvitationDecision, AcceptInvitationFacts, AcceptInvitationOperations,
+    AcceptInvitationRequest, ActorId, CreateInvitationCommand, CreateInvitationDecision,
+    CreateInvitationOperations, CreateInvitationRequest, HouseholdId, HouseholdInvitationHandler,
+    InvitationError, InvitationHandlerError, InvitationId, InvitationPage, ListInvitationsRequest,
+    MemberId, MembershipStatus, RevokeInvitationCommand, RevokeInvitationDecision,
+    RevokeInvitationOperations, RevokeInvitationRequest,
 };
 use household_application::invitation::{
     invitation_created_change, invitation_revoked_change, member_joined_change,
 };
 use household_application::workflow_failure::{WorkflowFailure, WorkflowRejection};
+use std::{future::Future, pin::Pin};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CreatedInvitationDto {
-    pub id: String,
-    pub token: String,
-    pub created_at: DateTime<Utc>,
-    pub expires_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InvitationStateDto {
-    pub id: String,
-    pub household_id: String,
-    pub created_at: DateTime<Utc>,
-    pub expires_at: DateTime<Utc>,
-    pub accepted_at: Option<DateTime<Utc>>,
-    pub revoked_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HouseholdInvitationPageDto {
-    pub rows: Vec<InvitationStateDto>,
-    pub total_count: i64,
-    pub has_next_page: bool,
-    pub has_previous_page: bool,
-}
+pub use household_application::invitation::{
+    CreatedInvitation as CreatedInvitationDto, InvitationPage as HouseholdInvitationPageDto,
+    InvitationState as InvitationStateDto,
+};
 
 #[derive(Debug)]
 pub enum HouseholdInvitationError {
@@ -58,6 +40,115 @@ pub enum HouseholdInvitationError {
     Conflict,
     InvalidPagination,
     InvalidCursor,
+}
+
+#[derive(Clone)]
+pub struct PostgresHouseholdInvitationHandler {
+    pool: PgPool,
+}
+
+impl PostgresHouseholdInvitationHandler {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl HouseholdInvitationHandler for PostgresHouseholdInvitationHandler {
+    fn create<'a>(
+        &'a self,
+        request: CreateInvitationRequest,
+    ) -> Pin<
+        Box<dyn Future<Output = Result<CreatedInvitationDto, InvitationHandlerError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            create_invitation_workflow(
+                &self.pool,
+                request.command,
+                request.token,
+                request.token_hash,
+                request.now,
+            )
+            .await
+            .map_err(to_invitation_handler_error)
+        })
+    }
+
+    fn accept<'a>(
+        &'a self,
+        request: AcceptInvitationRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<String, InvitationHandlerError>> + Send + 'a>> {
+        Box::pin(async move {
+            let member_id = Uuid::parse_str(&request.member_id)
+                .map(MemberId::from)
+                .map_err(|_| {
+                    InvitationHandlerError::Decision(InvitationError::InvalidIdentifier)
+                })?;
+            accept_invitation_by_token_workflow(
+                &self.pool,
+                member_id,
+                request.token_hash,
+                request.now,
+            )
+            .await
+            .map(|household_id| household_id.value().to_string())
+            .map_err(to_invitation_handler_error)
+        })
+    }
+
+    fn revoke<'a>(
+        &'a self,
+        request: RevokeInvitationRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<InvitationStateDto, InvitationHandlerError>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            revoke_invitation_workflow(&self.pool, request.command, request.now)
+                .await
+                .map_err(to_invitation_handler_error)
+        })
+    }
+
+    fn list<'a>(
+        &'a self,
+        request: ListInvitationsRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<InvitationPage, InvitationHandlerError>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            list_invitations_workflow(
+                &self.pool,
+                request.actor_id,
+                request.household_id,
+                request.after_id,
+                request.before_id,
+                request.first,
+                request.last,
+            )
+            .await
+            .map_err(|failure| match failure {
+                WorkflowFailure::NotFound => InvitationHandlerError::NotFound,
+                WorkflowFailure::Conflict => InvitationHandlerError::Conflict,
+                WorkflowFailure::Decision(WorkflowRejection::InvalidCursor) => {
+                    InvitationHandlerError::InvalidCursor
+                }
+                WorkflowFailure::Decision(_) => InvitationHandlerError::InvalidPagination,
+                WorkflowFailure::Infrastructure(error) => {
+                    InvitationHandlerError::Infrastructure(format!("{error:?}"))
+                }
+            })
+        })
+    }
+}
+
+fn to_invitation_handler_error(
+    failure: WorkflowFailure<InvitationError, HouseholdInvitationError>,
+) -> InvitationHandlerError {
+    match failure {
+        WorkflowFailure::Decision(error) => InvitationHandlerError::Decision(error),
+        WorkflowFailure::NotFound => InvitationHandlerError::NotFound,
+        WorkflowFailure::Conflict => InvitationHandlerError::Conflict,
+        WorkflowFailure::Infrastructure(error) => {
+            InvitationHandlerError::Infrastructure(format!("{error:?}"))
+        }
+    }
 }
 
 pub async fn list_invitations(

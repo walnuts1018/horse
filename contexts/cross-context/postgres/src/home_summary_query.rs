@@ -1,43 +1,69 @@
 use std::collections::BTreeMap;
 
+use async_trait::async_trait;
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
 use diesel::{ExpressionMethods, JoinOnDsl, QueryDsl, dsl::count};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
+use cross_context_application::home_summary_query::{
+    HomeDailySpendingProjection, HomeSummaryProjection, HomeSummaryQuery, HomeSummaryQueryError,
+};
 
 #[derive(Debug)]
-pub enum HomeSummaryQueryError {
+enum PgHomeSummaryQueryError {
     Pool(String),
     Database(diesel::result::Error),
     HouseholdNotFound,
     AmountOutOfRange,
 }
 
-impl From<diesel::result::Error> for HomeSummaryQueryError {
+impl From<diesel::result::Error> for PgHomeSummaryQueryError {
     fn from(error: diesel::result::Error) -> Self {
         Self::Database(error)
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HomeDailySpendingProjection {
-    pub date: NaiveDate,
-    pub amount_yen: i64,
+pub struct PostgresHomeSummaryQuery {
+    pool: PgPool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HomeSummaryProjection {
-    pub daily_spending: Vec<HomeDailySpendingProjection>,
-    pub monthly_item_count: i64,
+impl PostgresHomeSummaryQuery {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
 }
 
-pub async fn home_summary(
+#[async_trait]
+impl HomeSummaryQuery for PostgresHomeSummaryQuery {
+    async fn load(
+        &self,
+        actor_id: Uuid,
+        household_id: Uuid,
+    ) -> Result<HomeSummaryProjection, HomeSummaryQueryError> {
+        home_summary(&self.pool, actor_id, household_id)
+            .await
+            .map_err(|error| match error {
+                PgHomeSummaryQueryError::HouseholdNotFound => {
+                    HomeSummaryQueryError::HouseholdNotFound
+                }
+                PgHomeSummaryQueryError::AmountOutOfRange => {
+                    HomeSummaryQueryError::AmountOutOfRange
+                }
+                PgHomeSummaryQueryError::Pool(message) => HomeSummaryQueryError::Failed(message),
+                PgHomeSummaryQueryError::Database(error) => {
+                    HomeSummaryQueryError::Failed(error.to_string())
+                }
+            })
+    }
+}
+
+async fn home_summary(
     pool: &PgPool,
     actor_id: Uuid,
     household_id: Uuid,
-) -> Result<HomeSummaryProjection, HomeSummaryQueryError> {
+) -> Result<HomeSummaryProjection, PgHomeSummaryQueryError> {
     let tokyo = FixedOffset::east_opt(9 * 60 * 60).expect("Tokyo offset is valid");
     let today = Utc::now().with_timezone(&tokyo).date_naive();
     let start_of_week = today - chrono::Duration::days(6);
@@ -73,7 +99,7 @@ pub async fn home_summary(
     let mut conn = pool
         .get()
         .await
-        .map_err(|error| HomeSummaryQueryError::Pool(error.to_string()))?;
+        .map_err(|error| PgHomeSummaryQueryError::Pool(error.to_string()))?;
     require_member(&mut conn, actor_id, household_id).await?;
 
     use public::{purchase_corrections, purchase_items, purchases};
@@ -104,7 +130,7 @@ pub async fn home_summary(
         let total = totals.entry(date).or_default();
         *total = total
             .checked_add(amount)
-            .ok_or(HomeSummaryQueryError::AmountOutOfRange)?;
+            .ok_or(PgHomeSummaryQueryError::AmountOutOfRange)?;
     }
     let daily_spending = (0..7)
         .map(|offset| {
@@ -134,7 +160,7 @@ async fn require_member(
     conn: &mut diesel_async::AsyncPgConnection,
     actor_id: Uuid,
     household_id: Uuid,
-) -> Result<(), HomeSummaryQueryError> {
+) -> Result<(), PgHomeSummaryQueryError> {
     use public::household_members;
     let active = diesel::select(diesel::dsl::exists(
         household_members::table
@@ -147,6 +173,6 @@ async fn require_member(
     if active {
         Ok(())
     } else {
-        Err(HomeSummaryQueryError::HouseholdNotFound)
+        Err(PgHomeSummaryQueryError::HouseholdNotFound)
     }
 }

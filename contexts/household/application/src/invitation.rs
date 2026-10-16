@@ -1,3 +1,5 @@
+use std::{future::Future, pin::Pin};
+
 use chrono::{DateTime, Utc};
 use horse_household_change::UiChangeDescriptor;
 pub use household_domain::invitation::{
@@ -26,6 +28,95 @@ pub struct RevokeInvitationCommand {
     pub actor_id: String,
     pub household_id: String,
     pub invitation_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreatedInvitation {
+    pub id: String,
+    pub token: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvitationState {
+    pub id: String,
+    pub household_id: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub accepted_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvitationPage {
+    pub rows: Vec<InvitationState>,
+    pub total_count: i64,
+    pub has_next_page: bool,
+    pub has_previous_page: bool,
+}
+
+#[derive(Debug)]
+pub enum InvitationHandlerError {
+    Decision(InvitationError),
+    NotFound,
+    Conflict,
+    InvalidPagination,
+    InvalidCursor,
+    Infrastructure(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateInvitationRequest {
+    pub command: CreateInvitationCommand,
+    pub token: String,
+    pub token_hash: [u8; 32],
+    pub now: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcceptInvitationRequest {
+    pub member_id: String,
+    pub token_hash: [u8; 32],
+    pub now: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevokeInvitationRequest {
+    pub command: RevokeInvitationCommand,
+    pub now: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListInvitationsRequest {
+    pub actor_id: uuid::Uuid,
+    pub household_id: uuid::Uuid,
+    pub after_id: Option<uuid::Uuid>,
+    pub before_id: Option<uuid::Uuid>,
+    pub first: Option<i32>,
+    pub last: Option<i32>,
+}
+
+pub trait HouseholdInvitationHandler: Send + Sync {
+    fn create<'a>(
+        &'a self,
+        request: CreateInvitationRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<CreatedInvitation, InvitationHandlerError>> + Send + 'a>>;
+
+    fn accept<'a>(
+        &'a self,
+        request: AcceptInvitationRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<String, InvitationHandlerError>> + Send + 'a>>;
+
+    fn revoke<'a>(
+        &'a self,
+        request: RevokeInvitationRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<InvitationState, InvitationHandlerError>> + Send + 'a>>;
+
+    fn list<'a>(
+        &'a self,
+        request: ListInvitationsRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<InvitationPage, InvitationHandlerError>> + Send + 'a>>;
 }
 
 pub fn invitation_created_change() -> UiChangeDescriptor {

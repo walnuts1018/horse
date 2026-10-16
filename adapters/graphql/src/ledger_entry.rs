@@ -1,7 +1,9 @@
 use async_graphql::{ID, Interface, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use cross_context_postgres::financial_command_result::TransferLedgerEntryResult;
-use cross_context_postgres::funding_command_result::FundingLedgerEntryResult;
+use cross_context_application::{
+    ledger_query::FundingLedgerEntryProjection,
+    statement_link_mutations::{LoanBalanceProjection, TransferLedgerEntryProjection},
+};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -228,10 +230,10 @@ pub enum FundingLedgerEntryMappingError {
     InvalidLoanBalance,
 }
 
-impl TryFrom<TransferLedgerEntryResult> for LedgerEntry {
+impl TryFrom<TransferLedgerEntryProjection> for LedgerEntry {
     type Error = FundingLedgerEntryMappingError;
 
-    fn try_from(value: TransferLedgerEntryResult) -> Result<Self, Self::Error> {
+    fn try_from(value: TransferLedgerEntryProjection) -> Result<Self, Self::Error> {
         let id = encode_node_id("LedgerEntry", value.id);
         let occurred_at: crate::DateTime = value.occurred_at.into();
         let description = value.description;
@@ -365,7 +367,7 @@ impl TryFrom<TransferLedgerEntryResult> for LedgerEntry {
 }
 
 fn member_projection(
-    value: cross_context_postgres::financial_command_result::TransferMemberProjection,
+    value: cross_context_application::statement_link_mutations::TransferMemberProjection,
 ) -> Result<crate::member_pool::Member, FundingLedgerEntryMappingError> {
     use crate::member_pool::{MemberProjection, MemberRole};
     let role = match value.role.as_str() {
@@ -382,7 +384,7 @@ fn member_projection(
 }
 
 fn loan_balance(
-    value: cross_context_postgres::financial_command_result::LoanBalanceProjection,
+    value: LoanBalanceProjection,
 ) -> Result<LoanBalance, FundingLedgerEntryMappingError> {
     if value.principal_yen < 0 || value.repaid_yen < 0 || value.balance_yen < 0 {
         return Err(FundingLedgerEntryMappingError::InvalidLoanBalance);
@@ -398,10 +400,10 @@ fn loan_balance(
     })
 }
 
-impl TryFrom<FundingLedgerEntryResult> for FundingLedgerEntry {
+impl TryFrom<FundingLedgerEntryProjection> for FundingLedgerEntry {
     type Error = FundingLedgerEntryMappingError;
 
-    fn try_from(value: FundingLedgerEntryResult) -> Result<Self, Self::Error> {
+    fn try_from(value: FundingLedgerEntryProjection) -> Result<Self, Self::Error> {
         use crate::member_pool::{
             MemberProjection, MemberRole, PoolFundingShareProjection, PoolKind, PoolProjection,
             SharedPoolSettlementPolicy,

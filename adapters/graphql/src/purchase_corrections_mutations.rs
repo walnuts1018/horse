@@ -1,8 +1,5 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_postgres::correct_purchase as postgres_correct_purchase;
-use cross_context_postgres::evidence_workflows;
-use horse_postgres_common::PgPool;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -173,11 +170,11 @@ pub async fn correct_purchase(
     })?;
     execute(
         ctx,
-        postgres_correct_purchase::CorrectPurchaseRequest {
-            household_id: household_id.to_string(),
-            actor_id: crate::actor(ctx)?.0.to_string(),
-            purchase_id: purchase_id.to_string(),
-            item_id: item_id.map(|id| id.to_string()),
+        bookkeeping_application::purchase_mutations::CorrectPurchaseCommand {
+            household_id,
+            actor_id: crate::actor(ctx)?.0,
+            purchase_id,
+            item_id,
             amount_delta_yen: Some(input.amount_delta_yen.0),
             reason: input.reason,
             allocations,
@@ -226,18 +223,18 @@ pub async fn correct_purchase_from_statement(
     })?;
     execute(
         ctx,
-        postgres_correct_purchase::CorrectPurchaseRequest {
-            household_id: household_id.to_string(),
-            actor_id: crate::actor(ctx)?.0.to_string(),
-            purchase_id: purchase_id.to_string(),
-            item_id: item_id.map(|id| id.to_string()),
+        bookkeeping_application::purchase_mutations::CorrectPurchaseCommand {
+            household_id,
+            actor_id: crate::actor(ctx)?.0,
+            purchase_id,
+            item_id,
             amount_delta_yen: None,
             reason: input.reason,
             allocations: Vec::new(),
             payments: Vec::new(),
             idempotency_key: input.idempotency_key,
             request_fingerprint: fingerprint,
-            source_document_id: Some(source_document_id.to_string()),
+            source_document_id: Some(source_document_id),
             source_reference: Some(input.source_reference),
         },
     )
@@ -246,16 +243,27 @@ pub async fn correct_purchase_from_statement(
 
 async fn execute(
     ctx: &Context<'_>,
-    request: postgres_correct_purchase::CorrectPurchaseRequest,
+    command: bookkeeping_application::purchase_mutations::CorrectPurchaseCommand,
 ) -> Result<CorrectPurchaseResult> {
-    let household_id = Uuid::parse_str(&request.household_id).map_err(crate::internal_error)?;
-    let purchase_id = request.purchase_id.clone();
-    match evidence_workflows::correct_purchase(ctx.data::<PgPool>()?, request).await {
+    let actor = crate::actor(ctx)?;
+    let household_id = command.household_id;
+    let purchase_id = command.purchase_id;
+    let purchase_query = ctx.data::<std::sync::Arc<
+        dyn bookkeeping_application::purchase_search_query::PurchaseSearchQuery,
+    >>()?;
+    match ctx
+        .data::<std::sync::Arc<
+            dyn bookkeeping_application::purchase_mutations::PurchaseMutationHandler,
+        >>()?
+        .correct_purchase(command)
+        .await
+    {
         Ok(_) => Ok(Box::new(CorrectPurchaseSuccess {
             result: crate::purchase_mutations::purchase_result(
-                ctx.data::<PgPool>()?,
+                &**purchase_query,
+                actor.0,
                 household_id,
-                &purchase_id,
+                &purchase_id.to_string(),
             )
             .await?,
         })
@@ -302,7 +310,7 @@ fn parse_target(
 
 fn parse_allocations(
     allocations: Vec<CorrectPurchaseAllocationInput>,
-) -> std::result::Result<Vec<(String, i64)>, ()> {
+) -> std::result::Result<Vec<(Uuid, i64)>, ()> {
     allocations
         .into_iter()
         .map(|allocation| {
@@ -310,7 +318,7 @@ fn parse_allocations(
             if allocation.weight.0 <= 0 {
                 return Err(());
             }
-            Ok((pool_id.to_string(), allocation.weight.0))
+            Ok((pool_id, allocation.weight.0))
         })
         .collect()
 }
@@ -374,7 +382,7 @@ fn fingerprint_target(
 
 fn parse_payments(
     payments: Vec<CorrectPurchasePaymentInput>,
-) -> std::result::Result<Vec<(String, i64)>, ()> {
+) -> std::result::Result<Vec<(Uuid, i64)>, ()> {
     payments
         .into_iter()
         .map(|payment| {
@@ -382,7 +390,7 @@ fn parse_payments(
             if payment.amount_yen.0 <= 0 {
                 return Err(());
             }
-            Ok((account_id.to_string(), payment.amount_yen.0))
+            Ok((account_id, payment.amount_yen.0))
         })
         .collect()
 }

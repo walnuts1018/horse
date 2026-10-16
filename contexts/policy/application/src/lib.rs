@@ -2,6 +2,7 @@
 
 pub mod budget;
 pub mod create_pool;
+pub mod node_catalog_planning_query;
 pub mod pool_queries;
 pub mod recurring_expense;
 pub mod set_allocation_rule;

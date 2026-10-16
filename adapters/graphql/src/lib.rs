@@ -3,9 +3,10 @@ use async_graphql::{
     Union,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use horse_postgres_common::PgPool;
-use household_application::mail_forwarding;
-use household_postgres::mail_forwarding as postgres_mail_forwarding;
+use household_application::{
+    mail_forwarding,
+    mail_forwarding_handler::{MailForwardingHandler, MailForwardingHandlerError},
+};
 use uuid::Uuid;
 
 pub mod account_balance_analysis;
@@ -71,17 +72,73 @@ pub struct Actor(pub Uuid);
 pub struct Ports {
     pub account_balances_query:
         std::sync::Arc<dyn bookkeeping_application::account_balances_query::AccountBalancesQuery>,
+    pub create_account:
+        std::sync::Arc<dyn bookkeeping_application::create_account::CreateAccountHandler>,
+    pub set_card_last4:
+        std::sync::Arc<dyn bookkeeping_application::account_card_last4::SetCardLast4Handler>,
+    pub financial_mutations: std::sync::Arc<
+        dyn cross_context_application::financial_mutations::FinancialMutationsHandler,
+    >,
+    pub funding_mutation:
+        std::sync::Arc<dyn cross_context_application::funding_mutation::FundingMutationHandler>,
+    pub settlement_workflow:
+        std::sync::Arc<dyn cross_context_application::settlement_workflow::SettlementWorkflow>,
+    pub account_financial_mutations: std::sync::Arc<
+        dyn cross_context_application::account_financial_mutations::AccountFinancialMutationsHandler,
+    >,
+    pub subscription_query:
+        std::sync::Arc<dyn cross_context_application::subscriptions::SubscriptionQuery>,
+    pub home_summary_query:
+        std::sync::Arc<dyn cross_context_application::home_summary_query::HomeSummaryQuery>,
+    pub unmatched_observations_query: std::sync::Arc<
+        dyn cross_context_application::unmatched_observations_query::UnmatchedObservationsQuery,
+    >,
+    pub purchase_correction_query: std::sync::Arc<
+        dyn cross_context_application::purchase_correction_query::PurchaseCorrectionQuery,
+    >,
+    pub create_pool: std::sync::Arc<dyn policy_application::create_pool::CreatePoolHandler>,
+    pub set_pool_funding_rule:
+        std::sync::Arc<dyn policy_application::set_pool_funding_rule::SetPoolFundingRuleHandler>,
+    pub set_default_allocation:
+        std::sync::Arc<dyn household_application::default_allocation::DefaultAllocationHandler>,
     pub account_balance_analysis_query: std::sync::Arc<
         dyn bookkeeping_application::account_balance_analysis_query::AccountBalanceAnalysisQuery,
     >,
     pub account_history_query:
         std::sync::Arc<dyn bookkeeping_application::account_history_query::AccountHistoryQuery>,
+    pub account_node_batch_query: std::sync::Arc<
+        dyn bookkeeping_application::account_node_batch_query::AccountNodeBatchQuery,
+    >,
     pub monthly_spending_query:
         std::sync::Arc<dyn bookkeeping_application::monthly_spending_query::MonthlySpendingQuery>,
     pub purchase_defaults_query:
         std::sync::Arc<dyn bookkeeping_application::purchase_defaults_query::PurchaseDefaultsQuery>,
+    pub purchase_analytics_query: std::sync::Arc<
+        dyn bookkeeping_application::purchase_analytics_query::PurchaseAnalyticsQuery,
+    >,
+    pub purchase_edit_mutations: std::sync::Arc<
+        dyn bookkeeping_application::purchase_edit_mutations::PurchaseEditMutationHandler,
+    >,
+    pub purchase_mutations:
+        std::sync::Arc<dyn bookkeeping_application::purchase_mutations::PurchaseMutationHandler>,
+    pub purchase_search_query:
+        std::sync::Arc<dyn bookkeeping_application::purchase_search_query::PurchaseSearchQuery>,
+    pub purchase_bulk_mutations: std::sync::Arc<
+        dyn cross_context_application::purchase_bulk_mutations::PurchaseBulkMutationHandler,
+    >,
+    pub statement_link_mutations: std::sync::Arc<
+        dyn cross_context_application::statement_link_mutations::StatementLinkMutationsHandler,
+    >,
+    pub statement_refund_correction_query: std::sync::Arc<
+        dyn cross_context_application::statement_refund_correction_query::StatementRefundCorrectionQuery,
+    >,
     pub ledger_entry_batch_query: std::sync::Arc<
         dyn bookkeeping_application::ledger_entry_batch_query::LedgerEntryBatchQuery,
+    >,
+    pub ledger_query:
+        std::sync::Arc<dyn cross_context_application::ledger_query::LedgerQueryHandler>,
+    pub node_financial_batch_query: std::sync::Arc<
+        dyn cross_context_application::node_financial_batch::NodeFinancialBatchQuery,
     >,
     pub purchase_node_batch_query: std::sync::Arc<
         dyn bookkeeping_application::purchase_node_batch_query::PurchaseNodeBatchQuery,
@@ -90,6 +147,26 @@ pub struct Ports {
         dyn evidence_application::observation_node_batch_query::ObservationNodeBatchQuery,
     >,
     pub household_query: std::sync::Arc<dyn household_application::household_query::HouseholdQuery>,
+    pub create_household: std::sync::Arc<
+        dyn household_application::create_household_handler::CreateHouseholdHandler,
+    >,
+    pub mail_forwarding_handler:
+        std::sync::Arc<dyn household_application::mail_forwarding_handler::MailForwardingHandler>,
+    pub household_membership:
+        std::sync::Arc<dyn household_application::membership::HouseholdMembershipHandler>,
+    pub household_invitation:
+        std::sync::Arc<dyn household_application::invitation::HouseholdInvitationHandler>,
+    pub household_invitation_node_query: std::sync::Arc<
+        dyn household_application::invitation_node_query::HouseholdInvitationNodeQuery,
+    >,
+    pub policy_node_catalog_planning_query:
+        std::sync::Arc<dyn policy_application::node_catalog_planning_query::PolicyNodeBatchQuery>,
+    pub budget_mutation: std::sync::Arc<dyn policy_application::budget::BudgetMutationHandler>,
+    pub budget_query: std::sync::Arc<dyn policy_application::budget::BudgetQuery>,
+    pub recurring_expense_mutation:
+        std::sync::Arc<dyn policy_application::recurring_expense::RecurringExpenseMutationHandler>,
+    pub recurring_expense_query:
+        std::sync::Arc<dyn policy_application::recurring_expense::RecurringExpenseQuery>,
     pub allocation_rules_query:
         std::sync::Arc<dyn policy_application::pool_queries::AllocationRulesQuery>,
     pub funding_schedules_query:
@@ -107,18 +184,50 @@ pub struct Ports {
         std::sync::Arc<dyn catalog_application::node_batch_query::CatalogNodeBatchQuery>,
 }
 
-pub fn schema(pool: PgPool, config: Config, ports: Ports) -> Schema {
+pub fn schema(config: Config, ports: Ports) -> Schema {
     GraphqlSchema::build(QueryRoot, MutationRoot, subscriptions::SubscriptionRoot)
-        .data(pool)
         .data(ports.account_balances_query)
+        .data(ports.create_account)
+        .data(ports.set_card_last4)
+        .data(ports.financial_mutations)
+        .data(ports.funding_mutation)
+        .data(ports.settlement_workflow)
+        .data(ports.account_financial_mutations)
+        .data(ports.subscription_query)
+        .data(ports.home_summary_query)
+        .data(ports.unmatched_observations_query)
+        .data(ports.purchase_correction_query)
+        .data(ports.create_pool)
+        .data(ports.set_pool_funding_rule)
+        .data(ports.set_default_allocation)
         .data(ports.account_balance_analysis_query)
         .data(ports.account_history_query)
+        .data(ports.account_node_batch_query)
         .data(ports.monthly_spending_query)
         .data(ports.purchase_defaults_query)
+        .data(ports.purchase_analytics_query)
+        .data(ports.purchase_edit_mutations)
+        .data(ports.purchase_mutations)
+        .data(ports.purchase_search_query)
+        .data(ports.purchase_bulk_mutations)
+        .data(ports.statement_link_mutations)
+        .data(ports.statement_refund_correction_query)
         .data(ports.ledger_entry_batch_query)
+        .data(ports.ledger_query)
+        .data(ports.node_financial_batch_query)
         .data(ports.purchase_node_batch_query)
         .data(ports.observation_node_batch_query)
         .data(ports.household_query)
+        .data(ports.create_household)
+        .data(ports.mail_forwarding_handler)
+        .data(ports.household_membership)
+        .data(ports.household_invitation)
+        .data(ports.household_invitation_node_query)
+        .data(ports.policy_node_catalog_planning_query)
+        .data(ports.budget_mutation)
+        .data(ports.budget_query)
+        .data(ports.recurring_expense_mutation)
+        .data(ports.recurring_expense_query)
         .data(ports.allocation_rules_query)
         .data(ports.funding_schedules_query)
         .data(ports.set_allocation_rule)
@@ -350,18 +459,16 @@ impl QueryRoot {
     ) -> Result<Option<HouseholdMailForwardingStatus>> {
         let actor = actor(ctx)?;
         let household_id = decode_household_id(&household_id)?;
-        match postgres_mail_forwarding::active(
-            ctx.data::<PgPool>()?,
-            mail_forwarding::Command {
+        match ctx
+            .data::<std::sync::Arc<dyn MailForwardingHandler>>()?
+            .active(mail_forwarding::Command {
                 actor_id: actor.0.to_string(),
                 household_id: household_id.to_string(),
-            },
-        )
-        .await
+            })
+            .await
         {
             Ok(status) => Ok(Some(status.into())),
-            Err(postgres_mail_forwarding::MailForwardingError::ForwardingNotFound) => Ok(None),
-            Err(postgres_mail_forwarding::MailForwardingError::HouseholdNotFound) => Ok(None),
+            Err(MailForwardingHandlerError::NotFound) => Ok(None),
             Err(error) => Err(internal_error(error)),
         }
     }
@@ -620,14 +727,13 @@ impl MutationRoot {
             Ok(value) => value,
             Err(_) => return Ok(bad_input_error().into()),
         };
-        match postgres_mail_forwarding::revoke(
-            ctx.data::<PgPool>()?,
-            mail_forwarding::Command {
+        match ctx
+            .data::<std::sync::Arc<dyn MailForwardingHandler>>()?
+            .revoke(mail_forwarding::Command {
                 actor_id: actor.0.to_string(),
                 household_id: household_id.to_string(),
-            },
-        )
-        .await
+            })
+            .await
         {
             Ok(status) => Ok(RevokeHouseholdMailForwardingSuccess {
                 result: status.into(),
@@ -1081,18 +1187,13 @@ async fn issue_or_rotate(
         mailbox_domain: config.mailbox_domain.clone(),
         local_part_prefix: config.local_part_prefix.clone(),
     };
+    let handler = ctx
+        .data::<std::sync::Arc<dyn MailForwardingHandler>>()
+        .map_err(|_| bad_input_error())?;
     let result = if rotate {
-        postgres_mail_forwarding::rotate(
-            ctx.data::<PgPool>().map_err(|_| bad_input_error())?,
-            command,
-        )
-        .await
+        handler.rotate(command).await
     } else {
-        postgres_mail_forwarding::issue(
-            ctx.data::<PgPool>().map_err(|_| bad_input_error())?,
-            command,
-        )
-        .await
+        handler.issue(command).await
     };
     result
         .map(|address| HouseholdMailForwardingAddress {
@@ -1132,12 +1233,12 @@ pub(crate) fn decode_household_id(id: &ID) -> Result<Uuid> {
 }
 
 fn mutation_user_error(
-    error: &postgres_mail_forwarding::MailForwardingError,
+    error: &MailForwardingHandlerError,
 ) -> Option<HouseholdMailForwardingUserError> {
-    use postgres_mail_forwarding::MailForwardingError as E;
+    use MailForwardingHandlerError as E;
     match error {
-        E::InvalidUuid(_) | E::Workflow(_) => Some(bad_input_error()),
-        E::ForwardingNotFound | E::HouseholdNotFound => Some(HouseholdMailForwardingUserError {
+        E::InvalidInput => Some(bad_input_error()),
+        E::NotFound => Some(HouseholdMailForwardingUserError {
             code: MutationErrorCode::NotFound,
             message: "対象が見つかりません。".to_owned(),
         }),
@@ -1145,7 +1246,7 @@ fn mutation_user_error(
             code: MutationErrorCode::Conflict,
             message: "最新の状態を読み込んでから再試行してください。".to_owned(),
         }),
-        E::Pool(_) | E::Database(_) => None,
+        E::Infrastructure(_) => None,
     }
 }
 

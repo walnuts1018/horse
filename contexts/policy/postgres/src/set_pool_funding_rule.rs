@@ -275,3 +275,31 @@ pub async fn persist_set_pool_funding_rule(
             }
         })
 }
+
+pub struct PostgresSetPoolFundingRuleHandler {
+    pool: PgPool,
+}
+
+impl PostgresSetPoolFundingRuleHandler {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl policy_application::set_pool_funding_rule::SetPoolFundingRuleHandler
+    for PostgresSetPoolFundingRuleHandler
+{
+    fn set<'a>(
+        &'a self,
+        command: SetPoolFundingRuleCommand,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<PersistedPoolFundingRule, policy_application::WorkflowFailure>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(persist_set_pool_funding_rule(&self.pool, command))
+    }
+}

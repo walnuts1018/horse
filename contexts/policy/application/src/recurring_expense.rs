@@ -1,5 +1,51 @@
 pub use policy_domain::recurring_expense::next_due_on;
 pub use policy_domain::*;
+use std::{future::Future, pin::Pin};
+
+pub trait RecurringExpenseMutationHandler: Send + Sync {
+    fn create<'a>(
+        &'a self,
+        command: CreateRecurringExpenseCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<RecurringExpense, super::WorkflowFailure>> + Send + 'a>>;
+    fn update<'a>(
+        &'a self,
+        command: UpdateRecurringExpenseCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<RecurringExpense, super::WorkflowFailure>> + Send + 'a>>;
+    fn archive<'a>(
+        &'a self,
+        actor_id: RecurringExpenseActorId,
+        id: RecurringExpenseId,
+        expected_revision: i64,
+        archived: bool,
+    ) -> Pin<Box<dyn Future<Output = Result<RecurringExpense, super::WorkflowFailure>> + Send + 'a>>;
+    fn match_purchase<'a>(
+        &'a self,
+        command: MatchRecurringExpenseCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<RecurringExpense, super::WorkflowFailure>> + Send + 'a>>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecurringExpensePage {
+    pub rows: Vec<RecurringExpense>,
+    pub total_count: i64,
+    pub has_next_page: bool,
+    pub has_previous_page: bool,
+}
+
+pub trait RecurringExpenseQuery: Send + Sync {
+    fn query<'a>(
+        &'a self,
+        actor_id: RecurringExpenseActorId,
+        household_id: RecurringExpenseHouseholdId,
+        include_archived: bool,
+        after_id: Option<uuid::Uuid>,
+        before_id: Option<uuid::Uuid>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Pin<
+        Box<dyn Future<Output = Result<RecurringExpensePage, super::WorkflowFailure>> + Send + 'a>,
+    >;
+}
 
 pub trait RecurringExpenseOperations {
     type Error: From<RecurringExpenseError>;

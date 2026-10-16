@@ -14,6 +14,7 @@ catalog-application = { path = "../../contexts/catalog/application" }
 evidence-application = { path = "../../contexts/evidence/application" }
 catalog-domain = { path = "../../contexts/catalog/domain" }
 cross-context-postgres = { path = "../../contexts/cross-context/postgres" }
+cross-context-application = { path = "../../contexts/cross-context/application" }
 diesel = { workspace = true }
 diesel-async = { workspace = true }
 futures-util = { workspace = true }

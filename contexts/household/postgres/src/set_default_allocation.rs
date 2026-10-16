@@ -43,6 +43,63 @@ pub async fn persist_set_default_allocation(
     set_default_allocation(&mut operations, command).await
 }
 
+pub struct PostgresDefaultAllocationHandler {
+    pool: PgPool,
+}
+
+impl PostgresDefaultAllocationHandler {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl household_application::default_allocation::DefaultAllocationHandler
+    for PostgresDefaultAllocationHandler
+{
+    fn set<'a>(
+        &'a self,
+        command: SetDefaultAllocationCommand,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        SetDefaultAllocationResult,
+                        household_application::default_allocation::DefaultAllocationFailure,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            persist_set_default_allocation(&self.pool, command)
+                .await
+                .map_err(|error| match error {
+                    SetDefaultAllocationPersistenceError::InvalidUuid(_)
+                    | SetDefaultAllocationPersistenceError::InvalidWorkflow(_) => {
+                        household_application::default_allocation::DefaultAllocationFailure::Decision
+                    }
+                    SetDefaultAllocationPersistenceError::HouseholdNotFound
+                    | SetDefaultAllocationPersistenceError::MemberNotFound
+                    | SetDefaultAllocationPersistenceError::PoolNotFound => {
+                        household_application::default_allocation::DefaultAllocationFailure::NotFound
+                    }
+                    SetDefaultAllocationPersistenceError::Pool(message) => {
+                        household_application::default_allocation::DefaultAllocationFailure::Infrastructure(message)
+                    }
+                    SetDefaultAllocationPersistenceError::Database(error) => {
+                        household_application::default_allocation::DefaultAllocationFailure::Infrastructure(error.to_string())
+                    }
+                    SetDefaultAllocationPersistenceError::NumericOutOfRange(_) => {
+                        household_application::default_allocation::DefaultAllocationFailure::Infrastructure("numeric value is out of range".to_owned())
+                    }
+                    SetDefaultAllocationPersistenceError::InvalidDecision => {
+                        household_application::default_allocation::DefaultAllocationFailure::Infrastructure("invalid allocation decision".to_owned())
+                    }
+                })
+        })
+    }
+}
+
 struct DefaultAllocationOperations<'a> {
     pool: &'a PgPool,
 }

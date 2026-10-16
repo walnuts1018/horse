@@ -9,11 +9,6 @@ use bookkeeping_domain::purchase_commands::{
     PurchaseOrigin as WorkflowPurchaseOrigin, QuantityUnit, ReceiptCandidateId, SourceDocumentId,
 };
 use bookkeeping_domain::{AccountId, ItemId, MemberId, PoolId, PurchaseId};
-use bookkeeping_postgres::create_purchase as postgres_create_persistence;
-use cross_context_postgres::{
-    create_purchase_workflow as postgres_create, purchase_command_result, purchase_create_and_post,
-};
-use horse_postgres_common::PgPool;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -122,8 +117,6 @@ pub struct PurchaseObject {
     pub status: PurchaseStatus,
     pub created_at: DateTime,
     pub updated_at: DateTime,
-    #[graphql(skip)]
-    pub household_uuid: Uuid,
     #[graphql(skip)]
     pub purchase_uuid: Uuid,
 }
@@ -241,92 +234,14 @@ impl PurchaseObject {
         first: Option<i32>,
         after: Option<String>,
     ) -> Result<PurchaseCorrectionConnection> {
-        purchase_corrections_connection(
-            ctx.data::<PgPool>()?,
-            self.household_uuid,
-            self.purchase_uuid,
+        crate::purchase_correction_query::graphql_purchase_corrections(
+            ctx,
+            encode_node_id("Purchase", self.purchase_uuid),
             first,
-            after.as_deref(),
+            after,
         )
         .await
     }
-}
-
-pub(crate) async fn purchase_corrections_connection(
-    pool: &PgPool,
-    household_id: Uuid,
-    purchase_id: Uuid,
-    first: Option<i32>,
-    after: Option<&str>,
-) -> Result<PurchaseCorrectionConnection> {
-    let projection = bookkeeping_postgres::purchase_corrections::load_purchase_corrections(
-        pool,
-        household_id,
-        purchase_id,
-        first,
-        after,
-    )
-    .await
-    .map_err(correction_error)?;
-    let mut edges = Vec::with_capacity(projection.edges.len());
-    for correction in projection.edges {
-        let cursor = bookkeeping_postgres::purchase_corrections::encode_cursor(&correction);
-        let payments = correction
-            .payment_allocations
-            .into_iter()
-            .map(|payment| {
-                let kind = account_kind(&payment.account_kind)?;
-                Ok(PurchasePayment {
-                    payment_account_id: encode_node_id("Account", payment.account_id),
-                    account: AccountObject {
-                        id: encode_node_id("Account", payment.account_id),
-                        name: payment.account_name,
-                        kind,
-                        card_last4: payment.account_card_last4,
-                        pool_id: payment.account_pool_id.map(|id| encode_node_id("Pool", id)),
-                    },
-                    amount_yen: Long(payment.amount_yen),
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
-        let id = encode_node_id("PurchaseCorrection", correction.id);
-        let settlement_month =
-            crate::policy_mutations::YearMonth::from_naive_date(correction.settlement_month);
-        let occurred_at: DateTime = correction.occurred_at.into();
-        let node = match correction.item_id {
-            Some(item_id) => PurchaseCorrection::Item(PurchaseItemCorrection {
-                id,
-                item_id: encode_node_id("PurchaseItem", item_id),
-                amount_delta_yen: Long(correction.amount_delta_yen),
-                reason: correction.reason.clone(),
-                occurred_at,
-                settlement_month,
-                payment_allocations: payments,
-            }),
-            None => PurchaseCorrection::Wide(PurchaseWideCorrection {
-                id,
-                amount_delta_yen: Long(correction.amount_delta_yen),
-                reason: correction.reason.clone(),
-                occurred_at,
-                settlement_month,
-                payment_allocations: payments,
-            }),
-        };
-        edges.push(PurchaseCorrectionEdge { cursor, node });
-    }
-    let total_count = i32::try_from(projection.total_count).map_err(crate::internal_error)?;
-    let start_cursor = edges.first().map(|edge| edge.cursor.clone());
-    let end_cursor = edges.last().map(|edge| edge.cursor.clone());
-    Ok(PurchaseCorrectionConnection {
-        edges,
-        page_info: crate::pagination::PageInfo {
-            has_next_page: projection.has_next_page,
-            has_previous_page: projection.has_previous_page,
-            start_cursor,
-            end_cursor,
-        },
-        total_count,
-    })
 }
 
 pub(crate) async fn resolve_purchase_correction_node(
@@ -335,68 +250,27 @@ pub(crate) async fn resolve_purchase_correction_node(
     correction_id: Uuid,
 ) -> Result<crate::ledger_entry::Node> {
     let actor = crate::actor(ctx)?;
-    let pool = ctx.data::<PgPool>()?;
-    if !household_postgres::household_access::is_active_member(pool, household_id, actor.0)
+    let household_ids = ctx
+        .data::<std::sync::Arc<dyn household_application::household_query::HouseholdQuery>>()?
+        .list_household_ids(actor.0)
         .await
-        .map_err(crate::internal_error)?
-    {
+        .map_err(crate::internal_error)?;
+    if !household_ids.contains(&household_id) {
         return Err(async_graphql::Error::new("not found"));
     }
-    let Some(value) = cross_context_postgres::node_query::load_purchase_correction_node(
-        pool,
-        household_id,
-        correction_id,
+    let nodes = crate::node_purchase_batch::load(
+        ctx,
+        &[household_id],
+        &[("PurchaseCorrection".to_owned(), correction_id)],
     )
-    .await
-    .map_err(crate::internal_error)?
+    .await?;
+    let Some(node) = nodes
+        .get(&("PurchaseCorrection".to_owned(), correction_id))
+        .cloned()
     else {
         return Err(async_graphql::Error::new("not found"));
     };
-    let payments = value
-        .correction
-        .payment_allocations
-        .iter()
-        .map(|payment| {
-            let kind = account_kind(&payment.account_kind)?;
-            Ok(PurchasePayment {
-                payment_account_id: encode_node_id("Account", payment.account_id),
-                account: AccountObject {
-                    id: encode_node_id("Account", payment.account_id),
-                    name: payment.account_name.clone(),
-                    kind,
-                    card_last4: payment.account_card_last4.clone(),
-                    pool_id: payment.account_pool_id.map(|id| encode_node_id("Pool", id)),
-                },
-                amount_yen: Long(payment.amount_yen),
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let correction = value.correction;
-    let id = encode_node_id("PurchaseCorrection", correction.id);
-    let settlement_month =
-        crate::policy_mutations::YearMonth::from_naive_date(correction.settlement_month);
-    let occurred_at: DateTime = correction.occurred_at.into();
-    Ok(match correction.item_id {
-        Some(item_id) => {
-            crate::ledger_entry::Node::PurchaseItemCorrection(PurchaseItemCorrection {
-                id,
-                item_id: encode_node_id("PurchaseItem", item_id),
-                amount_delta_yen: Long(correction.amount_delta_yen),
-                reason: correction.reason,
-                occurred_at,
-                settlement_month,
-                payment_allocations: payments,
-            })
-        }
-        None => crate::ledger_entry::Node::PurchaseWideCorrection(PurchaseWideCorrection {
-            id,
-            amount_delta_yen: Long(correction.amount_delta_yen),
-            reason: correction.reason,
-            occurred_at,
-            settlement_month,
-            payment_allocations: payments,
-        }),
-    })
+    Ok(node)
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -452,7 +326,9 @@ pub async fn create_purchase(
         Ok(value) => value,
         Err(error) => return Ok(error.into()),
     };
-    let pool = ctx.data::<PgPool>()?;
+    let purchase_query = ctx.data::<std::sync::Arc<
+        dyn bookkeeping_application::purchase_search_query::PurchaseSearchQuery,
+    >>()?;
     let workflow_command =
         bookkeeping_application::create_purchase_workflow::CreatePurchaseWorkflowCommand {
             household_id: parsed.household_id,
@@ -466,7 +342,11 @@ pub async fn create_purchase(
                     request_fingerprint: parsed.persistence.request_fingerprint,
                 },
         };
-    let persisted = match postgres_create::create_purchase_workflow(pool, workflow_command).await {
+    let handler =
+        ctx.data::<std::sync::Arc<
+            dyn bookkeeping_application::purchase_mutations::PurchaseMutationHandler,
+        >>()?;
+    let persisted = match handler.create_purchase(workflow_command).await {
         Ok(value) => value,
         Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
             return Ok(bad_input().into());
@@ -482,7 +362,13 @@ pub async fn create_purchase(
         }
     };
     Ok(Box::new(CreatePurchaseSuccess {
-        result: purchase_result(pool, parsed.household_id, &persisted.purchase_id).await?,
+        result: purchase_result(
+            &**purchase_query,
+            actor.0,
+            parsed.household_id,
+            &persisted.purchase_id,
+        )
+        .await?,
     })
     .into())
 }
@@ -496,7 +382,9 @@ pub async fn create_and_post_purchase(
         Ok(value) => value,
         Err(error) => return Ok(error.into()),
     };
-    let pool = ctx.data::<PgPool>()?;
+    let purchase_query = ctx.data::<std::sync::Arc<
+        dyn bookkeeping_application::purchase_search_query::PurchaseSearchQuery,
+    >>()?;
     let post_fingerprint = post_fingerprint(parsed.command.purchase_id.as_str(), 1)?;
     let workflow_command =
         bookkeeping_application::create_and_post_purchase::CreateAndPostPurchaseCommand {
@@ -507,28 +395,33 @@ pub async fn create_and_post_purchase(
             post_request_fingerprint: post_fingerprint,
             purchase: parsed.command,
         };
-    let persisted =
-        match purchase_create_and_post::create_and_post_purchase_workflow(pool, workflow_command)
-            .await
-        {
-            Ok(value) => value,
-            Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
-                return Ok(bad_input().into());
-            }
-            Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
-                return Ok(not_found().into());
-            }
-            Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
-                return Ok(conflict().into());
-            }
-            Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(
-                error,
-            )) => {
-                return Err(crate::internal_error(error));
-            }
-        };
+    let handler =
+        ctx.data::<std::sync::Arc<
+            dyn bookkeeping_application::purchase_mutations::PurchaseMutationHandler,
+        >>()?;
+    let persisted = match handler.create_and_post_purchase(workflow_command).await {
+        Ok(value) => value,
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
+            return Ok(bad_input().into());
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
+            return Ok(not_found().into());
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
+            return Ok(conflict().into());
+        }
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
+            return Err(crate::internal_error(error));
+        }
+    };
     Ok(Box::new(CreateAndPostPurchaseSuccess {
-        result: purchase_result(pool, parsed.household_id, &persisted.purchase_id).await?,
+        result: purchase_result(
+            &**purchase_query,
+            actor.0,
+            parsed.household_id,
+            &persisted.purchase_id,
+        )
+        .await?,
     })
     .into())
 }
@@ -546,18 +439,24 @@ pub async fn post_purchase(
         return Ok(bad_input().into());
     }
     let fingerprint = post_fingerprint(&purchase_id.to_string(), input.expected_revision)?;
-    let pool = ctx.data::<PgPool>()?;
-    let result = cross_context_postgres::post_purchase_entry::post_purchase_entry(
-        pool,
-        bookkeeping_application::post_purchase_entry::PostPurchaseEntryCommand {
-            actor_id: actor.0.to_string(),
-            purchase_id: purchase_id.to_string(),
-            expected_revision: input.expected_revision as u64,
-            idempotency_key: input.idempotency_key,
-            request_fingerprint: fingerprint,
-        },
-    )
-    .await;
+    let purchase_query = ctx.data::<std::sync::Arc<
+        dyn bookkeeping_application::purchase_search_query::PurchaseSearchQuery,
+    >>()?;
+    let handler =
+        ctx.data::<std::sync::Arc<
+            dyn bookkeeping_application::purchase_mutations::PurchaseMutationHandler,
+        >>()?;
+    let result = handler
+        .post_purchase(
+            bookkeeping_application::post_purchase_entry::PostPurchaseEntryCommand {
+                actor_id: actor.0.to_string(),
+                purchase_id: purchase_id.to_string(),
+                expected_revision: input.expected_revision as u64,
+                idempotency_key: input.idempotency_key,
+                request_fingerprint: fingerprint,
+            },
+        )
+        .await;
     match result {
         Ok(output) => match output.result {
             bookkeeping_application::post_purchase_entry::PostPurchaseEntryResult::NotFound => {
@@ -573,7 +472,7 @@ pub async fn post_purchase(
                     .household_id
                     .ok_or_else(|| crate::internal_error("purchase household was not loaded"))?;
                 Ok(Box::new(PostPurchaseSuccess {
-                    result: purchase_result(pool, household_id, &value.purchase_id).await?,
+                    result: purchase_result(&**purchase_query, actor.0, household_id, &value.purchase_id).await?,
                 })
                 .into())
             }
@@ -595,7 +494,7 @@ pub async fn post_purchase(
 
 struct ParsedCreatePurchase {
     command: CreatePurchaseCommand,
-    persistence: postgres_create_persistence::PersistCreatePurchase,
+    persistence: bookkeeping_application::create_and_post_purchase::CreatePurchasePersistence,
     household_id: Uuid,
 }
 
@@ -806,7 +705,7 @@ fn parse_create_input(
             items,
             payments,
         },
-        persistence: postgres_create_persistence::PersistCreatePurchase {
+        persistence: bookkeeping_application::create_and_post_purchase::CreatePurchasePersistence {
             household_id: household_id.to_string(),
             actor_id: actor_id.to_string(),
             idempotency_key: input.idempotency_key,
@@ -941,22 +840,39 @@ fn post_fingerprint(purchase_id: &str, expected_revision: i32) -> Result<[u8; 32
 }
 
 pub(crate) async fn purchase_result(
-    pool: &PgPool,
+    query: &dyn bookkeeping_application::purchase_search_query::PurchaseSearchQuery,
+    actor_id: Uuid,
     household_id: Uuid,
     purchase_id: &str,
 ) -> Result<PurchaseObject> {
     let purchase_id = Uuid::parse_str(purchase_id).map_err(crate::internal_error)?;
-    let projection =
-        purchase_command_result::load_purchase_command_result(pool, household_id, purchase_id)
-            .await
-            .map_err(crate::internal_error)?;
+    let projection = query
+        .purchase(actor_id, household_id, purchase_id)
+        .await
+        .map_err(map_purchase_query_error)?;
     PurchaseObject::try_from(projection).map_err(crate::internal_error)
 }
 
-impl TryFrom<purchase_command_result::PurchaseCommandResult> for PurchaseObject {
+fn map_purchase_query_error(
+    error: bookkeeping_application::purchase_search_query::PurchaseSearchQueryError,
+) -> async_graphql::Error {
+    match error {
+        bookkeeping_application::purchase_search_query::PurchaseSearchQueryError::HouseholdNotFound => {
+            async_graphql::Error::new("not found")
+        }
+        bookkeeping_application::purchase_search_query::PurchaseSearchQueryError::PurchaseNotFound => {
+            async_graphql::Error::new("not found")
+        }
+        error => crate::internal_error(error),
+    }
+}
+
+impl TryFrom<bookkeeping_application::purchase_search_query::PurchaseProjection>
+    for PurchaseObject
+{
     type Error = &'static str;
     fn try_from(
-        value: purchase_command_result::PurchaseCommandResult,
+        value: bookkeeping_application::purchase_search_query::PurchaseProjection,
     ) -> std::result::Result<Self, Self::Error> {
         let date_precision = match value.date_precision.as_str() {
             "DATE_TIME" => PurchaseDatePrecision::DateTime,
@@ -1113,10 +1029,80 @@ impl TryFrom<purchase_command_result::PurchaseCommandResult> for PurchaseObject 
             status,
             created_at: value.created_at.into(),
             updated_at: value.updated_at.into(),
-            household_uuid: value.household_id,
             purchase_uuid: value.id,
         })
     }
+}
+
+pub(crate) fn purchase_projection(
+    value: cross_context_application::subscriptions::PurchaseSnapshot,
+) -> std::result::Result<PurchaseObject, &'static str> {
+    PurchaseObject::try_from(bookkeeping_application::purchase_search_query::PurchaseProjection {
+        id: value.id,
+        household_id: value.household_id,
+        occurred_at: value.occurred_at,
+        date_precision: value.date_precision,
+        merchant: value.merchant,
+        origin: value.origin,
+        status: value.status,
+        revision: value.revision,
+        created_at: value.created_at,
+        updated_at: value.updated_at,
+        has_evidence: value.has_evidence,
+        source_kinds: value.source_kinds,
+        total_yen: value.total_yen,
+        correction_amount_yen: value.correction_amount_yen,
+        correction_count: value.correction_count,
+        remaining_refundable_amount_yen: value.remaining_refundable_amount_yen,
+        items: value
+            .items
+            .into_iter()
+            .map(|item| bookkeeping_application::purchase_search_query::PurchaseItemProjection {
+                id: item.id,
+                name: item.name,
+                amount_yen: item.amount_yen,
+                category_id: item.category_id,
+                product_variant_id: item.product_variant_id,
+                revision: item.revision,
+                quantity_numerator: item.quantity_numerator,
+                quantity_denominator: item.quantity_denominator,
+                quantity_unit: item.quantity_unit,
+                printed_unit_price_yen: item.printed_unit_price_yen,
+                printed_unit_price_quantity_numerator: item.printed_unit_price_quantity_numerator,
+                printed_unit_price_quantity_denominator: item
+                    .printed_unit_price_quantity_denominator,
+                printed_unit_price_unit: item.printed_unit_price_unit,
+                allocations: item
+                    .allocations
+                    .into_iter()
+                    .map(|allocation| {
+                        bookkeeping_application::purchase_search_query::PurchaseItemAllocationProjection {
+                            pool_id: allocation.pool_id,
+                            pool_name: allocation.pool_name,
+                            weight: allocation.weight,
+                            amount_yen: allocation.amount_yen,
+                        }
+                    })
+                    .collect(),
+                tags: item.tags,
+                remaining_refundable_amount_yen: item.remaining_refundable_amount_yen,
+            })
+            .collect(),
+        payments: value
+            .payments
+            .into_iter()
+            .map(
+                |payment| bookkeeping_application::purchase_search_query::PurchasePaymentProjection {
+                    account_id: payment.account_id,
+                    account_name: payment.account_name,
+                    account_kind: payment.account_kind,
+                    account_card_last4: payment.account_card_last4,
+                    account_pool_id: payment.account_pool_id,
+                    amount_yen: payment.amount_yen,
+                },
+            )
+            .collect(),
+    })
 }
 
 fn effective_unit_price(
@@ -1188,32 +1174,5 @@ impl From<PurchaseMutationUserError> for PostPurchaseResult {
             code: value.code,
             message: value.message,
         })
-    }
-}
-
-fn account_kind(
-    value: &str,
-) -> std::result::Result<crate::account_mutations::AccountKind, async_graphql::Error> {
-    match value {
-        "BANK" => Ok(crate::account_mutations::AccountKind::Bank),
-        "CASH" => Ok(crate::account_mutations::AccountKind::Cash),
-        "CARD" => Ok(crate::account_mutations::AccountKind::Card),
-        "OTHER" => Ok(crate::account_mutations::AccountKind::Other),
-        _ => Err(crate::internal_error("invalid account kind")),
-    }
-}
-
-fn correction_error(
-    error: bookkeeping_postgres::purchase_corrections::PurchaseCorrectionError,
-) -> async_graphql::Error {
-    use bookkeeping_postgres::purchase_corrections::PurchaseCorrectionError as E;
-    match error {
-        E::PurchaseNotFound | E::CursorNotFound => {
-            async_graphql::Error::new("対象が見つかりません。")
-        }
-        E::InvalidPageSize | E::InvalidCursor => {
-            async_graphql::Error::new("入力を確認してください。")
-        }
-        E::Pool(_) | E::Database(_) | E::NumericOutOfRange => crate::internal_error(error),
     }
 }

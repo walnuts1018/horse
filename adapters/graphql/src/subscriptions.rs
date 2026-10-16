@@ -6,11 +6,9 @@ use std::{
 
 use crate::{Actor, DateTime, actor, decode_household_id, purchase_mutations};
 use async_graphql::{Context, Enum, Error, ID, Result, SimpleObject, Subscription};
-use chrono::{DateTime as ChronoDateTime, Utc};
-use diesel::{BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl};
+use cross_context_application::subscriptions::{PurchaseEvent, SubscriptionQuery};
 use futures_channel::mpsc;
 use futures_util::Stream;
-use horse_postgres_common::PgPool;
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug)]
@@ -88,7 +86,7 @@ impl SubscriptionHub {
         Arc::new(Self::default())
     }
 
-    fn start(self: &Arc<Self>, pool: PgPool) {
+    fn start(self: &Arc<Self>, query: Arc<dyn SubscriptionQuery>) {
         let Ok(mut started) = self.started.lock() else {
             return;
         };
@@ -106,21 +104,20 @@ impl SubscriptionHub {
                     *hub.started.lock().unwrap_or_else(|e| e.into_inner()) = false;
                     break;
                 }
-                if let Err(error) = hub.poll(&pool).await {
+                if let Err(error) = hub.poll(query.as_ref()).await {
                     tracing::warn!(?error, "GraphQL subscription poll failed");
                 }
             }
         });
     }
 
-    async fn poll(&self, pool: &PgPool) -> Result<()> {
-        self.poll_purchases(pool).await?;
-        self.poll_drafts(pool).await?;
+    async fn poll(&self, query: &dyn SubscriptionQuery) -> Result<()> {
+        self.poll_purchases(query).await?;
+        self.poll_drafts(query).await?;
         Ok(())
     }
 
-    async fn poll_purchases(&self, pool: &PgPool) -> Result<()> {
-        use diesel_async::RunQueryDsl;
+    async fn poll_purchases(&self, query: &dyn SubscriptionQuery) -> Result<()> {
         let cursors: Vec<(Uuid, i64)> = {
             let watches = self.purchases.lock().unwrap_or_else(|e| e.into_inner());
             watches
@@ -131,7 +128,6 @@ impl SubscriptionHub {
         if cursors.is_empty() {
             return Ok(());
         }
-        use horse_postgres_common::schema::public::household_events::dsl as events;
         let mut minimum_cursors = HashMap::new();
         for (household, cursor) in cursors {
             minimum_cursors
@@ -139,64 +135,22 @@ impl SubscriptionHub {
                 .and_modify(|minimum: &mut i64| *minimum = (*minimum).min(cursor))
                 .or_insert(cursor);
         }
-        let rows = {
-            let mut conn = pool.get().await.map_err(crate::internal_error)?;
-            let mut query = events::household_events.into_boxed::<diesel::pg::Pg>();
-            let mut conditions = minimum_cursors.into_iter();
-            if let Some((household, cursor)) = conditions.next() {
-                query = query.filter(
-                    events::household_id
-                        .eq(household)
-                        .and(events::stream_cursor.gt(cursor)),
-                );
-                for (household, cursor) in conditions {
-                    query = query.or_filter(
-                        events::household_id
-                            .eq(household)
-                            .and(events::stream_cursor.gt(cursor)),
-                    );
-                }
-            }
-            query
-                .order(events::stream_cursor.asc())
-                .limit(100)
-                .select((
-                    events::stream_cursor,
-                    events::household_id,
-                    events::event_type,
-                    events::entity_kind,
-                    events::entity_id,
-                    events::revision,
-                    events::changed_fields,
-                    events::created_at,
-                    events::payload,
-                ))
-                .load::<(
-                    i64,
-                    Uuid,
-                    String,
-                    String,
-                    Uuid,
-                    i64,
-                    Vec<Option<String>>,
-                    ChronoDateTime<Utc>,
-                    serde_json::Value,
-                )>(&mut conn)
-                .await
-                .map_err(crate::internal_error)?
-        };
-        for (
-            cursor,
-            household,
-            event_type,
-            entity_type,
-            entity_id,
-            revision,
-            fields,
-            created_at,
-            payload,
-        ) in rows
-        {
+        let rows = query
+            .purchase_events(minimum_cursors.into_iter().collect())
+            .await
+            .map_err(crate::internal_error)?;
+        for row in rows {
+            let PurchaseEvent {
+                cursor,
+                household_id: household,
+                event_type,
+                entity_kind: entity_type,
+                entity_id,
+                revision,
+                changed_fields: fields,
+                created_at,
+                payload,
+            } = row;
             let targets: Vec<u64> = self
                 .purchases
                 .lock()
@@ -231,14 +185,9 @@ impl SubscriptionHub {
                         .and_then(serde_json::Value::as_str)
                         .and_then(|value| Uuid::parse_str(value).ok())
                 } else if entity_type == "purchase_item" {
-                    let mut conn = pool.get().await.map_err(crate::internal_error)?;
-                    use horse_postgres_common::schema::public::purchase_items::dsl as items;
-                    items::purchase_items
-                        .filter(items::id.eq(entity_id))
-                        .select(items::purchase_id)
-                        .first::<Uuid>(&mut conn)
+                    query
+                        .purchase_id_for_item(entity_id)
                         .await
-                        .optional()
                         .map_err(crate::internal_error)?
                 } else {
                     Some(entity_id)
@@ -247,9 +196,16 @@ impl SubscriptionHub {
                     self.advance_purchase(id, cursor);
                     continue;
                 };
-                let purchase =
-                    purchase_mutations::purchase_result(pool, household, &purchase_id.to_string())
-                        .await?;
+                let Some(projection) = query
+                    .purchase_snapshot(household, purchase_id)
+                    .await
+                    .map_err(crate::internal_error)?
+                else {
+                    self.advance_purchase(id, cursor);
+                    continue;
+                };
+                let purchase = purchase_mutations::purchase_projection(projection)
+                    .map_err(crate::internal_error)?;
                 let node_kind = if entity_kind == PurchaseChangeEntity::PurchaseItem {
                     "PurchaseItem"
                 } else {
@@ -287,8 +243,7 @@ impl SubscriptionHub {
         }
     }
 
-    async fn poll_drafts(&self, pool: &PgPool) -> Result<()> {
-        use diesel_async::RunQueryDsl;
+    async fn poll_drafts(&self, query: &dyn SubscriptionQuery) -> Result<()> {
         let watches: Vec<(u64, Uuid, i64)> = self
             .drafts
             .lock()
@@ -299,19 +254,11 @@ impl SubscriptionHub {
         if watches.is_empty() {
             return Ok(());
         }
-        use horse_postgres_common::schema::public::shared_purchase_drafts::dsl as drafts;
         for (id, draft_id, cursor) in watches {
-            let revision = {
-                let mut conn = pool.get().await.map_err(crate::internal_error)?;
-                drafts::shared_purchase_drafts
-                    .filter(drafts::id.eq(draft_id))
-                    .filter(drafts::revision.gt(cursor))
-                    .select(drafts::revision)
-                    .first::<i64>(&mut conn)
-                    .await
-                    .optional()
-                    .map_err(crate::internal_error)?
-            };
+            let revision = query
+                .shared_draft_revision(draft_id, cursor)
+                .await
+                .map_err(crate::internal_error)?;
             if let Some(revision) = revision {
                 let mut watches = self.drafts.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(watch) = watches.get_mut(&id)
@@ -387,27 +334,30 @@ impl SubscriptionRoot {
         household_id: ID,
         after: Option<String>,
     ) -> Result<impl Stream<Item = PurchaseChange>> {
-        let pool = ctx.data::<PgPool>()?.clone();
+        let query = Arc::clone(ctx.data::<Arc<dyn SubscriptionQuery>>()?);
         let actor = actor(ctx)?;
         let session_token_hash = ctx.data::<SessionTokenHash>()?.0;
         let household = decode_household_id(&household_id)?;
-        authorize_session(&pool, actor, session_token_hash).await?;
-        authorize_household(&pool, actor, household).await?;
+        authorize_session(query.as_ref(), actor, session_token_hash).await?;
+        authorize_household(query.as_ref(), actor, household).await?;
         let cursor = match after {
             Some(value) if !value.is_empty() => parse_cursor(&value)?,
-            _ => latest_cursor(&pool, household).await?,
+            _ => query
+                .latest_purchase_cursor(household)
+                .await
+                .map_err(crate::internal_error)?,
         };
         let (tx, rx) = mpsc::channel(16);
         let hub = ctx.data::<Arc<SubscriptionHub>>()?;
         let id = hub.register_purchase(household, cursor, tx);
-        hub.start(pool.clone());
+        hub.start(Arc::clone(&query));
         let mut authorization_interval = tokio::time::interval(Duration::from_secs(30));
         authorization_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         authorization_interval.tick().await;
         Ok(futures_util::stream::unfold(
             (
                 rx,
-                pool,
+                query,
                 actor,
                 household,
                 id,
@@ -417,7 +367,7 @@ impl SubscriptionRoot {
             ),
             |(
                 mut rx,
-                pool,
+                query,
                 actor,
                 household,
                 id,
@@ -429,18 +379,18 @@ impl SubscriptionRoot {
                     tokio::select! {
                         value = futures_util::StreamExt::next(&mut rx) => match value {
                             Some(value) => {
-                                if authorize_subscription(&pool, actor, session_token_hash, household).await.is_err() {
+                                if authorize_subscription(query.as_ref(), actor, session_token_hash, household).await.is_err() {
                                     hub.remove_purchase(id);
                                     return None;
                                 }
-                                return Some((value, (rx, pool, actor, household, id, hub, session_token_hash, authorization_interval)));
+                                return Some((value, (rx, query, actor, household, id, hub, session_token_hash, authorization_interval)));
                             }
                             None => {
                                 hub.remove_purchase(id);
                                 return None;
                             }
                         },
-                        _ = authorization_interval.tick() => if authorize_subscription(&pool, actor, session_token_hash, household).await.is_err() { hub.remove_purchase(id); return None; },
+                        _ = authorization_interval.tick() => if authorize_subscription(query.as_ref(), actor, session_token_hash, household).await.is_err() { hub.remove_purchase(id); return None; },
                     }
                 }
             },
@@ -453,29 +403,32 @@ impl SubscriptionRoot {
         id: ID,
         after: Option<String>,
     ) -> Result<impl Stream<Item = SharedPurchaseDraftChange>> {
-        let pool = ctx.data::<PgPool>()?.clone();
+        let query = Arc::clone(ctx.data::<Arc<dyn SubscriptionQuery>>()?);
         let actor = actor(ctx)?;
         let session_token_hash = ctx.data::<SessionTokenHash>()?.0;
         let draft_id = Uuid::parse_str(id.as_str()).map_err(crate::internal_error)?;
-        authorize_session(&pool, actor, session_token_hash).await?;
-        let draft = crate::shared_purchase_draft::shared_purchase_draft(ctx, id.clone())
-            .await?
+        authorize_session(query.as_ref(), actor, session_token_hash).await?;
+        let cursor = query
+            .shared_draft_revision(draft_id, -1)
+            .await
+            .map_err(crate::internal_error)?
             .ok_or_else(|| Error::new("shared purchase draft not found"))?;
+        authorize_draft(query.as_ref(), actor, draft_id).await?;
         let cursor = after
             .map(|value| parse_cursor(&value))
             .transpose()?
-            .unwrap_or(draft.revision as i64);
+            .unwrap_or(cursor);
         let (tx, rx) = mpsc::channel(1);
         let hub = ctx.data::<Arc<SubscriptionHub>>()?;
         let watch_id = hub.register_draft(draft_id, cursor, tx);
-        hub.start(pool.clone());
+        hub.start(Arc::clone(&query));
         let mut authorization_interval = tokio::time::interval(Duration::from_secs(30));
         authorization_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         authorization_interval.tick().await;
         Ok(futures_util::stream::unfold(
             (
                 rx,
-                pool,
+                query,
                 actor,
                 draft_id,
                 watch_id,
@@ -485,7 +438,7 @@ impl SubscriptionRoot {
             ),
             |(
                 mut rx,
-                pool,
+                query,
                 actor,
                 draft_id,
                 watch_id,
@@ -497,20 +450,20 @@ impl SubscriptionRoot {
                     tokio::select! {
                         value = futures_util::StreamExt::next(&mut rx) => match value {
                             Some(value) => {
-                                if authorize_session(&pool, actor, session_token_hash).await.is_err()
-                                    || authorize_draft(&pool, actor, draft_id).await.is_err()
+                                if authorize_session(query.as_ref(), actor, session_token_hash).await.is_err()
+                                    || authorize_draft(query.as_ref(), actor, draft_id).await.is_err()
                                 {
                                     hub.remove_draft(watch_id);
                                     return None;
                                 }
-                                return Some((value, (rx, pool, actor, draft_id, watch_id, hub, session_token_hash, authorization_interval)));
+                                return Some((value, (rx, query, actor, draft_id, watch_id, hub, session_token_hash, authorization_interval)));
                             }
                             None => {
                                 hub.remove_draft(watch_id);
                                 return None;
                             }
                         },
-                        _ = authorization_interval.tick() => if authorize_session(&pool, actor, session_token_hash).await.is_err() || authorize_draft(&pool, actor, draft_id).await.is_err() { hub.remove_draft(watch_id); return None; },
+                        _ = authorization_interval.tick() => if authorize_session(query.as_ref(), actor, session_token_hash).await.is_err() || authorize_draft(query.as_ref(), actor, draft_id).await.is_err() { hub.remove_draft(watch_id); return None; },
                     }
                 }
             },
@@ -518,19 +471,16 @@ impl SubscriptionRoot {
     }
 }
 
-async fn authorize_session(pool: &PgPool, actor: Actor, token_hash: [u8; 32]) -> Result<()> {
-    use diesel_async::RunQueryDsl;
-    use horse_postgres_common::schema::public::oidc_sessions::dsl as sessions;
-    let mut conn = pool.get().await.map_err(crate::internal_error)?;
-    let member_id = sessions::oidc_sessions
-        .filter(sessions::token_hash.eq(token_hash.to_vec()))
-        .filter(sessions::expiry.gt(chrono::Utc::now()))
-        .select(sessions::member_id)
-        .first::<Uuid>(&mut conn)
+async fn authorize_session(
+    query: &dyn SubscriptionQuery,
+    actor: Actor,
+    token_hash: [u8; 32],
+) -> Result<()> {
+    if query
+        .session_is_valid(actor.0, token_hash)
         .await
-        .optional()
-        .map_err(crate::internal_error)?;
-    if member_id == Some(actor.0) {
+        .map_err(crate::internal_error)?
+    {
         Ok(())
     } else {
         Err(Error::new("authentication required"))
@@ -538,58 +488,35 @@ async fn authorize_session(pool: &PgPool, actor: Actor, token_hash: [u8; 32]) ->
 }
 
 async fn authorize_subscription(
-    pool: &PgPool,
+    query: &dyn SubscriptionQuery,
     actor: Actor,
     token_hash: [u8; 32],
     household: Uuid,
 ) -> Result<()> {
-    authorize_session(pool, actor, token_hash).await?;
-    authorize_household(pool, actor, household).await
+    authorize_session(query, actor, token_hash).await?;
+    authorize_household(query, actor, household).await
 }
 
-async fn authorize_household(pool: &PgPool, actor: Actor, household: Uuid) -> Result<()> {
-    use diesel_async::RunQueryDsl;
-    use horse_postgres_common::schema::public::household_members::dsl as members;
-    let mut conn = pool.get().await.map_err(crate::internal_error)?;
-    let found = members::household_members
-        .filter(members::household_id.eq(household))
-        .filter(members::member_id.eq(actor.0))
-        .filter(members::left_at.is_null())
-        .select(members::member_id)
-        .first::<Uuid>(&mut conn)
+async fn authorize_household(
+    query: &dyn SubscriptionQuery,
+    actor: Actor,
+    household: Uuid,
+) -> Result<()> {
+    query
+        .household_access(actor.0, household)
         .await
-        .optional()
-        .map_err(crate::internal_error)?;
-    found
-        .map(|_| ())
+        .map_err(crate::internal_error)?
+        .then_some(())
         .ok_or_else(|| Error::new("household access denied"))
 }
 
-async fn authorize_draft(pool: &PgPool, actor: Actor, id: Uuid) -> Result<()> {
-    let draft = bookkeeping_postgres::shared_draft::get_shared_purchase_draft(
-        pool,
-        &actor.0.to_string(),
-        &id.to_string(),
-    )
-    .await
-    .map_err(crate::internal_error)?;
-    let _ = draft;
-    Ok(())
-}
-
-async fn latest_cursor(pool: &PgPool, household: Uuid) -> Result<i64> {
-    use diesel_async::RunQueryDsl;
-    use horse_postgres_common::schema::public::household_events::dsl as events;
-    let mut conn = pool.get().await.map_err(crate::internal_error)?;
-    events::household_events
-        .filter(events::household_id.eq(household))
-        .select(events::stream_cursor)
-        .order(events::stream_cursor.desc())
-        .first::<i64>(&mut conn)
+async fn authorize_draft(query: &dyn SubscriptionQuery, actor: Actor, id: Uuid) -> Result<()> {
+    query
+        .shared_draft_is_accessible(actor.0, id)
         .await
-        .optional()
-        .map_err(crate::internal_error)
-        .map(|cursor| cursor.unwrap_or(0))
+        .map_err(crate::internal_error)?
+        .then_some(())
+        .ok_or_else(|| Error::new("shared purchase draft not found"))
 }
 
 fn parse_cursor(value: &str) -> Result<i64> {

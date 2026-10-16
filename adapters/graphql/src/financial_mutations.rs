@@ -1,23 +1,9 @@
 use async_graphql::{Context, Enum, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::{
-    MemberId,
-    record_repayment::{RecordRepaymentCommand, RepaymentError, decide_record_repayment},
-    record_transfer::{
-        RecordTransferCommand, RecordTransferError, TransferBase, decide_record_transfer,
-    },
-    workflow_failure::{WorkflowFailure, WorkflowRejection},
+use chrono::{DateTime as ChronoDateTime, Datelike, Duration, NaiveDate, Utc};
+use cross_context_application::financial_mutations::{
+    FinancialMutationError, RecordRepaymentCommand, RecordTransferCommand, TransferKind,
 };
-use bookkeeping_domain::PositiveYen;
-use bookkeeping_postgres::{
-    record_repayment as postgres_repayment, record_transfer as postgres_transfer,
-};
-use chrono::{DateTime as ChronoDateTime, Utc};
-use cross_context_postgres::{
-    evidence_workflows, financial_command_result as postgres_result,
-    policy_data as postgres_context,
-};
-use horse_postgres_common::PgPool;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -154,99 +140,38 @@ pub async fn record_transfer(
         Ok(value) => value,
         Err(error) => return Ok(error.into()),
     };
-    for member_id in [actor.0, parsed.from_member_id, parsed.to_member_id] {
-        match postgres_access(ctx.data::<PgPool>()?, parsed.household_id, member_id).await {
-            Ok(true) => {}
-            Ok(false) => return Ok(not_found_transfer_error().into()),
-            Err(error) => return Err(internal_error(error)),
-        }
-    }
-    let replay_input = postgres_transfer::FindRecordTransferReplay {
-        household_id: parsed.household_id.to_string(),
-        actor_id: actor.0.to_string(),
-        from_member_id: parsed.from_member_id.to_string(),
-        to_member_id: parsed.to_member_id.to_string(),
-        idempotency_key: parsed.idempotency_key.clone(),
-        request_fingerprint: parsed.fingerprint,
-        source_document_id: parsed.source_document_id.map(|id| id.to_string()),
-        source_reference: parsed.source_reference.clone(),
-        source_account_id: parsed.source_account_id.map(|id| id.to_string()),
-    };
-    let replay =
-        match evidence_workflows::find_record_transfer_replay(ctx.data::<PgPool>()?, &replay_input)
-            .await
-        {
-            Ok(value) => value,
-            Err(error) => return transfer_failure(error),
-        };
-    if let Some(ledger_entry_id) = replay {
-        let entry =
-            load_ledger_entry(ctx.data::<PgPool>()?, parsed.household_id, &ledger_entry_id).await?;
-        return Ok(Box::new(RecordTransferSuccess { result: entry }).into());
-    }
-    let command_context = match evidence_workflows::load_transfer_command_context(
-        ctx.data::<PgPool>()?,
-        parsed.household_id,
-        parsed.from_member_id,
-        parsed.payment_account_id,
-        parsed.to_member_id,
-        parsed.destination_account_id,
-        parsed.occurred_at,
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(error) => return transfer_context_failure(error),
-    };
-    let amount = match PositiveYen::new(parsed.amount_yen) {
-        Ok(value) => value,
-        Err(_) => return Ok(bad_transfer_error().into()),
-    };
-    let base = TransferBase {
-        actor_id: member_id(actor.0)?,
-        from_member_id: member_id(parsed.from_member_id)?,
-        to_member_id: member_id(parsed.to_member_id)?,
-        amount,
-        description: parsed.description.clone(),
-        accounting_period: command_context.accounting_period,
-        payment_account: command_context.payment_account,
-        destination_account: command_context.destination_account,
-    };
-    // RecordTransferInputの種別はAdvance/Loan/Giftのみで、返済はRecordRepaymentInputで扱うため、LoanBasisなしの組み合わせはここでは構築できない。
-    let command = match parsed.kind {
-        TransferInputKind::Advance => RecordTransferCommand::Advance(base),
-        TransferInputKind::Loan => RecordTransferCommand::Loan(base),
-        TransferInputKind::Gift => RecordTransferCommand::Gift(base),
-    };
-    let decision = match decide_record_transfer(command) {
-        Ok(value) => value,
-        Err(error) => return Ok(transfer_workflow_error(error).into()),
-    };
-    let result = match evidence_workflows::persist_record_transfer(
-        ctx.data::<PgPool>()?,
-        postgres_transfer::PersistRecordTransfer {
-            household_id: parsed.household_id.to_string(),
-            actor_id: actor.0.to_string(),
-            occurred_at: parsed.occurred_at,
-            idempotency_key: parsed.idempotency_key,
-            request_fingerprint: parsed.fingerprint,
-            source_document_id: parsed.source_document_id.map(|id| id.to_string()),
-            source_reference: parsed.source_reference,
-            source_account_id: parsed.source_account_id.map(|id| id.to_string()),
+    let command = RecordTransferCommand {
+        household_id: parsed.household_id,
+        actor_id: actor.0,
+        from_member_id: parsed.from_member_id,
+        to_member_id: parsed.to_member_id,
+        kind: match parsed.kind {
+            TransferInputKind::Advance => TransferKind::Advance,
+            TransferInputKind::Loan => TransferKind::Loan,
+            TransferInputKind::Gift => TransferKind::Gift,
         },
-        decision,
-    )
-    .await
+        payment_account_id: parsed.payment_account_id,
+        destination_account_id: parsed.destination_account_id,
+        amount_yen: parsed.amount_yen,
+        occurred_at: parsed.occurred_at,
+        description: parsed.description,
+        idempotency_key: parsed.idempotency_key,
+        source_document_id: parsed.source_document_id,
+        source_reference: parsed.source_reference,
+        source_account_id: parsed.source_account_id,
+        request_fingerprint: parsed.fingerprint,
+    };
+    let result = match ctx
+        .data::<std::sync::Arc<
+            dyn cross_context_application::financial_mutations::FinancialMutationsHandler,
+        >>()?
+        .record_transfer(command)
+        .await
     {
         Ok(value) => value,
-        Err(error) => return transfer_failure(error),
+        Err(error) => return transfer_handler_failure(error),
     };
-    let entry = load_ledger_entry(
-        ctx.data::<PgPool>()?,
-        parsed.household_id,
-        &result.ledger_entry_id,
-    )
-    .await?;
+    let entry = load_ledger_entry(ctx, parsed.household_id, result.ledger_entry_id).await?;
     Ok(Box::new(RecordTransferSuccess { result: entry }).into())
 }
 
@@ -259,98 +184,34 @@ pub async fn record_repayment(
         Ok(value) => value,
         Err(error) => return Ok(error.into()),
     };
-    for member_id in [actor.0, parsed.from_member_id, parsed.to_member_id] {
-        match postgres_access(ctx.data::<PgPool>()?, parsed.household_id, member_id).await {
-            Ok(true) => {}
-            Ok(false) => return Ok(not_found_repayment_error().into()),
-            Err(error) => return Err(internal_error(error)),
-        }
-    }
-    let replay_input = postgres_repayment::FindRecordRepaymentReplay {
-        household_id: parsed.household_id.to_string(),
-        actor_id: actor.0.to_string(),
-        from_member_id: parsed.from_member_id.to_string(),
-        to_member_id: parsed.to_member_id.to_string(),
-        idempotency_key: parsed.idempotency_key.clone(),
+    let command = RecordRepaymentCommand {
+        household_id: parsed.household_id,
+        actor_id: actor.0,
+        from_member_id: parsed.from_member_id,
+        to_member_id: parsed.to_member_id,
+        loan_id: parsed.loan_id,
+        payment_account_id: parsed.payment_account_id,
+        destination_account_id: parsed.destination_account_id,
+        amount_yen: parsed.amount_yen,
+        occurred_at: parsed.occurred_at,
+        description: parsed.description,
+        idempotency_key: parsed.idempotency_key,
+        source_document_id: parsed.source_document_id,
+        source_reference: parsed.source_reference,
+        source_account_id: parsed.source_account_id,
         request_fingerprint: parsed.fingerprint,
-        source_document_id: parsed.source_document_id.map(|id| id.to_string()),
-        source_reference: parsed.source_reference.clone(),
-        source_account_id: parsed.source_account_id.map(|id| id.to_string()),
     };
-    let replay = match evidence_workflows::find_record_repayment_replay(
-        ctx.data::<PgPool>()?,
-        &replay_input,
-    )
-    .await
+    let result = match ctx
+        .data::<std::sync::Arc<
+            dyn cross_context_application::financial_mutations::FinancialMutationsHandler,
+        >>()?
+        .record_repayment(command)
+        .await
     {
         Ok(value) => value,
-        Err(error) => return repayment_failure(error),
+        Err(error) => return repayment_handler_failure(error),
     };
-    if let Some(ledger_entry_id) = replay {
-        let entry =
-            load_ledger_entry(ctx.data::<PgPool>()?, parsed.household_id, &ledger_entry_id).await?;
-        return Ok(Box::new(RecordRepaymentSuccess { result: entry }).into());
-    }
-    let command_context = match evidence_workflows::load_repayment_command_context(
-        ctx.data::<PgPool>()?,
-        cross_context_postgres::policy_data::RepaymentCommandContextInput {
-            household_id: parsed.household_id,
-            loan_id: parsed.loan_id,
-            payment_account_id: parsed.payment_account_id,
-            destination_account_id: parsed.destination_account_id,
-            from_member_id: parsed.from_member_id,
-            to_member_id: parsed.to_member_id,
-            occurred_at: parsed.occurred_at,
-        },
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(error) => return repayment_context_failure(error),
-    };
-    let amount = match PositiveYen::new(parsed.amount_yen) {
-        Ok(value) => value,
-        Err(_) => return Ok(bad_repayment_error().into()),
-    };
-    let decision = match decide_record_repayment(RecordRepaymentCommand {
-        loan: command_context.loan,
-        repaid_so_far: command_context.repaid_so_far,
-        from_member: member_id(parsed.from_member_id)?,
-        to_member: member_id(parsed.to_member_id)?,
-        amount,
-        accounting_period: command_context.accounting_period,
-        source: command_context.source,
-        destination_account: command_context.destination_account,
-        description: parsed.description.clone(),
-    }) {
-        Ok(value) => value,
-        Err(error) => return Ok(repayment_workflow_error(error).into()),
-    };
-    let result = match evidence_workflows::persist_record_repayment(
-        ctx.data::<PgPool>()?,
-        postgres_repayment::PersistRecordRepayment {
-            household_id: parsed.household_id.to_string(),
-            actor_id: actor.0.to_string(),
-            occurred_at: parsed.occurred_at,
-            idempotency_key: parsed.idempotency_key,
-            request_fingerprint: parsed.fingerprint,
-            source_document_id: parsed.source_document_id.map(|id| id.to_string()),
-            source_reference: parsed.source_reference,
-            source_account_id: parsed.source_account_id.map(|id| id.to_string()),
-        },
-        decision,
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(error) => return repayment_failure(error),
-    };
-    let entry = load_ledger_entry(
-        ctx.data::<PgPool>()?,
-        parsed.household_id,
-        &result.ledger_entry_id,
-    )
-    .await?;
+    let entry = load_ledger_entry(ctx, parsed.household_id, result.ledger_entry_id).await?;
     Ok(Box::new(RecordRepaymentSuccess { result: entry }).into())
 }
 
@@ -596,99 +457,72 @@ fn decode_node_id(
     Ok(id)
 }
 
-fn member_id(id: Uuid) -> Result<MemberId> {
-    MemberId::new(id.to_string()).map_err(internal_error)
-}
-
 fn fingerprint(value: &impl Serialize) -> std::result::Result<[u8; 32], RecordTransferUserError> {
     let encoded = serde_json::to_vec(value).map_err(|_| bad_transfer_error())?;
     Ok(Sha256::digest(encoded).into())
 }
 
-async fn postgres_access(
-    pool: &PgPool,
-    household_id: Uuid,
-    member_id: Uuid,
-) -> Result<bool, impl std::fmt::Debug> {
-    household_postgres::household_access::is_active_member(pool, household_id, member_id).await
-}
-
 async fn load_ledger_entry(
-    pool: &PgPool,
+    ctx: &Context<'_>,
     household_id: Uuid,
-    ledger_entry_id: &str,
+    ledger_entry_id: Uuid,
 ) -> Result<crate::ledger_entry::LedgerEntry> {
-    let ledger_entry_id = Uuid::parse_str(ledger_entry_id).map_err(internal_error)?;
-    let projection =
-        postgres_result::load_transfer_ledger_entry_result(pool, household_id, ledger_entry_id)
-            .await
-            .map_err(internal_error)?;
-    crate::ledger_entry::LedgerEntry::try_from(projection).map_err(internal_error)
+    let now = Utc::now();
+    let next_month = if now.month() == 12 {
+        NaiveDate::from_ymd_opt(now.year() + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(now.year(), now.month() + 1, 1)
+    }
+    .ok_or_else(|| internal_error("invalid next month"))?;
+    let period_end = chrono::DateTime::<Utc>::from_naive_utc_and_offset(
+        next_month
+            .checked_add_signed(Duration::days(i64::from(now.day() - 1)))
+            .ok_or_else(|| internal_error("invalid next month date"))?
+            .and_time(now.time()),
+        Utc,
+    );
+    let projection = ctx
+        .data::<std::sync::Arc<
+            dyn cross_context_application::node_financial_batch::NodeFinancialBatchQuery,
+        >>()?
+        .load(
+            cross_context_application::node_financial_batch::NodeFinancialBatchInput {
+                household_ids: vec![household_id],
+                funding_schedule_ids: Vec::new(),
+                budget_ids: Vec::new(),
+                loan_balance_ids: Vec::new(),
+                ledger_entry_ids: vec![ledger_entry_id],
+                transfer_ids: Vec::new(),
+                period_start: now,
+                period_end,
+            },
+        )
+        .await
+        .map_err(internal_error)?;
+    let projection = projection
+        .transfer_ledger_entries
+        .get(&ledger_entry_id)
+        .cloned()
+        .ok_or_else(|| internal_error("transfer ledger entry was not loaded"))?;
+    crate::ledger_entry::LedgerEntry::try_from(projection)
+        .map_err(|error| internal_error(format!("invalid transfer ledger entry: {error:?}")))
 }
 
-fn transfer_workflow_error(error: RecordTransferError) -> RecordTransferUserError {
+fn transfer_handler_failure(error: FinancialMutationError) -> Result<RecordTransferResult> {
     match error {
-        RecordTransferError::AccountingPeriodClosed => conflict_transfer_error(),
-        _ => bad_transfer_error(),
+        FinancialMutationError::NotFound => Ok(not_found_transfer_error().into()),
+        FinancialMutationError::Conflict => Ok(conflict_transfer_error().into()),
+        FinancialMutationError::InvalidInput => Ok(bad_transfer_error().into()),
+        FinancialMutationError::Infrastructure(error) => Err(internal_error(error)),
     }
 }
 
-fn repayment_workflow_error(error: RepaymentError) -> RecordRepaymentUserError {
+fn repayment_handler_failure(error: FinancialMutationError) -> Result<RecordRepaymentResult> {
     match error {
-        RepaymentError::AccountingPeriodClosed => conflict_repayment_error(),
-        _ => bad_repayment_error(),
-    }
-}
-
-fn transfer_context_failure(
-    error: WorkflowFailure<WorkflowRejection, postgres_context::FinancialCommandContextError>,
-) -> Result<RecordTransferResult> {
-    match error {
-        WorkflowFailure::NotFound => Ok(not_found_transfer_error().into()),
-        WorkflowFailure::Conflict => Ok(conflict_transfer_error().into()),
-        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => {
-            Ok(bad_transfer_error().into())
-        }
-        WorkflowFailure::Infrastructure(error) => Err(internal_error(error)),
-    }
-}
-
-fn repayment_context_failure(
-    error: WorkflowFailure<WorkflowRejection, postgres_context::FinancialCommandContextError>,
-) -> Result<RecordRepaymentResult> {
-    match error {
-        WorkflowFailure::NotFound => Ok(not_found_repayment_error().into()),
-        WorkflowFailure::Conflict => Ok(conflict_repayment_error().into()),
-        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => {
-            Ok(bad_repayment_error().into())
-        }
-        WorkflowFailure::Infrastructure(error) => Err(internal_error(error)),
-    }
-}
-
-fn transfer_failure(
-    error: WorkflowFailure<WorkflowRejection, postgres_transfer::RecordTransferPersistenceError>,
-) -> Result<RecordTransferResult> {
-    match error {
-        WorkflowFailure::NotFound => Ok(not_found_transfer_error().into()),
-        WorkflowFailure::Conflict => Ok(conflict_transfer_error().into()),
-        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => {
-            Ok(bad_transfer_error().into())
-        }
-        WorkflowFailure::Infrastructure(error) => Err(internal_error(error)),
-    }
-}
-
-fn repayment_failure(
-    error: WorkflowFailure<WorkflowRejection, postgres_repayment::RecordRepaymentPersistenceError>,
-) -> Result<RecordRepaymentResult> {
-    match error {
-        WorkflowFailure::NotFound => Ok(not_found_repayment_error().into()),
-        WorkflowFailure::Conflict => Ok(conflict_repayment_error().into()),
-        WorkflowFailure::Decision(WorkflowRejection::InvalidInput) => {
-            Ok(bad_repayment_error().into())
-        }
-        WorkflowFailure::Infrastructure(error) => Err(internal_error(error)),
+        FinancialMutationError::NotFound => Ok(not_found_repayment_error().into()),
+        FinancialMutationError::Conflict => Ok(conflict_repayment_error().into()),
+        FinancialMutationError::InvalidInput => Ok(bad_repayment_error().into()),
+        FinancialMutationError::Infrastructure(error) => Err(internal_error(error)),
     }
 }
 

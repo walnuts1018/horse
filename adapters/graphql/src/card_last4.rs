@@ -1,8 +1,10 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::workflow_failure::WorkflowFailure;
-use bookkeeping_postgres::account_card_last4;
-use horse_postgres_common::PgPool;
+use bookkeeping_application::{
+    account_card_last4::{SetCardLast4Handler, SetCardLast4Request},
+    workflow_failure::WorkflowFailure,
+};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
@@ -42,13 +44,14 @@ pub async fn set_account_card_last4(
         Ok(id) => id,
         Err(()) => return Ok(user_error(MutationErrorCode::BadInput).into()),
     };
-    match account_card_last4::persist_set_card_last4(
-        ctx.data::<PgPool>()?,
-        &actor.0.to_string(),
-        &account_id.to_string(),
-        input.card_last4,
-    )
-    .await
+    match ctx
+        .data::<Arc<dyn SetCardLast4Handler>>()?
+        .handle(SetCardLast4Request {
+            actor_id: actor.0,
+            account_id,
+            card_last4: input.card_last4,
+        })
+        .await
     {
         Ok(account) => {
             let kind = match account.kind.as_str() {
@@ -60,14 +63,13 @@ pub async fn set_account_card_last4(
             };
             Ok(SetAccountCardLast4Success {
                 result: AccountObject {
-                    id: encode_node_id("Account", &account.id)?.into(),
+                    id: encode_node_id("Account", &account.id.to_string())?.into(),
                     name: account.name,
                     kind,
                     card_last4: account.card_last4,
                     pool_id: account
                         .pool_id
-                        .as_deref()
-                        .map(|id| encode_node_id("Pool", id).map(Into::into))
+                        .map(|id| encode_node_id("Pool", &id.to_string()).map(Into::into))
                         .transpose()?,
                 },
             }

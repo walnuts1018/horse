@@ -140,14 +140,14 @@ impl AllocationRuleTarget {
     }
 }
 
-pub fn allocation_rule_target_from_projection(
-    value: cross_context_postgres::pool_mutations::AllocationRuleTargetProjection,
+pub(crate) fn allocation_rule_target_from_policy(
+    value: policy_application::pool_queries::AllocationRuleTarget,
 ) -> Result<AllocationRuleTarget> {
-    use cross_context_postgres::pool_mutations::AllocationRuleTargetProjection as Projection;
+    use policy_application::pool_queries::AllocationRuleTarget as Target;
 
     match value {
-        Projection::Merchant { name } => Ok(AllocationRuleTarget::merchant(name)),
-        Projection::Category {
+        Target::Merchant { name } => Ok(AllocationRuleTarget::merchant(name)),
+        Target::Category {
             id,
             parent_id,
             name,
@@ -163,12 +163,11 @@ pub fn allocation_rule_target_from_projection(
                 .transpose()?,
             archived,
         })),
-        Projection::ProductConcept(value) => {
-            let revision = graphql_revision(value.revision, "product concept")?;
+        Target::ProductConcept(value) => {
             let variants = value
                 .variants
                 .into_iter()
-                .map(map_projected_product_variant)
+                .map(map_policy_product_variant)
                 .collect::<Result<Vec<_>>>()?;
             Ok(AllocationRuleTarget::product_concept(ProductConcept {
                 id: encode_node_id("ProductConcept", &value.id.to_string())
@@ -184,18 +183,18 @@ pub fn allocation_rule_target_from_projection(
                     })
                     .transpose()?,
                 archived: value.archived,
-                revision,
+                revision: graphql_revision(value.revision, "product concept")?,
                 variants,
             }))
         }
-        Projection::ProductVariant(value) => Ok(AllocationRuleTarget::product_variant(
-            map_projected_product_variant(value)?,
+        Target::ProductVariant(value) => Ok(AllocationRuleTarget::product_variant(
+            map_policy_product_variant(value)?,
         )),
     }
 }
 
-fn map_projected_product_variant(
-    value: cross_context_postgres::pool_mutations::ProductVariantProjection,
+fn map_policy_product_variant(
+    value: policy_application::pool_queries::ProductVariant,
 ) -> Result<ProductVariant> {
     Ok(ProductVariant {
         id: encode_node_id("ProductVariant", &value.id.to_string())

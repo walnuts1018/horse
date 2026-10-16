@@ -1,0 +1,320 @@
+use policy_application::{budget, recurring_expense};
+use uuid::Uuid;
+
+use crate::{PgPool, policy, policy_query};
+
+pub struct PostgresBudgetMutationHandler {
+    pool: PgPool,
+}
+
+impl PostgresBudgetMutationHandler {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl budget::BudgetMutationHandler for PostgresBudgetMutationHandler {
+    fn create<'a>(
+        &'a self,
+        command: budget::CreateBudgetCommand,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<budget::BudgetReadModel, policy_application::WorkflowFailure>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let actor_id = command.actor_id.value();
+            let mut operations = policy::PolicyOperations::new(&self.pool);
+            let saved = budget::create_budget(&mut operations, command).await?;
+            read_budget(&self.pool, actor_id, saved.id.value()).await
+        })
+    }
+
+    fn update<'a>(
+        &'a self,
+        command: budget::UpdateBudgetCommand,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<budget::BudgetReadModel, policy_application::WorkflowFailure>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let actor_id = command.actor_id.value();
+            let mut operations = policy::PolicyOperations::new(&self.pool);
+            let saved = budget::update_budget(&mut operations, command).await?;
+            read_budget(&self.pool, actor_id, saved.id.value()).await
+        })
+    }
+
+    fn archive<'a>(
+        &'a self,
+        actor_id: budget::BudgetActorId,
+        id: budget::BudgetId,
+        expected_revision: i64,
+        archived: bool,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<budget::BudgetReadModel, policy_application::WorkflowFailure>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let household_id = policy_query::budget_household_id(&self.pool, id.value())
+                .await
+                .map_err(classify_query_error)?;
+            let command = budget::ArchiveBudgetCommand {
+                actor_id,
+                household_id: budget::BudgetHouseholdId::from_persisted(household_id),
+                id,
+                expected_revision,
+                archived,
+            };
+            let mut operations = policy::PolicyOperations::new(&self.pool);
+            let saved = budget::archive_budget(&mut operations, command).await?;
+            read_budget(&self.pool, actor_id.value(), saved.id.value()).await
+        })
+    }
+}
+
+impl budget::BudgetQuery for PostgresBudgetMutationHandler {
+    fn query<'a>(
+        &'a self,
+        actor_id: budget::BudgetActorId,
+        household_id: budget::BudgetHouseholdId,
+        period: String,
+        after_id: Option<Uuid>,
+        before_id: Option<Uuid>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<budget::BudgetPage, policy_application::WorkflowFailure>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let page = policy_query::budgets(
+                &self.pool,
+                policy_query::BudgetsQuery {
+                    actor_id: actor_id.value(),
+                    household_id: household_id.value(),
+                    period: &period,
+                    after_id,
+                    before_id,
+                    first,
+                    last,
+                },
+            )
+            .await
+            .map_err(classify_query_error)?;
+            Ok(budget::BudgetPage {
+                rows: page
+                    .rows
+                    .into_iter()
+                    .map(|value| budget::BudgetReadModel {
+                        budget: value.budget,
+                        actual_yen: value.actual_yen,
+                        remaining_yen: value.remaining_yen,
+                    })
+                    .collect(),
+                total_count: page.total_count,
+                has_next_page: page.has_next_page,
+                has_previous_page: page.has_previous_page,
+            })
+        })
+    }
+}
+
+pub struct PostgresRecurringExpenseMutationHandler {
+    pool: PgPool,
+}
+
+impl PostgresRecurringExpenseMutationHandler {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl recurring_expense::RecurringExpenseMutationHandler
+    for PostgresRecurringExpenseMutationHandler
+{
+    fn create<'a>(
+        &'a self,
+        command: recurring_expense::CreateRecurringExpenseCommand,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        recurring_expense::RecurringExpense,
+                        policy_application::WorkflowFailure,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let mut operations = policy::PolicyOperations::new(&self.pool);
+            recurring_expense::create_recurring_expense(&mut operations, command).await
+        })
+    }
+
+    fn update<'a>(
+        &'a self,
+        command: recurring_expense::UpdateRecurringExpenseCommand,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        recurring_expense::RecurringExpense,
+                        policy_application::WorkflowFailure,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let mut operations = policy::PolicyOperations::new(&self.pool);
+            recurring_expense::update_recurring_expense(&mut operations, command).await
+        })
+    }
+
+    fn archive<'a>(
+        &'a self,
+        actor_id: recurring_expense::RecurringExpenseActorId,
+        id: recurring_expense::RecurringExpenseId,
+        expected_revision: i64,
+        archived: bool,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        recurring_expense::RecurringExpense,
+                        policy_application::WorkflowFailure,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let household_id = policy_query::recurring_expense_household_id(&self.pool, id.value())
+                .await
+                .map_err(classify_query_error)?;
+            let command = recurring_expense::ArchiveRecurringExpenseCommand {
+                actor_id,
+                household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(
+                    household_id,
+                ),
+                id,
+                expected_revision,
+                archived,
+            };
+            let mut operations = policy::PolicyOperations::new(&self.pool);
+            recurring_expense::archive_recurring_expense(&mut operations, command).await
+        })
+    }
+
+    fn match_purchase<'a>(
+        &'a self,
+        command: recurring_expense::MatchRecurringExpenseCommand,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        recurring_expense::RecurringExpense,
+                        policy_application::WorkflowFailure,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let mut operations = policy::PolicyOperations::new(&self.pool);
+            recurring_expense::match_recurring_expense(&mut operations, command).await
+        })
+    }
+}
+
+impl recurring_expense::RecurringExpenseQuery for PostgresRecurringExpenseMutationHandler {
+    fn query<'a>(
+        &'a self,
+        actor_id: recurring_expense::RecurringExpenseActorId,
+        household_id: recurring_expense::RecurringExpenseHouseholdId,
+        include_archived: bool,
+        after_id: Option<Uuid>,
+        before_id: Option<Uuid>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        recurring_expense::RecurringExpensePage,
+                        policy_application::WorkflowFailure,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let page = policy_query::recurring_expenses(
+                &self.pool,
+                policy_query::RecurringExpensesQuery {
+                    actor_id: actor_id.value(),
+                    household_id: household_id.value(),
+                    include_archived,
+                    after_id,
+                    before_id,
+                    first,
+                    last,
+                },
+            )
+            .await
+            .map_err(classify_query_error)?;
+            Ok(recurring_expense::RecurringExpensePage {
+                rows: page.rows,
+                total_count: page.total_count,
+                has_next_page: page.has_next_page,
+                has_previous_page: page.has_previous_page,
+            })
+        })
+    }
+}
+
+async fn read_budget(
+    pool: &PgPool,
+    actor_id: Uuid,
+    budget_id: Uuid,
+) -> Result<budget::BudgetReadModel, policy_application::WorkflowFailure> {
+    policy_query::budget_for_current_period(pool, actor_id, budget_id)
+        .await
+        .map(|value| budget::BudgetReadModel {
+            budget: value.budget,
+            actual_yen: value.actual_yen,
+            remaining_yen: value.remaining_yen,
+        })
+        .map_err(classify_query_error)
+}
+
+fn classify_query_error(
+    error: policy_query::PolicyQueryError,
+) -> policy_application::WorkflowFailure {
+    use policy_application::WorkflowFailure;
+    match error {
+        policy_query::PolicyQueryError::NotFound
+        | policy_query::PolicyQueryError::MemberNotFound => WorkflowFailure::NotFound,
+        policy_query::PolicyQueryError::InvalidUuid
+        | policy_query::PolicyQueryError::InvalidPeriod
+        | policy_query::PolicyQueryError::InvalidPagination => WorkflowFailure::Decision,
+        error => WorkflowFailure::Infrastructure(format!("{error:?}")),
+    }
+}

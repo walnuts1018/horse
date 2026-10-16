@@ -1,13 +1,13 @@
 use async_graphql::{Context, ID, InputObject, Interface, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::settlement_query::GetSettlementQuery;
-use bookkeeping_application::workflow_failure::WorkflowFailure;
+use bookkeeping_application::{
+    settlement_query::GetSettlementQuery, workflow_failure::WorkflowFailure,
+};
 use bookkeeping_domain::close_period::ClosePeriodError;
-use bookkeeping_postgres::loan_balance_query as postgres_loan_balances;
 use chrono::{DateTime as ChronoDateTime, Utc};
-use cross_context_postgres::policy_settlement as postgres_settlement;
-use horse_postgres_common::PgPool;
-use household_postgres::household_access;
+use cross_context_application::settlement_workflow::{
+    CloseSettlementCommand, SettlementQueryFailure, SettlementWorkflow,
+};
 use uuid::Uuid;
 
 use crate::{DateTime, Long, MutationErrorCode, ledger_entry::LoanBalance, pagination::PageInfo};
@@ -113,18 +113,18 @@ pub async fn close_period(ctx: &Context<'_>, input: ClosePeriodInput) -> Result<
         Ok(value) => value,
         Err(_) => return Ok(ClosePeriodResult::UserError(bad_input())),
     };
-    match postgres_settlement::close_period(
-        ctx.data::<PgPool>()?,
-        &household_id.to_string(),
-        &actor.0.to_string(),
-        input.period.as_str(),
-        expected_revision,
-    )
-    .await
+    let workflow = ctx.data::<std::sync::Arc<dyn SettlementWorkflow>>()?;
+    match workflow
+        .close(CloseSettlementCommand {
+            household_id,
+            actor_id: actor.0,
+            period: input.period.as_str().to_owned(),
+            expected_revision,
+        })
+        .await
     {
-        Ok(_) => {
-            let result =
-                load_settlement(ctx.data::<PgPool>()?, household_id, input.period.as_str()).await?;
+        Ok(result) => {
+            let result = map_settlement_result(result)?;
             Ok(ClosePeriodResult::Success(ClosePeriodSuccess { result }))
         }
         Err(WorkflowFailure::Decision(error)) => match error {
@@ -157,28 +157,22 @@ pub async fn settlement(
 ) -> Result<Settlement> {
     let actor = crate::actor(ctx)?;
     let household_id = crate::decode_household_id(&household_id)?;
-    ensure_member(ctx.data::<PgPool>()?, household_id, actor.0).await?;
-    load_settlement(ctx.data::<PgPool>()?, household_id, period.as_str()).await
-}
-
-async fn load_settlement(pool: &PgPool, household_id: Uuid, period: &str) -> Result<Settlement> {
-    let result = postgres_settlement::get_many(
-        pool,
-        &[GetSettlementQuery {
-            household_id: household_id.to_string(),
-            period: period.to_owned(),
-        }],
-    )
-    .await
-    .map_err(crate::internal_error)?
-    .into_iter()
-    .next()
-    .ok_or_else(|| crate::internal_error("settlement query returned no result"))?;
+    let workflow = ctx.data::<std::sync::Arc<dyn SettlementWorkflow>>()?;
+    let result = workflow
+        .get(
+            actor.0,
+            GetSettlementQuery {
+                household_id: household_id.to_string(),
+                period: period.as_str().to_owned(),
+            },
+        )
+        .await
+        .map_err(map_query_failure)?;
     map_settlement_result(result)
 }
 
 pub(crate) async fn load_settlements_for_nodes(
-    pool: &PgPool,
+    workflow: &dyn SettlementWorkflow,
     requested: &[(Uuid, String)],
 ) -> Result<std::collections::HashMap<(Uuid, String), Settlement>> {
     if requested.is_empty() {
@@ -191,7 +185,8 @@ pub(crate) async fn load_settlements_for_nodes(
             period: period.clone(),
         })
         .collect::<Vec<_>>();
-    let values = postgres_settlement::get_many(pool, &queries)
+    let values = workflow
+        .get_many(queries)
         .await
         .map_err(crate::internal_error)?;
     values
@@ -293,16 +288,17 @@ pub async fn loan_balances(
 ) -> Result<LoanBalanceConnection> {
     let actor = crate::actor(ctx)?;
     let household_id = crate::decode_household_id(&household_id)?;
-    ensure_member(ctx.data::<PgPool>()?, household_id, actor.0).await?;
+    let workflow = ctx.data::<std::sync::Arc<dyn SettlementWorkflow>>()?;
+    let rows = workflow
+        .loan_balances(actor.0, household_id)
+        .await
+        .map_err(map_query_failure)?;
     let (size, backwards) = match (first, last) {
         (Some(size), None) if (1..=100).contains(&size) => (size as usize, false),
         (None, Some(size)) if (1..=100).contains(&size) => (size as usize, true),
         (None, None) => (50, false),
         _ => return Err(async_graphql::Error::new("provide either first or last")),
     };
-    let rows = postgres_loan_balances::list(ctx.data::<PgPool>()?, household_id)
-        .await
-        .map_err(crate::internal_error)?;
     let total_count = i32::try_from(rows.len()).map_err(crate::internal_error)?;
     let after_id = decode_loan_cursor(after.as_deref())?;
     let before_id = decode_loan_cursor(before.as_deref())?;
@@ -366,14 +362,10 @@ pub async fn loan_balances(
     })
 }
 
-async fn ensure_member(pool: &PgPool, household_id: Uuid, actor_id: Uuid) -> Result<()> {
-    let is_member = household_access::is_active_member(pool, household_id, actor_id)
-        .await
-        .map_err(crate::internal_error)?;
-    if is_member {
-        Ok(())
-    } else {
-        Err(async_graphql::Error::new("not found"))
+fn map_query_failure(error: SettlementQueryFailure) -> async_graphql::Error {
+    match error {
+        SettlementQueryFailure::NotFound => async_graphql::Error::new("not found"),
+        SettlementQueryFailure::Infrastructure(error) => crate::internal_error(error),
     }
 }
 

@@ -5,10 +5,12 @@ use base64::Engine;
 use catalog_application::node_batch_query::{
     CatalogNodeBatch, CatalogNodeBatchInput, CatalogNodeBatchQuery,
 };
-use chrono::{NaiveDate, Utc};
-use diesel::{ExpressionMethods, QueryDsl};
-use diesel_async::RunQueryDsl;
-use horse_postgres_common::{PgPool, schema::public};
+use chrono::Utc;
+use household_application::{
+    invitation::InvitationState,
+    invitation_node_query::{HouseholdInvitationNodeQuery, HouseholdInvitationNodeQueryInput},
+};
+use policy_application::node_catalog_planning_query::{PolicyNodeBatchInput, PolicyNodeBatchQuery};
 use uuid::Uuid;
 
 use crate::{
@@ -23,12 +25,6 @@ pub(crate) async fn load(
     household_ids: &[Uuid],
     requested: &[(String, Uuid)],
 ) -> Result<HashMap<NodeKey, Node>> {
-    use public::{
-        allocation_rule_weights::dsl as weights, allocation_rules::dsl as rules,
-        categories::dsl as categories, household_invitations::dsl as invitations,
-        household_members::dsl as members, recurring_expenses::dsl as expenses,
-    };
-
     if household_ids.is_empty() || requested.is_empty() {
         return Ok(HashMap::new());
     }
@@ -73,71 +69,26 @@ pub(crate) async fn load(
         loaded.extend(map_catalog_nodes(catalog_batch)?);
     }
 
-    let has_policy_nodes = ids_by_type.contains_key("RecurringExpense")
-        || ids_by_type.contains_key("HouseholdInvitation")
-        || ids_by_type.contains_key("AllocationRule");
-    if !has_policy_nodes {
-        return Ok(loaded);
-    }
-    let pool = ctx.data::<PgPool>()?;
-    let mut conn = pool.get().await.map_err(crate::internal_error)?;
-
-    if let Some(ids) = ids_by_type.get("RecurringExpense") {
-        let rows = expenses::recurring_expenses
-            .filter(expenses::household_id.eq_any(household_ids))
-            .filter(expenses::id.eq_any(ids))
-            .select((
-                expenses::id,
-                expenses::household_id,
-                expenses::name,
-                expenses::merchant,
-                expenses::amount_yen,
-                expenses::currency,
-                expenses::category_id,
-                expenses::payment_account_id,
-                expenses::cadence,
-                expenses::starts_on,
-                expenses::next_due_on,
-                expenses::ends_on,
-                expenses::archived,
-                expenses::revision,
-            ))
-            .load::<(
-                Uuid,
-                Uuid,
-                String,
-                String,
-                i64,
-                String,
-                Option<Uuid>,
-                Option<Uuid>,
-                String,
-                NaiveDate,
-                NaiveDate,
-                Option<NaiveDate>,
-                bool,
-                i64,
-            )>(&mut conn)
+    let recurring_expense_ids = ids_by_type
+        .get("RecurringExpense")
+        .cloned()
+        .unwrap_or_default();
+    let allocation_rule_ids = ids_by_type
+        .get("AllocationRule")
+        .cloned()
+        .unwrap_or_default();
+    if !recurring_expense_ids.is_empty() || !allocation_rule_ids.is_empty() {
+        let batch = ctx
+            .data::<std::sync::Arc<dyn PolicyNodeBatchQuery>>()?
+            .load(PolicyNodeBatchInput {
+                household_ids: household_ids.to_vec(),
+                recurring_expense_ids,
+                allocation_rule_ids,
+            })
             .await
             .map_err(crate::internal_error)?;
-        for (
-            id,
-            household_id,
-            name,
-            merchant,
-            amount_yen,
-            currency,
-            category_id,
-            payment_account_id,
-            cadence,
-            starts_on,
-            next_due_on,
-            ends_on,
-            archived,
-            revision,
-        ) in rows
-        {
-            let cadence = match cadence.as_str() {
+        for row in batch.recurring_expenses {
+            let cadence = match row.cadence.as_str() {
                 "WEEKLY" => crate::policy_mutations::RecurringExpenseCadence::Weekly,
                 "MONTHLY" => crate::policy_mutations::RecurringExpenseCadence::Monthly,
                 "YEARLY" => crate::policy_mutations::RecurringExpenseCadence::Yearly,
@@ -148,200 +99,61 @@ pub(crate) async fn load(
                 }
             };
             let value = crate::policy_mutations::RecurringExpenseObject {
-                id: relay_id("RecurringExpense", id)?,
-                household_id: relay_id("Household", household_id)?,
-                name,
-                merchant,
-                amount_yen: crate::Long(amount_yen),
-                currency,
-                category_id: category_id
+                id: relay_id("RecurringExpense", row.id)?,
+                household_id: relay_id("Household", row.household_id)?,
+                name: row.name,
+                merchant: row.merchant,
+                amount_yen: crate::Long(row.amount_yen),
+                currency: row.currency,
+                category_id: row
+                    .category_id
                     .map(|value| relay_id("Category", value))
                     .transpose()?,
-                payment_account_id: payment_account_id
+                payment_account_id: row
+                    .payment_account_id
                     .map(|value| relay_id("Account", value))
                     .transpose()?,
                 cadence,
-                starts_on: crate::policy_mutations::Date(starts_on),
-                next_due_on: crate::policy_mutations::Date(next_due_on),
-                ends_on: ends_on.map(crate::policy_mutations::Date),
-                archived,
-                revision: graphql_revision(revision, "RecurringExpense")?,
+                starts_on: crate::policy_mutations::Date(row.starts_on),
+                next_due_on: crate::policy_mutations::Date(row.next_due_on),
+                ends_on: row.ends_on.map(crate::policy_mutations::Date),
+                archived: row.archived,
+                revision: graphql_revision(row.revision, "RecurringExpense")?,
             };
             loaded.insert(
-                ("RecurringExpense".to_owned(), id),
+                ("RecurringExpense".to_owned(), row.id),
                 Node::RecurringExpense(value),
             );
         }
-    }
-
-    if let Some(ids) = ids_by_type.get("HouseholdInvitation") {
-        let actor = crate::actor(ctx)?;
-        let owner_household_ids = members::household_members
-            .filter(members::household_id.eq_any(household_ids))
-            .filter(members::member_id.eq(actor.0))
-            .filter(members::role.eq("OWNER"))
-            .filter(members::left_at.is_null())
-            .select(members::household_id)
-            .distinct()
-            .load::<Uuid>(&mut conn)
-            .await
-            .map_err(crate::internal_error)?;
-        if !owner_household_ids.is_empty() {
-            let rows = invitations::household_invitations
-                .filter(invitations::household_id.eq_any(owner_household_ids))
-                .filter(invitations::id.eq_any(ids))
-                .select((
-                    invitations::id,
-                    invitations::household_id,
-                    invitations::created_at,
-                    invitations::expires_at,
-                    invitations::accepted_at,
-                    invitations::revoked_at,
-                ))
-                .load::<(
-                    Uuid,
-                    Uuid,
-                    chrono::DateTime<Utc>,
-                    chrono::DateTime<Utc>,
-                    Option<chrono::DateTime<Utc>>,
-                    Option<chrono::DateTime<Utc>>,
-                )>(&mut conn)
-                .await
-                .map_err(crate::internal_error)?;
-            let now = Utc::now();
-            for (id, household_id, created_at, expires_at, accepted_at, revoked_at) in rows {
-                let mapped = crate::household_lifecycle::map_invitation(
-                    household_postgres::household_invitation::InvitationStateDto {
-                        id: id.to_string(),
-                        household_id: household_id.to_string(),
-                        created_at,
-                        expires_at,
-                        accepted_at,
-                        revoked_at,
-                    },
-                    now,
-                )
-                .map_err(crate::internal_error)?;
-                loaded.insert(
-                    ("HouseholdInvitation".to_owned(), id),
-                    Node::HouseholdInvitation(mapped),
-                );
-            }
-        }
-    }
-
-    // Allocation rules need their target and ordered pool weights as part of the node value.
-    if let Some(ids) = ids_by_type.get("AllocationRule") {
-        let rule_rows = rules::allocation_rules
-            .filter(rules::household_id.eq_any(household_ids))
-            .filter(rules::id.eq_any(ids))
-            .select((
-                rules::id,
-                rules::household_id,
-                rules::category_id,
-                rules::merchant_key,
-                rules::revision,
-                rules::product_concept_id,
-                rules::product_variant_id,
-            ))
-            .load::<(
-                Uuid,
-                Uuid,
-                Option<Uuid>,
-                Option<String>,
-                i64,
-                Option<Uuid>,
-                Option<Uuid>,
-            )>(&mut conn)
-            .await
-            .map_err(crate::internal_error)?;
-        let rule_ids: Vec<Uuid> = rule_rows.iter().map(|row| row.0).collect();
-        let weight_rows = if rule_ids.is_empty() {
-            Vec::new()
-        } else {
-            weights::allocation_rule_weights
-                .filter(weights::rule_id.eq_any(&rule_ids))
-                .order_by(weights::pool_id)
-                .select((weights::rule_id, weights::pool_id, weights::weight))
-                .load::<(Uuid, Uuid, i64)>(&mut conn)
-                .await
-                .map_err(crate::internal_error)?
-        };
-        let pool_ids: Vec<Uuid> = weight_rows.iter().map(|row| row.1).collect();
-        let pool_names = if pool_ids.is_empty() {
-            HashMap::new()
-        } else {
-            use public::pools::dsl as pools;
-            pools::pools
-                .filter(pools::household_id.eq_any(household_ids))
-                .filter(pools::id.eq_any(pool_ids))
-                .select((pools::id, pools::name))
-                .load::<(Uuid, String)>(&mut conn)
-                .await
-                .map_err(crate::internal_error)?
-                .into_iter()
-                .collect()
-        };
-        let category_ids: Vec<Uuid> = rule_rows.iter().filter_map(|row| row.2).collect();
-        let category_values = if category_ids.is_empty() {
-            HashMap::new()
-        } else {
-            categories::categories
-                .filter(categories::household_id.eq_any(household_ids))
-                .filter(categories::id.eq_any(category_ids))
-                .select((
-                    categories::id,
-                    categories::name,
-                    categories::parent_id,
-                    categories::archived,
-                ))
-                .load::<(Uuid, String, Option<Uuid>, bool)>(&mut conn)
-                .await
-                .map_err(crate::internal_error)?
-                .into_iter()
-                .map(|(id, name, parent_id, archived)| {
-                    let value = crate::category::Category {
-                        id: relay_id("Category", id)?,
-                        name,
-                        parent_id: parent_id
-                            .map(|parent_id| relay_id("Category", parent_id))
-                            .transpose()?,
-                        archived,
-                    };
-                    Ok((id, value))
-                })
-                .collect::<Result<HashMap<_, _>>>()?
-        };
-        let concept_targets: Vec<Uuid> = rule_rows.iter().filter_map(|row| row.5).collect();
-        let variant_targets: Vec<Uuid> = rule_rows.iter().filter_map(|row| row.6).collect();
+        let concept_targets = batch
+            .allocation_rules
+            .iter()
+            .filter_map(|row| row.product_concept_id)
+            .collect::<Vec<_>>();
+        let variant_targets = batch
+            .allocation_rules
+            .iter()
+            .filter_map(|row| row.product_variant_id)
+            .collect::<Vec<_>>();
         let products =
             load_products_for_targets(ctx, household_ids, &concept_targets, &variant_targets)
                 .await?;
-        let mut weights_by_rule: HashMap<Uuid, Vec<crate::pool_mutations::AllocationObject>> =
-            HashMap::new();
-        for (rule_id, pool_id, weight) in weight_rows {
-            let pool_name = pool_names
-                .get(&pool_id)
-                .ok_or_else(|| crate::internal_error("allocation rule weight pool is missing"))?
-                .clone();
-            weights_by_rule.entry(rule_id).or_default().push(
-                crate::pool_mutations::AllocationObject {
-                    pool_id: relay_id("Pool", pool_id)?,
-                    pool_name,
-                    weight: crate::Long(weight),
-                },
-            );
-        }
-        for (id, household_id, category_id, merchant_key, revision, concept_id, variant_id) in
-            rule_rows
-        {
-            let target = if let Some(category_id) = category_id {
-                AllocationRuleTarget::category(
-                    category_values.get(&category_id).cloned().ok_or_else(|| {
-                        crate::internal_error("allocation rule category is missing")
+        for row in batch.allocation_rules {
+            let target = if let Some(category_id) = row.category_id {
+                AllocationRuleTarget::category(crate::category::Category {
+                    id: relay_id("Category", category_id)?,
+                    name: row.category_name.ok_or_else(|| {
+                        crate::internal_error("allocation rule category name is missing")
                     })?,
-                )
-            } else if let Some(concept_id) = concept_id {
+                    parent_id: row
+                        .category_parent_id
+                        .map(|id| relay_id("Category", id))
+                        .transpose()?,
+                    archived: row.category_archived.ok_or_else(|| {
+                        crate::internal_error("allocation rule category state is missing")
+                    })?,
+                })
+            } else if let Some(concept_id) = row.product_concept_id {
                 AllocationRuleTarget::product_concept(
                     products
                         .get(&("ProductConcept".to_owned(), concept_id))
@@ -353,7 +165,7 @@ pub(crate) async fn load(
                             crate::internal_error("allocation rule product concept is missing")
                         })?,
                 )
-            } else if let Some(variant_id) = variant_id {
+            } else if let Some(variant_id) = row.product_variant_id {
                 AllocationRuleTarget::product_variant(
                     products
                         .get(&("ProductVariant".to_owned(), variant_id))
@@ -365,24 +177,68 @@ pub(crate) async fn load(
                             crate::internal_error("allocation rule product variant is missing")
                         })?,
                 )
-            } else if let Some(name) = merchant_key {
-                AllocationRuleTarget::merchant(name)
+            } else if let Some(merchant_key) = row.merchant_key {
+                AllocationRuleTarget::merchant(merchant_key)
             } else {
                 return Err(crate::internal_error("allocation rule has no target"));
             };
+            let allocations = row
+                .allocations
+                .into_iter()
+                .map(|value| {
+                    Ok(crate::pool_mutations::AllocationObject {
+                        pool_id: relay_id("Pool", value.pool_id)?,
+                        pool_name: value.pool_name,
+                        weight: crate::Long(value.weight),
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
             let value = crate::pool_mutations::AllocationRuleObject {
-                id: relay_id("AllocationRule", id)?,
-                household_id: relay_id("Household", household_id)?,
+                id: relay_id("AllocationRule", row.id)?,
+                household_id: relay_id("Household", row.household_id)?,
                 target,
-                revision: graphql_revision(revision, "AllocationRule")?,
-                allocations: weights_by_rule.remove(&id).unwrap_or_default(),
+                revision: graphql_revision(row.revision, "AllocationRule")?,
+                allocations,
             };
             loaded.insert(
-                ("AllocationRule".to_owned(), id),
+                ("AllocationRule".to_owned(), row.id),
                 Node::AllocationRule(value),
             );
         }
     }
+
+    if let Some(ids) = ids_by_type.get("HouseholdInvitation") {
+        let actor = crate::actor(ctx)?;
+        let rows = ctx
+            .data::<std::sync::Arc<dyn HouseholdInvitationNodeQuery>>()?
+            .load(HouseholdInvitationNodeQueryInput {
+                actor_id: actor.0,
+                household_ids: household_ids.to_vec(),
+                invitation_ids: ids.clone(),
+            })
+            .await
+            .map_err(crate::internal_error)?;
+        let now = Utc::now();
+        for row in rows {
+            let mapped = crate::household_lifecycle::map_invitation(
+                InvitationState {
+                    id: row.id.to_string(),
+                    household_id: row.household_id.to_string(),
+                    created_at: row.created_at,
+                    expires_at: row.expires_at,
+                    accepted_at: row.accepted_at,
+                    revoked_at: row.revoked_at,
+                },
+                now,
+            )
+            .map_err(crate::internal_error)?;
+            loaded.insert(
+                ("HouseholdInvitation".to_owned(), row.id),
+                Node::HouseholdInvitation(mapped),
+            );
+        }
+    }
+
     Ok(loaded)
 }
 

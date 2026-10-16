@@ -1,9 +1,8 @@
 use async_graphql::{Context, Error, ID, Result, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use cross_context_postgres::ledger_query::{
-    self as postgres_query, LedgerCursor, LedgerQueryError,
+use cross_context_application::ledger_query::{
+    LedgerCursor, LedgerQuery, LedgerQueryError, LedgerQueryHandler,
 };
-use horse_postgres_common::PgPool;
 use uuid::Uuid;
 
 use crate::{ledger_entry, pagination::PageInfo};
@@ -33,31 +32,25 @@ pub async fn graphql_ledger(
     let household_id = crate::decode_household_id(&household_id)?;
     let after_cursor = decode_cursor(after.as_deref())?;
     let before_cursor = decode_cursor(before.as_deref())?;
-    let page = postgres_query::ledger(
-        ctx.data::<PgPool>()?,
-        postgres_query::LedgerQuery {
+    let page = ctx
+        .data::<std::sync::Arc<dyn LedgerQueryHandler>>()?
+        .query(LedgerQuery {
             actor_id: actor.0,
             household_id,
             after: after_cursor,
             before: before_cursor,
             first,
             last,
-        },
-    )
-    .await
-    .map_err(map_query_error)?;
+        })
+        .await
+        .map_err(map_query_error)?;
     let mut edges = Vec::with_capacity(page.rows.len());
     for row in page.rows {
         let id = row.id;
         let node = match row.source_kind.as_str() {
             "purchase" | "PURCHASE" => {
-                let purchase_id = row.source_id.to_string();
-                let purchase = crate::purchase_mutations::purchase_result(
-                    ctx.data::<PgPool>()?,
-                    household_id,
-                    &purchase_id,
-                )
-                .await?;
+                let purchase =
+                    purchase_projection(ctx, actor.0, household_id, row.source_id).await?;
                 ledger_entry::purchase_ledger_entry(
                     id,
                     row.occurred_at,
@@ -69,18 +62,10 @@ pub async fn graphql_ledger(
                 )
             }
             "correction" | "CORRECTION" => {
-                let purchase_id = row
-                    .source_purchase_id
-                    .ok_or_else(|| {
-                        crate::internal_error("correction ledger entry has no source purchase")
-                    })?
-                    .to_string();
-                let purchase = crate::purchase_mutations::purchase_result(
-                    ctx.data::<PgPool>()?,
-                    household_id,
-                    &purchase_id,
-                )
-                .await?;
+                let purchase_id = row.source_purchase_id.ok_or_else(|| {
+                    crate::internal_error("correction ledger entry has no source purchase")
+                })?;
+                let purchase = purchase_projection(ctx, actor.0, household_id, purchase_id).await?;
                 ledger_entry::correction_ledger_entry(
                     id,
                     row.occurred_at,
@@ -93,27 +78,18 @@ pub async fn graphql_ledger(
             }
             "funding" | "FUNDING" => {
                 let projection =
-                    cross_context_postgres::funding_command_result::load_funding_ledger_entry_result(
-                        ctx.data::<PgPool>()?,
-                        household_id,
-                        id,
-                    )
-                    .await
-                    .map_err(crate::internal_error)?;
+                    page.funding_entries.get(&id).cloned().ok_or_else(|| {
+                        crate::internal_error("funding ledger projection is missing")
+                    })?;
                 ledger_entry::LedgerEntry::FundingLedgerEntry(
                     ledger_entry::FundingLedgerEntry::try_from(projection)
                         .map_err(crate::internal_error)?,
                 )
             }
             "transfer" | "TRANSFER" => {
-                let projection =
-                    cross_context_postgres::financial_command_result::load_transfer_ledger_entry_result(
-                        ctx.data::<PgPool>()?,
-                        household_id,
-                        id,
-                    )
-                    .await
-                    .map_err(crate::internal_error)?;
+                let projection = page.transfer_entries.get(&id).cloned().ok_or_else(|| {
+                    crate::internal_error("transfer ledger projection is missing")
+                })?;
                 ledger_entry::LedgerEntry::try_from(projection).map_err(crate::internal_error)?
             }
             kind => {
@@ -154,6 +130,36 @@ pub async fn graphql_ledger(
     })
 }
 
+async fn purchase_projection(
+    ctx: &Context<'_>,
+    actor_id: Uuid,
+    household_id: Uuid,
+    purchase_id: Uuid,
+) -> Result<crate::purchase_mutations::PurchaseObject> {
+    let projection = ctx
+        .data::<std::sync::Arc<
+            dyn bookkeeping_application::purchase_search_query::PurchaseSearchQuery,
+        >>()?
+        .purchase(actor_id, household_id, purchase_id)
+        .await
+        .map_err(map_purchase_query_error)?;
+    crate::purchase_mutations::PurchaseObject::try_from(projection).map_err(crate::internal_error)
+}
+
+fn map_purchase_query_error(
+    error: bookkeeping_application::purchase_search_query::PurchaseSearchQueryError,
+) -> Error {
+    use bookkeeping_application::purchase_search_query::PurchaseSearchQueryError as E;
+    match error {
+        E::HouseholdNotFound | E::PurchaseNotFound => Error::new("not found"),
+        E::InvalidPagination => Error::new("invalid pagination"),
+        E::InvalidCursor | E::CursorNotFound | E::InvalidFilter => {
+            Error::new("invalid purchase query")
+        }
+        E::Infrastructure(error) => crate::internal_error(error),
+    }
+}
+
 fn decode_cursor(cursor: Option<&str>) -> Result<Option<LedgerCursor>> {
     let Some(cursor) = cursor.filter(|cursor| !cursor.is_empty()) else {
         return Ok(None);
@@ -183,6 +189,6 @@ fn map_query_error(error: LedgerQueryError) -> Error {
             Error::new("not found")
         }
         LedgerQueryError::InvalidPagination => Error::new("invalid pagination"),
-        LedgerQueryError::Pool(_) | LedgerQueryError::Database(_) => crate::internal_error(error),
+        LedgerQueryError::Infrastructure(_) => crate::internal_error(error),
     }
 }

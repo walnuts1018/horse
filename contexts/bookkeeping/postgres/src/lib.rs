@@ -8,6 +8,7 @@ pub mod account_card_last4;
 pub mod account_command_context;
 pub mod account_command_result;
 pub mod account_history_query;
+pub mod account_node_batch_query;
 pub mod account_income;
 pub mod account_movement;
 pub mod bulk_delete_purchase_items;

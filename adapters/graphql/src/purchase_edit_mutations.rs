@@ -2,23 +2,14 @@ use async_graphql::{
     Context, ID, InputObject, MaybeUndefined, OneofObject, Result, SimpleObject, Union,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::{AccountingPeriod, PurchaseLifecycle, YearMonth};
+use bookkeeping_application::purchase_search_query::PurchaseSearchQuery;
 use bookkeeping_domain::purchase_commands::{
     BulkDeleteItemTarget, BulkUpdateItemPatch, BulkUpdateItemTarget,
     ItemAllocationWeight as BulkItemAllocationWeight, OptionalValueChange, ProductLearning,
-    UpdatePurchaseCommand, UpdatePurchaseDraft, UpdatePurchaseItemCommand, UpdatePurchasePayment,
+    UpdatePurchaseCommand, UpdatePurchaseItemCommand, UpdatePurchasePayment,
     UpdatedItemAllocationWeight as UpdateItemAllocationWeight,
     UpdatedPrintedUnitPrice as PrintedUnitPrice, ValueChange,
 };
-use bookkeeping_postgres::{
-    bulk_delete_purchase_items::PersistBulkDeletePurchaseItems,
-    bulk_update_purchase_items::PersistBulkUpdatePurchaseItems,
-    update_purchase::PersistUpdatePurchase, update_purchase_item::PersistUpdatePurchaseItem,
-};
-use chrono::Datelike;
-use cross_context_postgres::purchase_command_result;
-use horse_postgres_common::PgPool;
-use household_postgres::household_access;
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
@@ -193,70 +184,33 @@ pub async fn update_purchase(
         Ok(revision) if revision > 0 => revision,
         _ => return Ok(update_error(MutationErrorCode::BadInput).into()),
     };
-    let pool = ctx.data::<PgPool>()?;
-    let household_id =
-        match purchase_command_result::load_purchase_household_id(pool, purchase_id).await {
-            Ok(Some(id)) => id,
-            Ok(None) => return Ok(update_error(MutationErrorCode::NotFound).into()),
-            Err(error) => return Err(crate::internal_error(error)),
-        };
-    if !active_member(pool, household_id, actor.0).await? {
-        return Ok(update_error(MutationErrorCode::NotFound).into());
-    }
-    let context =
-        match purchase_command_result::load_purchase_edit_context(pool, household_id, purchase_id)
-            .await
-        {
-            Ok(Some(value)) => value,
-            Ok(None) => return Ok(update_error(MutationErrorCode::NotFound).into()),
-            Err(error) => return Err(crate::internal_error(error)),
-        };
-    let mut command = match update_purchase_command(input, purchase_id) {
+    let command = match update_purchase_command(input, purchase_id) {
         Ok(value) => value,
         Err(()) => return Ok(update_error(MutationErrorCode::BadInput).into()),
     };
-    if context.status == "CLOSED" {
-        return Ok(update_error(MutationErrorCode::Conflict).into());
-    }
+    let mut command = command;
     command.base_revision = base_revision;
-    let current = match update_purchase_draft(context) {
-        Ok(current) => current,
-        Err(()) => return Err(crate::internal_error("invalid purchase edit context")),
-    };
-    let decision = match bookkeeping_domain::purchase_commands::decide_update_purchase(
-        command.clone(),
-        current,
-    ) {
-        Ok(value) => value,
-        Err(error) => return Ok(update_error(update_error_code(error)).into()),
-    };
-    let persisted = cross_context_postgres::reference_data::persist_update_purchase(
-        pool,
-        PersistUpdatePurchase {
-            household_id: household_id.to_string(),
-            actor_id: actor.0.to_string(),
-        },
-        command,
-        decision,
-    )
-    .await;
-    match persisted {
-        Ok(_) => Ok(Box::new(UpdatePurchaseSuccess {
-            result: load_purchase(pool, household_id, purchase_id).await?,
+    let handler = ctx.data::<std::sync::Arc<
+        dyn bookkeeping_application::purchase_edit_mutations::PurchaseEditMutationHandler,
+    >>()?;
+    match handler
+        .update_purchase(
+            bookkeeping_application::purchase_edit_mutations::PurchaseEditRequest {
+                actor_id: actor.0,
+                household_id: None,
+                value: command,
+            },
+        )
+        .await
+    {
+        Ok(value) => Ok(Box::new(UpdatePurchaseSuccess {
+            result: load_purchase(ctx, actor.0, value.household_id, value.purchase_id).await?,
         })
         .into()),
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
-            Ok(update_error(MutationErrorCode::BadInput).into())
-        }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
-            Ok(update_error(MutationErrorCode::NotFound).into())
-        }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
-            Ok(update_error(MutationErrorCode::Conflict).into())
-        }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
-            Err(crate::internal_error(error))
-        }
+        Err(error) => match purchase_edit_error(error)? {
+            Some(code) => Ok(update_error(code).into()),
+            None => unreachable!(),
+        },
     }
 }
 
@@ -273,55 +227,39 @@ pub async fn update_purchase_item(
         Ok(revision) if revision > 0 => revision,
         _ => return Ok(update_item_error(MutationErrorCode::BadInput).into()),
     };
-    let pool = ctx.data::<PgPool>()?;
-    let household_id = match purchase_command_result::load_purchase_item_household_id(pool, item_id)
-        .await
-        .map_err(crate::internal_error)?
-    {
-        Some(id) => id,
-        None => return Ok(update_item_error(MutationErrorCode::NotFound).into()),
-    };
-    if !active_member(pool, household_id, actor.0).await? {
-        return Ok(update_item_error(MutationErrorCode::NotFound).into());
-    }
     let command = match item_update_command(input, item_id, base_revision) {
         Ok(command) => command,
         Err(()) => return Ok(update_item_error(MutationErrorCode::BadInput).into()),
     };
-    match cross_context_postgres::reference_data::persist_update_purchase_item(
-        pool,
-        PersistUpdatePurchaseItem {
-            household_id: household_id.to_string(),
-            actor_id: actor.0.to_string(),
-        },
-        command,
-    )
-    .await
+    let handler = ctx.data::<std::sync::Arc<
+        dyn bookkeeping_application::purchase_edit_mutations::PurchaseEditMutationHandler,
+    >>()?;
+    match handler
+        .update_purchase_item(
+            bookkeeping_application::purchase_edit_mutations::PurchaseEditRequest {
+                actor_id: actor.0,
+                household_id: None,
+                value: command,
+            },
+        )
+        .await
     {
         Ok(value) => {
-            let purchase_id = parse_uuid(&value.purchase_id)?;
-            let purchase = load_purchase(pool, household_id, purchase_id).await?;
+            let purchase =
+                load_purchase(ctx, actor.0, value.household_id, value.purchase_id).await?;
             let Some(item) = purchase
                 .items
                 .into_iter()
-                .find(|item| item.id == encode_node_id("PurchaseItem", item_id))
+                .find(|item| item.id == encode_node_id("PurchaseItem", value.item_id))
             else {
                 return Ok(update_item_error(MutationErrorCode::NotFound).into());
             };
             Ok(Box::new(UpdatePurchaseItemSuccess { result: item }).into())
         }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
-            Ok(update_item_error(MutationErrorCode::BadInput).into())
-        }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
-            Ok(update_item_error(MutationErrorCode::NotFound).into())
-        }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
-            Ok(update_item_error(MutationErrorCode::Conflict).into())
-        }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
-            Err(crate::internal_error(error))
-        }
+        Err(error) => match purchase_edit_error(error)? {
+            Some(code) => Ok(update_item_error(code).into()),
+            None => unreachable!(),
+        },
     }
 }
 
@@ -330,43 +268,39 @@ pub async fn bulk_update_purchase_items(
     input: BulkUpdatePurchaseItemsInput,
 ) -> Result<BulkUpdatePurchaseItemsResult> {
     let actor = crate::actor(ctx)?;
-    let pool = ctx.data::<PgPool>()?;
     let targets = match parse_targets(input.targets) {
         Ok(targets) => targets,
         Err(()) => return Ok(bulk_update_error(MutationErrorCode::BadInput).into()),
     };
-    let household_id = match household_for_targets(pool, &targets).await? {
-        Some(id) => id,
-        None => return Ok(bulk_update_error(MutationErrorCode::NotFound).into()),
-    };
-    if !active_member(pool, household_id, actor.0).await? {
-        return Ok(bulk_update_error(MutationErrorCode::NotFound).into());
-    }
     let patch = match bulk_update_patch(input.patch) {
         Ok(patch) => patch,
         Err(()) => return Ok(bulk_update_error(MutationErrorCode::BadInput).into()),
     };
-    match cross_context_postgres::reference_data::persist_bulk_update_purchase_items(
-        pool,
-        PersistBulkUpdatePurchaseItems {
-            household_id: household_id.to_string(),
-            actor_id: actor.0.to_string(),
-        },
-        targets,
-        patch,
-    )
-    .await
+    let handler = ctx.data::<std::sync::Arc<
+        dyn bookkeeping_application::purchase_edit_mutations::PurchaseEditMutationHandler,
+    >>()?;
+    match handler
+        .bulk_update_purchase_items(
+            bookkeeping_application::purchase_edit_mutations::PurchaseEditRequest {
+                actor_id: actor.0,
+                household_id: None,
+                value: (targets, patch),
+            },
+        )
+        .await
     {
         Ok(value) => {
             let mut purchases = BTreeMap::new();
             let mut items = Vec::with_capacity(value.items.len());
-            for (item_id, purchase_id) in value.items {
-                let item_id = parse_uuid(&item_id)?;
-                let purchase_id = parse_uuid(&purchase_id)?;
+            for updated in value.items {
+                let item_id = updated.item_id;
+                let purchase_id = updated.purchase_id;
                 if let std::collections::btree_map::Entry::Vacant(entry) =
                     purchases.entry(purchase_id)
                 {
-                    entry.insert(load_purchase(pool, household_id, purchase_id).await?);
+                    entry.insert(
+                        load_purchase(ctx, actor.0, updated.household_id, purchase_id).await?,
+                    );
                 }
                 let Some(item) = purchases[&purchase_id]
                     .items
@@ -380,18 +314,10 @@ pub async fn bulk_update_purchase_items(
             }
             Ok(Box::new(BulkUpdatePurchaseItemsSuccess { items }).into())
         }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
-            Ok(bulk_update_error(MutationErrorCode::BadInput).into())
-        }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
-            Ok(bulk_update_error(MutationErrorCode::NotFound).into())
-        }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
-            Ok(bulk_update_error(MutationErrorCode::Conflict).into())
-        }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
-            Err(crate::internal_error(error))
-        }
+        Err(error) => match purchase_edit_error(error)? {
+            Some(code) => Ok(bulk_update_error(code).into()),
+            None => unreachable!(),
+        },
     }
 }
 
@@ -400,55 +326,35 @@ pub async fn bulk_delete_purchase_items(
     input: BulkDeletePurchaseItemsInput,
 ) -> Result<BulkDeletePurchaseItemsResult> {
     let actor = crate::actor(ctx)?;
-    let pool = ctx.data::<PgPool>()?;
     let targets = match parse_delete_targets(input.targets) {
         Ok(targets) => targets,
         Err(()) => return Ok(bulk_delete_error(MutationErrorCode::BadInput).into()),
     };
-    let household_targets = targets
-        .iter()
-        .map(|target| BulkUpdateItemTarget {
-            item_id: target.item_id.clone(),
-            base_revision: target.base_revision,
-        })
-        .collect::<Vec<_>>();
-    let household_id = match household_for_targets(pool, &household_targets).await? {
-        Some(id) => id,
-        None => return Ok(bulk_delete_error(MutationErrorCode::NotFound).into()),
-    };
-    if !active_member(pool, household_id, actor.0).await? {
-        return Ok(bulk_delete_error(MutationErrorCode::NotFound).into());
-    }
-    match cross_context_postgres::reference_data::persist_bulk_delete_purchase_items(
-        pool,
-        PersistBulkDeletePurchaseItems {
-            household_id: household_id.to_string(),
-            actor_id: actor.0.to_string(),
-        },
-        targets,
-    )
-    .await
+    let handler = ctx.data::<std::sync::Arc<
+        dyn bookkeeping_application::purchase_edit_mutations::PurchaseEditMutationHandler,
+    >>()?;
+    match handler
+        .bulk_delete_purchase_items(
+            bookkeeping_application::purchase_edit_mutations::PurchaseEditRequest {
+                actor_id: actor.0,
+                household_id: None,
+                value: targets,
+            },
+        )
+        .await
     {
         Ok(value) => Ok(BulkDeletePurchaseItemsSuccess {
             deleted_item_ids: value
-                .deleted_item_ids
+                .item_ids
                 .iter()
-                .map(|id| parse_uuid(id).map(|id| encode_node_id("PurchaseItem", id)))
-                .collect::<Result<Vec<_>>>()?,
+                .map(|id| encode_node_id("PurchaseItem", *id))
+                .collect(),
         }
         .into()),
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
-            Ok(bulk_delete_error(MutationErrorCode::BadInput).into())
-        }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
-            Ok(bulk_delete_error(MutationErrorCode::NotFound).into())
-        }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Conflict) => {
-            Ok(bulk_delete_error(MutationErrorCode::Conflict).into())
-        }
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Infrastructure(error)) => {
-            Err(crate::internal_error(error))
-        }
+        Err(error) => match purchase_edit_error(error)? {
+            Some(code) => Ok(bulk_delete_error(code).into()),
+            None => unreachable!(),
+        },
     }
 }
 
@@ -513,48 +419,6 @@ pub(crate) fn update_purchase_command(
         date_precision,
         merchant,
         payment_allocations,
-    })
-}
-
-fn update_purchase_draft(
-    value: purchase_command_result::PurchaseEditContext,
-) -> std::result::Result<UpdatePurchaseDraft, ()> {
-    let field_revisions = value
-        .field_revisions
-        .as_object()
-        .ok_or(())?
-        .iter()
-        .map(|(key, value)| {
-            value
-                .as_u64()
-                .map(|revision| (key.clone(), revision))
-                .ok_or(())
-        })
-        .collect::<std::result::Result<BTreeMap<_, _>, _>>()?;
-    Ok(UpdatePurchaseDraft {
-        revision: u64::try_from(value.revision).map_err(|_| ())?,
-        lifecycle: match value.status.as_str() {
-            "DRAFT" => PurchaseLifecycle::Draft,
-            "POSTED" | "CLOSED" => PurchaseLifecycle::Posted,
-            _ => return Err(()),
-        },
-        accounting_period: {
-            let tokyo = chrono::FixedOffset::east_opt(9 * 60 * 60).ok_or(())?;
-            let local_date = value.occurred_at.with_timezone(&tokyo).date_naive();
-            let year_month = YearMonth::new(
-                u16::try_from(local_date.year()).map_err(|_| ())?,
-                u8::try_from(local_date.month()).map_err(|_| ())?,
-            )
-            .map_err(|_| ())?;
-            AccountingPeriod::open(year_month, 1)
-                .map_err(|_| ())?
-                .into_open()
-                .map_err(|_| ())?
-        },
-        occurred_at: value.occurred_at.to_rfc3339(),
-        date_precision: value.date_precision,
-        merchant: value.merchant,
-        field_revisions,
     })
 }
 
@@ -775,45 +639,17 @@ fn validate_target_set<'a>(
     Ok(())
 }
 
-async fn household_for_targets(
-    pool: &PgPool,
-    targets: &[BulkUpdateItemTarget],
-) -> Result<Option<Uuid>> {
-    let ids = targets
-        .iter()
-        .map(|target| Uuid::parse_str(&target.item_id).map_err(crate::internal_error))
-        .collect::<Result<Vec<_>>>()?;
-    let rows = purchase_command_result::load_purchase_item_household_ids(pool, &ids)
-        .await
-        .map_err(crate::internal_error)?;
-    if rows.len() != ids.len() {
-        return Ok(None);
-    }
-    let households = rows
-        .into_iter()
-        .map(|(_, household_id)| household_id)
-        .collect::<BTreeSet<_>>();
-    if households.len() != 1 {
-        return Ok(None);
-    }
-    Ok(households.into_iter().next())
-}
-
-async fn active_member(pool: &PgPool, household_id: Uuid, member_id: Uuid) -> Result<bool> {
-    household_access::is_active_member(pool, household_id, member_id)
-        .await
-        .map_err(crate::internal_error)
-}
-
 async fn load_purchase(
-    pool: &PgPool,
+    ctx: &Context<'_>,
+    actor_id: Uuid,
     household_id: Uuid,
     purchase_id: Uuid,
 ) -> Result<purchase_mutations::PurchaseObject> {
-    let projection =
-        purchase_command_result::load_purchase_command_result(pool, household_id, purchase_id)
-            .await
-            .map_err(crate::internal_error)?;
+    let query = ctx.data::<std::sync::Arc<dyn PurchaseSearchQuery>>()?;
+    let projection = query
+        .purchase(actor_id, household_id, purchase_id)
+        .await
+        .map_err(crate::internal_error)?;
     projection.try_into().map_err(crate::internal_error)
 }
 
@@ -838,10 +674,6 @@ fn encode_node_id(kind: &str, id: Uuid) -> ID {
     bytes.push(b':');
     bytes.extend_from_slice(id.as_bytes());
     ID(URL_SAFE_NO_PAD.encode(bytes))
-}
-
-fn parse_uuid(value: &str) -> Result<Uuid> {
-    Uuid::parse_str(value).map_err(crate::internal_error)
 }
 
 fn update_error(code: MutationErrorCode) -> UpdatePurchaseUserError {
@@ -878,12 +710,14 @@ fn error_message(code: MutationErrorCode) -> String {
     }
 }
 
-fn update_error_code(
-    error: bookkeeping_domain::purchase_commands::UpdatePurchaseError,
-) -> MutationErrorCode {
-    use bookkeeping_domain::purchase_commands::UpdatePurchaseError as E;
+fn purchase_edit_error(
+    error: bookkeeping_application::purchase_edit_mutations::PurchaseEditFailure,
+) -> Result<Option<MutationErrorCode>> {
+    use bookkeeping_application::purchase_edit_mutations::PurchaseEditFailure as Failure;
     match error {
-        E::Conflict | E::NotEditable => MutationErrorCode::Conflict,
-        _ => MutationErrorCode::BadInput,
+        Failure::InvalidInput => Ok(Some(MutationErrorCode::BadInput)),
+        Failure::NotFound => Ok(Some(MutationErrorCode::NotFound)),
+        Failure::Conflict => Ok(Some(MutationErrorCode::Conflict)),
+        Failure::Infrastructure(error) => Err(crate::internal_error(error)),
     }
 }

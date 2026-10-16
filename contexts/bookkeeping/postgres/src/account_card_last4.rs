@@ -1,3 +1,6 @@
+use bookkeeping_application::account_card_last4::{
+    AccountCardLast4Projection, SetCardLast4Handler, SetCardLast4Request,
+};
 use bookkeeping_application::workflow_failure::WorkflowFailure;
 use bookkeeping_domain::account_card_last4::{
     SetCardLast4Command, SetCardLast4Error, decide_set_card_last4,
@@ -7,6 +10,66 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as Di
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
+
+pub struct PostgresSetCardLast4Handler {
+    pool: PgPool,
+}
+
+impl PostgresSetCardLast4Handler {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl SetCardLast4Handler for PostgresSetCardLast4Handler {
+    fn handle<'a>(
+        &'a self,
+        request: SetCardLast4Request,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        AccountCardLast4Projection,
+                        WorkflowFailure<SetCardLast4Error, String>,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let account = persist_set_card_last4(
+                &self.pool,
+                &request.actor_id.to_string(),
+                &request.account_id.to_string(),
+                request.card_last4,
+            )
+            .await
+            .map_err(|failure| match failure {
+                WorkflowFailure::Decision(error) => WorkflowFailure::Decision(error),
+                WorkflowFailure::NotFound => WorkflowFailure::NotFound,
+                WorkflowFailure::Conflict => WorkflowFailure::Conflict,
+                WorkflowFailure::Infrastructure(error) => {
+                    WorkflowFailure::Infrastructure(format!("{error:?}"))
+                }
+            })?;
+            let id = Uuid::parse_str(&account.id)
+                .map_err(|error| WorkflowFailure::Infrastructure(error.to_string()))?;
+            let pool_id = account
+                .pool_id
+                .as_deref()
+                .map(Uuid::parse_str)
+                .transpose()
+                .map_err(|error| WorkflowFailure::Infrastructure(error.to_string()))?;
+            Ok(AccountCardLast4Projection {
+                id,
+                name: account.name,
+                kind: account.kind,
+                card_last4: account.card_last4,
+                pool_id,
+            })
+        })
+    }
+}
 
 use crate::{PgPool, schema::public};
 

@@ -1,7 +1,9 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
-use bookkeeping_postgres::shared_draft as postgres_shared_draft;
-use cross_context_postgres::reference_data as shared_draft_workflow;
-use horse_postgres_common::PgPool;
+use bookkeeping_application::purchase_mutations::{
+    SharedPurchaseDraft as ApplicationSharedPurchaseDraft, SharedPurchaseDraftError,
+};
+use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::{DateTime, MutationErrorCode, internal_error};
 
@@ -72,15 +74,14 @@ pub async fn shared_purchase_draft(
     id: ID,
 ) -> Result<Option<SharedPurchaseDraft>> {
     let actor = crate::actor(ctx)?;
-    match shared_draft_workflow::get_shared_purchase_draft(
-        ctx.data::<PgPool>()?,
-        &actor.0.to_string(),
-        id.as_str(),
-    )
-    .await
+    let draft_id = Uuid::parse_str(id.as_str()).map_err(internal_error)?;
+    match ctx
+        .data::<Arc<dyn bookkeeping_application::purchase_mutations::PurchaseMutationHandler>>()?
+        .get_shared_draft(actor.0, draft_id)
+        .await
     {
         Ok(draft) => graphql_draft(draft).map(Some),
-        Err(error) => Err(internal_error(error)),
+        Err(error) => Err(internal_error(format!("{error:?}"))),
     }
 }
 
@@ -89,13 +90,14 @@ pub async fn create_shared_purchase_draft(
     input: CreateSharedPurchaseDraftInput,
 ) -> Result<CreateSharedPurchaseDraftResult> {
     let actor = crate::actor(ctx)?;
-    match shared_draft_workflow::create_shared_purchase_draft(
-        ctx.data::<PgPool>()?,
-        &actor.0.to_string(),
-        input.household_id.as_str(),
-        &input.payload,
-    )
-    .await
+    let household_id = match Uuid::parse_str(input.household_id.as_str()) {
+        Ok(id) if !id.is_nil() => id,
+        _ => return Ok(shared_draft_error(MutationErrorCode::BadInput).into()),
+    };
+    match ctx
+        .data::<Arc<dyn bookkeeping_application::purchase_mutations::PurchaseMutationHandler>>()?
+        .create_shared_draft(actor.0, household_id, input.payload)
+        .await
     {
         Ok(draft) => Ok(CreateSharedPurchaseDraftSuccess {
             result: graphql_draft(draft)?,
@@ -113,14 +115,19 @@ pub async fn update_shared_purchase_draft(
     input: UpdateSharedPurchaseDraftInput,
 ) -> Result<UpdateSharedPurchaseDraftResult> {
     let actor = crate::actor(ctx)?;
-    match shared_draft_workflow::update_shared_purchase_draft(
-        ctx.data::<PgPool>()?,
-        &actor.0.to_string(),
-        input.id.as_str(),
-        i64::from(input.expected_revision),
-        &input.payload,
-    )
-    .await
+    let draft_id = match Uuid::parse_str(input.id.as_str()) {
+        Ok(id) if !id.is_nil() => id,
+        _ => return Ok(shared_draft_update_error(MutationErrorCode::BadInput).into()),
+    };
+    match ctx
+        .data::<Arc<dyn bookkeeping_application::purchase_mutations::PurchaseMutationHandler>>()?
+        .update_shared_draft(
+            actor.0,
+            draft_id,
+            i64::from(input.expected_revision),
+            input.payload,
+        )
+        .await
     {
         Ok(result) if result.conflict => Ok(UpdateSharedPurchaseDraftConflict {
             code: MutationErrorCode::Conflict,
@@ -139,11 +146,11 @@ pub async fn update_shared_purchase_draft(
     }
 }
 
-fn graphql_draft(value: postgres_shared_draft::SharedPurchaseDraft) -> Result<SharedPurchaseDraft> {
+fn graphql_draft(value: ApplicationSharedPurchaseDraft) -> Result<SharedPurchaseDraft> {
     let revision = i32::try_from(value.revision).map_err(internal_error)?;
     Ok(SharedPurchaseDraft {
-        id: ID(value.id),
-        household_id: ID(value.household_id),
+        id: ID(value.id.to_string()),
+        household_id: ID(value.household_id.to_string()),
         revision,
         payload: value.payload,
         created_at: value.created_at.into(),
@@ -151,22 +158,35 @@ fn graphql_draft(value: postgres_shared_draft::SharedPurchaseDraft) -> Result<Sh
     })
 }
 
-fn mutation_error(
-    error: &postgres_shared_draft::SharedPurchaseDraftPersistenceError,
-) -> Option<SharedPurchaseDraftUserError> {
-    use postgres_shared_draft::SharedPurchaseDraftPersistenceError as E;
-
+fn mutation_error(error: &SharedPurchaseDraftError) -> Option<SharedPurchaseDraftUserError> {
     let (code, message) = match error {
-        E::InvalidUuid(_) | E::InvalidWorkflow(_) | E::InvalidPayload(_) => {
+        SharedPurchaseDraftError::BadInput => {
             (MutationErrorCode::BadInput, "入力を確認してください。")
         }
-        E::HouseholdNotFound | E::DraftNotFound => {
+        SharedPurchaseDraftError::NotFound => {
             (MutationErrorCode::NotFound, "対象が見つかりません。")
         }
-        E::Pool(_) | E::Database(_) | E::RevisionOutOfRange => return None,
+        SharedPurchaseDraftError::Infrastructure(_) => return None,
     };
     Some(SharedPurchaseDraftUserError {
         code,
         message: message.to_owned(),
     })
+}
+
+fn shared_draft_error(code: MutationErrorCode) -> SharedPurchaseDraftUserError {
+    SharedPurchaseDraftUserError {
+        code,
+        message: match code {
+            MutationErrorCode::BadInput => "入力を確認してください。",
+            MutationErrorCode::NotFound => "対象が見つかりません。",
+            MutationErrorCode::Conflict => "最新の状態を読み込んでから再試行してください。",
+            MutationErrorCode::MailForwardingDisabled => "メール転送は無効です。",
+        }
+        .to_owned(),
+    }
+}
+
+fn shared_draft_update_error(code: MutationErrorCode) -> SharedPurchaseDraftUserError {
+    shared_draft_error(code)
 }

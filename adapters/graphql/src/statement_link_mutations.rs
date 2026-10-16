@@ -1,21 +1,10 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_application::{
-    AccountId,
-    account_income::LinkStatementIncomeDecision,
-    account_movement::LinkStatementMovementDecision,
-    workflow_failure::{WorkflowFailure, WorkflowRejection},
+use bookkeeping_application::workflow_failure::{WorkflowFailure, WorkflowRejection};
+use cross_context_application::statement_link_mutations::{
+    StatementLinkCommand, StatementLinkMutationFailure, StatementLinkMutationsHandler,
+    StatementRefundCorrectionLinkCommand, StatementTransferLinkCommand,
 };
-use bookkeeping_postgres::{
-    account_command_result as postgres_account_result, account_income as postgres_income,
-    account_movement as postgres_movement, correct_purchase as postgres_correction,
-    statement_transfer as postgres_transfer,
-};
-use cross_context_postgres::{
-    evidence_workflows, financial_command_result as postgres_financial_result,
-    purchase_command_result as postgres_purchase_result,
-};
-use horse_postgres_common::PgPool;
 use uuid::Uuid;
 
 use crate::{MutationErrorCode, account_mutations, ledger_entry};
@@ -147,39 +136,22 @@ pub async fn link_statement_account_movement(
     if input.source_reference.is_empty() || input.source_reference.len() > 256 {
         return Ok(movement_error(MutationErrorCode::BadInput).into());
     }
-    let decision = LinkStatementMovementDecision {
-        source_document_id: source_document_id.to_string(),
-        source_reference: input.source_reference.clone(),
-        statement_account_id: AccountId::new(source_account_id.to_string())
-            .map_err(crate::internal_error)?,
-        movement_id: movement_id.to_string(),
-    };
-    let pool = ctx.data::<PgPool>()?;
-    match evidence_workflows::persist_link_statement_movement(
-        pool,
-        postgres_movement::PersistLinkStatementMovement {
-            household_id: household_id.to_string(),
-            actor_id: actor.0.to_string(),
-            account_movement_id: movement_id.to_string(),
-            statement_account_id: source_account_id.to_string(),
-        },
-        decision,
-    )
-    .await
+    let handler = ctx.data::<std::sync::Arc<dyn StatementLinkMutationsHandler>>()?;
+    match handler
+        .link_movement(StatementLinkCommand {
+            household_id,
+            actor_id: actor.0,
+            target_id: movement_id,
+            source_document_id,
+            source_reference: input.source_reference,
+            source_account_id: Some(source_account_id),
+        })
+        .await
     {
-        Ok(_) => {
-            let projection = postgres_account_result::load_account_movement_command_result(
-                pool,
-                household_id,
-                movement_id,
-            )
-            .await
-            .map_err(crate::internal_error)?;
-            Ok(Box::new(LinkStatementAccountMovementSuccess {
-                result: map_movement(projection)?,
-            })
-            .into())
-        }
+        Ok(projection) => Ok(Box::new(LinkStatementAccountMovementSuccess {
+            result: map_movement(projection)?,
+        })
+        .into()),
         Err(error) => movement_persistence_error(error),
     }
 }
@@ -208,40 +180,22 @@ pub async fn link_statement_account_income(
     if input.source_reference.is_empty() || input.source_reference.len() > 256 {
         return Ok(income_error(MutationErrorCode::BadInput).into());
     }
-    let statement_account_id =
-        AccountId::new(source_account_id.to_string()).map_err(crate::internal_error)?;
-    let decision = LinkStatementIncomeDecision {
-        source_document_id: source_document_id.to_string(),
-        source_reference: input.source_reference.clone(),
-        statement_account_id: statement_account_id.clone(),
-        income_account_id: statement_account_id,
-    };
-    let pool = ctx.data::<PgPool>()?;
-    match evidence_workflows::persist_link_statement_income(
-        pool,
-        postgres_income::PersistLinkStatementIncome {
-            household_id: household_id.to_string(),
-            actor_id: actor.0.to_string(),
-            account_income_id: income_id.to_string(),
-            statement_account_id: source_account_id.to_string(),
-        },
-        decision,
-    )
-    .await
+    let handler = ctx.data::<std::sync::Arc<dyn StatementLinkMutationsHandler>>()?;
+    match handler
+        .link_income(StatementLinkCommand {
+            household_id,
+            actor_id: actor.0,
+            target_id: income_id,
+            source_document_id,
+            source_reference: input.source_reference,
+            source_account_id: Some(source_account_id),
+        })
+        .await
     {
-        Ok(_) => {
-            let projection = postgres_account_result::load_account_income_command_result(
-                pool,
-                household_id,
-                income_id,
-            )
-            .await
-            .map_err(crate::internal_error)?;
-            Ok(Box::new(LinkStatementAccountIncomeSuccess {
-                result: map_income(projection),
-            })
-            .into())
-        }
+        Ok(projection) => Ok(Box::new(LinkStatementAccountIncomeSuccess {
+            result: map_income(projection),
+        })
+        .into()),
         Err(error) => income_persistence_error(error),
     }
 }
@@ -270,34 +224,23 @@ pub async fn link_statement_transfer(
     if input.source_reference.is_empty() || input.source_reference.len() > 256 {
         return Ok(transfer_error(MutationErrorCode::BadInput).into());
     }
-    let pool = ctx.data::<PgPool>()?;
-    match evidence_workflows::persist_link_statement_transfer(
-        pool,
-        postgres_transfer::PersistLinkStatementTransfer {
-            household_id: household_id.to_string(),
-            actor_id: actor.0.to_string(),
-            ledger_entry_id: ledger_entry_id.to_string(),
-            source_document_id: source_document_id.to_string(),
+    let handler = ctx.data::<std::sync::Arc<dyn StatementLinkMutationsHandler>>()?;
+    match handler
+        .link_transfer(StatementTransferLinkCommand {
+            household_id,
+            actor_id: actor.0,
+            ledger_entry_id,
+            source_document_id,
             source_reference: input.source_reference,
-            source_account_id: source_account_id.to_string(),
-        },
-    )
-    .await
+            source_account_id,
+        })
+        .await
     {
-        Ok(_) => {
-            let projection = postgres_financial_result::load_transfer_ledger_entry_result(
-                pool,
-                household_id,
-                ledger_entry_id,
-            )
-            .await
-            .map_err(crate::internal_error)?;
-            Ok(Box::new(LinkStatementTransferSuccess {
-                result: ledger_entry::LedgerEntry::try_from(projection)
-                    .map_err(crate::internal_error)?,
-            })
-            .into())
-        }
+        Ok(projection) => Ok(Box::new(LinkStatementTransferSuccess {
+            result: ledger_entry::LedgerEntry::try_from(projection)
+                .map_err(crate::internal_error)?,
+        })
+        .into()),
         Err(error) => transfer_persistence_error(error),
     }
 }
@@ -322,40 +265,28 @@ pub async fn link_statement_refund_correction(
     if input.source_reference.is_empty() || input.source_reference.len() > 256 {
         return Ok(refund_error(MutationErrorCode::BadInput).into());
     }
-    let pool = ctx.data::<PgPool>()?;
-    match evidence_workflows::link_statement_refund_correction(
-        pool,
-        postgres_correction::LinkStatementRefundCorrection {
-            household_id: household_id.to_string(),
-            actor_id: actor.0.to_string(),
-            correction_id: correction_id.to_string(),
-            source_document_id: source_document_id.to_string(),
+    let handler = ctx.data::<std::sync::Arc<dyn StatementLinkMutationsHandler>>()?;
+    match handler
+        .link_refund_correction(StatementRefundCorrectionLinkCommand {
+            household_id,
+            actor_id: actor.0,
+            correction_id,
+            source_document_id,
             source_reference: input.source_reference,
-        },
-    )
-    .await
+        })
+        .await
     {
-        Ok(purchase_id) => {
-            let purchase_id = Uuid::parse_str(&purchase_id).map_err(crate::internal_error)?;
-            let projection = postgres_purchase_result::load_purchase_command_result(
-                pool,
-                household_id,
-                purchase_id,
-            )
-            .await
-            .map_err(crate::internal_error)?;
-            Ok(Box::new(LinkStatementRefundCorrectionSuccess {
-                result: crate::purchase_mutations::PurchaseObject::try_from(projection)
-                    .map_err(crate::internal_error)?,
-            })
-            .into())
-        }
+        Ok(projection) => Ok(Box::new(LinkStatementRefundCorrectionSuccess {
+            result: crate::purchase_mutations::PurchaseObject::try_from(projection)
+                .map_err(crate::internal_error)?,
+        })
+        .into()),
         Err(error) => refund_persistence_error(error),
     }
 }
 
 fn map_movement(
-    value: postgres_account_result::AccountMovementCommandResult,
+    value: bookkeeping_application::account_history_query::AccountMovementProjection,
 ) -> Result<account_mutations::AccountMovementObject> {
     use account_mutations::AccountMovementKind;
 
@@ -385,7 +316,7 @@ fn map_movement(
 }
 
 fn map_income(
-    value: postgres_account_result::AccountIncomeCommandResult,
+    value: bookkeeping_application::account_history_query::AccountIncomeProjection,
 ) -> account_mutations::AccountIncomeObject {
     account_mutations::AccountIncomeObject {
         id: encode_node_id("AccountIncome", value.id),
@@ -400,7 +331,7 @@ fn map_income(
 }
 
 fn map_account(
-    value: postgres_account_result::AccountCommandAccount,
+    value: bookkeeping_application::account_history_query::AccountProjection,
 ) -> Result<account_mutations::AccountObject> {
     use account_mutations::{AccountKind, AccountObject};
 
@@ -481,7 +412,7 @@ fn error_message(code: MutationErrorCode) -> &'static str {
 }
 
 fn movement_persistence_error(
-    error: WorkflowFailure<WorkflowRejection, postgres_movement::AccountMovementPersistenceError>,
+    error: StatementLinkMutationFailure,
 ) -> Result<LinkStatementAccountMovementResult> {
     match error {
         WorkflowFailure::NotFound => Ok(movement_error(MutationErrorCode::NotFound).into()),
@@ -494,7 +425,7 @@ fn movement_persistence_error(
 }
 
 fn income_persistence_error(
-    error: WorkflowFailure<WorkflowRejection, postgres_income::AccountIncomePersistenceError>,
+    error: StatementLinkMutationFailure,
 ) -> Result<LinkStatementAccountIncomeResult> {
     match error {
         WorkflowFailure::NotFound => Ok(income_error(MutationErrorCode::NotFound).into()),
@@ -507,7 +438,7 @@ fn income_persistence_error(
 }
 
 fn transfer_persistence_error(
-    error: WorkflowFailure<WorkflowRejection, postgres_transfer::StatementTransferPersistenceError>,
+    error: StatementLinkMutationFailure,
 ) -> Result<LinkStatementTransferResult> {
     match error {
         WorkflowFailure::NotFound => Ok(transfer_error(MutationErrorCode::NotFound).into()),
@@ -520,7 +451,7 @@ fn transfer_persistence_error(
 }
 
 fn refund_persistence_error(
-    error: WorkflowFailure<WorkflowRejection, postgres_correction::CorrectPurchasePersistenceError>,
+    error: StatementLinkMutationFailure,
 ) -> Result<LinkStatementRefundCorrectionResult> {
     match error {
         WorkflowFailure::NotFound => Ok(refund_error(MutationErrorCode::NotFound).into()),

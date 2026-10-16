@@ -1223,6 +1223,7 @@ dependencies = [
 name = "bookkeeping-application"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bookkeeping-domain",
  "chrono",
  "horse-household-change",
@@ -1588,6 +1589,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
 
 [[package]]
+name = "cross-context-application"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bookkeeping-application",
+ "bookkeeping-domain",
+ "chrono",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "cross-context-postgres"
 version = "0.1.0"
 dependencies = [
@@ -1598,6 +1611,7 @@ dependencies = [
  "catalog-application",
  "catalog-postgres",
  "chrono",
+ "cross-context-application",
  "diesel",
  "diesel-async",
  "evidence-application",
@@ -2803,6 +2817,7 @@ dependencies = [
  "axum",
  "bookkeeping-postgres",
  "catalog-postgres",
+ "cross-context-postgres",
  "evidence-postgres",
  "horse-auth",
  "horse-extraction-queue",
@@ -2871,6 +2886,7 @@ dependencies = [
  "catalog-application",
  "catalog-domain",
  "chrono",
+ "cross-context-application",
  "cross-context-postgres",
  "diesel",
  "diesel-async",

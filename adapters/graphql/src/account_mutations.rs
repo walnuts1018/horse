@@ -4,14 +4,13 @@ use bookkeeping_application::{
     AccountId, MemberId,
     account_income::StatementIncomeSource,
     account_movement::{AccountMovementKind as DomainAccountMovementKind, StatementMovementSource},
-    workflow_failure::WorkflowFailure,
 };
 use bookkeeping_domain::PositiveYen;
-use bookkeeping_postgres::account_command_result;
-use chrono::{DateTime as ChronoDateTime, Utc};
-use cross_context_postgres::evidence_workflows;
-use horse_postgres_common::PgPool;
+use cross_context_application::account_financial_mutations::{
+    AccountFinancialMutationsHandler, AccountMutationAccount,
+};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::Long;
@@ -123,22 +122,12 @@ pub async fn graphql_record_account_movement(
     input: RecordAccountMovementInput,
 ) -> Result<RecordAccountMovementResult> {
     let actor = crate::actor(ctx)?;
-    let pool = ctx.data::<PgPool>()?;
-    match record_account_movement(pool, actor.0, input).await? {
+    let handler = ctx.data::<Arc<dyn AccountFinancialMutationsHandler>>()?;
+    match record_account_movement(handler.as_ref(), actor.0, input).await? {
         AccountMutationOutcome::UserError(error) => {
             Ok(RecordAccountMovementUserError::from(error).into())
         }
-        AccountMutationOutcome::Persisted(value) => {
-            let household_id =
-                Uuid::parse_str(&value.household_id).map_err(crate::internal_error)?;
-            let movement_id = Uuid::parse_str(&value.id).map_err(crate::internal_error)?;
-            let result = account_command_result::load_account_movement_command_result(
-                pool,
-                household_id,
-                movement_id,
-            )
-            .await
-            .map_err(crate::internal_error)?;
+        AccountMutationOutcome::Persisted(result) => {
             let kind = match result.kind.as_str() {
                 "TRANSFER" => AccountMovementKind::Transfer,
                 "CARD_BILL_PAYMENT" => AccountMovementKind::CardBillPayment,
@@ -174,40 +163,28 @@ pub async fn graphql_record_external_income(
     input: RecordExternalIncomeInput,
 ) -> Result<RecordExternalIncomeResult> {
     let actor = crate::actor(ctx)?;
-    let pool = ctx.data::<PgPool>()?;
-    match record_external_income(pool, actor.0, input).await? {
+    let handler = ctx.data::<Arc<dyn AccountFinancialMutationsHandler>>()?;
+    match record_external_income(handler.as_ref(), actor.0, input).await? {
         AccountMutationOutcome::UserError(error) => {
             Ok(RecordExternalIncomeUserError::from(error).into())
         }
-        AccountMutationOutcome::Persisted(value) => {
-            let household_id =
-                Uuid::parse_str(&value.household_id).map_err(crate::internal_error)?;
-            let income_id = Uuid::parse_str(&value.id).map_err(crate::internal_error)?;
-            let result = account_command_result::load_account_income_command_result(
-                pool,
-                household_id,
-                income_id,
-            )
-            .await
-            .map_err(crate::internal_error)?;
-            Ok(RecordExternalIncomeSuccess {
-                result: AccountIncomeObject {
-                    id: encode_node_id("AccountIncome", &result.id.to_string()),
-                    household_id: encode_node_id("Household", &result.household_id.to_string()),
-                    account_id: encode_node_id("Account", &result.account_id.to_string()),
-                    amount_yen: Long(result.amount_yen),
-                    currency: "JPY".to_owned(),
-                    occurred_at: result.occurred_at.into(),
-                    description: result.description,
-                    created_at: result.created_at.into(),
-                },
-            }
-            .into())
+        AccountMutationOutcome::Persisted(result) => Ok(RecordExternalIncomeSuccess {
+            result: AccountIncomeObject {
+                id: encode_node_id("AccountIncome", &result.id.to_string()),
+                household_id: encode_node_id("Household", &result.household_id.to_string()),
+                account_id: encode_node_id("Account", &result.account_id.to_string()),
+                amount_yen: Long(result.amount_yen),
+                currency: "JPY".to_owned(),
+                occurred_at: result.occurred_at.into(),
+                description: result.description,
+                created_at: result.created_at.into(),
+            },
         }
+        .into()),
     }
 }
 
-fn account_object(account: account_command_result::AccountCommandAccount) -> Result<AccountObject> {
+fn account_object(account: AccountMutationAccount) -> Result<AccountObject> {
     let kind = match account.kind.as_str() {
         "BANK" => AccountKind::Bank,
         "CASH" => AccountKind::Cash,
@@ -246,28 +223,6 @@ pub enum RecordExternalIncomeResult {
 #[derive(Clone, Debug, SimpleObject)]
 pub struct RecordExternalIncomeSuccess {
     pub result: AccountIncomeObject,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PersistedAccountMovementResult {
-    pub id: String,
-    pub household_id: String,
-    pub kind: AccountMovementKind,
-    pub occurred_at: crate::DateTime,
-    pub from_account_id: String,
-    pub to_account_id: String,
-    pub amount_yen: i64,
-    pub description: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PersistedAccountIncomeResult {
-    pub id: String,
-    pub household_id: String,
-    pub account_id: String,
-    pub occurred_at: ChronoDateTime<Utc>,
-    pub amount_yen: i64,
-    pub description: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -316,10 +271,15 @@ impl From<AccountMutationFailure> for RecordExternalIncomeUserError {
 }
 
 pub async fn record_account_movement(
-    pool: &PgPool,
+    handler: &dyn AccountFinancialMutationsHandler,
     actor_id: Uuid,
     input: RecordAccountMovementInput,
-) -> Result<AccountMutationOutcome<PersistedAccountMovementResult>, async_graphql::Error> {
+) -> Result<
+    AccountMutationOutcome<
+        cross_context_application::account_financial_mutations::AccountMovementMutationResult,
+    >,
+    async_graphql::Error,
+> {
     let occurred_at = match input.occurred_at.parse_utc() {
         Ok(value) => value,
         Err(_) => {
@@ -437,37 +397,25 @@ pub async fn record_account_movement(
         request_fingerprint: fingerprint,
         account_ids,
     };
-    match evidence_workflows::record_account_movement_workflow(pool, command).await {
-        Ok(value) => Ok(AccountMutationOutcome::Persisted(
-            PersistedAccountMovementResult {
-                id: value.id,
-                household_id,
-                kind: input.kind,
-                occurred_at: input.occurred_at,
-                from_account_id,
-                to_account_id,
-                amount_yen: value.amount_yen,
-                description: value.description,
-            },
-        )),
-        Err(WorkflowFailure::Conflict) => Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::Conflict,
-        )),
-        Err(WorkflowFailure::NotFound) => Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::NotFound,
-        )),
-        Err(WorkflowFailure::Decision(_)) => Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::BadInput,
-        )),
-        Err(WorkflowFailure::Infrastructure(error)) => Err(crate::internal_error(error)),
+    match handler.record_account_movement(command).await {
+        Ok(value) => Ok(AccountMutationOutcome::Persisted(value)),
+        Err(cross_context_application::account_financial_mutations::AccountMutationError::Conflict) => Ok(AccountMutationOutcome::UserError(AccountMutationFailure::Conflict)),
+        Err(cross_context_application::account_financial_mutations::AccountMutationError::NotFound) => Ok(AccountMutationOutcome::UserError(AccountMutationFailure::NotFound)),
+        Err(cross_context_application::account_financial_mutations::AccountMutationError::InvalidInput) => Ok(AccountMutationOutcome::UserError(AccountMutationFailure::BadInput)),
+        Err(cross_context_application::account_financial_mutations::AccountMutationError::Infrastructure(error)) => Err(crate::internal_error(error)),
     }
 }
 
 pub async fn record_external_income(
-    pool: &PgPool,
+    handler: &dyn AccountFinancialMutationsHandler,
     actor_id: Uuid,
     input: RecordExternalIncomeInput,
-) -> Result<AccountMutationOutcome<PersistedAccountIncomeResult>, async_graphql::Error> {
+) -> Result<
+    AccountMutationOutcome<
+        cross_context_application::account_financial_mutations::AccountIncomeMutationResult,
+    >,
+    async_graphql::Error,
+> {
     let occurred_at = match input.occurred_at.parse_utc() {
         Ok(value) => value,
         Err(_) => {
@@ -562,27 +510,12 @@ pub async fn record_external_income(
         idempotency_key: input.idempotency_key,
         request_fingerprint,
     };
-    match evidence_workflows::record_account_income_workflow(pool, command).await {
-        Ok(value) => Ok(AccountMutationOutcome::Persisted(
-            PersistedAccountIncomeResult {
-                id: value.id,
-                household_id,
-                account_id,
-                occurred_at: value.occurred_at,
-                amount_yen: value.amount_yen,
-                description: value.description,
-            },
-        )),
-        Err(WorkflowFailure::Conflict) => Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::Conflict,
-        )),
-        Err(WorkflowFailure::NotFound) => Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::NotFound,
-        )),
-        Err(WorkflowFailure::Decision(_)) => Ok(AccountMutationOutcome::UserError(
-            AccountMutationFailure::BadInput,
-        )),
-        Err(WorkflowFailure::Infrastructure(error)) => Err(crate::internal_error(error)),
+    match handler.record_account_income(command).await {
+        Ok(value) => Ok(AccountMutationOutcome::Persisted(value)),
+        Err(cross_context_application::account_financial_mutations::AccountMutationError::Conflict) => Ok(AccountMutationOutcome::UserError(AccountMutationFailure::Conflict)),
+        Err(cross_context_application::account_financial_mutations::AccountMutationError::NotFound) => Ok(AccountMutationOutcome::UserError(AccountMutationFailure::NotFound)),
+        Err(cross_context_application::account_financial_mutations::AccountMutationError::InvalidInput) => Ok(AccountMutationOutcome::UserError(AccountMutationFailure::BadInput)),
+        Err(cross_context_application::account_financial_mutations::AccountMutationError::Infrastructure(error)) => Err(crate::internal_error(error)),
     }
 }
 

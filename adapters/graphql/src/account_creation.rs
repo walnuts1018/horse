@@ -1,10 +1,9 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use bookkeeping_application::{
-    create_account::{CreateAccountCommand, OpeningBalance},
+    create_account::{CreateAccountHandler, CreateAccountOpeningBalance, CreateAccountRequest},
     workflow_failure::WorkflowFailure,
 };
-use bookkeeping_postgres::create_account;
-use horse_postgres_common::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
@@ -56,13 +55,13 @@ pub async fn create_account(
     };
     let pool_id = match input.pool_id.as_ref() {
         Some(id) => match decode_node_id(id, "Pool") {
-            Ok(id) => Some(id.to_string()),
+            Ok(id) => Some(id),
             Err(()) => return Ok(user_error(crate::MutationErrorCode::BadInput).into()),
         },
         None => None,
     };
     let opening_balance = match input.opening_balance {
-        Some(opening) => Some(OpeningBalance {
+        Some(opening) => Some(CreateAccountOpeningBalance {
             amount_yen: opening.amount_yen.0,
             at: opening.at.as_str().to_owned(),
         }),
@@ -74,19 +73,18 @@ pub async fn create_account(
         AccountKind::Card => "CARD",
         AccountKind::Other => "OTHER",
     };
-    match create_account::persist_create_account(
-        ctx.data::<PgPool>()?,
-        CreateAccountCommand {
-            actor_id: actor.0.to_string(),
-            household_id: household_id.to_string(),
+    match ctx
+        .data::<Arc<dyn CreateAccountHandler>>()?
+        .handle(CreateAccountRequest {
+            actor_id: actor.0,
+            household_id,
             name: input.name,
             kind: kind.to_owned(),
             card_last4: input.card_last4,
             pool_id,
             opening_balance,
-        },
-    )
-    .await
+        })
+        .await
     {
         Ok(account) => {
             let kind = match account.kind.as_str() {
@@ -98,14 +96,13 @@ pub async fn create_account(
             };
             Ok(CreateAccountSuccess {
                 result: AccountObject {
-                    id: encode_node_id("Account", &account.id)?.into(),
+                    id: encode_node_id("Account", &account.id.to_string())?.into(),
                     name: account.name,
                     kind,
                     card_last4: account.card_last4,
                     pool_id: account
                         .pool_id
-                        .as_deref()
-                        .map(|id| encode_node_id("Pool", id).map(Into::into))
+                        .map(|id| encode_node_id("Pool", &id.to_string()).map(Into::into))
                         .transpose()?,
                 },
             }

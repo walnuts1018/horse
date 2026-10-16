@@ -109,6 +109,54 @@ pub async fn persist_create_pool(
         .await
 }
 
+pub struct PostgresCreatePoolHandler {
+    pool: PgPool,
+}
+
+impl PostgresCreatePoolHandler {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl policy_application::create_pool::CreatePoolHandler for PostgresCreatePoolHandler {
+    fn create<'a>(
+        &'a self,
+        command: CreatePoolCommand,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Uuid, policy_application::WorkflowFailure>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            persist_create_pool(&self.pool, command)
+                .await
+                .map_err(|error| match error {
+                    CreatePoolMutationError::InvalidWorkflow(_) => {
+                        policy_application::WorkflowFailure::Decision
+                    }
+                    CreatePoolMutationError::HouseholdNotFound
+                    | CreatePoolMutationError::MemberNotFound => {
+                        policy_application::WorkflowFailure::NotFound
+                    }
+                    CreatePoolMutationError::Pool(message) => {
+                        policy_application::WorkflowFailure::Infrastructure(message)
+                    }
+                    CreatePoolMutationError::Database(error) => {
+                        policy_application::WorkflowFailure::Infrastructure(error.to_string())
+                    }
+                    CreatePoolMutationError::NumericOutOfRange(_) => {
+                        policy_application::WorkflowFailure::Infrastructure(
+                            "numeric value is out of range".to_owned(),
+                        )
+                    }
+                })
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PoolFundingShareInput {
     pub member_id: String,

@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use chrono::DateTime;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
 use diesel_async::RunQueryDsl;
@@ -5,6 +6,89 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
+
+pub struct PostgresStatementRefundCorrectionQuery {
+    pool: PgPool,
+}
+
+impl PostgresStatementRefundCorrectionQuery {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl cross_context_application::statement_refund_correction_query::StatementRefundCorrectionQuery
+    for PostgresStatementRefundCorrectionQuery
+{
+    async fn load(
+        &self,
+        actor_id: Uuid,
+        household_id: Uuid,
+        source_document_id: Uuid,
+        source_reference: String,
+        first: Option<i32>,
+        after: Option<Uuid>,
+    ) -> Result<
+        cross_context_application::statement_refund_correction_query::StatementRefundCorrectionConnection,
+        cross_context_application::statement_refund_correction_query::StatementRefundCorrectionQueryError,
+    >{
+        use cross_context_application::statement_refund_correction_query as application;
+        let active_member = household_postgres::household_access::is_active_member(
+            &self.pool,
+            household_id,
+            actor_id,
+        )
+        .await
+        .map_err(|error| {
+            application::StatementRefundCorrectionQueryError::Infrastructure(format!("{error:?}"))
+        })?;
+        if !active_member {
+            return Err(application::StatementRefundCorrectionQueryError::ResourceUnavailable);
+        }
+
+        let page = load_statement_refund_corrections(
+            &self.pool,
+            household_id,
+            source_document_id,
+            &source_reference,
+            first,
+            after,
+        )
+        .await
+        .map_err(|error| match error {
+            StatementRefundCorrectionQueryError::InvalidInput => {
+                application::StatementRefundCorrectionQueryError::InvalidInput
+            }
+            StatementRefundCorrectionQueryError::SourceDocumentNotFound => {
+                application::StatementRefundCorrectionQueryError::SourceDocumentNotFound
+            }
+            StatementRefundCorrectionQueryError::StatementNotFound => {
+                application::StatementRefundCorrectionQueryError::StatementNotFound
+            }
+            StatementRefundCorrectionQueryError::Pool(message) => {
+                application::StatementRefundCorrectionQueryError::Infrastructure(message)
+            }
+            StatementRefundCorrectionQueryError::Database(error) => {
+                application::StatementRefundCorrectionQueryError::Infrastructure(error.to_string())
+            }
+        })?;
+        Ok(application::StatementRefundCorrectionConnection {
+            edges: page
+                .edges
+                .into_iter()
+                .map(|row| application::StatementRefundCorrection {
+                    correction_id: row.correction_id,
+                    amount_yen: row.amount_yen,
+                    occurred_at: row.occurred_at,
+                    merchant: row.merchant,
+                    source_filename: row.source_filename,
+                })
+                .collect(),
+            has_next_page: page.has_next_page,
+        })
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct StatementRefundCorrectionProjection {

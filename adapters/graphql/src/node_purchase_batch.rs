@@ -1,5 +1,4 @@
 use async_graphql::{Context, Result};
-use horse_postgres_common::PgPool;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
@@ -15,7 +14,6 @@ pub(crate) async fn load(
     if household_ids.is_empty() || requested.is_empty() {
         return Ok(HashMap::new());
     }
-    let pool = ctx.data::<PgPool>()?;
     let purchase_ids = requested
         .iter()
         .filter(|(kind, _)| kind == "Purchase")
@@ -47,26 +45,51 @@ pub(crate) async fn load(
         .map_err(crate::internal_error)?;
     let item_parents = projection.item_parents;
     let correction_rows = projection.corrections;
-    let mut parent_ids = purchase_ids.clone();
+    let mut household_by_purchase = HashMap::new();
     for parent in &item_parents {
-        parent_ids.insert(parent.purchase_id);
+        household_by_purchase.insert(parent.purchase_id, parent.household_id);
     }
     for correction in &correction_rows {
-        parent_ids.insert(correction.purchase_id);
+        household_by_purchase.insert(correction.purchase_id, correction.household_id);
     }
-    let parent_ids = parent_ids.into_iter().collect::<Vec<_>>();
-    let projections =
-        cross_context_postgres::purchase_command_result::load_purchase_command_results(
-            pool,
-            household_ids,
-            &parent_ids,
-        )
-        .await
-        .map_err(crate::internal_error)?;
+    let actor = crate::actor(ctx)?;
+    let purchase_query = ctx.data::<std::sync::Arc<
+        dyn bookkeeping_application::purchase_search_query::PurchaseSearchQuery,
+    >>()?;
+    let mut purchase_keys = household_by_purchase
+        .into_iter()
+        .map(|(purchase_id, household_id)| (household_id, purchase_id))
+        .collect::<HashSet<_>>();
+    for purchase_id in &purchase_ids {
+        if !purchase_keys.iter().any(|(_, id)| id == purchase_id) {
+            purchase_keys.extend(
+                household_ids
+                    .iter()
+                    .copied()
+                    .map(|household_id| (household_id, *purchase_id)),
+            );
+        }
+    }
+    use futures_util::{StreamExt, TryStreamExt};
+    let projections = futures_util::stream::iter(purchase_keys)
+        .map(|(household_id, purchase_id)| async move {
+            match purchase_query
+                .purchase(actor.0, household_id, purchase_id)
+                .await
+            {
+                Ok(projection) => Ok(Some(((household_id, purchase_id), projection))),
+                Err(
+                    bookkeeping_application::purchase_search_query::PurchaseSearchQueryError::PurchaseNotFound
+                    | bookkeeping_application::purchase_search_query::PurchaseSearchQueryError::HouseholdNotFound,
+                ) => Ok(None),
+                Err(error) => Err(crate::internal_error(error)),
+            }
+        })
+        .buffer_unordered(16)
+        .try_collect::<Vec<_>>()
+        .await?;
     let mut purchase_nodes = HashMap::new();
-    for projection in projections {
-        let household_id = projection.household_id;
-        let purchase_id = projection.id;
+    for ((household_id, purchase_id), projection) in projections.into_iter().flatten() {
         let purchase = purchase_mutations::PurchaseObject::try_from(projection)
             .map_err(crate::internal_error)?;
         purchase_nodes.insert((household_id, purchase_id), purchase);

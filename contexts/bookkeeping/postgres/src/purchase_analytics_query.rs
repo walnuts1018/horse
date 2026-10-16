@@ -5,7 +5,110 @@ use diesel::{ExpressionMethods, JoinOnDsl, QueryDsl};
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
+use bookkeeping_application::purchase_analytics_query::{
+    PurchaseAnalyticsProjection as ApplicationAnalytics,
+    PurchaseAnalyticsQuery as ApplicationQuery, PurchaseAnalyticsQueryError as ApplicationError,
+    PurchasePriceObservationProjection as ApplicationObservation,
+};
+
 use crate::{PgPool, schema::public};
+
+pub struct PostgresPurchaseAnalyticsQuery {
+    pool: PgPool,
+}
+
+impl PostgresPurchaseAnalyticsQuery {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl ApplicationQuery for PostgresPurchaseAnalyticsQuery {
+    fn purchase_analytics<'a>(
+        &'a self,
+        actor_id: Uuid,
+        household_id: Uuid,
+        from: &'a str,
+        to: &'a str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ApplicationAnalytics>, ApplicationError>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            purchase_analytics(&self.pool, actor_id, household_id, from, to)
+                .await
+                .map(|rows| rows.into_iter().map(Into::into).collect())
+                .map_err(application_error)
+        })
+    }
+
+    fn purchase_price_observations<'a>(
+        &'a self,
+        actor_id: Uuid,
+        household_id: Uuid,
+        from: &'a str,
+        to: &'a str,
+        item_ids: &'a [String],
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Vec<ApplicationObservation>, ApplicationError>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            purchase_price_observations(&self.pool, actor_id, household_id, from, to, item_ids)
+                .await
+                .map(|rows| rows.into_iter().map(Into::into).collect())
+                .map_err(application_error)
+        })
+    }
+}
+
+fn application_error(error: PurchaseAnalyticsQueryError) -> ApplicationError {
+    match error {
+        PurchaseAnalyticsQueryError::HouseholdNotFound => ApplicationError::HouseholdNotFound,
+        PurchaseAnalyticsQueryError::InvalidPeriod => ApplicationError::InvalidPeriod,
+        PurchaseAnalyticsQueryError::AmountOutOfRange => ApplicationError::AmountOutOfRange,
+        PurchaseAnalyticsQueryError::Pool(error) => ApplicationError::Infrastructure(error),
+        PurchaseAnalyticsQueryError::Database(error) => {
+            ApplicationError::Infrastructure(error.to_string())
+        }
+    }
+}
+
+impl From<PurchaseAnalyticsProjection> for ApplicationAnalytics {
+    fn from(row: PurchaseAnalyticsProjection) -> Self {
+        Self {
+            dimension: row.dimension,
+            id: row.id,
+            name: row.name,
+            period: row.period,
+            amount_yen: row.amount_yen,
+            count: row.count,
+        }
+    }
+}
+
+impl From<PurchasePriceObservationProjection> for ApplicationObservation {
+    fn from(row: PurchasePriceObservationProjection) -> Self {
+        Self {
+            item_id: row.item_id,
+            occurred_at: row.occurred_at,
+            amount_yen: row.amount_yen,
+            remaining_refundable_amount_yen: row.remaining_refundable_amount_yen,
+            effective_unit_price_numerator_yen: row.effective_unit_price_numerator_yen,
+            effective_unit_price_denominator: row.effective_unit_price_denominator,
+            printed_unit_price_yen: row.printed_unit_price_yen,
+            printed_unit_price_quantity_numerator: row.printed_unit_price_quantity_numerator,
+            printed_unit_price_quantity_denominator: row.printed_unit_price_quantity_denominator,
+            printed_unit_price_unit: row.printed_unit_price_unit,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum PurchaseAnalyticsQueryError {

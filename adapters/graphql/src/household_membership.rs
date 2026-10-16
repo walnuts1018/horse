@@ -1,11 +1,10 @@
 use async_graphql::{Context, ID, InputObject, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use horse_postgres_common::PgPool;
 use household_application::membership::{
-    LeaveHouseholdCommand, RemoveHouseholdMemberCommand, TransferOwnerCommand,
+    HouseholdMembershipHandler, LeaveHouseholdCommand, MembershipHandlerError,
+    RemoveHouseholdMemberCommand, TransferOwnerCommand,
 };
-use household_application::{membership::MembershipError, workflow_failure::WorkflowFailure};
-use household_postgres::household_membership as postgres_membership;
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, InputObject)]
@@ -85,17 +84,16 @@ pub async fn leave_household(
         Ok(id) => id,
         Err(_) => return Ok(leave_error(crate::MutationErrorCode::BadInput).into()),
     };
-    match postgres_membership::leave_household_workflow(
-        ctx.data::<PgPool>()?,
-        LeaveHouseholdCommand {
+    match ctx
+        .data::<Arc<dyn HouseholdMembershipHandler>>()?
+        .leave(LeaveHouseholdCommand {
             member_id: actor.0.to_string(),
             household_id: household_id.to_string(),
-        },
-    )
-    .await
+        })
+        .await
     {
         Ok(change) => Ok(LeaveHouseholdSuccess {
-            household_id: encode_node_id("Household", &change.household_id)?.into(),
+            household_id: encode_node_id("Household", &change)?.into(),
         }
         .into()),
         Err(error) => match user_error_code(&error) {
@@ -118,18 +116,17 @@ pub async fn remove_household_member(
         Ok(id) => id,
         Err(()) => return Ok(remove_error(crate::MutationErrorCode::BadInput).into()),
     };
-    match postgres_membership::remove_household_member_workflow(
-        ctx.data::<PgPool>()?,
-        RemoveHouseholdMemberCommand {
+    match ctx
+        .data::<Arc<dyn HouseholdMembershipHandler>>()?
+        .remove_member(RemoveHouseholdMemberCommand {
             actor_id: actor.0.to_string(),
             household_id: household_id.to_string(),
             member_id: member_id.to_string(),
-        },
-    )
-    .await
+        })
+        .await
     {
         Ok(change) => Ok(RemoveHouseholdMemberSuccess {
-            household_id: encode_node_id("Household", &change.household_id)?.into(),
+            household_id: encode_node_id("Household", &change)?.into(),
         }
         .into()),
         Err(error) => match user_error_code(&error) {
@@ -152,18 +149,17 @@ pub async fn transfer_household_owner(
         Ok(id) => id,
         Err(()) => return Ok(transfer_error(crate::MutationErrorCode::BadInput).into()),
     };
-    match postgres_membership::transfer_owner_workflow(
-        ctx.data::<PgPool>()?,
-        TransferOwnerCommand {
+    match ctx
+        .data::<Arc<dyn HouseholdMembershipHandler>>()?
+        .transfer_owner(TransferOwnerCommand {
             actor_id: actor.0.to_string(),
             household_id: household_id.to_string(),
             new_owner_id: new_owner_id.to_string(),
-        },
-    )
-    .await
+        })
+        .await
     {
         Ok(change) => Ok(TransferHouseholdOwnerSuccess {
-            household_id: encode_node_id("Household", &change.household_id)?.into(),
+            household_id: encode_node_id("Household", &change)?.into(),
         }
         .into()),
         Err(error) => match user_error_code(&error) {
@@ -200,14 +196,12 @@ fn encode_node_id(kind: &str, raw_id: &str) -> Result<String> {
     Ok(URL_SAFE_NO_PAD.encode(payload))
 }
 
-fn user_error_code(
-    error: &WorkflowFailure<MembershipError, postgres_membership::HouseholdMembershipError>,
-) -> Option<crate::MutationErrorCode> {
+fn user_error_code(error: &MembershipHandlerError) -> Option<crate::MutationErrorCode> {
     match error {
-        WorkflowFailure::Decision(_) => Some(crate::MutationErrorCode::BadInput),
-        WorkflowFailure::NotFound => Some(crate::MutationErrorCode::NotFound),
-        WorkflowFailure::Conflict => Some(crate::MutationErrorCode::Conflict),
-        WorkflowFailure::Infrastructure(_) => None,
+        MembershipHandlerError::Decision(_) => Some(crate::MutationErrorCode::BadInput),
+        MembershipHandlerError::NotFound => Some(crate::MutationErrorCode::NotFound),
+        MembershipHandlerError::Conflict => Some(crate::MutationErrorCode::Conflict),
+        MembershipHandlerError::Infrastructure(_) => None,
     }
 }
 

@@ -11,6 +11,16 @@ use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
 
+use bookkeeping_application::purchase_search_query::{
+    PurchaseItemAllocationProjection, PurchaseItemProjection, PurchasePaymentProjection,
+    PurchaseProjection, PurchaseSearchCursor as ApplicationCursor,
+    PurchaseSearchFilter as ApplicationFilter, PurchaseSearchPage as ApplicationPage,
+    PurchaseSearchQuery as ApplicationQuery, PurchaseSearchQueryError as ApplicationError,
+    PurchaseSearchRow as ApplicationRow,
+};
+
+use crate::purchase_command_result::{PurchaseCommandResult, PurchaseCommandResultError};
+
 #[derive(Clone, Debug)]
 pub struct PurchaseSearchFilter {
     pub household_id: Uuid,
@@ -64,7 +74,209 @@ pub enum PurchaseSearchQueryError {
     InvalidPagination,
     InvalidCursor,
     CursorNotFound,
+    PurchaseNotFound,
     InvalidFilter,
+}
+
+pub struct PostgresPurchaseSearchQuery {
+    pool: PgPool,
+}
+
+impl PostgresPurchaseSearchQuery {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl ApplicationQuery for PostgresPurchaseSearchQuery {
+    fn query<'a>(
+        &'a self,
+        actor_id: Uuid,
+        filter: ApplicationFilter,
+        after: Option<ApplicationCursor>,
+        before: Option<ApplicationCursor>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<ApplicationPage, ApplicationError>> + Send + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let household_id = filter.household_id;
+            let page = purchases(
+                &self.pool,
+                actor_id,
+                PurchaseSearchFilter {
+                    household_id,
+                    from: filter.from,
+                    to: filter.to,
+                    origin: filter.origin,
+                    has_evidence: filter.has_evidence,
+                    search: filter.search,
+                    category_id: filter.category_id,
+                    uncategorized: filter.uncategorized,
+                    tag_id: filter.tag_id,
+                    payment_account_id: filter.payment_account_id,
+                    pool_id: filter.pool_id,
+                    minimum_amount: filter.minimum_amount,
+                    maximum_amount: filter.maximum_amount,
+                    amount_target: match filter.amount_target {
+                        bookkeeping_application::purchase_search_query::PurchaseAmountTarget::Purchase => PurchaseAmountTarget::Purchase,
+                        bookkeeping_application::purchase_search_query::PurchaseAmountTarget::Item => PurchaseAmountTarget::Item,
+                    },
+                },
+                after.map(|cursor| PurchaseSearchCursor {
+                    id: cursor.id,
+                    occurred_at: cursor.occurred_at,
+                }),
+                before.map(|cursor| PurchaseSearchCursor {
+                    id: cursor.id,
+                    occurred_at: cursor.occurred_at,
+                }),
+                first,
+                last,
+            )
+            .await
+            .map_err(application_error)?;
+            let mut rows = Vec::with_capacity(page.rows.len());
+            for row in page.rows {
+                let result = crate::purchase_command_result::load_purchase_command_result(
+                    &self.pool,
+                    household_id,
+                    row.id,
+                )
+                .await
+                .map_err(|error| ApplicationError::Infrastructure(format!("{error:?}")))?;
+                rows.push(ApplicationRow {
+                    id: row.id,
+                    occurred_at: row.occurred_at,
+                    purchase: to_projection(result),
+                });
+            }
+            Ok(ApplicationPage {
+                rows,
+                total_count: page.total_count,
+                sync_cursor: page.sync_cursor,
+                has_extra: page.has_extra,
+                backward: page.backward,
+            })
+        })
+    }
+
+    fn purchase<'a>(
+        &'a self,
+        actor_id: Uuid,
+        household_id: Uuid,
+        purchase_id: Uuid,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<PurchaseProjection, ApplicationError>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let active =
+                crate::household_access::is_active_member(&self.pool, household_id, actor_id)
+                    .await
+                    .map_err(|error| ApplicationError::Infrastructure(format!("{error:?}")))?;
+            if !active {
+                return Err(ApplicationError::HouseholdNotFound);
+            }
+            crate::purchase_command_result::load_purchase_command_result(
+                &self.pool,
+                household_id,
+                purchase_id,
+            )
+            .await
+            .map(to_projection)
+            .map_err(|error| match error {
+                PurchaseCommandResultError::PurchaseNotFound => ApplicationError::PurchaseNotFound,
+                error => ApplicationError::Infrastructure(format!("{error:?}")),
+            })
+        })
+    }
+}
+
+fn to_projection(result: PurchaseCommandResult) -> PurchaseProjection {
+    PurchaseProjection {
+        id: result.id,
+        household_id: result.household_id,
+        occurred_at: result.occurred_at,
+        date_precision: result.date_precision,
+        merchant: result.merchant,
+        origin: result.origin,
+        status: result.status,
+        revision: result.revision,
+        created_at: result.created_at,
+        updated_at: result.updated_at,
+        has_evidence: result.has_evidence,
+        source_kinds: result.source_kinds,
+        total_yen: result.total_yen,
+        correction_amount_yen: result.correction_amount_yen,
+        correction_count: result.correction_count,
+        remaining_refundable_amount_yen: result.remaining_refundable_amount_yen,
+        items: result
+            .items
+            .into_iter()
+            .map(|item| PurchaseItemProjection {
+                id: item.id,
+                name: item.name,
+                amount_yen: item.amount_yen,
+                category_id: item.category_id,
+                product_variant_id: item.product_variant_id,
+                revision: item.revision,
+                quantity_numerator: item.quantity_numerator,
+                quantity_denominator: item.quantity_denominator,
+                quantity_unit: item.quantity_unit,
+                printed_unit_price_yen: item.printed_unit_price_yen,
+                printed_unit_price_quantity_numerator: item.printed_unit_price_quantity_numerator,
+                printed_unit_price_quantity_denominator: item
+                    .printed_unit_price_quantity_denominator,
+                printed_unit_price_unit: item.printed_unit_price_unit,
+                allocations: item
+                    .allocations
+                    .into_iter()
+                    .map(|allocation| PurchaseItemAllocationProjection {
+                        pool_id: allocation.pool_id,
+                        pool_name: allocation.pool_name,
+                        weight: allocation.weight,
+                        amount_yen: allocation.amount_yen,
+                    })
+                    .collect(),
+                tags: item.tags,
+                remaining_refundable_amount_yen: item.remaining_refundable_amount_yen,
+            })
+            .collect(),
+        payments: result
+            .payments
+            .into_iter()
+            .map(|payment| PurchasePaymentProjection {
+                account_id: payment.account_id,
+                account_name: payment.account_name,
+                account_kind: payment.account_kind,
+                account_card_last4: payment.account_card_last4,
+                account_pool_id: payment.account_pool_id,
+                amount_yen: payment.amount_yen,
+            })
+            .collect(),
+    }
+}
+
+fn application_error(error: PurchaseSearchQueryError) -> ApplicationError {
+    match error {
+        PurchaseSearchQueryError::HouseholdNotFound => ApplicationError::HouseholdNotFound,
+        PurchaseSearchQueryError::InvalidPagination => ApplicationError::InvalidPagination,
+        PurchaseSearchQueryError::InvalidCursor => ApplicationError::InvalidCursor,
+        PurchaseSearchQueryError::CursorNotFound => ApplicationError::CursorNotFound,
+        PurchaseSearchQueryError::PurchaseNotFound => ApplicationError::PurchaseNotFound,
+        PurchaseSearchQueryError::InvalidFilter => ApplicationError::InvalidFilter,
+        PurchaseSearchQueryError::Pool(error) => ApplicationError::Infrastructure(error),
+        PurchaseSearchQueryError::Database(error) => {
+            ApplicationError::Infrastructure(error.to_string())
+        }
+    }
 }
 
 impl From<DieselError> for PurchaseSearchQueryError {

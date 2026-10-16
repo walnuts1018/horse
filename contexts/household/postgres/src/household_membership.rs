@@ -6,11 +6,14 @@ use diesel::{
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use horse_household_change::UiChangeDescriptor;
 use household_application::membership::{
-    LeaveHouseholdCommand, LeaveHouseholdOperations, MembershipChange, MembershipChangeDecision,
-    MembershipError, MembershipFacts, RemoveHouseholdMemberCommand,
-    RemoveHouseholdMemberOperations, TransferHouseholdOwnerOperations, TransferOwnerCommand,
+    HouseholdMembershipHandler, LeaveHouseholdCommand, LeaveHouseholdOperations, MembershipChange,
+    MembershipChangeDecision, MembershipError, MembershipFacts, MembershipHandlerError,
+    RemoveHouseholdMemberCommand, RemoveHouseholdMemberOperations,
+    TransferHouseholdOwnerOperations, TransferOwnerCommand,
 };
 use household_application::workflow_failure::WorkflowFailure;
+use std::future::Future;
+use std::pin::Pin;
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
@@ -29,6 +32,68 @@ pub enum HouseholdMembershipError {
     HouseholdNotFound,
     MemberNotFound,
     Conflict,
+}
+
+#[derive(Clone)]
+pub struct PostgresHouseholdMembership {
+    pool: PgPool,
+}
+
+impl PostgresHouseholdMembership {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl HouseholdMembershipHandler for PostgresHouseholdMembership {
+    fn leave<'a>(
+        &'a self,
+        command: LeaveHouseholdCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<String, MembershipHandlerError>> + Send + 'a>> {
+        Box::pin(async move {
+            leave_household_workflow(&self.pool, command)
+                .await
+                .map(|change| change.household_id)
+                .map_err(to_handler_error)
+        })
+    }
+
+    fn remove_member<'a>(
+        &'a self,
+        command: RemoveHouseholdMemberCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<String, MembershipHandlerError>> + Send + 'a>> {
+        Box::pin(async move {
+            remove_household_member_workflow(&self.pool, command)
+                .await
+                .map(|change| change.household_id)
+                .map_err(to_handler_error)
+        })
+    }
+
+    fn transfer_owner<'a>(
+        &'a self,
+        command: TransferOwnerCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<String, MembershipHandlerError>> + Send + 'a>> {
+        Box::pin(async move {
+            transfer_owner_workflow(&self.pool, command)
+                .await
+                .map(|change| change.household_id)
+                .map_err(to_handler_error)
+        })
+    }
+}
+
+fn to_handler_error(
+    error: WorkflowFailure<MembershipError, HouseholdMembershipError>,
+) -> MembershipHandlerError {
+    match error {
+        WorkflowFailure::Decision(error) => MembershipHandlerError::Decision(error),
+        WorkflowFailure::NotFound => MembershipHandlerError::NotFound,
+        WorkflowFailure::Conflict => MembershipHandlerError::Conflict,
+        WorkflowFailure::Infrastructure(error) => {
+            MembershipHandlerError::Infrastructure(format!("{error:?}"))
+        }
+    }
 }
 
 impl From<DieselError> for HouseholdMembershipError {

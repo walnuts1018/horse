@@ -4,9 +4,7 @@ use async_graphql::{
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::NaiveDate;
-use horse_postgres_common::PgPool;
 use policy_application::{budget, recurring_expense};
-use policy_postgres::{policy as postgres_policy, policy_query as postgres_policy_query};
 use uuid::Uuid;
 
 use crate::{Long, MutationErrorCode, pagination::PageInfo};
@@ -361,13 +359,15 @@ pub async fn create_budget(
         starts_on: input.starts_on.0,
         ends_on: input.ends_on.map(|value| value.0),
     };
-    let pool = ctx.data::<PgPool>()?;
-    let mut operations = postgres_policy::PolicyOperations::new(pool);
-    match budget::create_budget(&mut operations, command).await {
-        Ok(value) => {
-            let result = load_budget_result(pool, actor.0, value.id.value()).await?;
-            Ok(CreateBudgetSuccess { result }.into())
+    match ctx
+        .data::<std::sync::Arc<dyn budget::BudgetMutationHandler>>()?
+        .create(command)
+        .await
+    {
+        Ok(result) => Ok(CreateBudgetSuccess {
+            result: result.into(),
         }
+        .into()),
         Err(error) => policy_error(error),
     }
 }
@@ -404,13 +404,15 @@ pub async fn update_budget(
             MaybeUndefined::Value(value) => Some(Some(value.0)),
         },
     };
-    let pool = ctx.data::<PgPool>()?;
-    let mut operations = postgres_policy::PolicyOperations::new(pool);
-    match budget::update_budget(&mut operations, command).await {
-        Ok(value) => {
-            let result = load_budget_result(pool, actor.0, value.id.value()).await?;
-            Ok(UpdateBudgetSuccess { result }.into())
+    match ctx
+        .data::<std::sync::Arc<dyn budget::BudgetMutationHandler>>()?
+        .update(command)
+        .await
+    {
+        Ok(result) => Ok(UpdateBudgetSuccess {
+            result: result.into(),
         }
+        .into()),
         Err(error) => policy_error(error),
     }
 }
@@ -424,26 +426,20 @@ pub async fn archive_budget(
         Ok(value) => value,
         Err(()) => return Ok(MutationErrorCode::BadInput.into()),
     };
-    let pool = ctx.data::<PgPool>()?;
-    let household_id = match postgres_policy_query::budget_household_id(pool, budget_id).await {
-        Ok(value) => value,
-        Err(error) => {
-            return policy_query_error(error);
+    match ctx
+        .data::<std::sync::Arc<dyn budget::BudgetMutationHandler>>()?
+        .archive(
+            budget::BudgetActorId::from_persisted(actor.0),
+            budget::BudgetId::from_persisted(budget_id),
+            i64::from(input.base_revision),
+            input.archived,
+        )
+        .await
+    {
+        Ok(result) => Ok(ArchiveBudgetSuccess {
+            result: result.into(),
         }
-    };
-    let command = budget::ArchiveBudgetCommand {
-        actor_id: budget::BudgetActorId::from_persisted(actor.0),
-        household_id: budget::BudgetHouseholdId::from_persisted(household_id),
-        id: budget::BudgetId::from_persisted(budget_id),
-        expected_revision: i64::from(input.base_revision),
-        archived: input.archived,
-    };
-    let mut operations = postgres_policy::PolicyOperations::new(pool);
-    match budget::archive_budget(&mut operations, command).await {
-        Ok(value) => {
-            let result = load_budget_result(pool, actor.0, value.id.value()).await?;
-            Ok(ArchiveBudgetSuccess { result }.into())
-        }
+        .into()),
         Err(error) => policy_error(error),
     }
 }
@@ -482,8 +478,11 @@ pub async fn create_recurring_expense(
         next_due_on: input.next_due_on.0,
         ends_on: input.ends_on.map(|value| value.0),
     };
-    let mut operations = postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
-    match recurring_expense::create_recurring_expense(&mut operations, command).await {
+    match ctx
+        .data::<std::sync::Arc<dyn recurring_expense::RecurringExpenseMutationHandler>>()?
+        .create(command)
+        .await
+    {
         Ok(value) => Ok(CreateRecurringExpenseSuccess {
             result: value.into(),
         }
@@ -531,8 +530,11 @@ pub async fn update_recurring_expense(
         next_due_on: input.next_due_on.0,
         ends_on: input.ends_on.map(|value| value.0),
     };
-    let mut operations = postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
-    match recurring_expense::update_recurring_expense(&mut operations, command).await {
+    match ctx
+        .data::<std::sync::Arc<dyn recurring_expense::RecurringExpenseMutationHandler>>()?
+        .update(command)
+        .await
+    {
         Ok(value) => Ok(UpdateRecurringExpenseSuccess {
             result: value.into(),
         }
@@ -550,26 +552,16 @@ pub async fn archive_recurring_expense(
         Ok(value) => value,
         Err(()) => return Ok(MutationErrorCode::BadInput.into()),
     };
-    let household_id = match postgres_policy_query::recurring_expense_household_id(
-        ctx.data::<PgPool>()?,
-        expense_id,
-    )
-    .await
+    match ctx
+        .data::<std::sync::Arc<dyn recurring_expense::RecurringExpenseMutationHandler>>()?
+        .archive(
+            recurring_expense::RecurringExpenseActorId::from_persisted(actor.0),
+            recurring_expense::RecurringExpenseId::from_persisted(expense_id),
+            i64::from(input.base_revision),
+            input.archived,
+        )
+        .await
     {
-        Ok(value) => value,
-        Err(error) => {
-            return policy_query_error(error);
-        }
-    };
-    let command = recurring_expense::ArchiveRecurringExpenseCommand {
-        actor_id: recurring_expense::RecurringExpenseActorId::from_persisted(actor.0),
-        household_id: recurring_expense::RecurringExpenseHouseholdId::from_persisted(household_id),
-        id: recurring_expense::RecurringExpenseId::from_persisted(expense_id),
-        expected_revision: i64::from(input.base_revision),
-        archived: input.archived,
-    };
-    let mut operations = postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
-    match recurring_expense::archive_recurring_expense(&mut operations, command).await {
         Ok(value) => Ok(ArchiveRecurringExpenseSuccess {
             result: value.into(),
         }
@@ -602,8 +594,11 @@ pub async fn match_recurring_expense(
         purchase_id: recurring_expense::RecurringExpensePurchaseId::from_persisted(purchase_id),
         expected_revision: i64::from(input.base_revision),
     };
-    let mut operations = postgres_policy::PolicyOperations::new(ctx.data::<PgPool>()?);
-    match recurring_expense::match_recurring_expense(&mut operations, command).await {
+    match ctx
+        .data::<std::sync::Arc<dyn recurring_expense::RecurringExpenseMutationHandler>>()?
+        .match_purchase(command)
+        .await
+    {
         Ok(value) => Ok(MatchRecurringExpenseSuccess {
             result: value.into(),
         }
@@ -626,20 +621,19 @@ pub async fn graphql_budgets(
         .map_err(|_| async_graphql::Error::new("invalid household ID"))?;
     let after_id = decode_cursor(after.as_deref(), "Budget")?;
     let before_id = decode_cursor(before.as_deref(), "Budget")?;
-    let page = postgres_policy_query::budgets(
-        ctx.data::<PgPool>()?,
-        postgres_policy_query::BudgetsQuery {
-            actor_id: actor.0,
-            household_id,
-            period: &period.0,
+    let page = ctx
+        .data::<std::sync::Arc<dyn budget::BudgetQuery>>()?
+        .query(
+            budget::BudgetActorId::from_persisted(actor.0),
+            budget::BudgetHouseholdId::from_persisted(household_id),
+            period.0,
             after_id,
             before_id,
             first,
             last,
-        },
-    )
-    .await
-    .map_err(policy_query_graphql_error)?;
+        )
+        .await
+        .map_err(policy_workflow_graphql_error)?;
     let edges = page
         .rows
         .into_iter()
@@ -678,20 +672,19 @@ pub async fn graphql_recurring_expenses(
         .map_err(|_| async_graphql::Error::new("invalid household ID"))?;
     let after_id = decode_cursor(after.as_deref(), "RecurringExpense")?;
     let before_id = decode_cursor(before.as_deref(), "RecurringExpense")?;
-    let page = postgres_policy_query::recurring_expenses(
-        ctx.data::<PgPool>()?,
-        postgres_policy_query::RecurringExpensesQuery {
-            actor_id: actor.0,
-            household_id,
+    let page = ctx
+        .data::<std::sync::Arc<dyn recurring_expense::RecurringExpenseQuery>>()?
+        .query(
+            recurring_expense::RecurringExpenseActorId::from_persisted(actor.0),
+            recurring_expense::RecurringExpenseHouseholdId::from_persisted(household_id),
             include_archived,
             after_id,
             before_id,
             first,
             last,
-        },
-    )
-    .await
-    .map_err(policy_query_graphql_error)?;
+        )
+        .await
+        .map_err(policy_workflow_graphql_error)?;
     let edges = page
         .rows
         .into_iter()
@@ -713,8 +706,8 @@ pub async fn graphql_recurring_expenses(
     })
 }
 
-impl From<postgres_policy_query::BudgetReadModel> for BudgetObject {
-    fn from(value: postgres_policy_query::BudgetReadModel) -> Self {
+impl From<budget::BudgetReadModel> for BudgetObject {
+    fn from(value: budget::BudgetReadModel) -> Self {
         let actual_yen = value.actual_yen;
         let remaining_yen = value.remaining_yen;
         let projection = value.budget;
@@ -863,44 +856,14 @@ fn policy_error_message(code: MutationErrorCode) -> &'static str {
     }
 }
 
-async fn load_budget_result(
-    pool: &PgPool,
-    actor_id: Uuid,
-    budget_id: Uuid,
-) -> Result<BudgetObject> {
-    postgres_policy_query::budget_for_current_period(pool, actor_id, budget_id)
-        .await
-        .map(Into::into)
-        .map_err(crate::internal_error)
-}
-
-fn policy_query_error<T: From<MutationErrorCode>>(
-    error: postgres_policy_query::PolicyQueryError,
-) -> Result<T> {
-    use postgres_policy_query::PolicyQueryError as Error;
-    match error {
-        Error::InvalidUuid | Error::InvalidPeriod | Error::InvalidPagination => {
-            Ok(MutationErrorCode::BadInput.into())
-        }
-        Error::NotFound | Error::MemberNotFound => Ok(MutationErrorCode::NotFound.into()),
-        error @ (Error::Pool(_) | Error::Database(_) | Error::AmountOverflow) => {
-            Err(crate::internal_error(error))
-        }
-    }
-}
-
-fn policy_query_graphql_error(
-    error: postgres_policy_query::PolicyQueryError,
+fn policy_workflow_graphql_error(
+    error: policy_application::WorkflowFailure,
 ) -> async_graphql::Error {
-    use postgres_policy_query::PolicyQueryError as Error;
+    use policy_application::WorkflowFailure as Error;
     match error {
-        Error::InvalidUuid | Error::InvalidPeriod | Error::InvalidPagination => {
-            async_graphql::Error::new("invalid query input")
-        }
-        Error::NotFound => async_graphql::Error::new("resource not found"),
-        Error::MemberNotFound => async_graphql::Error::new("household not found"),
-        error @ (Error::Pool(_) | Error::Database(_) | Error::AmountOverflow) => {
-            crate::internal_error(error)
-        }
+        Error::Decision => async_graphql::Error::new("invalid query input"),
+        Error::NotFound => async_graphql::Error::new("household not found"),
+        Error::Conflict => async_graphql::Error::new("resource changed; reload and retry"),
+        error @ Error::Infrastructure(_) => crate::internal_error(error),
     }
 }

@@ -4,14 +4,12 @@ use bookkeeping_application::funding_record::RecordFundingWorkflowCommand;
 use bookkeeping_application::workflow_failure::WorkflowFailure;
 use bookkeeping_domain::funding_record::{RecordFundingCommand, RecordFundingError};
 use bookkeeping_domain::{AccountingPeriod, YearMonth};
-use bookkeeping_postgres::funding_record::PersistRecordFunding;
 use chrono::{Datelike, FixedOffset};
-use cross_context_postgres::{
-    funding_command_result as postgres_funding_result, policy_data as postgres_funding,
-};
-use horse_postgres_common::PgPool;
+use cross_context_application::funding_mutation::FundingMutationHandler;
+use cross_context_application::ledger_query::FundingLedgerEntryProjection;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{Actor, DateTime, Long, MutationErrorCode, internal_error};
@@ -69,25 +67,18 @@ pub async fn record_funding(
         Ok(parsed) => parsed,
         Err(error) => return Ok(error.into()),
     };
-    let workflow_command = RecordFundingWorkflowCommand {
-        household_id: parsed.persistence.household_id.clone(),
-        occurred_at: parsed.persistence.occurred_at,
-        idempotency_key: parsed.persistence.idempotency_key.clone(),
-        request_fingerprint: parsed.persistence.request_fingerprint,
+    let handler = ctx.data::<Arc<dyn FundingMutationHandler>>()?;
+    let command = RecordFundingWorkflowCommand {
+        household_id: parsed.household_id.to_string(),
+        occurred_at: parsed.occurred_at,
+        idempotency_key: parsed.idempotency_key,
+        request_fingerprint: parsed.request_fingerprint,
         source_account_id: parsed.source_account_id.map(|id| id.to_string()),
         destination_account_id: parsed.destination_account_id.map(|id| id.to_string()),
         record: parsed.command,
     };
-    match postgres_funding::record_funding_workflow(ctx.data::<PgPool>()?, workflow_command).await {
-        Ok(result) => Ok(Box::new(
-            funding_success(
-                ctx.data::<PgPool>()?,
-                parsed.household_id,
-                result.ledger_entry_id,
-            )
-            .await?,
-        )
-        .into()),
+    match handler.record_funding(command).await {
+        Ok(result) => Ok(Box::new(funding_success(result.projection)?).into()),
         Err(WorkflowFailure::Decision(error)) => Ok(workflow_error(error).into()),
         Err(WorkflowFailure::NotFound) => Ok(not_found_error().into()),
         Err(WorkflowFailure::Conflict) => Ok(conflict_error().into()),
@@ -95,19 +86,7 @@ pub async fn record_funding(
     }
 }
 
-async fn funding_success(
-    pool: &PgPool,
-    household_id: Uuid,
-    ledger_entry_id: String,
-) -> Result<RecordFundingSuccess> {
-    let ledger_entry_id = Uuid::parse_str(&ledger_entry_id).map_err(internal_error)?;
-    let projection = postgres_funding_result::load_funding_ledger_entry_result(
-        pool,
-        household_id,
-        ledger_entry_id,
-    )
-    .await
-    .map_err(internal_error)?;
+fn funding_success(projection: FundingLedgerEntryProjection) -> Result<RecordFundingSuccess> {
     let entry =
         crate::ledger_entry::FundingLedgerEntry::try_from(projection).map_err(internal_error)?;
     Ok(RecordFundingSuccess {
@@ -117,8 +96,10 @@ async fn funding_success(
 
 struct ParsedRecordFunding {
     command: RecordFundingCommand,
-    persistence: PersistRecordFunding,
     household_id: Uuid,
+    occurred_at: chrono::DateTime<chrono::Utc>,
+    idempotency_key: String,
+    request_fingerprint: [u8; 32],
     source_account_id: Option<Uuid>,
     destination_account_id: Option<Uuid>,
 }
@@ -178,14 +159,10 @@ fn parse_input(
             source_account: None,
             destination_account: None,
         },
-        persistence: PersistRecordFunding {
-            household_id: household_id.to_string(),
-            actor_id: actor.0.to_string(),
-            occurred_at,
-            idempotency_key: input.idempotency_key,
-            request_fingerprint,
-        },
         household_id,
+        occurred_at,
+        idempotency_key: input.idempotency_key,
+        request_fingerprint,
         source_account_id: source_account_uuid,
         destination_account_id: destination_account_uuid,
     })

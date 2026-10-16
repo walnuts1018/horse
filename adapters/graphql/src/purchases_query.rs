@@ -1,10 +1,6 @@
 use async_graphql::{Context, Enum, Error, ID, InputObject, Result, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime as ChronoDateTime, SecondsFormat, Utc};
-use cross_context_postgres::{
-    purchase_command_result as postgres_purchase_result, purchase_search_query as postgres_query,
-};
-use horse_postgres_common::PgPool;
 use uuid::Uuid;
 
 use crate::{Long, pagination::PageInfo, purchase_mutations};
@@ -106,8 +102,12 @@ pub async fn graphql_purchases(
         .amount_target
         .unwrap_or(PurchaseAmountTarget::Purchase)
     {
-        PurchaseAmountTarget::Purchase => postgres_query::PurchaseAmountTarget::Purchase,
-        PurchaseAmountTarget::Item => postgres_query::PurchaseAmountTarget::Item,
+        PurchaseAmountTarget::Purchase => {
+            bookkeeping_application::purchase_search_query::PurchaseAmountTarget::Purchase
+        }
+        PurchaseAmountTarget::Item => {
+            bookkeeping_application::purchase_search_query::PurchaseAmountTarget::Item
+        }
     };
     let after_cursor = after
         .as_deref()
@@ -119,10 +119,11 @@ pub async fn graphql_purchases(
         .filter(|value| !value.is_empty())
         .map(decode_purchase_cursor)
         .transpose()?;
-    let page = postgres_query::purchases(
-        ctx.data::<PgPool>()?,
+    let page = ctx
+        .data::<std::sync::Arc<dyn bookkeeping_application::purchase_search_query::PurchaseSearchQuery>>()?
+        .query(
         actor.0,
-        postgres_query::PurchaseSearchFilter {
+        bookkeeping_application::purchase_search_query::PurchaseSearchFilter {
             household_id,
             from,
             to,
@@ -145,16 +146,12 @@ pub async fn graphql_purchases(
     )
     .await
     .map_err(map_query_error)?;
-    let pool = ctx.data::<PgPool>()?;
     let mut edges = Vec::with_capacity(page.rows.len());
     for row in &page.rows {
-        let projection =
-            postgres_purchase_result::load_purchase_command_result(pool, household_id, row.id)
-                .await
-                .map_err(crate::internal_error)?;
-        let mut node = purchase_mutations::PurchaseObject::try_from(projection)
+        let mut node = purchase_mutations::PurchaseObject::try_from(row.purchase.clone())
             .map_err(crate::internal_error)?;
-        if amount_target == postgres_query::PurchaseAmountTarget::Item
+        if amount_target
+            == bookkeeping_application::purchase_search_query::PurchaseAmountTarget::Item
             && has_item_filters(&filter, category_id, uncategorized)
         {
             filter_purchase_items(
@@ -222,7 +219,9 @@ fn decode_node_id(value: &ID, expected_kind: &str) -> Result<Uuid> {
     Ok(id)
 }
 
-fn decode_purchase_cursor(value: &str) -> Result<postgres_query::PurchaseSearchCursor> {
+fn decode_purchase_cursor(
+    value: &str,
+) -> Result<bookkeeping_application::purchase_search_query::PurchaseSearchCursor> {
     let decoded = URL_SAFE_NO_PAD
         .decode(value)
         .map_err(|_| Error::new("invalid cursor"))?;
@@ -243,10 +242,12 @@ fn decode_purchase_cursor(value: &str) -> Result<postgres_query::PurchaseSearchC
     if id.is_nil() {
         return Err(Error::new("invalid cursor"));
     }
-    Ok(postgres_query::PurchaseSearchCursor {
-        id,
-        occurred_at: position,
-    })
+    Ok(
+        bookkeeping_application::purchase_search_query::PurchaseSearchCursor {
+            id,
+            occurred_at: position,
+        },
+    )
 }
 
 fn encode_purchase_cursor(occurred_at: ChronoDateTime<Utc>, id: Uuid) -> String {
@@ -341,14 +342,17 @@ fn encode_node_id(kind: &str, id: Uuid) -> ID {
     ID(URL_SAFE_NO_PAD.encode(payload))
 }
 
-fn map_query_error(error: postgres_query::PurchaseSearchQueryError) -> Error {
-    use postgres_query::PurchaseSearchQueryError as E;
+fn map_query_error(
+    error: bookkeeping_application::purchase_search_query::PurchaseSearchQueryError,
+) -> Error {
+    use bookkeeping_application::purchase_search_query::PurchaseSearchQueryError as E;
     match error {
         E::HouseholdNotFound => Error::new("household not found"),
         E::InvalidPagination => Error::new("invalid pagination"),
         E::InvalidCursor => Error::new("invalid cursor"),
         E::CursorNotFound => Error::new("cursor not found"),
+        E::PurchaseNotFound => Error::new("purchase not found"),
         E::InvalidFilter => Error::new("invalid purchase filter"),
-        error @ (E::Pool(_) | E::Database(_)) => crate::internal_error(error),
+        error @ E::Infrastructure(_) => crate::internal_error(error),
     }
 }

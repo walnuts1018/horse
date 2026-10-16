@@ -1,6 +1,9 @@
+use bookkeeping_application::create_account::{
+    CreateAccountHandler, CreateAccountRequest, CreatedAccount,
+};
 use bookkeeping_application::workflow_failure::WorkflowFailure;
 use bookkeeping_domain::create_account::{
-    CreateAccountCommand, CreateAccountError, decide_create_account,
+    CreateAccountCommand, CreateAccountError, OpeningBalance, decide_create_account,
 };
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
@@ -9,6 +12,72 @@ use horse_authorization::{Operation, authorize};
 use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
+
+pub struct PostgresCreateAccountHandler {
+    pool: PgPool,
+}
+
+impl PostgresCreateAccountHandler {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl CreateAccountHandler for PostgresCreateAccountHandler {
+    fn handle<'a>(
+        &'a self,
+        request: CreateAccountRequest,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<CreatedAccount, WorkflowFailure<CreateAccountError, String>>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            let account = persist_create_account(
+                &self.pool,
+                CreateAccountCommand {
+                    actor_id: request.actor_id.to_string(),
+                    household_id: request.household_id.to_string(),
+                    name: request.name,
+                    kind: request.kind,
+                    card_last4: request.card_last4,
+                    pool_id: request.pool_id.map(|id| id.to_string()),
+                    opening_balance: request.opening_balance.map(|opening| OpeningBalance {
+                        amount_yen: opening.amount_yen,
+                        at: opening.at,
+                    }),
+                },
+            )
+            .await
+            .map_err(|failure| match failure {
+                WorkflowFailure::Decision(error) => WorkflowFailure::Decision(error),
+                WorkflowFailure::NotFound => WorkflowFailure::NotFound,
+                WorkflowFailure::Conflict => WorkflowFailure::Conflict,
+                WorkflowFailure::Infrastructure(error) => {
+                    WorkflowFailure::Infrastructure(format!("{error:?}"))
+                }
+            })?;
+            let id = Uuid::parse_str(&account.id)
+                .map_err(|error| WorkflowFailure::Infrastructure(error.to_string()))?;
+            let pool_id = account
+                .pool_id
+                .as_deref()
+                .map(Uuid::parse_str)
+                .transpose()
+                .map_err(|error| WorkflowFailure::Infrastructure(error.to_string()))?;
+            Ok(CreatedAccount {
+                id,
+                name: account.name,
+                kind: account.kind,
+                card_last4: account.card_last4,
+                pool_id,
+            })
+        })
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedCreateAccount {

@@ -1,3 +1,5 @@
+use std::{future::Future, pin::Pin};
+
 use household_domain::membership::{self, ActorId, HouseholdId, MemberId};
 pub use household_domain::membership::{
     MembershipChange, MembershipChangeDecision, MembershipError, MembershipFacts,
@@ -21,6 +23,31 @@ pub struct TransferOwnerCommand {
     pub actor_id: String,
     pub household_id: String,
     pub new_owner_id: String,
+}
+
+#[derive(Debug)]
+pub enum MembershipHandlerError {
+    Decision(MembershipError),
+    NotFound,
+    Conflict,
+    Infrastructure(String),
+}
+
+pub trait HouseholdMembershipHandler: Send + Sync {
+    fn leave<'a>(
+        &'a self,
+        command: LeaveHouseholdCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<String, MembershipHandlerError>> + Send + 'a>>;
+
+    fn remove_member<'a>(
+        &'a self,
+        command: RemoveHouseholdMemberCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<String, MembershipHandlerError>> + Send + 'a>>;
+
+    fn transfer_owner<'a>(
+        &'a self,
+        command: TransferOwnerCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<String, MembershipHandlerError>> + Send + 'a>>;
 }
 
 pub trait LeaveHouseholdOperations {

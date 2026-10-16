@@ -1,4 +1,51 @@
 pub use policy_domain::*;
+use std::{future::Future, pin::Pin};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BudgetReadModel {
+    pub budget: Budget,
+    pub actual_yen: i64,
+    pub remaining_yen: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BudgetPage {
+    pub rows: Vec<BudgetReadModel>,
+    pub total_count: i64,
+    pub has_next_page: bool,
+    pub has_previous_page: bool,
+}
+
+pub trait BudgetQuery: Send + Sync {
+    fn query<'a>(
+        &'a self,
+        actor_id: BudgetActorId,
+        household_id: BudgetHouseholdId,
+        period: String,
+        after_id: Option<uuid::Uuid>,
+        before_id: Option<uuid::Uuid>,
+        first: Option<i32>,
+        last: Option<i32>,
+    ) -> Pin<Box<dyn Future<Output = Result<BudgetPage, super::WorkflowFailure>> + Send + 'a>>;
+}
+
+pub trait BudgetMutationHandler: Send + Sync {
+    fn create<'a>(
+        &'a self,
+        command: CreateBudgetCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<BudgetReadModel, super::WorkflowFailure>> + Send + 'a>>;
+    fn update<'a>(
+        &'a self,
+        command: UpdateBudgetCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<BudgetReadModel, super::WorkflowFailure>> + Send + 'a>>;
+    fn archive<'a>(
+        &'a self,
+        actor_id: BudgetActorId,
+        id: BudgetId,
+        expected_revision: i64,
+        archived: bool,
+    ) -> Pin<Box<dyn Future<Output = Result<BudgetReadModel, super::WorkflowFailure>> + Send + 'a>>;
+}
 
 pub trait BudgetOperations {
     type Error: From<BudgetError>;

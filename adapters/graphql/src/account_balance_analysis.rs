@@ -4,7 +4,6 @@ use bookkeeping_application::account_balance_analysis_query::{
     AccountBalanceAnalysisQuery, AccountBalanceAnalysisQueryError,
 };
 use chrono::NaiveDate;
-use horse_postgres_common::PgPool;
 use uuid::Uuid;
 
 use crate::{DateTime, Long, pagination::PageInfo, policy_mutations::YearMonth};
@@ -98,11 +97,12 @@ pub async fn resolve_account_balance_analysis(
         })
         .transpose()?;
 
-    let pool = ctx.data::<PgPool>()?;
-    if !household_postgres::household_access::is_active_member(pool, household_id, actor.0)
+    let household_ids = ctx
+        .data::<std::sync::Arc<dyn household_application::household_query::HouseholdQuery>>()?
+        .list_household_ids(actor.0)
         .await
-        .map_err(crate::internal_error)?
-    {
+        .map_err(crate::internal_error)?;
+    if !household_ids.contains(&household_id) {
         return Err(Error::new("not found"));
     }
     let analysis = ctx

@@ -1,8 +1,9 @@
 use async_graphql::{Context, Error, ID, Result, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_postgres::purchase_analytics_query as postgres_query;
+use bookkeeping_application::purchase_analytics_query::{
+    PurchaseAnalyticsQuery, PurchaseAnalyticsQueryError,
+};
 use chrono::NaiveDate;
-use horse_postgres_common::PgPool;
 use uuid::Uuid;
 
 use crate::{Long, policy_mutations::YearMonth, scalars::DateTime};
@@ -39,15 +40,11 @@ pub async fn graphql_purchase_analytics(
 ) -> Result<Vec<PurchaseAnalyticsEntry>> {
     let actor = crate::actor(ctx)?;
     let household_id = crate::decode_household_id(&household_id)?;
-    let rows = postgres_query::purchase_analytics(
-        ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        from.as_str(),
-        to.as_str(),
-    )
-    .await
-    .map_err(map_query_error)?;
+    let rows = ctx
+        .data::<std::sync::Arc<dyn PurchaseAnalyticsQuery>>()?
+        .purchase_analytics(actor.0, household_id, from.as_str(), to.as_str())
+        .await
+        .map_err(map_query_error)?;
     rows.into_iter()
         .map(|row| {
             let id = encode_analytics_id(&row.dimension, &row.id)?;
@@ -82,16 +79,17 @@ pub async fn graphql_purchase_price_observations(
         .iter()
         .map(|value| decode_analytics_item_id(value).ok_or_else(|| Error::new("invalid item ID")))
         .collect::<Result<Vec<_>>>()?;
-    let rows = postgres_query::purchase_price_observations(
-        ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        from.as_str(),
-        to.as_str(),
-        &db_item_ids,
-    )
-    .await
-    .map_err(map_query_error)?;
+    let rows = ctx
+        .data::<std::sync::Arc<dyn PurchaseAnalyticsQuery>>()?
+        .purchase_price_observations(
+            actor.0,
+            household_id,
+            from.as_str(),
+            to.as_str(),
+            &db_item_ids,
+        )
+        .await
+        .map_err(map_query_error)?;
     rows.into_iter()
         .map(|row| {
             Ok(PurchasePriceObservation {
@@ -162,14 +160,14 @@ fn decode_node_id(value: &str, expected_kind: &str) -> Option<Uuid> {
     (!id.is_nil()).then_some(id)
 }
 
-fn map_query_error(error: postgres_query::PurchaseAnalyticsQueryError) -> Error {
-    use postgres_query::PurchaseAnalyticsQueryError as QueryError;
+fn map_query_error(error: PurchaseAnalyticsQueryError) -> Error {
+    use PurchaseAnalyticsQueryError as QueryError;
     match error {
         QueryError::HouseholdNotFound => Error::new("household access denied"),
         QueryError::InvalidPeriod => Error::new("invalid purchase analytics period"),
         QueryError::AmountOutOfRange => {
             Error::new("purchase analytics total exceeds supported range")
         }
-        QueryError::Pool(_) | QueryError::Database(_) => crate::internal_error(error),
+        QueryError::Infrastructure(_) => crate::internal_error(error),
     }
 }

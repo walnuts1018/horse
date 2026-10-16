@@ -1,10 +1,8 @@
 use async_graphql::{Context, Error, ID, Result};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use chrono::NaiveDate;
-use cross_context_postgres::financial_command_result;
-use cross_context_postgres::node_query as postgres_query;
-use horse_postgres_common::PgPool;
+use chrono::{Datelike, NaiveDate};
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::ledger_entry::{self, LedgerEntry};
@@ -32,9 +30,7 @@ async fn graphql_node_with_households(
                 Some(household_ids) => household_ids.to_vec(),
                 None => {
                     let actor = crate::actor(ctx)?;
-                    postgres_query::active_household_ids(ctx.data::<PgPool>()?, actor.0)
-                        .await
-                        .map_err(crate::internal_error)?
+                    active_household_ids(ctx, actor.0).await?
                 }
             };
             for household_id in household_ids {
@@ -90,9 +86,7 @@ async fn graphql_node_with_households(
                 Some(household_ids) => household_ids.to_vec(),
                 None => {
                     let actor = crate::actor(ctx)?;
-                    postgres_query::active_household_ids(ctx.data::<PgPool>()?, actor.0)
-                        .await
-                        .map_err(crate::internal_error)?
+                    active_household_ids(ctx, actor.0).await?
                 }
             };
             for household_id in household_ids {
@@ -108,6 +102,13 @@ async fn graphql_node_with_households(
             Ok(None)
         }
     }
+}
+
+async fn active_household_ids(ctx: &Context<'_>, actor_id: Uuid) -> Result<Vec<Uuid>> {
+    ctx.data::<Arc<dyn household_application::household_query::HouseholdQuery>>()?
+        .list_household_ids(actor_id)
+        .await
+        .map_err(crate::internal_error)
 }
 
 struct DecodedRelayId {
@@ -326,9 +327,7 @@ pub async fn graphql_nodes(
         }
     }
     let actor = crate::actor(ctx)?;
-    let household_ids = postgres_query::active_household_ids(ctx.data::<PgPool>()?, actor.0)
-        .await
-        .map_err(crate::internal_error)?;
+    let household_ids = active_household_ids(ctx, actor.0).await?;
     let mut household_node_ids = Vec::new();
     let mut settlement_keys = Vec::new();
     let mut observation_keys = Vec::new();
@@ -390,14 +389,14 @@ pub async fn graphql_nodes(
             )
         })
         .collect::<Vec<_>>();
-    if !household_types.is_empty() {
-        for household_id in &household_ids {
-            let household = crate::household_lifecycle::load_household_graphql(
-                ctx.data::<PgPool>()?,
-                actor.0,
-                *household_id,
-            )
-            .await?;
+    if !household_types.is_empty() || !requested_ids(&household_node_ids, "Household").is_empty() {
+        for household in crate::household_query::load_households_for_actor(
+            ctx.data::<Arc<dyn household_application::household_query::HouseholdQuery>>()?
+                .as_ref(),
+            actor.0,
+        )
+        .await?
+        {
             for (type_name, id) in &household_types {
                 if let Some(node) = crate::household_lifecycle::resolve_household_node_from_model(
                     &household, type_name, *id,
@@ -407,151 +406,10 @@ pub async fn graphql_nodes(
                         .or_insert(node);
                 }
             }
-        }
-    }
-    for (id, account) in postgres_query::load_account_opening_balance_nodes(
-        ctx.data::<PgPool>()?,
-        &household_ids,
-        &requested_ids(&household_node_ids, "AccountOpeningBalance"),
-    )
-    .await
-    .map_err(crate::internal_error)?
-    {
-        let kind = match account.account_kind.as_str() {
-            "BANK" => crate::account_mutations::AccountKind::Bank,
-            "CASH" => crate::account_mutations::AccountKind::Cash,
-            "CARD" => crate::account_mutations::AccountKind::Card,
-            "OTHER" => crate::account_mutations::AccountKind::Other,
-            value => {
-                return Err(crate::internal_error(format!(
-                    "invalid account kind {value}"
-                )));
-            }
-        };
-        household_nodes
-            .entry(("AccountOpeningBalance".to_owned(), id))
-            .or_insert(ledger_entry::Node::AccountOpeningBalance(
-                crate::account_balance_analysis::AccountOpeningBalance {
-                    id: encode_global_node_id("AccountOpeningBalance", id),
-                    account: crate::account_mutations::AccountObject {
-                        id: encode_global_node_id("Account", id),
-                        name: account.account_name,
-                        kind,
-                        card_last4: account.card_last4,
-                        pool_id: account.pool_id.map(|id| encode_global_node_id("Pool", id)),
-                    },
-                },
-            ));
-    }
-    for (id, value) in postgres_query::load_account_movement_nodes(
-        ctx.data::<PgPool>()?,
-        &household_ids,
-        &requested_ids(&household_node_ids, "AccountMovement"),
-    )
-    .await
-    .map_err(crate::internal_error)?
-    {
-        let kind = match value.kind.as_str() {
-            "TRANSFER" => crate::account_mutations::AccountMovementKind::Transfer,
-            "CARD_BILL_PAYMENT" => crate::account_mutations::AccountMovementKind::CardBillPayment,
-            other => {
-                return Err(crate::internal_error(format!(
-                    "invalid account movement kind {other}"
-                )));
-            }
-        };
-        household_nodes
-            .entry(("AccountMovement".to_owned(), id))
-            .or_insert(ledger_entry::Node::AccountMovement(
-                crate::account_mutations::AccountMovementObject {
-                    id: encode_global_node_id("AccountMovement", value.id),
-                    household_id: encode_global_node_id("Household", value.household_id),
-                    kind,
-                    occurred_at: value.occurred_at.into(),
-                    from_account_id: encode_global_node_id("Account", value.from_account_id),
-                    from_account: value.from_account.into(),
-                    to_account_id: encode_global_node_id("Account", value.to_account_id),
-                    to_account: value.to_account.into(),
-                    amount_yen: crate::Long(value.amount_yen),
-                    currency: "JPY".to_owned(),
-                    description: value.description,
-                    created_at: value.created_at.into(),
-                },
-            ));
-    }
-    for (id, value) in postgres_query::load_account_income_nodes(
-        ctx.data::<PgPool>()?,
-        &household_ids,
-        &requested_ids(&household_node_ids, "AccountIncome"),
-    )
-    .await
-    .map_err(crate::internal_error)?
-    {
-        household_nodes
-            .entry(("AccountIncome".to_owned(), id))
-            .or_insert(ledger_entry::Node::AccountIncome(
-                crate::account_mutations::AccountIncomeObject {
-                    id: encode_global_node_id("AccountIncome", value.id),
-                    household_id: encode_global_node_id("Household", value.household_id),
-                    account_id: encode_global_node_id("Account", value.account_id),
-                    amount_yen: crate::Long(value.amount_yen),
-                    currency: "JPY".to_owned(),
-                    occurred_at: value.occurred_at.into(),
-                    description: value.description,
-                    created_at: value.created_at.into(),
-                },
-            ));
-    }
-    let financial_batches = [
-        (
-            "FundingSchedule",
-            crate::node_financial_batch::load_funding_schedules(
-                ctx.data::<PgPool>()?,
-                &household_ids,
-                &requested_ids(&household_node_ids, "FundingSchedule"),
-            )
-            .await?,
-        ),
-        (
-            "Budget",
-            crate::node_financial_batch::load_budgets(
-                ctx.data::<PgPool>()?,
-                &household_ids,
-                &requested_ids(&household_node_ids, "Budget"),
-            )
-            .await?,
-        ),
-        (
-            "LoanBalance",
-            crate::node_financial_batch::load_loan_balances(
-                ctx.data::<PgPool>()?,
-                &household_ids,
-                &requested_ids(&household_node_ids, "LoanBalance"),
-            )
-            .await?,
-        ),
-    ];
-    for (type_name, nodes) in financial_batches {
-        household_nodes.extend(
-            nodes
-                .into_iter()
-                .map(|(id, node)| ((type_name.to_owned(), id), node)),
-        );
-    }
-    let household_ids_requested = requested_ids(&household_node_ids, "Household");
-    if !household_ids_requested.is_empty() {
-        for household in crate::household_query::load_households_for_actor(
-            ctx.data::<std::sync::Arc<dyn household_application::household_query::HouseholdQuery>>(
-            )?
-            .as_ref(),
-            actor.0,
-        )
-        .await?
-        {
             let Ok(id) = decode_global_node_id(&household.id, "Household") else {
                 continue;
             };
-            if household_ids_requested.contains(&id) {
+            if requested_ids(&household_node_ids, "Household").contains(&id) {
                 household_nodes.insert(
                     ("Household".to_owned(), id),
                     ledger_entry::Node::Household(household),
@@ -559,6 +417,20 @@ pub async fn graphql_nodes(
             }
         }
     }
+    household_nodes.extend(load_account_nodes(ctx, &household_ids, &household_node_ids).await?);
+    household_nodes.extend(
+        crate::node_financial_batch::load_node_financial_batch(
+            ctx.data::<std::sync::Arc<
+                dyn cross_context_application::node_financial_batch::NodeFinancialBatchQuery,
+            >>()?
+            .as_ref(),
+            &household_ids,
+            &requested_ids(&household_node_ids, "FundingSchedule"),
+            &requested_ids(&household_node_ids, "Budget"),
+            &requested_ids(&household_node_ids, "LoanBalance"),
+        )
+        .await?,
+    );
     household_nodes.extend(
         crate::node_batch_catalog_planning::load(ctx, &household_ids, &household_node_ids).await?,
     );
@@ -575,7 +447,8 @@ pub async fn graphql_nodes(
     household_nodes
         .extend(crate::node_purchase_batch::load(ctx, &household_ids, &household_node_ids).await?);
     let settlements = crate::settlement_mutations::load_settlements_for_nodes(
-        ctx.data::<PgPool>()?,
+        ctx.data::<Arc<dyn cross_context_application::settlement_workflow::SettlementWorkflow>>()?
+            .as_ref(),
         &settlement_keys,
     )
     .await?
@@ -609,6 +482,99 @@ fn requested_ids(requested: &[(String, Uuid)], type_name: &str) -> Vec<Uuid> {
         }
     }
     ids
+}
+
+async fn load_account_nodes(
+    ctx: &Context<'_>,
+    household_ids: &[Uuid],
+    requested: &[(String, Uuid)],
+) -> Result<HashMap<(String, Uuid), ledger_entry::Node>> {
+    let projection = ctx
+        .data::<Arc<dyn bookkeeping_application::account_node_batch_query::AccountNodeBatchQuery>>(
+        )?
+        .load(
+            household_ids,
+            &requested_ids(requested, "AccountOpeningBalance"),
+            &requested_ids(requested, "AccountMovement"),
+            &requested_ids(requested, "AccountIncome"),
+        )
+        .await
+        .map_err(crate::internal_error)?;
+    let mut result = HashMap::new();
+    for account in projection.opening_balances {
+        let kind = account_kind(&account.account_kind)?;
+        result.insert(
+            ("AccountOpeningBalance".to_owned(), account.account_id),
+            ledger_entry::Node::AccountOpeningBalance(
+                crate::account_balance_analysis::AccountOpeningBalance {
+                    id: encode_global_node_id("AccountOpeningBalance", account.account_id),
+                    account: crate::account_mutations::AccountObject {
+                        id: encode_global_node_id("Account", account.account_id),
+                        name: account.account_name,
+                        kind,
+                        card_last4: account.card_last4,
+                        pool_id: account.pool_id.map(|id| encode_global_node_id("Pool", id)),
+                    },
+                },
+            ),
+        );
+    }
+    for movement in projection.movements {
+        let kind = match movement.kind.as_str() {
+            "TRANSFER" => crate::account_mutations::AccountMovementKind::Transfer,
+            "CARD_BILL_PAYMENT" => crate::account_mutations::AccountMovementKind::CardBillPayment,
+            value => {
+                return Err(crate::internal_error(format!(
+                    "invalid account movement kind {value}"
+                )));
+            }
+        };
+        result.insert(
+            ("AccountMovement".to_owned(), movement.id),
+            ledger_entry::Node::AccountMovement(crate::account_mutations::AccountMovementObject {
+                id: encode_global_node_id("AccountMovement", movement.id),
+                household_id: encode_global_node_id("Household", movement.household_id),
+                kind,
+                occurred_at: movement.occurred_at.into(),
+                from_account_id: encode_global_node_id("Account", movement.from_account_id),
+                from_account: movement.from_account.into(),
+                to_account_id: encode_global_node_id("Account", movement.to_account_id),
+                to_account: movement.to_account.into(),
+                amount_yen: crate::Long(movement.amount_yen),
+                currency: "JPY".to_owned(),
+                description: movement.description,
+                created_at: movement.created_at.into(),
+            }),
+        );
+    }
+    for income in projection.incomes {
+        result.insert(
+            ("AccountIncome".to_owned(), income.id),
+            ledger_entry::Node::AccountIncome(crate::account_mutations::AccountIncomeObject {
+                id: encode_global_node_id("AccountIncome", income.id),
+                household_id: encode_global_node_id("Household", income.household_id),
+                account_id: encode_global_node_id("Account", income.account_id),
+                amount_yen: crate::Long(income.amount_yen),
+                currency: "JPY".to_owned(),
+                occurred_at: income.occurred_at.into(),
+                description: income.description,
+                created_at: income.created_at.into(),
+            }),
+        );
+    }
+    Ok(result)
+}
+
+fn account_kind(value: &str) -> Result<crate::account_mutations::AccountKind> {
+    match value {
+        "BANK" => Ok(crate::account_mutations::AccountKind::Bank),
+        "CASH" => Ok(crate::account_mutations::AccountKind::Cash),
+        "CARD" => Ok(crate::account_mutations::AccountKind::Card),
+        "OTHER" => Ok(crate::account_mutations::AccountKind::Other),
+        _ => Err(crate::internal_error(format!(
+            "invalid account kind {value}"
+        ))),
+    }
 }
 
 fn is_batched_node_type(type_name: &str) -> bool {
@@ -646,30 +612,45 @@ pub(crate) async fn resolve_graphql_node(
     id: Uuid,
 ) -> Result<ledger_entry::Node> {
     let actor = crate::actor(ctx)?;
-    let pool = ctx.data::<PgPool>()?;
-    if !household_postgres::household_access::is_active_member(pool, household_id, actor.0)
+    let household_query =
+        ctx.data::<Arc<dyn household_application::household_query::HouseholdQuery>>()?;
+    let household = household_query
+        .load_household(actor.0, household_id)
         .await
-        .map_err(crate::internal_error)?
-    {
-        return Err(Error::new("not found"));
-    }
+        .map_err(|error| match error {
+            household_application::household_query::HouseholdQueryError::HouseholdNotFound => {
+                Error::new("not found")
+            }
+            error => crate::internal_error(error),
+        })?;
 
     match type_name {
-        "FundingSchedule" => {
-            crate::node_financial_batch::load_funding_schedules(pool, &[household_id], &[id])
-                .await?
-                .remove(&id)
-                .ok_or_else(|| Error::new("not found"))
-        }
-        "Budget" => crate::node_financial_batch::load_budgets(pool, &[household_id], &[id])
+        "FundingSchedule" | "Budget" | "LoanBalance" => {
+            let funding_schedule_ids = (type_name == "FundingSchedule")
+                .then_some(id)
+                .into_iter()
+                .collect::<Vec<_>>();
+            let budget_ids = (type_name == "Budget")
+                .then_some(id)
+                .into_iter()
+                .collect::<Vec<_>>();
+            let loan_balance_ids = (type_name == "LoanBalance")
+                .then_some(id)
+                .into_iter()
+                .collect::<Vec<_>>();
+            crate::node_financial_batch::load_node_financial_batch(
+                ctx.data::<std::sync::Arc<
+                    dyn cross_context_application::node_financial_batch::NodeFinancialBatchQuery,
+                >>()?
+                .as_ref(),
+                &[household_id],
+                &funding_schedule_ids,
+                &budget_ids,
+                &loan_balance_ids,
+            )
             .await?
-            .remove(&id)
-            .ok_or_else(|| Error::new("not found")),
-        "LoanBalance" => {
-            crate::node_financial_batch::load_loan_balances(pool, &[household_id], &[id])
-                .await?
-                .remove(&id)
-                .ok_or_else(|| Error::new("not found"))
+            .remove(&(type_name.to_owned(), id))
+            .ok_or_else(|| Error::new("not found"))
         }
         "AllocationRule"
         | "HouseholdInvitation"
@@ -686,44 +667,16 @@ pub(crate) async fn resolve_graphql_node(
         .remove(&(type_name.to_owned(), id))
         .ok_or_else(|| Error::new("not found")),
         "Account" | "Category" | "Member" | "Pool" => {
-            crate::household_lifecycle::resolve_household_node(
-                pool,
-                actor.0,
-                household_id,
-                type_name,
-                id,
-            )
-            .await?
-            .ok_or_else(|| Error::new("not found"))
+            let household = crate::household_lifecycle::map_household(household)?;
+            crate::household_lifecycle::resolve_household_node_from_model(&household, type_name, id)
+                .ok_or_else(|| Error::new("not found"))
         }
         "AccountOpeningBalance" => {
-            let account = postgres_query::load_account_opening_balance_node(pool, household_id, id)
-                .await
-                .map_err(crate::internal_error)?
+            let account = load_account_nodes(ctx, &[household_id], &[(type_name.to_owned(), id)])
+                .await?
+                .remove(&(type_name.to_owned(), id))
                 .ok_or_else(|| Error::new("not found"))?;
-            let kind = match account.account_kind.as_str() {
-                "BANK" => crate::account_mutations::AccountKind::Bank,
-                "CASH" => crate::account_mutations::AccountKind::Cash,
-                "CARD" => crate::account_mutations::AccountKind::Card,
-                "OTHER" => crate::account_mutations::AccountKind::Other,
-                value => {
-                    return Err(crate::internal_error(format!(
-                        "invalid account kind {value}"
-                    )));
-                }
-            };
-            Ok(ledger_entry::Node::AccountOpeningBalance(
-                crate::account_balance_analysis::AccountOpeningBalance {
-                    id: encode_global_node_id("AccountOpeningBalance", account.account_id),
-                    account: crate::account_mutations::AccountObject {
-                        id: encode_global_node_id("Account", account.account_id),
-                        name: account.account_name,
-                        kind,
-                        card_last4: account.card_last4,
-                        pool_id: account.pool_id.map(|id| encode_global_node_id("Pool", id)),
-                    },
-                },
-            ))
+            Ok(account)
         }
         "Purchase" | "PurchaseItem" | "PurchaseCorrection" => {
             crate::node_purchase_batch::load(ctx, &[household_id], &[(type_name.to_owned(), id)])
@@ -732,56 +685,15 @@ pub(crate) async fn resolve_graphql_node(
                 .ok_or_else(|| Error::new("not found"))
         }
         "AccountMovement" => {
-            let projection = postgres_query::load_account_movement_node(pool, household_id, id)
-                .await
-                .map_err(crate::internal_error)?
-                .ok_or_else(|| Error::new("not found"))?;
-            let kind = match projection.kind.as_str() {
-                "TRANSFER" => crate::account_mutations::AccountMovementKind::Transfer,
-                "CARD_BILL_PAYMENT" => {
-                    crate::account_mutations::AccountMovementKind::CardBillPayment
-                }
-                value => {
-                    return Err(crate::internal_error(format!(
-                        "invalid account movement kind {value}"
-                    )));
-                }
-            };
-            Ok(ledger_entry::Node::AccountMovement(
-                crate::account_mutations::AccountMovementObject {
-                    id: encode_global_node_id("AccountMovement", projection.id),
-                    household_id: encode_global_node_id("Household", projection.household_id),
-                    kind,
-                    occurred_at: projection.occurred_at.into(),
-                    from_account_id: encode_global_node_id("Account", projection.from_account_id),
-                    from_account: projection.from_account.into(),
-                    to_account_id: encode_global_node_id("Account", projection.to_account_id),
-                    to_account: projection.to_account.into(),
-                    amount_yen: crate::Long(projection.amount_yen),
-                    currency: "JPY".to_owned(),
-                    description: projection.description,
-                    created_at: projection.created_at.into(),
-                },
-            ))
+            load_account_nodes(ctx, &[household_id], &[(type_name.to_owned(), id)])
+                .await?
+                .remove(&(type_name.to_owned(), id))
+                .ok_or_else(|| Error::new("not found"))
         }
-        "AccountIncome" => {
-            let projection = postgres_query::load_account_income_node(pool, household_id, id)
-                .await
-                .map_err(crate::internal_error)?
-                .ok_or_else(|| Error::new("not found"))?;
-            Ok(ledger_entry::Node::AccountIncome(
-                crate::account_mutations::AccountIncomeObject {
-                    id: encode_global_node_id("AccountIncome", projection.id),
-                    household_id: encode_global_node_id("Household", projection.household_id),
-                    account_id: encode_global_node_id("Account", projection.account_id),
-                    amount_yen: crate::Long(projection.amount_yen),
-                    currency: "JPY".to_owned(),
-                    occurred_at: projection.occurred_at.into(),
-                    description: projection.description,
-                    created_at: projection.created_at.into(),
-                },
-            ))
-        }
+        "AccountIncome" => load_account_nodes(ctx, &[household_id], &[(type_name.to_owned(), id)])
+            .await?
+            .remove(&(type_name.to_owned(), id))
+            .ok_or_else(|| Error::new("not found")),
         "LedgerEntry"
         | "PurchaseLedgerEntry"
         | "CorrectionLedgerEntry"
@@ -790,75 +702,10 @@ pub(crate) async fn resolve_graphql_node(
         | "LoanTransferLedgerEntry"
         | "RepaymentTransferLedgerEntry"
         | "GiftTransferLedgerEntry" => {
-            let metadata = postgres_query::load_ledger_entry_node(pool, household_id, id)
-                .await
-                .map_err(crate::internal_error)?
-                .ok_or_else(|| Error::new("not found"))?;
-            let entry = match metadata.source_kind.as_str() {
-                "PURCHASE" | "purchase" => {
-                    let purchase = crate::purchase_mutations::purchase_result(
-                        pool,
-                        household_id,
-                        &metadata.source_id.to_string(),
-                    )
-                    .await?;
-                    ledger_entry::purchase_ledger_entry(
-                        metadata.id,
-                        metadata.occurred_at,
-                        metadata.description,
-                        metadata.amount_yen,
-                        "JPY".to_owned(),
-                        metadata.created_at,
-                        purchase,
-                    )
-                }
-                "CORRECTION" | "correction" => {
-                    let purchase_id = metadata.source_purchase_id.ok_or_else(|| {
-                        crate::internal_error("correction has no parent purchase")
-                    })?;
-                    let purchase = crate::purchase_mutations::purchase_result(
-                        pool,
-                        household_id,
-                        &purchase_id.to_string(),
-                    )
-                    .await?;
-                    ledger_entry::correction_ledger_entry(
-                        metadata.id,
-                        metadata.occurred_at,
-                        metadata.description,
-                        metadata.amount_yen,
-                        "JPY".to_owned(),
-                        metadata.created_at,
-                        purchase,
-                    )
-                }
-                "FUNDING" | "funding" => {
-                    let projection =
-                        cross_context_postgres::funding_command_result::load_funding_ledger_entry_result(
-                            pool,
-                            household_id,
-                            metadata.id,
-                        )
-                        .await
-                        .map_err(crate::internal_error)?;
-                    LedgerEntry::FundingLedgerEntry(
-                        ledger_entry::FundingLedgerEntry::try_from(projection)
-                            .map_err(crate::internal_error)?,
-                    )
-                }
-                "TRANSFER" | "transfer" => {
-                    let value = financial_command_result::load_transfer_ledger_entry_result(
-                        pool,
-                        household_id,
-                        metadata.id,
-                    )
-                    .await
-                    .map_err(crate::internal_error)?;
-                    LedgerEntry::try_from(value).map_err(crate::internal_error)?
-                }
-                value => return Err(Error::new(format!("unsupported ledger source {value}"))),
-            };
-            Ok(ledger_entry::Node::LedgerEntry(entry))
+            crate::node_ledger_entry_batch::load(ctx, &[household_id], &[id])
+                .await?
+                .remove(&id)
+                .ok_or_else(|| Error::new("not found"))
         }
         _ => Err(Error::new(format!("unsupported node type {type_name}"))),
     }
@@ -870,20 +717,51 @@ pub(crate) async fn resolve_transfer_id_as_ledger_entry(
     transfer_id: Uuid,
 ) -> Result<ledger_entry::Node> {
     let actor = crate::actor(ctx)?;
-    let pool = ctx.data::<PgPool>()?;
-    if !household_postgres::household_access::is_active_member(pool, household_id, actor.0)
+    ctx.data::<Arc<dyn household_application::household_query::HouseholdQuery>>()?
+        .load_household(actor.0, household_id)
         .await
-        .map_err(crate::internal_error)?
-    {
-        return Err(Error::new("not found"));
+        .map_err(|error| match error {
+            household_application::household_query::HouseholdQueryError::HouseholdNotFound => {
+                Error::new("not found")
+            }
+            error => crate::internal_error(error),
+        })?;
+    let now = chrono::Utc::now();
+    let next_month = if now.month() == 12 {
+        NaiveDate::from_ymd_opt(now.year() + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(now.year(), now.month() + 1, 1)
     }
-    let value = postgres_query::load_transfer_ledger_entry_result_by_transfer_id(
-        pool,
-        household_id,
-        transfer_id,
-    )
-    .await
-    .map_err(crate::internal_error)?;
+    .ok_or_else(|| crate::internal_error("invalid next month"))?;
+    let period_end = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+        next_month
+            .checked_add_signed(chrono::Duration::days(i64::from(now.day() - 1)))
+            .ok_or_else(|| crate::internal_error("invalid next month date"))?
+            .and_time(now.time()),
+        chrono::Utc,
+    );
+    let projection = ctx
+        .data::<Arc<dyn cross_context_application::node_financial_batch::NodeFinancialBatchQuery>>(
+        )?
+        .load(
+            cross_context_application::node_financial_batch::NodeFinancialBatchInput {
+                household_ids: vec![household_id],
+                funding_schedule_ids: Vec::new(),
+                budget_ids: Vec::new(),
+                loan_balance_ids: Vec::new(),
+                ledger_entry_ids: Vec::new(),
+                transfer_ids: vec![transfer_id],
+                period_start: now,
+                period_end,
+            },
+        )
+        .await
+        .map_err(crate::internal_error)?;
+    let value = projection
+        .transfers_by_id
+        .get(&transfer_id)
+        .cloned()
+        .ok_or_else(|| Error::new("not found"))?;
     LedgerEntry::try_from(value)
         .map(ledger_entry::Node::LedgerEntry)
         .map_err(crate::internal_error)

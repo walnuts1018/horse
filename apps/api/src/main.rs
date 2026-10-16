@@ -58,7 +58,6 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         && recipient_local_part == local_part_prefix.trim_end_matches('+')
         && recipient_domain.eq_ignore_ascii_case(&mailbox_domain);
     let graphql_schema = schema(
-        pool.clone(),
         GraphqlConfig {
             mail_forwarding_enabled: mailbox_enabled,
             mailbox_domain,
@@ -70,8 +69,76 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                     pool.clone(),
                 ),
             ),
+            account_node_batch_query: Arc::new(
+                bookkeeping_postgres::account_node_batch_query::PostgresAccountNodeBatchQuery::new(
+                    pool.clone(),
+                ),
+            ),
             account_balances_query: Arc::new(
                 bookkeeping_postgres::account_balances::PostgresAccountBalancesQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            create_account: Arc::new(
+                bookkeeping_postgres::create_account::PostgresCreateAccountHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            set_card_last4: Arc::new(
+                bookkeeping_postgres::account_card_last4::PostgresSetCardLast4Handler::new(
+                    pool.clone(),
+                ),
+            ),
+            financial_mutations: Arc::new(
+                cross_context_postgres::financial_mutations::PostgresFinancialMutations::new(
+                    pool.clone(),
+                ),
+            ),
+            funding_mutation: Arc::new(
+                cross_context_postgres::funding_mutation::PostgresFundingMutationHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            settlement_workflow: Arc::new(
+                cross_context_postgres::settlement_workflow::PostgresSettlementWorkflow::new(
+                    pool.clone(),
+                ),
+            ),
+            account_financial_mutations: Arc::new(
+                cross_context_postgres::account_financial_mutations::PostgresAccountFinancialMutations::new(
+                    pool.clone(),
+                ),
+            ),
+            subscription_query: Arc::new(
+                cross_context_postgres::subscriptions::PostgresSubscriptionQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            home_summary_query: Arc::new(
+                cross_context_postgres::home_summary_query::PostgresHomeSummaryQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            unmatched_observations_query: Arc::new(
+                cross_context_postgres::unmatched_observations_query_port::PostgresUnmatchedObservationsQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            purchase_correction_query: Arc::new(
+                cross_context_postgres::purchase_correction_query::PostgresPurchaseCorrectionQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            create_pool: Arc::new(
+                policy_postgres::pool_mutations::PostgresCreatePoolHandler::new(pool.clone()),
+            ),
+            set_pool_funding_rule: Arc::new(
+                policy_postgres::set_pool_funding_rule::PostgresSetPoolFundingRuleHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            set_default_allocation: Arc::new(
+                household_postgres::set_default_allocation::PostgresDefaultAllocationHandler::new(
                     pool.clone(),
                 ),
             ),
@@ -82,6 +149,16 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             ),
             ledger_entry_batch_query: Arc::new(
                 bookkeeping_postgres::ledger_entry_batch_query::PostgresLedgerEntryBatchQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            ledger_query: Arc::new(
+                cross_context_postgres::ledger_query_port::PostgresLedgerQueryHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            node_financial_batch_query: Arc::new(
+                cross_context_postgres::node_financial_batch::PostgresNodeFinancialBatchQuery::new(
                     pool.clone(),
                 ),
             ),
@@ -98,6 +175,56 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             household_query: Arc::new(
                 household_postgres::household_query::PostgresHouseholdQuery::new(pool.clone()),
             ),
+            create_household: Arc::new(
+                household_postgres::create_household_handler::PostgresCreateHouseholdHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            mail_forwarding_handler: Arc::new(
+                household_postgres::mail_forwarding_handler::PostgresMailForwardingHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            household_membership: Arc::new(
+                household_postgres::household_membership::PostgresHouseholdMembership::new(
+                    pool.clone(),
+                ),
+            ),
+            household_invitation: Arc::new(
+                household_postgres::household_invitation::PostgresHouseholdInvitationHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            household_invitation_node_query: Arc::new(
+                household_postgres::invitation_node_query::PostgresHouseholdInvitationNodeQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            policy_node_catalog_planning_query: Arc::new(
+                policy_postgres::node_catalog_planning_query::PostgresPolicyNodeBatchQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            budget_mutation: Arc::new(
+                policy_postgres::policy_mutations::PostgresBudgetMutationHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            budget_query: Arc::new(
+                policy_postgres::policy_mutations::PostgresBudgetMutationHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            recurring_expense_mutation: Arc::new(
+                policy_postgres::policy_mutations::PostgresRecurringExpenseMutationHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            recurring_expense_query: Arc::new(
+                policy_postgres::policy_mutations::PostgresRecurringExpenseMutationHandler::new(
+                    pool.clone(),
+                ),
+            ),
             allocation_rules_query: Arc::new(
                 policy_postgres::pool_queries::PostgresAllocationRulesQuery::new(pool.clone()),
             ),
@@ -111,6 +238,41 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             ),
             purchase_defaults_query: Arc::new(
                 bookkeeping_postgres::purchase_defaults_query::PostgresPurchaseDefaultsQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            purchase_analytics_query: Arc::new(
+                bookkeeping_postgres::purchase_analytics_query::PostgresPurchaseAnalyticsQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            purchase_edit_mutations: Arc::new(
+                cross_context_postgres::purchase_edit_mutations::PostgresPurchaseEditMutationHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            purchase_mutations: Arc::new(
+                cross_context_postgres::purchase_mutations::PostgresPurchaseMutationHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            purchase_search_query: Arc::new(
+                cross_context_postgres::purchase_search_query::PostgresPurchaseSearchQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            purchase_bulk_mutations: Arc::new(
+                cross_context_postgres::purchase_bulk_mutations::PostgresPurchaseBulkMutationHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            statement_link_mutations: Arc::new(
+                cross_context_postgres::statement_link_mutations::PostgresStatementLinkMutations::new(
+                    pool.clone(),
+                ),
+            ),
+            statement_refund_correction_query: Arc::new(
+                cross_context_postgres::statement_refund_correction_query::PostgresStatementRefundCorrectionQuery::new(
                     pool.clone(),
                 ),
             ),

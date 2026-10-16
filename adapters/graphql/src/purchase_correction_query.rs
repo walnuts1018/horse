@@ -1,12 +1,21 @@
+use std::sync::Arc;
+
+use async_graphql::{Context, Error, ID, Result};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use cross_context_application::purchase_correction_query::{
+    PurchaseCorrectionQuery, PurchaseCorrectionQueryError,
+};
+
 use crate::{
     Actor,
-    purchase_mutations::{self, PurchaseCorrectionConnection},
+    account_mutations::AccountObject,
+    policy_mutations::YearMonth,
+    purchase_mutations::{
+        PurchaseCorrection, PurchaseCorrectionConnection, PurchaseCorrectionEdge,
+        PurchaseItemCorrection, PurchasePayment, PurchaseWideCorrection, decode_purchase_id,
+    },
+    scalars::{DateTime, Long},
 };
-use async_graphql::{Context, Error, ID, Result};
-use cross_context_postgres::purchase_command_result;
-use cross_context_postgres::purchase_command_result::PurchaseCommandResultError;
-use horse_postgres_common::PgPool;
-use household_postgres::household_access;
 
 pub async fn graphql_purchase_corrections(
     ctx: &Context<'_>,
@@ -18,39 +27,105 @@ pub async fn graphql_purchase_corrections(
         .data::<Actor>()
         .copied()
         .map_err(|_| Error::new("authentication required"))?;
-    let purchase_id = purchase_mutations::decode_purchase_id(&purchase_id)?;
-    let pool = ctx.data::<PgPool>()?;
-    let household_id = purchase_command_result::load_purchase_household_id(pool, purchase_id)
+    let purchase_id = decode_purchase_id(&purchase_id)?;
+    let result = ctx
+        .data::<Arc<dyn PurchaseCorrectionQuery>>()?
+        .load(actor.0, purchase_id, first, after)
         .await
-        .map_err(map_purchase_error)?
-        .ok_or_else(not_found)?;
-    if !household_access::is_active_member(pool, household_id, actor.0)
-        .await
-        .map_err(crate::internal_error)?
-    {
-        return Err(not_found());
-    }
-    purchase_mutations::purchase_corrections_connection(
-        pool,
-        household_id,
-        purchase_id,
-        first,
-        after.as_deref(),
-    )
-    .await
+        .map_err(map_query_error)?;
+
+    let edges = result
+        .edges
+        .into_iter()
+        .map(|edge| {
+            let payments = edge
+                .node
+                .payment_allocations
+                .into_iter()
+                .map(|payment| {
+                    let kind = account_kind(&payment.account_kind)?;
+                    let account_id = encode_node_id("Account", payment.account_id);
+                    Ok(PurchasePayment {
+                        payment_account_id: account_id.clone(),
+                        account: AccountObject {
+                            id: account_id,
+                            name: payment.account_name,
+                            kind,
+                            card_last4: payment.account_card_last4,
+                            pool_id: payment.account_pool_id.map(|id| encode_node_id("Pool", id)),
+                        },
+                        amount_yen: Long(payment.amount_yen),
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let id = encode_node_id("PurchaseCorrection", edge.node.id);
+            let settlement_month = YearMonth::from_naive_date(edge.node.settlement_month);
+            let occurred_at: DateTime = edge.node.occurred_at.into();
+            let node = match edge.node.item_id {
+                Some(item_id) => PurchaseCorrection::Item(PurchaseItemCorrection {
+                    id,
+                    item_id: encode_node_id("PurchaseItem", item_id),
+                    amount_delta_yen: Long(edge.node.amount_delta_yen),
+                    reason: edge.node.reason,
+                    occurred_at,
+                    settlement_month,
+                    payment_allocations: payments,
+                }),
+                None => PurchaseCorrection::Wide(PurchaseWideCorrection {
+                    id,
+                    amount_delta_yen: Long(edge.node.amount_delta_yen),
+                    reason: edge.node.reason,
+                    occurred_at,
+                    settlement_month,
+                    payment_allocations: payments,
+                }),
+            };
+            Ok(PurchaseCorrectionEdge {
+                cursor: edge.cursor,
+                node,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let total_count = i32::try_from(result.total_count).map_err(crate::internal_error)?;
+    let start_cursor = edges.first().map(|edge| edge.cursor.clone());
+    let end_cursor = edges.last().map(|edge| edge.cursor.clone());
+    Ok(PurchaseCorrectionConnection {
+        edges,
+        page_info: crate::pagination::PageInfo {
+            has_next_page: result.has_next_page,
+            has_previous_page: result.has_previous_page,
+            start_cursor,
+            end_cursor,
+        },
+        total_count,
+    })
 }
 
-fn map_purchase_error(error: PurchaseCommandResultError) -> Error {
+fn map_query_error(error: PurchaseCorrectionQueryError) -> Error {
     match error {
-        PurchaseCommandResultError::PurchaseNotFound => not_found(),
-        PurchaseCommandResultError::Pool(_) | PurchaseCommandResultError::Database(_) => {
-            crate::internal_error(error)
-        }
-        PurchaseCommandResultError::NumericOutOfRange
-        | PurchaseCommandResultError::InvalidPurchaseStatus => crate::internal_error(error),
+        PurchaseCorrectionQueryError::PurchaseNotFound => Error::new("対象が見つかりません。"),
+        PurchaseCorrectionQueryError::ResourceUnavailable => Error::new("purchase not found"),
+        PurchaseCorrectionQueryError::CursorNotFound => Error::new("対象が見つかりません。"),
+        PurchaseCorrectionQueryError::InvalidPageSize
+        | PurchaseCorrectionQueryError::InvalidCursor => Error::new("入力を確認してください。"),
+        PurchaseCorrectionQueryError::Infrastructure(error) => crate::internal_error(error),
     }
 }
 
-fn not_found() -> Error {
-    Error::new("purchase not found")
+fn account_kind(value: &str) -> Result<crate::account_mutations::AccountKind> {
+    match value {
+        "BANK" => Ok(crate::account_mutations::AccountKind::Bank),
+        "CASH" => Ok(crate::account_mutations::AccountKind::Cash),
+        "CARD" => Ok(crate::account_mutations::AccountKind::Card),
+        "OTHER" => Ok(crate::account_mutations::AccountKind::Other),
+        _ => Err(crate::internal_error("invalid account kind")),
+    }
+}
+
+fn encode_node_id(kind: &str, id: uuid::Uuid) -> ID {
+    let mut bytes = Vec::with_capacity(kind.len() + 17);
+    bytes.extend_from_slice(kind.as_bytes());
+    bytes.push(b':');
+    bytes.extend_from_slice(id.as_bytes());
+    ID(URL_SAFE_NO_PAD.encode(bytes))
 }

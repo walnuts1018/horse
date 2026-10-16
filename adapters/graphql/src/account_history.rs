@@ -189,26 +189,6 @@ impl From<AccountProjection> for account_mutations::AccountObject {
     }
 }
 
-impl From<bookkeeping_postgres::account_history_query::AccountProjection>
-    for account_mutations::AccountObject
-{
-    fn from(row: bookkeeping_postgres::account_history_query::AccountProjection) -> Self {
-        let kind = match row.kind.as_str() {
-            "BANK" => account_mutations::AccountKind::Bank,
-            "CASH" => account_mutations::AccountKind::Cash,
-            "CARD" => account_mutations::AccountKind::Card,
-            _ => account_mutations::AccountKind::Other,
-        };
-        Self {
-            id: encode_node_id("Account", row.id),
-            name: row.name,
-            kind,
-            card_last4: row.card_last4,
-            pool_id: row.pool_id.map(|id| encode_node_id("Pool", id)),
-        }
-    }
-}
-
 fn page_info<E>(edges: &[E], has_next_page: bool, has_previous_page: bool) -> PageInfo
 where
     E: EdgeCursor,

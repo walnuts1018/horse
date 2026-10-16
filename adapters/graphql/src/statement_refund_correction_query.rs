@@ -1,8 +1,8 @@
 use async_graphql::{Context, Error, ID, Result, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use cross_context_postgres::statement_refund_correction_query as postgres_query;
-use horse_postgres_common::PgPool;
-use household_postgres::household_access;
+use cross_context_application::statement_refund_correction_query::{
+    StatementRefundCorrectionQuery, StatementRefundCorrectionQueryError,
+};
 use uuid::Uuid;
 
 use crate::{Long, pagination::PageInfo};
@@ -45,23 +45,18 @@ pub async fn graphql_statement_refund_corrections(
         .filter(|value| !value.is_empty())
         .map(decode_cursor)
         .transpose()?;
-    let pool = ctx.data::<PgPool>()?;
-    if !household_access::is_active_member(pool, household_id, actor.0)
+    let query = ctx.data::<std::sync::Arc<dyn StatementRefundCorrectionQuery>>()?;
+    let page = query
+        .load(
+            actor.0,
+            household_id,
+            source_document_id,
+            source_reference,
+            first,
+            after,
+        )
         .await
-        .map_err(crate::internal_error)?
-    {
-        return Err(Error::new("not found"));
-    }
-    let page = postgres_query::load_statement_refund_corrections(
-        pool,
-        household_id,
-        source_document_id,
-        &source_reference,
-        first,
-        after,
-    )
-    .await
-    .map_err(map_query_error)?;
+        .map_err(map_query_error)?;
     let edges = page
         .edges
         .into_iter()
@@ -92,14 +87,17 @@ pub async fn graphql_statement_refund_corrections(
     })
 }
 
-fn map_query_error(error: postgres_query::StatementRefundCorrectionQueryError) -> Error {
-    use postgres_query::StatementRefundCorrectionQueryError as QueryError;
+fn map_query_error(error: StatementRefundCorrectionQueryError) -> Error {
     match error {
-        QueryError::InvalidInput => Error::new("invalid statement refund query"),
-        QueryError::SourceDocumentNotFound | QueryError::StatementNotFound => {
+        StatementRefundCorrectionQueryError::ResourceUnavailable => Error::new("not found"),
+        StatementRefundCorrectionQueryError::InvalidInput => {
+            Error::new("invalid statement refund query")
+        }
+        StatementRefundCorrectionQueryError::SourceDocumentNotFound
+        | StatementRefundCorrectionQueryError::StatementNotFound => {
             Error::new("statement refund not found")
         }
-        QueryError::Pool(_) | QueryError::Database(_) => crate::internal_error(error),
+        StatementRefundCorrectionQueryError::Infrastructure(_) => crate::internal_error(error),
     }
 }
 

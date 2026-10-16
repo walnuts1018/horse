@@ -1,9 +1,23 @@
 pub use policy_domain::set_pool_funding_rule::*;
+use std::{future::Future, pin::Pin};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedPoolFundingRule {
     pub pool_id: FundingRulePoolId,
     pub version: i32,
+}
+
+pub trait SetPoolFundingRuleHandler: Send + Sync {
+    fn set<'a>(
+        &'a self,
+        command: SetPoolFundingRuleCommand,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<PersistedPoolFundingRule, super::WorkflowFailure>>
+                + Send
+                + 'a,
+        >,
+    >;
 }
 
 pub trait SetPoolFundingRuleOperations {

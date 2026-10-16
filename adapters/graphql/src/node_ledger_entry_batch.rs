@@ -1,5 +1,6 @@
 use async_graphql::{Context, Error, Result};
 use bookkeeping_application::ledger_entry_batch_query::LedgerEntryBatchQuery;
+use chrono::{Datelike, Duration, NaiveDate, Utc};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -33,41 +34,50 @@ pub(crate) async fn load(
         .into_iter()
         .map(|id| ("Purchase".to_owned(), id))
         .collect::<Vec<_>>();
-    let pool = ctx.data::<horse_postgres_common::PgPool>()?;
     let purchase_nodes =
         crate::node_purchase_batch::load(ctx, household_ids, &purchase_requests).await?;
-    let funding_ids = rows
+    let financial_entry_ids = rows
         .iter()
-        .filter(|row| matches!(row.source_kind.as_str(), "FUNDING" | "funding"))
+        .filter(|row| {
+            matches!(
+                row.source_kind.as_str(),
+                "FUNDING" | "funding" | "TRANSFER" | "transfer"
+            )
+        })
         .map(|row| row.id)
         .collect::<Vec<_>>();
-    let funding_by_id = if funding_ids.is_empty() {
-        HashMap::new()
+    let now = Utc::now();
+    let next_month = if now.month() == 12 {
+        NaiveDate::from_ymd_opt(now.year() + 1, 1, 1)
     } else {
-        cross_context_postgres::funding_command_result::load_funding_ledger_entry_results(
-            pool,
-            household_ids,
-            &funding_ids,
+        NaiveDate::from_ymd_opt(now.year(), now.month() + 1, 1)
+    }
+    .ok_or_else(|| crate::internal_error("invalid next month"))?;
+    let period_end = chrono::DateTime::<Utc>::from_naive_utc_and_offset(
+        next_month
+            .checked_add_signed(Duration::days(i64::from(now.day() - 1)))
+            .ok_or_else(|| crate::internal_error("invalid next month date"))?
+            .and_time(now.time()),
+        Utc,
+    );
+    let financial = ctx
+        .data::<std::sync::Arc<
+            dyn cross_context_application::node_financial_batch::NodeFinancialBatchQuery,
+        >>()?
+        .load(
+            cross_context_application::node_financial_batch::NodeFinancialBatchInput {
+                household_ids: household_ids.to_vec(),
+                funding_schedule_ids: Vec::new(),
+                budget_ids: Vec::new(),
+                loan_balance_ids: Vec::new(),
+                ledger_entry_ids: financial_entry_ids,
+                transfer_ids: Vec::new(),
+                period_start: now,
+                period_end,
+            },
         )
         .await
-        .map_err(crate::internal_error)?
-    };
-    let transfer_ids = rows
-        .iter()
-        .filter(|row| matches!(row.source_kind.as_str(), "TRANSFER" | "transfer"))
-        .map(|row| row.id)
-        .collect::<Vec<_>>();
-    let transfer_by_id = if transfer_ids.is_empty() {
-        HashMap::new()
-    } else {
-        cross_context_postgres::financial_command_result::load_transfer_ledger_entry_results(
-            pool,
-            household_ids,
-            &transfer_ids,
-        )
-        .await
-        .map_err(crate::internal_error)?
-    };
+        .map_err(crate::internal_error)?;
 
     let mut loaded = HashMap::with_capacity(rows.len());
     for row in rows {
@@ -108,18 +118,26 @@ pub(crate) async fn load(
                 )
             }
             "FUNDING" | "funding" => {
-                let projection = funding_by_id.get(&id).cloned().ok_or_else(|| {
-                    crate::internal_error(format!("funding ledger entry {id} was not loaded"))
-                })?;
+                let projection = financial
+                    .funding_ledger_entries
+                    .get(&id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        crate::internal_error(format!("funding ledger entry {id} was not loaded"))
+                    })?;
                 ledger_entry::LedgerEntry::FundingLedgerEntry(
                     ledger_entry::FundingLedgerEntry::try_from(projection)
                         .map_err(crate::internal_error)?,
                 )
             }
             "TRANSFER" | "transfer" => {
-                let projection = transfer_by_id.get(&id).cloned().ok_or_else(|| {
-                    crate::internal_error(format!("transfer ledger entry {id} was not loaded"))
-                })?;
+                let projection = financial
+                    .transfer_ledger_entries
+                    .get(&id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        crate::internal_error(format!("transfer ledger entry {id} was not loaded"))
+                    })?;
                 ledger_entry::LedgerEntry::try_from(projection).map_err(|error| {
                     crate::internal_error(format!("invalid transfer ledger entry: {error:?}"))
                 })?

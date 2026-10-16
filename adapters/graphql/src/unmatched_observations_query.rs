@@ -1,7 +1,9 @@
 use async_graphql::{Context, Enum, Error, ID, Interface, Result, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use cross_context_postgres::unmatched_observations_query as postgres_query;
-use horse_postgres_common::PgPool;
+use cross_context_application::unmatched_observations_query::{
+    ObservationCursor, ObservationProjection, UnmatchedObservationsInput,
+    UnmatchedObservationsQuery, UnmatchedObservationsQueryError,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -118,62 +120,26 @@ pub(crate) async fn graphql_unmatched_observations(
         UnmatchedObservationState::Confirmed => "CONFIRMED",
         UnmatchedObservationState::Unmatched => "UNMATCHED",
     });
-    let page = postgres_query::unmatched_observations(
-        ctx.data::<PgPool>()?,
-        postgres_query::UnmatchedObservationsQuery {
+    let page = ctx
+        .data::<std::sync::Arc<dyn UnmatchedObservationsQuery>>()?
+        .query(UnmatchedObservationsInput {
             actor_id: actor.0,
             household_id,
-            from: from.as_ref().map(YearMonth::as_str),
-            to: to.as_ref().map(YearMonth::as_str),
-            source_kind: source_kind.as_deref(),
-            state,
+            from: from.as_ref().map(|period| period.as_str().to_owned()),
+            to: to.as_ref().map(|period| period.as_str().to_owned()),
+            source_kind,
+            state: state.map(str::to_owned),
             after,
             before,
             first,
             last,
-        },
-    )
-    .await
-    .map_err(map_error)?;
+        })
+        .await
+        .map_err(map_error)?;
     let mut edges = Vec::with_capacity(page.rows.len());
     for row in page.rows {
         let cursor = encode_cursor(row.document_id, &row.source_reference);
-        let id = encode_node_id(row.document_id, &row.source_reference)?;
-        let source_kind = parse_source_kind(&row.source_kind)?;
-        let occurred_at = row.occurred_at.map(DateTime::from);
-        let amount_yen = Long(row.amount_yen.unwrap_or_default());
-        let node = if let Some(purchase_id) = row.confirmed_purchase_id {
-            let purchase = crate::purchase_mutations::purchase_result(
-                ctx.data::<PgPool>()?,
-                household_id,
-                &purchase_id.to_string(),
-            )
-            .await?;
-            Observation::ConfirmedObservation(Box::new(ConfirmedObservation {
-                id,
-                document_id: ID(row.document_id.to_string()),
-                source_reference: row.source_reference,
-                source_kind,
-                merchant: row.merchant,
-                occurred_at,
-                amount_yen,
-                order_id: row.order_id,
-                transaction_id: row.transaction_id,
-                purchase,
-            }))
-        } else {
-            Observation::UnmatchedObservation(Box::new(UnmatchedObservation {
-                id,
-                document_id: ID(row.document_id.to_string()),
-                source_reference: row.source_reference,
-                source_kind,
-                merchant: row.merchant,
-                occurred_at,
-                amount_yen,
-                order_id: row.order_id,
-                transaction_id: row.transaction_id,
-            }))
-        };
+        let node = observation_from_projection(ctx, household_id, row).await?;
         edges.push(UnmatchedObservationEdge { cursor, node });
     }
     let total_count = i32::try_from(page.total_count)
@@ -198,64 +164,79 @@ pub(crate) async fn resolve_unmatched_observation(
     source_reference: &str,
 ) -> Result<Option<Observation>> {
     let actor = crate::actor(ctx)?;
-    let pool = ctx.data::<PgPool>()?;
-    if !household_postgres::household_access::is_active_member(pool, household_id, actor.0)
+    let Some(row) = ctx
+        .data::<std::sync::Arc<dyn UnmatchedObservationsQuery>>()?
+        .resolve(
+            actor.0,
+            household_id,
+            document_id,
+            source_reference.to_owned(),
+        )
         .await
-        .map_err(crate::internal_error)?
-    {
-        return Ok(None);
-    }
-    let Some(row) = cross_context_postgres::node_query::load_observation_node(
-        pool,
-        household_id,
-        document_id,
-        source_reference,
-    )
-    .await
-    .map_err(crate::internal_error)?
+        .map_err(map_error)?
     else {
         return Ok(None);
     };
-    let id = encode_node_id(document_id, source_reference)?;
+    Ok(Some(
+        observation_from_projection(ctx, household_id, row).await?,
+    ))
+}
+
+async fn observation_from_projection(
+    ctx: &Context<'_>,
+    household_id: Uuid,
+    row: ObservationProjection,
+) -> Result<Observation> {
+    let id = encode_node_id(row.document_id, &row.source_reference)?;
     let source_kind = parse_source_kind(&row.source_kind)?;
     let occurred_at = row.occurred_at.map(DateTime::from);
     let amount_yen = Long(row.amount_yen.unwrap_or_default());
-    let node = if let Some(purchase_id) = row.confirmed_purchase_id {
-        let purchase = crate::purchase_mutations::purchase_result(
-            pool,
-            household_id,
-            &purchase_id.to_string(),
+    if let Some(purchase_id) = row.confirmed_purchase_id {
+        let purchase_nodes = crate::node_purchase_batch::load(
+            ctx,
+            &[household_id],
+            &[("Purchase".to_owned(), purchase_id)],
         )
         .await?;
-        Observation::ConfirmedObservation(Box::new(ConfirmedObservation {
-            id,
-            document_id: ID(document_id.to_string()),
-            source_reference: source_reference.to_owned(),
-            source_kind,
-            merchant: row.merchant,
-            occurred_at,
-            amount_yen,
-            order_id: row.order_id,
-            transaction_id: row.transaction_id,
-            purchase,
-        }))
+        let Some(crate::ledger_entry::Node::Purchase(purchase)) =
+            purchase_nodes.get(&("Purchase".to_owned(), purchase_id))
+        else {
+            return Err(crate::internal_error(
+                "confirmed observation purchase not found",
+            ));
+        };
+        Ok(Observation::ConfirmedObservation(Box::new(
+            ConfirmedObservation {
+                id,
+                document_id: ID(row.document_id.to_string()),
+                source_reference: row.source_reference,
+                source_kind,
+                merchant: row.merchant,
+                occurred_at,
+                amount_yen,
+                order_id: row.order_id,
+                transaction_id: row.transaction_id,
+                purchase: purchase.clone(),
+            },
+        )))
     } else {
-        Observation::UnmatchedObservation(Box::new(UnmatchedObservation {
-            id,
-            document_id: ID(document_id.to_string()),
-            source_reference: source_reference.to_owned(),
-            source_kind,
-            merchant: row.merchant,
-            occurred_at,
-            amount_yen,
-            order_id: row.order_id,
-            transaction_id: row.transaction_id,
-        }))
-    };
-    Ok(Some(node))
+        Ok(Observation::UnmatchedObservation(Box::new(
+            UnmatchedObservation {
+                id,
+                document_id: ID(row.document_id.to_string()),
+                source_reference: row.source_reference,
+                source_kind,
+                merchant: row.merchant,
+                occurred_at,
+                amount_yen,
+                order_id: row.order_id,
+                transaction_id: row.transaction_id,
+            },
+        )))
+    }
 }
 
-fn decode_cursor(value: Option<&str>) -> Result<Option<postgres_query::ObservationCursor>> {
+fn decode_cursor(value: Option<&str>) -> Result<Option<ObservationCursor>> {
     let Some(value) = value.filter(|value| !value.is_empty()) else {
         return Ok(None);
     };
@@ -266,7 +247,7 @@ fn decode_cursor(value: Option<&str>) -> Result<Option<postgres_query::Observati
         serde_json::from_slice(&bytes).map_err(|_| Error::new("invalid observation cursor"))?;
     let document_id = Uuid::parse_str(&payload.document_id)
         .map_err(|_| Error::new("invalid observation cursor"))?;
-    Ok(Some(postgres_query::ObservationCursor {
+    Ok(Some(ObservationCursor {
         document_id,
         source_reference: payload.source_reference,
     }))
@@ -298,14 +279,13 @@ pub(crate) fn parse_source_kind(value: &str) -> Result<SourceKind> {
         ))),
     }
 }
-fn map_error(error: postgres_query::UnmatchedObservationsError) -> Error {
-    use postgres_query::UnmatchedObservationsError as E;
+fn map_error(error: UnmatchedObservationsQueryError) -> Error {
+    use UnmatchedObservationsQueryError as E;
     match error {
         E::HouseholdNotFound | E::MissingCursor => Error::new("household or observation not found"),
         E::InvalidPagination | E::InvalidPeriod | E::InvalidRange => {
             Error::new("invalid observation query")
         }
-        E::Pool(message) => crate::internal_error(message),
-        E::Database(error) => crate::internal_error(error),
+        E::Infrastructure(message) => crate::internal_error(message),
     }
 }
