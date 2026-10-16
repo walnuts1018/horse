@@ -335,7 +335,7 @@ pub async fn persist_archive_budget(
                 .iter()
                 .filter(|snapshot| snapshot.0 <= effective_from)
                 .max_by_key(|snapshot| (snapshot.0, snapshot.1))
-                .or_else(|| snapshots.iter().next())
+                .or_else(|| snapshots.as_slice().first())
                 .cloned()
                 .ok_or(PolicyPersistenceError::BudgetNotFound)?;
             let mut seen_future_months = std::collections::HashSet::new();
