@@ -5,7 +5,9 @@
 
 ## 現在の状態
 
-2026年10月16日時点でGoからRustへのサーバー移行を終え、Horse CI run #921のquality jobが成功した。quality jobではRust workspaceのtest・check・format・Clippy、新規DBへのAtlas migration、OCR検査、Relay・Frontendの型検査・lint・FSD検査・format・buildが成功した。publish jobはARM64 imageをQEMUで42分ビルドした時点でキャンセルし、Rust API/Worker imageは公開していない。Node WebとOCR imageは公開済みである。次回以降のビルドを短縮するためRust imageをamd64とarm64のnative runnerで並行ビルドするworkflowを追加したが、実行結果は未確認である。
+2026年10月16日時点でGoからRustへのサーバー移行を終え、Horse CI run #921のquality jobが成功した。quality jobではRust workspaceのtest・check・format・Clippy、新規DBへのAtlas migration、OCR検査、Relay・Frontendの型検査・lint・FSD検査・format・buildが成功した。publish jobはARM64 imageをQEMUで約45分ビルドした後にキャンセルし、Rust API/Worker imageは公開していない。Node WebとOCR imageは公開済みである。次回以降のビルドを短縮するためRust imageをamd64とarm64のnative runnerで並行ビルドするworkflowを追加したが、実行結果は未確認である。
+
+CI run #924ではClippyがsettlement previewのtest moduleがファイル末尾にないことを検出した。test moduleを末尾へ移動し、対象testとRust format checkは成功した。修正後のrun #926ではquality jobが成功したが、publish jobsはGitHub Actionsのcache-modeを`none`にしたため、Cargo cacheとBuildKit cacheのtoken scopeがなく失敗した。publish jobsのcache-modeを`write`に変更し、次のCI runでimage公開を再確認する。
 
 本番のDB resetとRust版の配備を準備するため、kurumi上のHorse API・Web・Workerは停止中である。DB resetは未実施であり、Rust版の本番稼働、公開URLでのRust版動作、OIDCログイン後の操作は未確認である。以下の公開環境での操作記録は、記録された日付時点で旧Go版を含む過去の検証結果であり、現在のRust版の証拠ではない。Goテスト名とGo CI runも旧Go実装の履歴であり、Rust検証の根拠には含めない。
 

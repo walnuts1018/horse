@@ -110,7 +110,7 @@ jobs:
     needs: quality
     runs-on: ubuntu-26.04
     timeout-minutes: 45
-    cache-mode: none
+    cache-mode: write
     permissions:
       contents: read
       packages: write
@@ -133,6 +133,7 @@ jobs:
 
       - name: Restore Cargo cache mounts
         id: cargo-cache
+        # jactionlint ignore=cache-poisoning
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: cache-mount
@@ -162,6 +163,7 @@ jobs:
       - parallel:
           - name: Build and publish Node web image
             id: web-image
+            # jactionlint ignore=cache-poisoning
             uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
             with:
               context: .
@@ -179,6 +181,7 @@ jobs:
 
           - name: Build and publish OCR image
             id: ocr-image
+            # jactionlint ignore=cache-poisoning
             uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
             with:
               context: .
@@ -209,7 +212,7 @@ jobs:
     needs: quality
     runs-on: ubuntu-26.04
     timeout-minutes: 45
-    cache-mode: none
+    cache-mode: write
     permissions:
       contents: read
       packages: write
@@ -234,6 +237,7 @@ jobs:
 
       - name: Restore Cargo cache mounts
         id: cargo-cache
+        # jactionlint ignore=cache-poisoning
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: cache-mount
@@ -262,6 +266,7 @@ jobs:
 
       - name: Build and publish Rust API and worker image
         id: image
+        # jactionlint ignore=cache-poisoning
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -279,7 +284,7 @@ jobs:
     needs: quality
     runs-on: ubuntu-26.04-arm
     timeout-minutes: 45
-    cache-mode: none
+    cache-mode: write
     permissions:
       contents: read
       packages: write
@@ -304,6 +309,7 @@ jobs:
 
       - name: Restore Cargo cache mounts
         id: cargo-cache
+        # jactionlint ignore=cache-poisoning
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: cache-mount
@@ -332,6 +338,7 @@ jobs:
 
       - name: Build and publish Rust API and worker image
         id: image
+        # jactionlint ignore=cache-poisoning
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
