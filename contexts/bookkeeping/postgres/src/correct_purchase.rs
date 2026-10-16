@@ -1093,6 +1093,7 @@ async fn persist_correct_purchase_in_transaction(
             journals::household_id.eq(household_id),
             journals::source_kind.eq(SOURCE_KIND),
             journals::source_id.eq(correction_id),
+            journals::idempotency_key.eq(&input.idempotency_key),
             journals::occurred_at.eq(recorded_at),
             journals::created_by.eq(actor_id),
             journals::created_at.eq(recorded_at),

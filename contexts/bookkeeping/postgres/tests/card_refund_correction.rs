@@ -690,11 +690,18 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
         Some(Uuid::parse_str(&refund.correction_id).unwrap())
     );
     assert_eq!(linked.3["statement"]["amount"], -60);
+    let journal_id = Uuid::parse_str(&refund.journal_id).unwrap();
+    let journal_idempotency_key = public::journals::table
+        .filter(public::journals::household_id.eq(household_id))
+        .filter(public::journals::id.eq(journal_id))
+        .select(public::journals::idempotency_key)
+        .first::<String>(&mut *conn)
+        .await
+        .unwrap();
+    assert_eq!(journal_idempotency_key, "card-refund");
     let entries = public::journal_entries::table
         .filter(public::journal_entries::household_id.eq(household_id))
-        .filter(
-            public::journal_entries::journal_id.eq(Uuid::parse_str(&refund.journal_id).unwrap()),
-        )
+        .filter(public::journal_entries::journal_id.eq(journal_id))
         .select((
             public::journal_entries::debit_yen,
             public::journal_entries::credit_yen,
