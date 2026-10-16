@@ -1,5 +1,6 @@
 pub use horse_postgres_common::{AsyncPgConnection, PgPool, schema};
 
+pub mod allocation_rule_projection;
 pub mod allocation_rule_query;
 pub mod funding_schedule_query;
 pub mod node_catalog_planning_query;
@@ -11,3 +12,4 @@ pub mod pool_queries;
 pub mod set_allocation_rule;
 pub mod set_funding_schedule;
 pub mod set_pool_funding_rule;
+pub mod settlement_data;

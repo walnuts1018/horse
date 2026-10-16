@@ -11,6 +11,12 @@ use crate::{
     workflow_failure::{WorkflowFailure, WorkflowRejection},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CreatePurchaseRejection {
+    InvalidInput,
+    Domain(bookkeeping_domain::purchase_commands::CreatePurchaseError),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostPurchaseEntryOutput {
     pub household_id: Option<Uuid>,
@@ -61,7 +67,7 @@ pub trait PurchaseMutationHandler: Send + Sync {
     async fn create_purchase(
         &self,
         command: CreatePurchaseWorkflowCommand,
-    ) -> Result<CreatedPurchase, WorkflowFailure<WorkflowRejection, String>>;
+    ) -> Result<CreatedPurchase, WorkflowFailure<CreatePurchaseRejection, String>>;
 
     async fn create_and_post_purchase(
         &self,

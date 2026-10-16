@@ -1,5 +1,4 @@
 use chrono::NaiveDate;
-use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
 
 const MAX_AMOUNT_YEN: i64 = 1_000_000_000_000;
@@ -191,34 +190,6 @@ pub struct RecurringExpenseDecision {
     pub archived: Option<bool>,
 }
 
-impl RecurringExpenseDecision {
-    pub fn ui_change(&self) -> UiChangeDescriptor {
-        if self.archived.is_some() {
-            UiChangeDescriptor::new(
-                "recurring_expense.archived",
-                "recurring_expense",
-                ["archived"],
-            )
-        } else {
-            UiChangeDescriptor::new(
-                "recurring_expense.updated",
-                "recurring_expense",
-                [
-                    "name",
-                    "merchant",
-                    "amountYen",
-                    "categoryId",
-                    "paymentAccountId",
-                    "cadence",
-                    "startsOn",
-                    "nextDueOn",
-                    "endsOn",
-                ],
-            )
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MatchRecurringExpenseDecision {
     pub actor_id: RecurringExpenseActorId,
@@ -226,16 +197,6 @@ pub struct MatchRecurringExpenseDecision {
     pub id: RecurringExpenseId,
     pub purchase_id: RecurringExpensePurchaseId,
     pub expected_revision: RecurringExpenseRevision,
-}
-
-impl MatchRecurringExpenseDecision {
-    pub fn ui_change(&self) -> UiChangeDescriptor {
-        UiChangeDescriptor::new(
-            "recurring_expense.matched",
-            "recurring_expense",
-            ["nextDueOn"],
-        )
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

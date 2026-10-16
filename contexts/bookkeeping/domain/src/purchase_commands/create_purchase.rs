@@ -146,7 +146,6 @@ pub struct CreatePurchaseCommand {
     pub date_precision: DatePrecision,
     pub merchant: String,
     pub origin: PurchaseOrigin,
-    pub allocation_rule_version: AllocationRuleVersion,
     pub source_document_id: Option<SourceDocumentId>,
     pub source_reference: Option<String>,
     pub receipt_candidate_id: Option<ReceiptCandidateId>,
@@ -164,8 +163,13 @@ pub struct CreatePurchaseItem {
     pub product_variant_id: Option<ProductVariantId>,
     pub quantity: Option<Measure>,
     pub printed_unit_price: Option<PrintedUnitPrice>,
-    pub allocation_override: bool,
-    pub allocations: Vec<CreatePurchaseAllocation>,
+    pub requested_allocations: Vec<RequestedPurchaseAllocation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestedPurchaseAllocation {
+    pub pool_id: PoolId,
+    pub weight: PurchaseAllocationWeight,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,6 +219,37 @@ pub struct CreatePurchaseAllocation {
     pub weight: PurchaseAllocationWeight,
     pub rule_version: AllocationRuleVersion,
     pub rule_id: Option<AllocationRuleId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AllocatedPurchaseItem {
+    pub category_id: Option<CategoryId>,
+    pub allocations: Vec<CreatePurchaseAllocation>,
+    pub allocation_override: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AllocatedPurchase {
+    command: CreatePurchaseCommand,
+    allocation_rule_version: AllocationRuleVersion,
+    items: Vec<AllocatedPurchaseItem>,
+}
+
+impl AllocatedPurchase {
+    pub fn resolve(
+        command: CreatePurchaseCommand,
+        allocation_rule_version: AllocationRuleVersion,
+        items: Vec<AllocatedPurchaseItem>,
+    ) -> Result<Self, CreatePurchaseError> {
+        if command.items.len() != items.len() {
+            return Err(CreatePurchaseError::InvalidAllocation);
+        }
+        Ok(Self {
+            command,
+            allocation_rule_version,
+            items,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -325,8 +360,13 @@ pub enum CreatePurchaseError {
 }
 
 pub fn decide_create_purchase(
-    command: CreatePurchaseCommand,
+    purchase: AllocatedPurchase,
 ) -> Result<CreatePurchaseDecision, CreatePurchaseError> {
+    let AllocatedPurchase {
+        command,
+        allocation_rule_version,
+        items: allocated_items,
+    } = purchase;
     if let Some(reference) = &command.source_reference
         && (command.source_document_id.is_none()
             || reference.len() > 256
@@ -353,7 +393,7 @@ pub fn decide_create_purchase(
     let mut total = 0_i64;
     let mut item_ids = BTreeSet::new();
     let mut items = Vec::with_capacity(command.items.len());
-    for item in command.items {
+    for (item, allocated_item) in command.items.into_iter().zip(allocated_items) {
         if !item_ids.insert(item.item_id.as_str().to_owned()) {
             return Err(CreatePurchaseError::InvalidItemId);
         }
@@ -375,8 +415,8 @@ pub fn decide_create_purchase(
             return Err(CreatePurchaseError::InvalidAmount);
         }
         let mut seen_pools = BTreeSet::new();
-        let mut weights = Vec::with_capacity(item.allocations.len());
-        for allocation in &item.allocations {
+        let mut weights = Vec::with_capacity(allocated_item.allocations.len());
+        for allocation in &allocated_item.allocations {
             if !seen_pools.insert(allocation.pool_id.as_str().to_owned()) {
                 return Err(CreatePurchaseError::DuplicateAllocationPool);
             }
@@ -390,7 +430,7 @@ pub fn decide_create_purchase(
         let allocations = allocate(item.amount_yen, &shares)
             .into_iter()
             .map(|allocation| {
-                let source = item
+                let source = allocated_item
                     .allocations
                     .iter()
                     .find(|candidate| candidate.pool_id.as_str() == allocation.pool_id().as_str())
@@ -408,11 +448,11 @@ pub fn decide_create_purchase(
             item_id: item.item_id,
             name: name.to_owned(),
             amount_yen: item.amount_yen,
-            category_id: item.category_id,
+            category_id: allocated_item.category_id,
             product_variant_id: item.product_variant_id,
             quantity: item.quantity,
             printed_unit_price: item.printed_unit_price,
-            allocation_override: item.allocation_override,
+            allocation_override: allocated_item.allocation_override,
             allocations,
         });
     }
@@ -430,7 +470,7 @@ pub fn decide_create_purchase(
         date_precision: command.date_precision,
         merchant: command.merchant.trim().to_owned(),
         origin: command.origin,
-        allocation_rule_version: command.allocation_rule_version,
+        allocation_rule_version,
         source_document_id: command.source_document_id,
         source_reference: command.source_reference,
         receipt_candidate_id: command.receipt_candidate_id,
@@ -460,7 +500,6 @@ mod tests {
             date_precision: DatePrecision::DateTime,
             merchant: "  Market  ".to_owned(),
             origin: PurchaseOrigin::Manual,
-            allocation_rule_version: AllocationRuleVersion::new(1).unwrap(),
             source_document_id: None,
             source_reference: None,
             receipt_candidate_id: None,
@@ -473,6 +512,18 @@ mod tests {
                 product_variant_id: None,
                 quantity: None,
                 printed_unit_price: None,
+                requested_allocations: vec![],
+            }],
+            payments: vec![],
+        }
+    }
+
+    fn allocated(command: CreatePurchaseCommand) -> AllocatedPurchase {
+        AllocatedPurchase::resolve(
+            command,
+            AllocationRuleVersion::new(1).unwrap(),
+            vec![AllocatedPurchaseItem {
+                category_id: None,
                 allocation_override: false,
                 allocations: vec![CreatePurchaseAllocation {
                     pool_id: PoolId::new("pool-1").unwrap(),
@@ -481,13 +532,13 @@ mod tests {
                     rule_id: None,
                 }],
             }],
-            payments: vec![],
-        }
+        )
+        .unwrap()
     }
 
     #[test]
     fn create_normalizes_text_and_allocates_item_amount() {
-        let decision = decide_create_purchase(command()).unwrap();
+        let decision = decide_create_purchase(allocated(command())).unwrap();
         assert_eq!(decision.merchant, "Market");
         assert_eq!(decision.date_precision, DatePrecision::DateTime);
         assert_eq!(decision.origin, PurchaseOrigin::Manual);
@@ -507,7 +558,7 @@ mod tests {
             amount_yen: PositiveYen::new(50).unwrap(),
         });
         assert_eq!(
-            decide_create_purchase(input),
+            decide_create_purchase(allocated(input)),
             Err(CreatePurchaseError::DuplicatePaymentAccount)
         );
     }

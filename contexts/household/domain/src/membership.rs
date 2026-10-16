@@ -1,5 +1,4 @@
 use horse_authorization::{Operation, Role, authorize};
-use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
 
 macro_rules! id_type {
@@ -52,22 +51,6 @@ pub enum MembershipChange {
     Leave,
     Remove,
     TransferOwner { new_owner_was_owner: bool },
-}
-
-impl MembershipChange {
-    pub fn ui_change(self) -> UiChangeDescriptor {
-        match self {
-            Self::Leave => UiChangeDescriptor::new("household.member.left", "member", ["members"]),
-            Self::Remove => {
-                UiChangeDescriptor::new("household.member.removed", "member", ["members"])
-            }
-            Self::TransferOwner { .. } => UiChangeDescriptor::new(
-                "household.owner.transferred",
-                "member",
-                ["members", "owner"],
-            ),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

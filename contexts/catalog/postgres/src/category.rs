@@ -197,7 +197,7 @@ impl CreateCategoryOperations for PostgresCreateCategoryOperations<'_> {
             1_i64,
             actor_id,
             chrono::Utc::now(),
-            decision.event.ui_change(),
+            catalog_application::ui_changes::category_event(&decision.event),
         )
         .await?;
 
@@ -287,7 +287,7 @@ impl UpdateCategoryNameOperations for PostgresUpdateCategoryNameOperations<'_> {
             event_revision,
             actor_id,
             chrono::Utc::now(),
-            decision.event.ui_change(),
+            catalog_application::ui_changes::category_event(&decision.event),
         )
         .await?;
 
@@ -378,7 +378,7 @@ impl SetCategoryArchivedOperations for PostgresSetCategoryArchivedOperations<'_>
             event_revision,
             actor_id,
             chrono::Utc::now(),
-            decision.event.ui_change(),
+            catalog_application::ui_changes::category_event(&decision.event),
         )
         .await?;
 

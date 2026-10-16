@@ -134,7 +134,7 @@ async fn persist_create_concept(
     pool: &PgPool,
     decision: CreateConceptDecision,
 ) -> Result<String, CreateProductPersistenceError> {
-    let ui_change = decision.ui_change();
+    let ui_change = catalog_application::ui_changes::concept_created();
     let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
     let household_id = parse_uuid(decision.household_id.as_str(), "household_id")?;
     let concept = PersistedConcept {
@@ -228,7 +228,7 @@ async fn persist_create_variant(
     pool: &PgPool,
     decision: CreateVariantDecision,
 ) -> Result<String, CreateProductPersistenceError> {
-    let ui_change = decision.ui_change();
+    let ui_change = catalog_application::ui_changes::variant_created();
     let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
     let household_id = parse_uuid(decision.household_id.as_str(), "household_id")?;
     let variant = PersistedVariant {

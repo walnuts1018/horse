@@ -9,4 +9,5 @@ pub mod product_learning;
 pub mod product_query;
 pub mod tag;
 pub mod tag_query;
+pub mod ui_changes;
 pub mod workflow_failure;

@@ -1,5 +1,6 @@
-use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
+
+pub use crate::actor_id::ActorId;
 
 macro_rules! product_id {
     ($name:ident) => {
@@ -24,12 +25,10 @@ macro_rules! uuid_conversion {
     };
 }
 
-product_id!(ActorId);
 product_id!(HouseholdId);
 product_id!(CategoryId);
 product_id!(ConceptId);
 
-uuid_conversion!(ActorId);
 uuid_conversion!(HouseholdId);
 uuid_conversion!(CategoryId);
 uuid_conversion!(ConceptId);
@@ -101,14 +100,6 @@ impl CreateConceptDecision {
     pub fn normalized_name(&self) -> NormalizedProductName {
         NormalizedProductName::from_name(&self.name)
     }
-
-    pub fn ui_change(&self) -> UiChangeDescriptor {
-        UiChangeDescriptor::new(
-            "product.concept.created",
-            "product_concept",
-            ["name", "categoryId"],
-        )
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,14 +127,6 @@ pub struct CreateVariantDecision {
 impl CreateVariantDecision {
     pub fn normalized_name(&self) -> NormalizedProductName {
         NormalizedProductName::from_name(&self.name)
-    }
-
-    pub fn ui_change(&self) -> UiChangeDescriptor {
-        UiChangeDescriptor::new(
-            "product.variant.created",
-            "product_variant",
-            ["name", "conceptId"],
-        )
     }
 }
 

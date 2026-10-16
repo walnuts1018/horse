@@ -18,6 +18,8 @@ evidence-application = { path = "../../evidence/application" }
 horse-postgres-common = { path = "../../../platform/postgres-common" }
 horse-household-change = { path = "../../../platform/household-change" }
 horse-authorization = { path = "../../../platform/authorization" }
+policy-application = { path = "../../policy/application" }
+policy-postgres = { path = "../../policy/postgres" }
 household-postgres = { path = "../../household/postgres" }
 serde_json = { workspace = true }
 uuid = { workspace = true }

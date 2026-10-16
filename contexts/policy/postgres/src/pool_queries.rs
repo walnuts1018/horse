@@ -103,12 +103,12 @@ fn map_allocation_query_error(
         Error::HouseholdNotFound | Error::CursorNotFound => PoolRulesQueryFailure::NotFound,
         Error::MemberNotFound => PoolRulesQueryFailure::AccessDenied,
         Error::Projection(error) => match error {
-            cross_context_postgres::pool_mutations::AllocationRuleProjectionError::HouseholdNotFound
-            | cross_context_postgres::pool_mutations::AllocationRuleProjectionError::RuleNotFound
-            | cross_context_postgres::pool_mutations::AllocationRuleProjectionError::TargetNotFound => {
+            crate::allocation_rule_projection::AllocationRuleProjectionError::HouseholdNotFound
+            | crate::allocation_rule_projection::AllocationRuleProjectionError::RuleNotFound
+            | crate::allocation_rule_projection::AllocationRuleProjectionError::TargetNotFound => {
                 PoolRulesQueryFailure::NotFound
             }
-            cross_context_postgres::pool_mutations::AllocationRuleProjectionError::MemberNotFound => {
+            crate::allocation_rule_projection::AllocationRuleProjectionError::MemberNotFound => {
                 PoolRulesQueryFailure::AccessDenied
             }
             error => PoolRulesQueryFailure::Infrastructure(format!("{error:?}")),
@@ -133,9 +133,9 @@ fn map_funding_query_error(
 }
 
 fn map_allocation_rule(
-    value: cross_context_postgres::pool_mutations::AllocationRuleProjection,
+    value: crate::allocation_rule_projection::AllocationRuleProjection,
 ) -> AllocationRule {
-    use cross_context_postgres::pool_mutations::AllocationRuleTargetProjection as Target;
+    use crate::allocation_rule_projection::AllocationRuleTargetProjection as Target;
     AllocationRule {
         id: value.id,
         household_id: value.household_id,
@@ -175,7 +175,7 @@ fn map_allocation_rule(
 }
 
 fn map_concept(
-    value: cross_context_postgres::pool_mutations::ProductConceptProjection,
+    value: crate::allocation_rule_projection::ProductConceptProjection,
 ) -> policy_application::pool_queries::ProductConcept {
     policy_application::pool_queries::ProductConcept {
         id: value.id,
@@ -190,7 +190,7 @@ fn map_concept(
 }
 
 fn map_variant(
-    value: cross_context_postgres::pool_mutations::ProductVariantProjection,
+    value: crate::allocation_rule_projection::ProductVariantProjection,
 ) -> policy_application::pool_queries::ProductVariant {
     policy_application::pool_queries::ProductVariant {
         id: value.id,

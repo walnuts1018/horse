@@ -1,52 +1,53 @@
 use async_trait::async_trait;
 use bookkeeping_postgres::policy_data::PolicyData;
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl};
-use diesel_async::RunQueryDsl;
+use policy_application::settlement_data::SettlementDataRead;
 use uuid::Uuid;
 
-use crate::{AsyncPgConnection, PgPool, schema::public};
+use crate::{AsyncPgConnection, PgPool};
 
-#[derive(Default)]
-pub struct PolicyQueries;
+pub struct PolicyQueries {
+    reader: policy_postgres::settlement_data::PostgresSettlementDataRead,
+}
+
+impl PolicyQueries {
+    pub fn new(pool: PgPool) -> Self {
+        Self {
+            reader: policy_postgres::settlement_data::PostgresSettlementDataRead::new(pool),
+        }
+    }
+}
 
 #[async_trait]
 impl PolicyData for PolicyQueries {
     async fn pool_funding_owner(
         &mut self,
-        conn: &mut AsyncPgConnection,
+        _conn: &mut AsyncPgConnection,
         household_id: Uuid,
         pool_id: Uuid,
         version: i32,
     ) -> Result<Option<Uuid>, diesel::result::Error> {
-        public::pool_funding_rules::table
-            .filter(public::pool_funding_rules::household_id.eq(household_id))
-            .filter(public::pool_funding_rules::pool_id.eq(pool_id))
-            .filter(public::pool_funding_rules::version.eq(version))
-            .select(public::pool_funding_rules::owner_member_id)
-            .first::<Option<Uuid>>(conn)
+        self.reader
+            .pool_funding_owner(household_id, pool_id, version)
             .await
-            .optional()
-            .map(Option::flatten)
+            .map_err(policy_read_error)
     }
 
     async fn active_funding_schedule(
         &mut self,
-        conn: &mut AsyncPgConnection,
+        _conn: &mut AsyncPgConnection,
         household_id: Uuid,
         member_id: Uuid,
         pool_id: Uuid,
     ) -> Result<Option<Uuid>, diesel::result::Error> {
-        public::funding_schedules::table
-            .filter(public::funding_schedules::household_id.eq(household_id))
-            .filter(public::funding_schedules::member_id.eq(member_id))
-            .filter(public::funding_schedules::pool_id.eq(pool_id))
-            .filter(public::funding_schedules::active.eq(true))
-            .order(public::funding_schedules::created_at.desc())
-            .select(public::funding_schedules::id)
-            .first::<Uuid>(conn)
+        self.reader
+            .active_funding_schedule(household_id, member_id, pool_id)
             .await
-            .optional()
+            .map_err(policy_read_error)
     }
+}
+
+fn policy_read_error(error: String) -> diesel::result::Error {
+    diesel::result::Error::SerializationError(Box::new(std::io::Error::other(error)))
 }
 
 pub async fn record_funding_workflow(
@@ -59,8 +60,12 @@ pub async fn record_funding_workflow(
         bookkeeping_postgres::funding_record::RecordFundingWorkflowAdapterError,
     >,
 > {
-    bookkeeping_postgres::funding_record::record_funding_workflow(pool, command, PolicyQueries)
-        .await
+    bookkeeping_postgres::funding_record::record_funding_workflow(
+        pool,
+        command,
+        PolicyQueries::new(pool.clone()),
+    )
+    .await
 }
 
 pub use bookkeeping_postgres::financial_command_context::{
@@ -87,7 +92,7 @@ pub async fn load_transfer_command_context(
             destination_account_id,
             occurred_at,
         },
-        &mut PolicyQueries,
+        &mut PolicyQueries::new(pool.clone()),
     )
     .await
 }
@@ -99,7 +104,7 @@ pub async fn load_repayment_command_context(
     bookkeeping_postgres::financial_command_context::load_repayment_command_context(
         pool,
         input,
-        &mut PolicyQueries,
+        &mut PolicyQueries::new(pool.clone()),
     )
     .await
 }

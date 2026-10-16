@@ -2,7 +2,6 @@
 
 pub mod authorization;
 pub mod create_household;
-pub mod create_household_handler;
 pub mod default_allocation;
 pub mod household_query;
 pub mod invitation;
@@ -12,4 +11,5 @@ pub mod mail_forwarding_handler;
 pub mod membership;
 pub mod ports;
 pub mod record_change;
+pub mod ui_changes;
 pub mod workflow_failure;

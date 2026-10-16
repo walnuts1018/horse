@@ -1,5 +1,3 @@
-use horse_household_change::UiChangeDescriptor;
-
 macro_rules! default_allocation_id {
     ($name:ident) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -148,16 +146,6 @@ pub struct SetDefaultAllocationDecision {
     pub version: DefaultAllocationVersion,
     pub weights: Vec<ValidatedDefaultAllocationWeight>,
     pub changed_fields: Vec<String>,
-}
-
-impl SetDefaultAllocationDecision {
-    pub fn ui_change(&self) -> UiChangeDescriptor {
-        UiChangeDescriptor::new(
-            "allocation.default.updated",
-            "household",
-            self.changed_fields.clone(),
-        )
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

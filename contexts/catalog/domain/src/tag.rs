@@ -1,5 +1,6 @@
-use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
+
+pub use crate::actor_id::ActorId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tag {
@@ -45,12 +46,6 @@ pub struct CreateTagDecision {
     pub event: TagEvent,
 }
 
-impl CreateTagDecision {
-    pub fn ui_change(&self) -> UiChangeDescriptor {
-        UiChangeDescriptor::new("tag.created", "tag", ["name"])
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateTagCommand {
     pub actor_id: ActorId,
@@ -72,18 +67,6 @@ pub struct UpdateTagDecision {
     pub actor_id: ActorId,
     pub tag: Tag,
     pub event: TagEvent,
-}
-
-impl UpdateTagDecision {
-    pub fn ui_change(&self) -> UiChangeDescriptor {
-        match &self.event {
-            TagEvent::NameUpdated { .. } => UiChangeDescriptor::new("tag.updated", "tag", ["name"]),
-            TagEvent::ArchiveStateChanged { .. } => {
-                UiChangeDescriptor::new("tag.archived", "tag", ["archived"])
-            }
-            TagEvent::Created { .. } => UiChangeDescriptor::new("tag.created", "tag", ["name"]),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,21 +191,6 @@ impl TagRevision {
             .checked_add(1)
             .ok_or(TagError::RevisionConflict)
             .and_then(Self::new)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ActorId(String);
-
-impl ActorId {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<Uuid> for ActorId {
-    fn from(value: Uuid) -> Self {
-        Self(value.to_string())
     }
 }
 

@@ -153,7 +153,7 @@ pub async fn persist_record_transfer(
         input,
         decision,
         &EvidencePostgresOperations,
-        &mut crate::policy_settlement::PolicySettlementReferences,
+        &mut crate::policy_settlement::PolicySettlementReferences::new(pool.clone()),
     )
     .await
     .map_err(map_transfer_error)
@@ -346,7 +346,7 @@ pub async fn correct_purchase(
         pool,
         request,
         &EvidencePostgresOperations,
-        &mut crate::policy_settlement::PolicySettlementReferences,
+        &mut crate::policy_settlement::PolicySettlementReferences::new(pool.clone()),
     )
     .await
     .map_err(map_correct_purchase_error)

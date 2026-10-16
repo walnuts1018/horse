@@ -1,5 +1,4 @@
 use horse_authorization::{Operation, authorize};
-use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
 
 macro_rules! id_type {
@@ -57,7 +56,7 @@ pub struct IssueDecision {
     pub household_id: HouseholdId,
     pub forwarding_id: ForwardingId,
     pub address: MailboxAddress,
-    pub change: UiChangeDescriptor,
+    pub rotated: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,15 +110,7 @@ pub fn decide_issue(
         household_id: command.household_id,
         forwarding_id: command.forwarding_id,
         address: MailboxAddress(address),
-        change: UiChangeDescriptor::new(
-            if command.rotate {
-                "household.mail_forwarding.rotated"
-            } else {
-                "household.mail_forwarding.issued"
-            },
-            "mail_forwarding",
-            ["mailForwardingAddress"],
-        ),
+        rotated: command.rotate,
     })
 }
 
@@ -132,14 +123,6 @@ pub fn decide_revoke(
         return Err(MailForwardingError::NotActive);
     }
     Ok(())
-}
-
-pub fn revoked_change() -> UiChangeDescriptor {
-    UiChangeDescriptor::new(
-        "household.mail_forwarding.revoked",
-        "mail_forwarding",
-        ["mailForwardingAddress"],
-    )
 }
 
 fn valid_mailbox_domain(domain: &str) -> bool {

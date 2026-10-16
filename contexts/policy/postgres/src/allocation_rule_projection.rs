@@ -5,7 +5,7 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-use crate::{PgPool, create_household, schema::public};
+use crate::{PgPool, schema::public};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AllocationProjection {
@@ -401,26 +401,4 @@ pub async fn load_allocation_rule_projection(
         target,
         allocations,
     })
-}
-
-pub async fn load_pool_read_model(
-    pool: &PgPool,
-    actor_id: Uuid,
-    household_id: Uuid,
-    pool_id: Uuid,
-) -> Result<create_household::HouseholdPoolReadModel, PoolReadModelError> {
-    let household = create_household::load_household(pool, actor_id, household_id)
-        .await
-        .map_err(PoolReadModelError::Household)?;
-    household
-        .pools
-        .into_iter()
-        .find(|pool| pool.id == pool_id)
-        .ok_or(PoolReadModelError::PoolNotFound)
-}
-
-#[derive(Debug)]
-pub enum PoolReadModelError {
-    Household(create_household::CreateHouseholdPersistenceError),
-    PoolNotFound,
 }

@@ -231,7 +231,9 @@ async fn persist_validated(
                     version,
                     actor_id,
                     chrono::Utc::now(),
-                    decision.ui_change(),
+                    household_application::ui_changes::default_allocation_updated(
+                        &decision.changed_fields,
+                    ),
                 )
                 .await?;
 

@@ -3,7 +3,9 @@ use bookkeeping_application::create_and_post_purchase::{
     PurchaseItemAllocationRequest,
 };
 use bookkeeping_application::create_purchase_workflow as application;
-use bookkeeping_application::workflow_failure::{WorkflowFailure, WorkflowRejection};
+use bookkeeping_application::{
+    purchase_mutations::CreatePurchaseRejection, workflow_failure::WorkflowFailure,
+};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, result::Error as DieselError};
 use diesel_async::RunQueryDsl;
 use horse_postgres_common::{TransactionError, with_transaction};
@@ -27,8 +29,10 @@ const OPERATION: &str = "createPurchase";
 pub async fn create_purchase_workflow(
     pool: &PgPool,
     command: application::CreatePurchaseWorkflowCommand,
-) -> Result<CreatedPurchase, WorkflowFailure<WorkflowRejection, CreatePurchaseWorkflowAdapterError>>
-{
+) -> Result<
+    CreatedPurchase,
+    WorkflowFailure<CreatePurchaseRejection, CreatePurchaseWorkflowAdapterError>,
+> {
     match with_transaction(pool, |conn| {
         Box::pin(async move {
             let mut operations = PgCreatePurchaseOperations { conn };
@@ -41,8 +45,8 @@ pub async fn create_purchase_workflow(
     {
         Ok(result) => Ok(result),
         Err(TransactionError::Workflow(error)) => Err(match error {
-            application::CreatePurchaseWorkflowError::Decision(_) => {
-                WorkflowFailure::Decision(WorkflowRejection::InvalidInput)
+            application::CreatePurchaseWorkflowError::Decision(error) => {
+                WorkflowFailure::Decision(CreatePurchaseRejection::Domain(error))
             }
             application::CreatePurchaseWorkflowError::AllocationContextMismatch => {
                 WorkflowFailure::Infrastructure(
@@ -66,7 +70,7 @@ pub async fn create_purchase_workflow(
 
 fn classify_create_purchase_failure(
     error: CreatePurchaseWorkflowAdapterError,
-) -> WorkflowFailure<WorkflowRejection, CreatePurchaseWorkflowAdapterError> {
+) -> WorkflowFailure<CreatePurchaseRejection, CreatePurchaseWorkflowAdapterError> {
     match error {
         CreatePurchaseWorkflowAdapterError::Context(
             crate::purchase_command_context::PurchaseCommandContextError::HouseholdNotFound,
@@ -75,7 +79,7 @@ fn classify_create_purchase_failure(
             crate::purchase_command_context::PurchaseCommandContextError::MissingDefaultAllocation
             | crate::purchase_command_context::PurchaseCommandContextError::MissingProductVariant
             | crate::purchase_command_context::PurchaseCommandContextError::MissingAllocationRule,
-        ) => WorkflowFailure::Decision(WorkflowRejection::InvalidInput),
+        ) => WorkflowFailure::Decision(CreatePurchaseRejection::InvalidInput),
         CreatePurchaseWorkflowAdapterError::Persistence(error) => match error {
             CreatePurchasePersistenceError::HouseholdNotFound
             | CreatePurchasePersistenceError::MemberNotFound
@@ -89,7 +93,7 @@ fn classify_create_purchase_failure(
             | CreatePurchasePersistenceError::NumericOutOfRange(_)
             | CreatePurchasePersistenceError::InvalidDecision
             | CreatePurchasePersistenceError::ReceiptConfirmationInvalid => {
-                WorkflowFailure::Decision(WorkflowRejection::InvalidInput)
+                WorkflowFailure::Decision(CreatePurchaseRejection::InvalidInput)
             }
             error => WorkflowFailure::Infrastructure(
                 CreatePurchaseWorkflowAdapterError::Persistence(error),

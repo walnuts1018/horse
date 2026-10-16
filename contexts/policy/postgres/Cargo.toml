@@ -10,7 +10,6 @@ diesel-async = { workspace = true }
 horse-household-change = { path = "../../../platform/household-change" }
 horse-authorization = { path = "../../../platform/authorization" }
 horse-postgres-common = { path = "../../../platform/postgres-common" }
-cross-context-postgres = { path = "../../cross-context/postgres" }
 household-postgres = { path = "../../household/postgres" }
 household-application = { path = "../../household/application" }
 policy-application = { path = "../application" }

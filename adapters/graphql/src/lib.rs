@@ -147,9 +147,7 @@ pub struct Ports {
         dyn evidence_application::observation_node_batch_query::ObservationNodeBatchQuery,
     >,
     pub household_query: std::sync::Arc<dyn household_application::household_query::HouseholdQuery>,
-    pub create_household: std::sync::Arc<
-        dyn household_application::create_household_handler::CreateHouseholdHandler,
-    >,
+    pub create_household: std::sync::Arc<dyn household_application::ports::HouseholdStore>,
     pub mail_forwarding_handler:
         std::sync::Arc<dyn household_application::mail_forwarding_handler::MailForwardingHandler>,
     pub household_membership:

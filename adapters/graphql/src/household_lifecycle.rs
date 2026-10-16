@@ -3,7 +3,6 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
 use household_application::{
     create_household::{ActorId as CreateHouseholdActorId, CreateHouseholdCommand},
-    create_household_handler::CreateHouseholdHandler,
     household_query::{HouseholdQuery, HouseholdQueryError, HouseholdReadModel},
     invitation::{
         AcceptInvitationRequest, CreateInvitationCommand, CreateInvitationRequest,
@@ -203,14 +202,16 @@ pub async fn create_household(
     input: CreateHouseholdInput,
 ) -> Result<CreateHouseholdResult> {
     let actor = crate::actor(ctx)?;
-    match ctx
-        .data::<Arc<dyn CreateHouseholdHandler>>()?
-        .create(CreateHouseholdCommand {
+    let store = ctx.data::<Arc<dyn household_application::ports::HouseholdStore>>()?;
+    match household_application::create_household::create_household(
+        store.as_ref(),
+        CreateHouseholdCommand {
             actor_id: CreateHouseholdActorId::from(actor.0),
             name: input.name,
             member_names: input.member_names,
-        })
-        .await
+        },
+    )
+    .await
     {
         Ok(created) => {
             let id = parse_uuid(&created.household_id)?;

@@ -175,11 +175,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             household_query: Arc::new(
                 household_postgres::household_query::PostgresHouseholdQuery::new(pool.clone()),
             ),
-            create_household: Arc::new(
-                household_postgres::create_household_handler::PostgresCreateHouseholdHandler::new(
-                    pool.clone(),
-                ),
-            ),
+            create_household: Arc::new(household_postgres::create_household::PostgresHouseholds::new(pool.clone())),
             mail_forwarding_handler: Arc::new(
                 household_postgres::mail_forwarding_handler::PostgresMailForwardingHandler::new(
                     pool.clone(),

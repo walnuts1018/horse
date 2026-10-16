@@ -3,10 +3,10 @@ use async_graphql::{
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use bookkeeping_domain::purchase_commands::{
-    AllocationRuleVersion, CategoryId, CreatePurchaseAllocation, CreatePurchaseCommand,
-    CreatePurchaseItem, CreatePurchasePayment, DatePrecision, Measure, PrintedUnitPrice,
-    ProductVariantId, PurchaseAllocationWeight, PurchaseOccurredAt,
-    PurchaseOrigin as WorkflowPurchaseOrigin, QuantityUnit, ReceiptCandidateId, SourceDocumentId,
+    CategoryId, CreatePurchaseCommand, CreatePurchaseItem, CreatePurchasePayment, DatePrecision,
+    Measure, PrintedUnitPrice, ProductVariantId, PurchaseAllocationWeight, PurchaseOccurredAt,
+    PurchaseOrigin as WorkflowPurchaseOrigin, QuantityUnit, ReceiptCandidateId,
+    RequestedPurchaseAllocation, SourceDocumentId,
 };
 use bookkeeping_domain::{AccountId, ItemId, MemberId, PoolId, PurchaseId};
 use serde::Serialize;
@@ -348,7 +348,10 @@ pub async fn create_purchase(
         >>()?;
     let persisted = match handler.create_purchase(workflow_command).await {
         Ok(value) => value,
-        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(_)) => {
+        Err(bookkeeping_application::workflow_failure::WorkflowFailure::Decision(
+            bookkeeping_application::purchase_mutations::CreatePurchaseRejection::InvalidInput
+            | bookkeeping_application::purchase_mutations::CreatePurchaseRejection::Domain(_),
+        )) => {
             return Ok(bad_input().into());
         }
         Err(bookkeeping_application::workflow_failure::WorkflowFailure::NotFound) => {
@@ -640,11 +643,9 @@ fn parse_create_input(
                 decode_node_id(&value.pool_id, "Pool").and_then(|id| {
                     let weight =
                         PurchaseAllocationWeight::new(value.weight.0).ok_or_else(bad_input)?;
-                    Ok(CreatePurchaseAllocation {
+                    Ok(RequestedPurchaseAllocation {
                         pool_id: PoolId::new(id.to_string()).expect("UUID is nonempty"),
                         weight,
-                        rule_version: AllocationRuleVersion::new(1).expect("positive constant"),
-                        rule_id: None,
                     })
                 })
             })
@@ -657,8 +658,7 @@ fn parse_create_input(
             product_variant_id,
             quantity,
             printed_unit_price,
-            allocation_override: !allocations.is_empty(),
-            allocations,
+            requested_allocations: allocations,
         });
     }
     let payments = input
@@ -687,7 +687,6 @@ fn parse_create_input(
             date_precision,
             merchant: input.merchant.clone(),
             origin,
-            allocation_rule_version: AllocationRuleVersion::new(1).expect("positive constant"),
             source_document_id: input
                 .source_document_id
                 .as_deref()

@@ -1,7 +1,6 @@
 pub use horse_postgres_common::{AsyncPgConnection, PgPool, schema};
 
 pub mod create_household;
-pub mod create_household_handler;
 pub mod default_allocation_snapshot;
 pub mod household_access;
 pub mod household_invitation;

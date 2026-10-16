@@ -1,5 +1,6 @@
-use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
+
+pub use crate::actor_id::ActorId;
 
 macro_rules! alias_value {
     ($name:ident) => {
@@ -41,7 +42,6 @@ macro_rules! alias_id {
     };
 }
 
-alias_id!(ActorId);
 alias_id!(HouseholdId);
 alias_id!(VariantId);
 
@@ -62,16 +62,6 @@ pub struct SetProductAliasDecision {
     pub merchant_key: MerchantKey,
     pub alias_text: AliasText,
     pub normalized_alias: NormalizedAlias,
-}
-
-impl SetProductAliasDecision {
-    pub fn ui_change(&self) -> UiChangeDescriptor {
-        UiChangeDescriptor::new(
-            "product.alias.learned",
-            "product_alias",
-            ["alias", "variantId", "merchant"],
-        )
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

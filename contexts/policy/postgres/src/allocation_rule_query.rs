@@ -5,8 +5,7 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use uuid::Uuid;
 
-use crate::{PgPool, schema::public};
-use cross_context_postgres::pool_mutations;
+use crate::{PgPool, allocation_rule_projection as projection, schema::public};
 
 #[derive(Debug)]
 pub enum AllocationRulesQueryError {
@@ -15,7 +14,7 @@ pub enum AllocationRulesQueryError {
     HouseholdNotFound,
     MemberNotFound,
     CursorNotFound,
-    Projection(pool_mutations::AllocationRuleProjectionError),
+    Projection(projection::AllocationRuleProjectionError),
 }
 
 impl From<DieselError> for AllocationRulesQueryError {
@@ -25,7 +24,7 @@ impl From<DieselError> for AllocationRulesQueryError {
 }
 
 pub struct AllocationRulesPage {
-    pub rows: Vec<pool_mutations::AllocationRuleProjection>,
+    pub rows: Vec<projection::AllocationRuleProjection>,
     pub total_count: i64,
     pub has_next_page: bool,
     pub has_previous_page: bool,
@@ -108,7 +107,7 @@ pub async fn allocation_rules(
     let mut rows = Vec::with_capacity(page_rows.len());
     for id in page_rows {
         rows.push(
-            pool_mutations::load_allocation_rule_projection(pool, actor_id, id)
+            projection::load_allocation_rule_projection(pool, actor_id, id)
                 .await
                 .map_err(AllocationRulesQueryError::Projection)?,
         );

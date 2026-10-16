@@ -75,7 +75,7 @@ pub async fn create_purchase<O: CreatePurchaseOperations>(
             category_id: item.category_id.map(|id| id.value().to_string()),
             product_variant_id: item.product_variant_id.map(|id| id.value().to_string()),
             allocations: item
-                .allocations
+                .requested_allocations
                 .iter()
                 .map(
                     |allocation| crate::create_and_post_purchase::RequestedPoolAllocation {

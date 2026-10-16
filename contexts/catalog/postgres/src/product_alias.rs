@@ -46,7 +46,7 @@ pub async fn persist_set_product_alias(
 > {
     let decision = decide_set_product_alias(command)
         .map_err(SetProductAliasPersistenceError::InvalidWorkflow)?;
-    let ui_change = decision.ui_change();
+    let ui_change = catalog_application::ui_changes::product_alias_learned();
     let household_id = parse_uuid(decision.household_id.as_str(), "household_id")?;
     let actor_id = parse_uuid(decision.actor_id.as_str(), "actor_id")?;
     let variant_id = parse_uuid(decision.variant_id.as_str(), "variant_id")?;

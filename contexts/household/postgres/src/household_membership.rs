@@ -184,7 +184,8 @@ impl<'a> PostgresMembershipOperations<'a> {
             .await
             .optional()?
             .ok_or(HouseholdMembershipError::HouseholdNotFound)?;
-        let change_descriptor = decision.change.ui_change();
+        let change_descriptor =
+            household_application::ui_changes::membership_changed(decision.change);
         match decision.change {
             MembershipChange::Leave => {
                 let affected = diesel::update(

@@ -22,11 +22,12 @@ pub use bulk_update_purchases::{
     decide_bulk_update_purchases,
 };
 pub use create_purchase::{
-    AllocationRuleCandidate, AllocationRuleId, AllocationRuleVersion, CategoryId,
-    CreatePurchaseAllocation, CreatePurchaseCommand, CreatePurchaseDecision, CreatePurchaseError,
-    CreatePurchaseItem, CreatePurchasePayment, DatePrecision, DecidedPurchaseAllocation,
-    DecidedPurchaseItem, Measure, MeasureError, PrintedUnitPrice, ProductVariantId,
-    PurchaseAllocationWeight, PurchaseOccurredAt, PurchaseOrigin, QuantityUnit, ReceiptCandidateId,
+    AllocatedPurchase, AllocatedPurchaseItem, AllocationRuleCandidate, AllocationRuleId,
+    AllocationRuleVersion, CategoryId, CreatePurchaseAllocation, CreatePurchaseCommand,
+    CreatePurchaseDecision, CreatePurchaseError, CreatePurchaseItem, CreatePurchasePayment,
+    DatePrecision, DecidedPurchaseAllocation, DecidedPurchaseItem, Measure, MeasureError,
+    PrintedUnitPrice, ProductVariantId, PurchaseAllocationWeight, PurchaseOccurredAt,
+    PurchaseOrigin, QuantityUnit, ReceiptCandidateId, RequestedPurchaseAllocation,
     SourceDocumentId, decide_create_purchase, select_allocation_rule,
 };
 pub use save_purchase_item_edits::{

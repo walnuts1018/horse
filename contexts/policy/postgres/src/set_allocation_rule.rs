@@ -272,7 +272,7 @@ async fn persist_validated(
                         entity_id: rule_id,
                         actor_id,
                         occurred_at: chrono::Utc::now(),
-                        change: decision.ui_change(),
+                        change: policy_application::ui_changes::allocation_rule_updated(&decision.changed_fields),
                     },
                 )
                 .await

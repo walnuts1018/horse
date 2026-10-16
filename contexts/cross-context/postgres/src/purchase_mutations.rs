@@ -4,9 +4,9 @@ use bookkeeping_application::{
     create_purchase_workflow::CreatePurchaseWorkflowCommand,
     post_purchase_entry::PostPurchaseEntryCommand,
     purchase_mutations::{
-        CorrectPurchaseCommand, PostPurchaseEntryOutput, PurchaseMutationHandler,
-        SharedPurchaseDraft as ApplicationSharedPurchaseDraft, SharedPurchaseDraftError,
-        SharedPurchaseDraftUpdate,
+        CorrectPurchaseCommand, CreatePurchaseRejection, PostPurchaseEntryOutput,
+        PurchaseMutationHandler, SharedPurchaseDraft as ApplicationSharedPurchaseDraft,
+        SharedPurchaseDraftError, SharedPurchaseDraftUpdate,
     },
     workflow_failure::{WorkflowFailure, WorkflowRejection},
 };
@@ -30,11 +30,11 @@ impl PurchaseMutationHandler for PostgresPurchaseMutationHandler {
         command: CreatePurchaseWorkflowCommand,
     ) -> Result<
         bookkeeping_application::create_and_post_purchase::CreatedPurchase,
-        WorkflowFailure<WorkflowRejection, String>,
+        WorkflowFailure<CreatePurchaseRejection, String>,
     > {
         crate::create_purchase_workflow::create_purchase_workflow(&self.pool, command)
             .await
-            .map_err(map_failure)
+            .map_err(map_create_purchase_failure)
     }
 
     async fn create_and_post_purchase(
@@ -183,6 +183,19 @@ fn map_shared_draft_error(
 fn map_failure<E: std::fmt::Debug>(
     failure: WorkflowFailure<WorkflowRejection, E>,
 ) -> WorkflowFailure<WorkflowRejection, String> {
+    match failure {
+        WorkflowFailure::Decision(rejection) => WorkflowFailure::Decision(rejection),
+        WorkflowFailure::NotFound => WorkflowFailure::NotFound,
+        WorkflowFailure::Conflict => WorkflowFailure::Conflict,
+        WorkflowFailure::Infrastructure(error) => {
+            WorkflowFailure::Infrastructure(format!("{error:?}"))
+        }
+    }
+}
+
+fn map_create_purchase_failure<E: std::fmt::Debug>(
+    failure: WorkflowFailure<CreatePurchaseRejection, E>,
+) -> WorkflowFailure<CreatePurchaseRejection, String> {
     match failure {
         WorkflowFailure::Decision(rejection) => WorkflowFailure::Decision(rejection),
         WorkflowFailure::NotFound => WorkflowFailure::NotFound,

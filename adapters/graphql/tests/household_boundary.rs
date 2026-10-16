@@ -4,10 +4,7 @@ use chrono::Utc;
 use diesel::{ExpressionMethods, QueryDsl, dsl::count_star, insert_into};
 use diesel_async::RunQueryDsl;
 use horse_graphql_api::{Actor, MutationRoot, QueryRoot, subscriptions::SubscriptionRoot};
-use household_application::{
-    create_household::{ActorId, CreateHouseholdCommand},
-    create_household_handler::CreateHouseholdHandler,
-};
+use household_application::create_household::{ActorId, CreateHouseholdCommand};
 use uuid::Uuid;
 
 fn household_global_id(id: Uuid) -> String {
@@ -23,10 +20,6 @@ async fn graphql_member_cannot_read_or_create_resources_in_another_household() {
     let pool = horse_postgres_common::connect(postgres.connection_url())
         .await
         .unwrap();
-    let household_creator =
-        household_postgres::create_household_handler::PostgresCreateHouseholdHandler::new(
-            pool.clone(),
-        );
     let target_owner = Uuid::now_v7();
     let actor = Uuid::now_v7();
     let target_member = Uuid::now_v7();
@@ -49,22 +42,26 @@ async fn graphql_member_cannot_read_or_create_resources_in_another_household() {
                 .unwrap();
         }
     }
-    let target = household_creator
-        .create(CreateHouseholdCommand {
+    let target = household_postgres::create_household::persist_create_household(
+        &pool,
+        CreateHouseholdCommand {
             actor_id: ActorId::from(target_owner),
             name: "Target household".to_owned(),
             member_names: vec![],
-        })
-        .await
-        .unwrap();
-    household_creator
-        .create(CreateHouseholdCommand {
+        },
+    )
+    .await
+    .unwrap();
+    household_postgres::create_household::persist_create_household(
+        &pool,
+        CreateHouseholdCommand {
             actor_id: ActorId::from(actor),
             name: "Actor household".to_owned(),
             member_names: vec![],
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
     let target_id = Uuid::parse_str(&target.household_id).unwrap();
     {
         let mut conn = pool.get().await.unwrap();

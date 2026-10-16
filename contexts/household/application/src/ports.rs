@@ -1,4 +1,5 @@
-use crate::create_household::{CreateHouseholdCommand, CreateHouseholdError};
+use crate::create_household::{CreateHouseholdDecision, CreateHouseholdError};
+use std::{future::Future, pin::Pin};
 
 // §4の依存方向に従い、Application層が永続化ポート(契約)を定義し、postgresクレートがAdapterとして実装する。
 // GraphQL等のAdapterはこのtrait経由で操作し、postgresの具体型に直接依存しない。
@@ -22,11 +23,9 @@ impl CreateHouseholdPortError {
     }
 }
 
-pub trait HouseholdStore {
-    // RPITIT。async-traitクレートは使わない。具体的なFutureはSendであることが呼び出し側で保証される。
-    #[allow(async_fn_in_trait)]
-    async fn create_household(
-        &self,
-        command: CreateHouseholdCommand,
-    ) -> Result<CreatedHousehold, CreateHouseholdPortError>;
+pub trait HouseholdStore: Send + Sync {
+    fn persist<'a>(
+        &'a self,
+        decision: CreateHouseholdDecision,
+    ) -> Pin<Box<dyn Future<Output = Result<CreatedHousehold, CreateHouseholdPortError>> + Send + 'a>>;
 }

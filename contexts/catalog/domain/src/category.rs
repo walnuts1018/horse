@@ -1,5 +1,6 @@
-use horse_household_change::UiChangeDescriptor;
 use uuid::Uuid;
+
+pub use crate::actor_id::ActorId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CategoryView {
@@ -75,7 +76,6 @@ macro_rules! identifier {
     };
 }
 
-identifier!(ActorId, InvalidActorId);
 identifier!(HouseholdId, InvalidHouseholdId);
 identifier!(CategoryId, InvalidCategoryId);
 
@@ -89,7 +89,6 @@ macro_rules! uuid_conversion {
     };
 }
 
-uuid_conversion!(ActorId);
 uuid_conversion!(HouseholdId);
 uuid_conversion!(CategoryId);
 
@@ -175,31 +174,6 @@ impl CategoryEvent {
             | Self::Archived { category_id }
             | Self::Unarchived { category_id } => category_id,
         }
-    }
-
-    pub fn event_type(&self) -> &'static str {
-        match self {
-            Self::Created { .. } => "category.created",
-            Self::NameUpdated { .. } => "category.name_updated",
-            Self::Archived { .. } => "category.archived",
-            Self::Unarchived { .. } => "category.unarchived",
-        }
-    }
-
-    pub fn changed_fields(&self) -> &'static [&'static str] {
-        match self {
-            Self::Created { .. } => &["name", "parentId"],
-            Self::NameUpdated { .. } => &["name"],
-            Self::Archived { .. } | Self::Unarchived { .. } => &["archived"],
-        }
-    }
-
-    pub fn ui_change(&self) -> UiChangeDescriptor {
-        UiChangeDescriptor::new(
-            self.event_type(),
-            "category",
-            self.changed_fields().iter().copied(),
-        )
     }
 }
 

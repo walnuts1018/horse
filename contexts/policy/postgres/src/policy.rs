@@ -61,7 +61,7 @@ pub async fn persist_create_budget(
     pool: &PgPool,
     decision: budget::CreateBudgetDecision,
 ) -> Result<budget::Budget, PolicyPersistenceError> {
-    let change = decision.ui_change();
+    let change = policy_application::ui_changes::budget_created();
     let actor = decision.actor_id.value();
     let household = decision.household_id.value();
     let id = decision.id.value();
@@ -152,7 +152,7 @@ pub async fn persist_update_budget(
     pool: &PgPool,
     decision: budget::UpdateBudgetDecision,
 ) -> Result<budget::Budget, PolicyPersistenceError> {
-    let change = decision.ui_change();
+    let change = policy_application::ui_changes::budget_updated();
     let actor = decision.actor_id.value();
     let household = decision.household_id.value();
     let id = decision.id.value();
@@ -271,7 +271,7 @@ pub async fn persist_archive_budget(
     pool: &PgPool,
     decision: budget::ArchiveBudgetDecision,
 ) -> Result<budget::Budget, PolicyPersistenceError> {
-    let change = decision.ui_change();
+    let change = policy_application::ui_changes::budget_archived();
     let actor = decision.actor_id.value();
     let household = decision.household_id.value();
     let id = decision.id.value();
@@ -441,7 +441,8 @@ pub async fn persist_create_recurring_expense(
     pool: &PgPool,
     decision: recurring_expense::RecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
-    let change = decision.ui_change();
+    let change =
+        policy_application::ui_changes::recurring_expense_changed(decision.archived.is_some());
     let actor = decision.actor_id.value();
     let id = decision.id.value();
     let household = decision
@@ -574,7 +575,8 @@ pub async fn persist_update_recurring_expense(
     pool: &PgPool,
     decision: recurring_expense::RecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
-    let change = decision.ui_change();
+    let change =
+        policy_application::ui_changes::recurring_expense_changed(decision.archived.is_some());
     let actor = decision.actor_id.value();
     let household = decision
         .household_id
@@ -742,7 +744,8 @@ pub async fn persist_archive_recurring_expense(
     pool: &PgPool,
     decision: recurring_expense::RecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
-    let change = decision.ui_change();
+    let change =
+        policy_application::ui_changes::recurring_expense_changed(decision.archived.is_some());
     let actor = decision.actor_id.value();
     let household = decision
         .household_id
@@ -851,7 +854,7 @@ pub async fn persist_match_recurring_expense(
     pool: &PgPool,
     decision: recurring_expense::MatchRecurringExpenseDecision,
 ) -> Result<recurring_expense::RecurringExpense, PolicyPersistenceError> {
-    let change = decision.ui_change();
+    let change = policy_application::ui_changes::recurring_expense_matched();
     let actor = decision.actor_id.value();
     let household = decision.household_id.value();
     let id = decision.id.value();

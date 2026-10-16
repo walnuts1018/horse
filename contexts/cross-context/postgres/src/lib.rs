@@ -19,7 +19,6 @@ pub mod node_financial_batch;
 pub mod node_query;
 pub mod policy_data;
 pub mod policy_settlement;
-pub mod pool_mutations;
 pub mod post_purchase_entry;
 pub mod purchase_bulk_mutations;
 pub mod purchase_command_context;

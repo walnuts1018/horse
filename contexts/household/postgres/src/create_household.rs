@@ -6,7 +6,6 @@ use diesel::{
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use household_application::create_household::{
     self, CreateHouseholdCommand, CreateHouseholdDecision, CreateHouseholdError,
-    CreateHouseholdOperations,
 };
 use household_application::ports::{CreateHouseholdPortError, CreatedHousehold, HouseholdStore};
 use household_application::workflow_failure::{WorkflowFailure, WorkflowRejection};
@@ -294,9 +293,8 @@ pub async fn persist_create_household(
     pool: &PgPool,
     command: CreateHouseholdCommand,
 ) -> Result<PersistedHousehold, CreateHouseholdPersistenceError> {
-    let mut operations = PostgresCreateHouseholdOperations { pool };
-    let household_id =
-        household_application::create_household::create_household(&mut operations, command).await?;
+    let decision = create_household::decide_create_household(command)?;
+    let household_id = persist_create_household_decision(pool, decision).await?;
     Ok(PersistedHousehold { household_id })
 }
 
@@ -375,20 +373,6 @@ async fn persist_create_household_decision(
         .await
 }
 
-struct PostgresCreateHouseholdOperations<'a> {
-    pool: &'a PgPool,
-}
-
-impl CreateHouseholdOperations for PostgresCreateHouseholdOperations<'_> {
-    type Error = CreateHouseholdPersistenceError;
-
-    async fn persist(&mut self, decision: CreateHouseholdDecision) -> Result<String, Self::Error> {
-        persist_create_household_decision(self.pool, decision).await
-    }
-}
-
-// §4の依存方向に従うAdapter。Application層のHouseholdStore契約をPostgreSQLで実装する。
-// 既存のpersist_create_householdは内部実装として残し、公開APIの互換性を維持する。
 #[derive(Debug, Clone)]
 pub struct PostgresHouseholds {
     pool: PgPool,
@@ -401,31 +385,37 @@ impl PostgresHouseholds {
 }
 
 impl HouseholdStore for PostgresHouseholds {
-    async fn create_household(
-        &self,
-        command: CreateHouseholdCommand,
-    ) -> Result<CreatedHousehold, CreateHouseholdPortError> {
-        persist_create_household(&self.pool, command)
-            .await
-            .map(|persisted| CreatedHousehold {
-                household_id: persisted.household_id,
-            })
-            .map_err(|error| match error {
-                CreateHouseholdPersistenceError::InvalidWorkflow(workflow) => {
-                    CreateHouseholdPortError::from_workflow(workflow)
-                }
-                CreateHouseholdPersistenceError::InvalidUuid => {
-                    CreateHouseholdPortError::InvalidInput
-                }
-                CreateHouseholdPersistenceError::HouseholdNotFound
-                | CreateHouseholdPersistenceError::MemberNotFound => {
-                    CreateHouseholdPortError::NotFound
-                }
-                CreateHouseholdPersistenceError::Pool(_)
-                | CreateHouseholdPersistenceError::Database(_)
-                | CreateHouseholdPersistenceError::InvalidPersistedData => {
-                    CreateHouseholdPortError::Infra
-                }
-            })
+    fn persist<'a>(
+        &'a self,
+        decision: CreateHouseholdDecision,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<CreatedHousehold, CreateHouseholdPortError>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            persist_create_household_decision(&self.pool, decision)
+                .await
+                .map(|household_id| CreatedHousehold { household_id })
+                .map_err(|error| match error {
+                    CreateHouseholdPersistenceError::InvalidWorkflow(workflow) => {
+                        CreateHouseholdPortError::from_workflow(workflow)
+                    }
+                    CreateHouseholdPersistenceError::InvalidUuid => {
+                        CreateHouseholdPortError::InvalidInput
+                    }
+                    CreateHouseholdPersistenceError::HouseholdNotFound
+                    | CreateHouseholdPersistenceError::MemberNotFound => {
+                        CreateHouseholdPortError::NotFound
+                    }
+                    CreateHouseholdPersistenceError::Pool(_)
+                    | CreateHouseholdPersistenceError::Database(_)
+                    | CreateHouseholdPersistenceError::InvalidPersistedData => {
+                        CreateHouseholdPortError::Infra
+                    }
+                })
+        })
     }
 }

@@ -101,7 +101,7 @@ pub async fn persist_create_tag(
                 decision.revision.as_i64(),
                 actor_id,
                 chrono::Utc::now(),
-                decision.ui_change(),
+                catalog_application::ui_changes::tag_created(),
             )
             .await?;
 
@@ -160,7 +160,7 @@ pub async fn persist_update_tag(
             .try_into()?;
             let decision = decide_update_tag(command, current).map_err(map_workflow_error)?;
             let new_revision = decision.tag.revision.as_i64();
-            let change = decision.ui_change();
+            let change = catalog_application::ui_changes::tag_updated(&decision.event);
 
             let updated = diesel::update(tags::tags.filter(tags::id.eq(tag_id)))
                 .set((
@@ -233,7 +233,7 @@ pub async fn persist_set_tag_archived(
             .try_into()?;
             let decision = decide_set_tag_archived(command, current).map_err(map_workflow_error)?;
             let new_revision = decision.tag.revision.as_i64();
-            let change = decision.ui_change();
+            let change = catalog_application::ui_changes::tag_updated(&decision.event);
 
             let updated = diesel::update(tags::tags.filter(tags::id.eq(tag_id)))
                 .set((

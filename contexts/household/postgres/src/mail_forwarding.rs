@@ -150,7 +150,14 @@ async fn create(
                 .returning(forwardings::created_at)
                 .get_result::<DateTime<Utc>>(&mut *conn)
                 .await?;
-            record_change(conn, household_id, forwarding_id, actor_id, decision.change).await?;
+            record_change(
+                conn,
+                household_id,
+                forwarding_id,
+                actor_id,
+                household_application::ui_changes::mail_forwarding_issued(decision.rotated),
+            )
+            .await?;
             Ok(ForwardingAddress {
                 id: forwarding_id.to_string(),
                 address: decision.address.value().to_owned(),
@@ -207,7 +214,7 @@ pub async fn revoke(pool: &PgPool, command: Command) -> Result<Status, MailForwa
                 household_id,
                 forwarding_id,
                 actor_id,
-                mail_forwarding::revoked_change(),
+                household_application::ui_changes::mail_forwarding_revoked(),
             )
             .await?;
             Ok(Status {

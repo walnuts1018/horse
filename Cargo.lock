@@ -1315,7 +1315,6 @@ dependencies = [
 name = "catalog-domain"
 version = "0.1.0"
 dependencies = [
- "horse-household-change",
  "uuid",
 ]
 
@@ -1620,6 +1619,8 @@ dependencies = [
  "horse-postgres-common",
  "horse-test-infra",
  "household-postgres",
+ "policy-application",
+ "policy-postgres",
  "serde_json",
  "tokio",
  "uuid",
@@ -3078,7 +3079,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "horse-authorization",
- "horse-household-change",
  "uuid",
 ]
 
@@ -4553,7 +4553,6 @@ name = "policy-domain"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "horse-household-change",
  "uuid",
 ]
 
@@ -4562,7 +4561,6 @@ name = "policy-postgres"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "cross-context-postgres",
  "diesel",
  "diesel-async",
  "horse-authorization",
