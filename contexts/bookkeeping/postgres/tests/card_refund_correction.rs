@@ -11,7 +11,7 @@ use bookkeeping_postgres::{
         PolicySettlementData,
     },
 };
-use chrono::{NaiveDate, Utc};
+use chrono::{Datelike, FixedOffset, NaiveDate, TimeZone, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, insert_into};
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use horse_postgres_common::connect;
@@ -280,7 +280,6 @@ impl EvidenceOperations for TestEvidence {
 
 #[tokio::test]
 async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_amount() {
-    use chrono::TimeZone;
     use diesel::{dsl::count_star, insert_into};
     use horse_test_infra::{TestPostgres, apply_migrations};
 
@@ -294,7 +293,24 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
     let item_id = Uuid::now_v7();
     let document_id = Uuid::now_v7();
     let over_refund_document_id = Uuid::now_v7();
-    let occurred_at = Utc.with_ymd_and_hms(2026, 10, 10, 3, 0, 0).unwrap();
+    let now = Utc::now();
+    let japan_offset = FixedOffset::east_opt(9 * 60 * 60).unwrap();
+    let current_period_start = now
+        .with_timezone(&japan_offset)
+        .date_naive()
+        .with_day(1)
+        .unwrap();
+    let original_period_start = current_period_start
+        .pred_opt()
+        .unwrap()
+        .with_day(1)
+        .unwrap();
+    let occurred_at = japan_offset
+        .from_local_datetime(&original_period_start.and_hms_opt(12, 0, 0).unwrap())
+        .single()
+        .unwrap()
+        .with_timezone(&Utc);
+    let statement_occurred_at = now.to_rfc3339();
     let mut conn = pool.get().await.unwrap();
     use public::{
         household_members, households, members, pools, purchase_allocations, purchase_items,
@@ -322,6 +338,18 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
             household_members::household_id.eq(household_id),
             household_members::member_id.eq(member_id),
             household_members::role.eq("OWNER"),
+        ))
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    insert_into(public::accounting_periods::table)
+        .values((
+            public::accounting_periods::household_id.eq(household_id),
+            public::accounting_periods::period_start.eq(original_period_start),
+            public::accounting_periods::status.eq("CLOSED"),
+            public::accounting_periods::revision.eq(1_i64),
+            public::accounting_periods::closed_by.eq(Some(member_id)),
+            public::accounting_periods::closed_at.eq(Some(now)),
         ))
         .execute(&mut *conn)
         .await
@@ -411,7 +439,7 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
                     "row": row,
                     "sourceReference": format!("row:{row}"),
                     "kind": "REFUND",
-                    "occurredAt": "2026-10-15T03:00:00+00:00",
+                    "occurredAt": statement_occurred_at,
                     "merchant": "Market",
                     "amount": amount,
                     "region": {"page": 0, "top": 0.1, "left": 0.1, "bottom": 0.2, "right": 0.8}
@@ -577,6 +605,16 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
     assert!(over_refund.is_err());
 
     let mut conn = pool.get().await.unwrap();
+    let effective_period = public::purchase_corrections::table
+        .filter(public::purchase_corrections::household_id.eq(household_id))
+        .filter(
+            public::purchase_corrections::id.eq(Uuid::parse_str(&refund.correction_id).unwrap()),
+        )
+        .select(public::purchase_corrections::effective_period_start)
+        .first::<NaiveDate>(&mut *conn)
+        .await
+        .unwrap();
+    assert_eq!(effective_period, current_period_start);
     assert_eq!(
         public::purchase_corrections::table
             .filter(public::purchase_corrections::household_id.eq(household_id))
