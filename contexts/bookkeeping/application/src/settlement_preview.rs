@@ -128,10 +128,14 @@ pub fn calculate_settlement_preview(
 
     let mut totals = vec![Totals::default(); input.members.len()];
     let mut active = BTreeSet::new();
+    let mut participants_in_period = BTreeSet::new();
     for (index, member) in input.members.iter().enumerate() {
         let participates_in_period = member
             .left_at_micros
             .is_none_or(|left| left > period_start as i64 * MICROS_PER_DAY - JST_OFFSET_MICROS);
+        if participates_in_period {
+            participants_in_period.insert(index);
+        }
         let has_unsettled_balance = previous_due_by_member
             .get(&member.id)
             .is_some_and(|amount| *amount != 0);
@@ -141,13 +145,23 @@ pub fn calculate_settlement_preview(
     }
     let mut funding = BTreeMap::<(usize, String), Totals>::new();
     for obligation in input.obligations {
-        if obligation.member_id >= input.members.len() || !active.contains(&obligation.member_id) {
+        if obligation.member_id >= input.members.len() {
             return Err(SettlementPreviewError::InvalidMemberIndex);
+        }
+        if obligation.scheduled_yen < 0 || obligation.paid_yen < 0 {
+            return Err(SettlementPreviewError::InvalidSettlement);
+        }
+        if obligation.paid_yen != 0 {
+            active.insert(obligation.member_id);
         }
         funding.insert(
             (obligation.member_id, obligation.pool_id),
             Totals {
-                scheduled: obligation.scheduled_yen,
+                scheduled: if participants_in_period.contains(&obligation.member_id) {
+                    obligation.scheduled_yen
+                } else {
+                    0
+                },
                 paid: obligation.paid_yen,
                 ..Totals::default()
             },
@@ -182,6 +196,7 @@ pub fn calculate_settlement_preview(
         }
         let ends_on = schedule.ends_on_day;
         if (!schedule.active && ends_on.is_none())
+            || !participants_in_period.contains(&schedule.member_id)
             || schedule.starts_on_day >= period_end
             || ends_on.is_some_and(|end| end < period_end - 1)
         {
@@ -210,8 +225,11 @@ pub fn calculate_settlement_preview(
             .ok_or(SettlementPreviewError::AmountOverflow)?;
     }
     for adjustment in input.adjustments {
-        if adjustment.member_id >= input.members.len() || !active.contains(&adjustment.member_id) {
+        if adjustment.member_id >= input.members.len() {
             return Err(SettlementPreviewError::InvalidMemberIndex);
+        }
+        if adjustment.amount_yen != 0 {
+            active.insert(adjustment.member_id);
         }
         totals[adjustment.member_id].monthly = totals[adjustment.member_id]
             .monthly
@@ -225,8 +243,11 @@ pub fn calculate_settlement_preview(
         &input.members,
     )?);
     for adjustment in purchase_adjustments {
-        if adjustment.member_id >= input.members.len() || !active.contains(&adjustment.member_id) {
+        if adjustment.member_id >= input.members.len() {
             return Err(SettlementPreviewError::InvalidMemberIndex);
+        }
+        if adjustment.monthly_adjustment_yen != 0 || adjustment.advance_credit_yen != 0 {
+            active.insert(adjustment.member_id);
         }
         let total = &mut totals[adjustment.member_id];
         total.monthly = total
@@ -584,7 +605,10 @@ fn day_number(year: i32, month: u32, day: u32) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{PreviewInput, PreviewMember, PreviewObligation, calculate_settlement_preview};
+    use super::{
+        PreviewInput, PreviewMember, PreviewObligation, PreviewSchedule, PreviewScheduleCadence,
+        calculate_settlement_preview,
+    };
     use std::collections::BTreeMap;
 
     #[test]
@@ -643,5 +667,74 @@ mod tests {
         assert_eq!(result[0].member_id, "member-1");
         assert_eq!(result[0].scheduled_yen, 0);
         assert_eq!(result[0].amount_due_yen, 2_000);
+    }
+
+    #[test]
+    fn preview_does_not_add_departed_members_scheduled_funding_but_applies_actual_payments() {
+        let input = PreviewInput {
+            period: "2026-10".to_owned(),
+            members: vec![PreviewMember {
+                id: "member-1".to_owned(),
+                name: "Member".to_owned(),
+                left_at_micros: Some(0),
+            }],
+            obligations: vec![PreviewObligation {
+                member_id: 0,
+                pool_id: "pool-1".to_owned(),
+                scheduled_yen: 1_000,
+                paid_yen: 100,
+            }],
+            schedules: vec![PreviewSchedule {
+                member_id: 0,
+                pool_id: "pool-1".to_owned(),
+                amount_yen: 6_000,
+                cadence: PreviewScheduleCadence::Monthly,
+                starts_on_day: 0,
+                ends_on_day: None,
+                active: true,
+                created_at_micros: 1,
+                id: "schedule-1".to_owned(),
+            }],
+            adjustments: vec![],
+            purchase_adjustments: vec![],
+            funding_rules: vec![],
+            purchases: vec![],
+        };
+        let previous_due = BTreeMap::from([("member-1".to_owned(), 2_000)]);
+
+        let result = calculate_settlement_preview(input, &previous_due).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].scheduled_yen, 0);
+        assert_eq!(result[0].paid_yen, 100);
+        assert_eq!(result[0].amount_due_yen, 1_900);
+    }
+
+    #[test]
+    fn preview_includes_a_departed_member_with_a_new_correction_adjustment() {
+        let input = PreviewInput {
+            period: "2026-10".to_owned(),
+            members: vec![PreviewMember {
+                id: "member-1".to_owned(),
+                name: "Member".to_owned(),
+                left_at_micros: Some(0),
+            }],
+            obligations: vec![],
+            schedules: vec![],
+            adjustments: vec![super::PreviewAdjustment {
+                member_id: 0,
+                amount_yen: 500,
+            }],
+            purchase_adjustments: vec![],
+            funding_rules: vec![],
+            purchases: vec![],
+        };
+
+        let result = calculate_settlement_preview(input, &BTreeMap::new()).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].scheduled_yen, 0);
+        assert_eq!(result[0].monthly_adjustment_yen, 500);
+        assert_eq!(result[0].amount_due_yen, 500);
     }
 }
