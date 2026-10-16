@@ -11,12 +11,11 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   quality:
+    concurrency:
+      group: ci-quality-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     services:
@@ -108,6 +107,9 @@ jobs:
             run: mise run web:build
 
   browser-e2e:
+    concurrency:
+      group: ci-browser-e2e-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     needs: quality
     runs-on: ubuntu-26.04
     timeout-minutes: 30
@@ -154,6 +156,10 @@ jobs:
 
   publish:
     if: github.event_name == 'push'
+    concurrency:
+      group: ci-publish-${{ github.ref }}-${{ github.job }}
+      cancel-in-progress: false
+      queue: max
     needs: quality
     runs-on: ubuntu-26.04
     timeout-minutes: 45
@@ -256,6 +262,10 @@ jobs:
 
   publish-rust-amd64:
     if: github.event_name == 'push'
+    concurrency:
+      group: ci-publish-${{ github.ref }}-${{ github.job }}
+      cancel-in-progress: false
+      queue: max
     needs: quality
     runs-on: ubuntu-26.04
     timeout-minutes: 45
@@ -328,6 +338,10 @@ jobs:
 
   publish-rust-arm64:
     if: github.event_name == 'push'
+    concurrency:
+      group: ci-publish-${{ github.ref }}-${{ github.job }}
+      cancel-in-progress: false
+      queue: max
     needs: quality
     runs-on: ubuntu-26.04-arm
     timeout-minutes: 45
@@ -400,6 +414,10 @@ jobs:
 
   publish-rust-index:
     if: github.event_name == 'push'
+    concurrency:
+      group: ci-publish-${{ github.ref }}-${{ github.job }}
+      cancel-in-progress: false
+      queue: max
     needs:
       - publish-rust-amd64
       - publish-rust-arm64
