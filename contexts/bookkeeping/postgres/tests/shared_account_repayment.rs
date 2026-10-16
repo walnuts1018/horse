@@ -1,5 +1,6 @@
 use bookkeeping_domain::{
     AccountingPeriod, MemberId, PositiveYen, YearMonth, Yen,
+    create_account::{CreateAccountCommand, OpeningBalance},
     record_repayment::{
         Loan as RepaymentLoan, LoanId as RepaymentLoanId, PoolKind as RepaymentPoolKind,
         RecordRepaymentCommand, RepaymentSource, decide_record_repayment,
@@ -8,7 +9,7 @@ use bookkeeping_domain::{
 };
 use bookkeeping_postgres::{
     account_balance_analysis::account_balance_analysis_for_period,
-    create_account::{CreateAccountCommand, OpeningBalance, persist_create_account},
+    create_account::persist_create_account,
     evidence_port::{
         EvidenceLinkQuery, EvidenceLinkRecord, EvidenceOperations, ExtractionQuery,
         InsertConfirmation, SourceConfirmation, SourceDocumentMetadata, SourceDocumentQuery,
