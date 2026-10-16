@@ -7,7 +7,7 @@
 
 2026年10月16日時点でCLI以外のGo実行コードはRustへ移行済みである。commit`d8e0dd74`でGraphQLからPostgres依存をApplication Portへ移し、`docs/reviews/rust_review5.md`の指摘を解消した。`mise run rust:check`、`mise run rust:test`、`mise run lint`、`mise run rust:architecture:check`、`mise run rust:fmt:check`が成功し、Horse CI run `38876737440`のqualityとimage publishも成功した。
 
-kurumiのArgo CD Applicationはinfra commit `a2e290002`で`Synced`かつ`Healthy`である。APIは`v0.0.1003`のimage digest `sha256:5297e9df97a2067326f37514bf94e78081b84b6db54561c651981d7799b4fc6f`でReadyになり、Worker・Web・OCRもReadyである。`https://horse.walnuts.dev/healthz`はHTTP 200を返す。2026年10月16日にZITADELのID tokenが返す複数audienceを検証できるようAPIを修正し、Chromeでログイン後のHorseトップ画面とログアウト操作を確認した。修正commitは`63516bb9`である。
+kurumiのArgo CD Applicationはinfra commit `e21a8655f`で`Synced`かつ`Healthy`である。API・Workerは`v0.0.1006`のimage digest `sha256:21275b148b0d2d55fb031949cdd5f81ba2871e246b80e564d96c7a83eb6a91b6`、Webは`v0.0.1006`のdigest `sha256:0f8b7cf151252259dbbdf457045bc566e2be23147be0ea62533086be4655e698`で1/1 Readyになり、OCRも1/1 Readyである。`https://horse.walnuts.dev/healthz`とトップページはHTTP 200を返す。2026年10月16日にZITADELのID tokenが返す複数audienceを検証できるようAPIを修正し、Chromeでログイン後のHorseトップ画面とログアウト操作を確認した。修正commitは`63516bb9`である。
 
 以下の操作記録は記録された日付時点の証拠であり、現在のRust版で未確認の項目を完了扱いにしない。旧Goテストと旧Go CI runは現行Rust実装の検証根拠に含めない。
 
