@@ -197,10 +197,12 @@ async fn bulk_update_purchase_item_name_persists_name_and_revisions() {
             household_id: household_id.to_string(),
             actor_id: member_id.to_string(),
         },
-        vec![bookkeeping_domain::purchase_commands::BulkUpdateItemTarget {
-            item_id: item_id.to_string(),
-            base_revision: 1,
-        }],
+        vec![
+            bookkeeping_domain::purchase_commands::BulkUpdateItemTarget {
+                item_id: item_id.to_string(),
+                base_revision: 1,
+            },
+        ],
         bookkeeping_domain::purchase_commands::BulkUpdateItemPatch {
             name_set: true,
             name: Some("  New name  ".to_owned()),
@@ -211,7 +213,10 @@ async fn bulk_update_purchase_item_name_persists_name_and_revisions() {
     .await
     .unwrap();
 
-    assert_eq!(result.items, vec![(item_id.to_string(), purchase_id.to_string())]);
+    assert_eq!(
+        result.items,
+        vec![(item_id.to_string(), purchase_id.to_string())]
+    );
 
     let mut conn = pool.get().await.unwrap();
     let saved = public::purchase_items::table
