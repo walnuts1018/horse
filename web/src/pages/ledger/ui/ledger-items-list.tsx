@@ -224,6 +224,13 @@ export function LedgerItemsList({
       )}
       {loadingMore && <div className={styles.more}>購入履歴を取得中</div>}
       {moreError && <InlineError message={moreError} />}
+      {hasNextPage && !loadingMore && !moreError && (
+        <div className={styles.more}>
+          <button className="button button-soft" type="button" onClick={loadMore}>
+            さらに品目を読み込む
+          </button>
+        </div>
+      )}
       {moreError && hasNextPage && (
         <div className={styles.more}>
           <button
