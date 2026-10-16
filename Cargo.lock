@@ -2810,6 +2810,7 @@ dependencies = [
  "horse-object-storage",
  "horse-observability",
  "horse-postgres-common",
+ "policy-postgres",
  "tokio",
  "tracing",
  "tracing-subscriber",

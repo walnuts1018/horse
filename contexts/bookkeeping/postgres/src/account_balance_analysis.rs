@@ -6,33 +6,14 @@ use diesel_async::RunQueryDsl;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
+use bookkeeping_application::account_balance_analysis_query::{
+    AccountBalanceAnalysis, AccountBalanceAnalysisQuery, AccountBalanceAnalysisQueryError,
+    AccountBalanceChange,
+};
+
 use crate::{PgPool, schema::public};
 
 const OPENING_BALANCE_SOURCE_KIND: &str = "ACCOUNT_OPENING_BALANCE";
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountBalanceChange {
-    pub journal_id: Uuid,
-    pub source_kind: String,
-    pub source_id: Uuid,
-    pub occurred_at: DateTime<Utc>,
-    pub amount_yen: i64,
-    pub balance_yen: i64,
-    pub description: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountBalanceAnalysis {
-    pub account_id: Uuid,
-    pub account_name: String,
-    pub account_kind: String,
-    pub opening_balance_yen: i64,
-    pub closing_balance_yen: i64,
-    pub changes: Vec<AccountBalanceChange>,
-    pub total_count: usize,
-    pub has_next_page: bool,
-    pub has_previous_page: bool,
-}
 
 #[derive(Debug)]
 pub enum AccountBalanceAnalysisError {
@@ -44,6 +25,62 @@ pub enum AccountBalanceAnalysisError {
     InvalidAccountKind(String),
     CursorNotFound,
     BalanceOverflow,
+}
+
+pub struct PostgresAccountBalanceAnalysisQuery {
+    pool: PgPool,
+}
+
+impl PostgresAccountBalanceAnalysisQuery {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl AccountBalanceAnalysisQuery for PostgresAccountBalanceAnalysisQuery {
+    fn query<'a>(
+        &'a self,
+        household_id: Uuid,
+        account_id: Uuid,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+        after: Option<Uuid>,
+        page_size: usize,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<AccountBalanceAnalysis, AccountBalanceAnalysisQueryError>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            account_balance_analysis_for_period(
+                &self.pool,
+                household_id,
+                account_id,
+                start,
+                end,
+                after,
+                page_size,
+            )
+            .await
+            .map_err(|error| match error {
+                AccountBalanceAnalysisError::InvalidPeriod
+                | AccountBalanceAnalysisError::InvalidPageSize
+                | AccountBalanceAnalysisError::CursorNotFound => {
+                    AccountBalanceAnalysisQueryError::InvalidInput
+                }
+                AccountBalanceAnalysisError::AccountNotFound => {
+                    AccountBalanceAnalysisQueryError::AccountNotFound
+                }
+                AccountBalanceAnalysisError::BalanceOverflow => {
+                    AccountBalanceAnalysisQueryError::BalanceOverflow
+                }
+                other => AccountBalanceAnalysisQueryError::Infrastructure(format!("{other:?}")),
+            })
+        })
+    }
 }
 
 impl From<DieselError> for AccountBalanceAnalysisError {

@@ -75,6 +75,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                     pool.clone(),
                 ),
             ),
+            account_balance_analysis_query: Arc::new(
+                bookkeeping_postgres::account_balance_analysis::PostgresAccountBalanceAnalysisQuery::new(
+                    pool.clone(),
+                ),
+            ),
             monthly_spending_query: Arc::new(
                 bookkeeping_postgres::monthly_spending_query::PostgresMonthlySpendingQuery::new(
                     pool.clone(),
@@ -82,6 +87,16 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             ),
             purchase_defaults_query: Arc::new(
                 bookkeeping_postgres::purchase_defaults_query::PostgresPurchaseDefaultsQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            set_allocation_rule: Arc::new(
+                policy_postgres::set_allocation_rule::PostgresSetAllocationRuleHandler::new(
+                    pool.clone(),
+                ),
+            ),
+            set_funding_schedule: Arc::new(
+                policy_postgres::set_funding_schedule::PostgresSetFundingScheduleHandler::new(
                     pool.clone(),
                 ),
             ),

@@ -1,5 +1,6 @@
 #![allow(async_fn_in_trait)]
 
+pub mod account_balance_analysis_query;
 pub mod account_balances;
 pub mod account_balances_query;
 pub mod account_card_last4;

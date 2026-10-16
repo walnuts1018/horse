@@ -13,12 +13,13 @@ use policy_application::{
         AllocationActorId, AllocationCategoryId, AllocationHouseholdId, AllocationPoolId,
         AllocationProductConceptId, AllocationProductVariantId,
         AllocationRuleTarget as WorkflowAllocationRuleTarget, AllocationRuleWeight,
-        SetAllocationRuleCommand,
+        SetAllocationRuleCommand, SetAllocationRuleHandler,
     },
     set_funding_schedule::{
         ActorId as FundingActorId, FundingScheduleAmount, FundingScheduleCadence as PolicyCadence,
         FundingScheduleDate, FundingScheduleId, HouseholdId as FundingHouseholdId,
         MemberId as FundingMemberId, PoolId as FundingPoolId, SetFundingScheduleCommand,
+        SetFundingScheduleHandler,
     },
     set_pool_funding_rule::{
         FundingRuleActorId, FundingRuleHouseholdId, FundingRuleMemberId, FundingRulePoolId,
@@ -27,10 +28,7 @@ use policy_application::{
         SharedSettlementPolicy,
     },
 };
-use policy_postgres::{
-    pool_mutations as postgres_pool_mutations, set_allocation_rule as postgres_allocation_rule,
-    set_funding_schedule as postgres_funding_schedule,
-};
+use policy_postgres::pool_mutations as postgres_pool_mutations;
 use uuid::Uuid;
 
 use crate::{Long, MutationErrorCode, member_pool};
@@ -457,17 +455,16 @@ pub async fn set_allocation_rule(
         target,
         weights,
     };
-    let rule_id =
-        match postgres_allocation_rule::persist_set_allocation_rule(ctx.data::<PgPool>()?, command)
-            .await
-        {
-            Ok(value) => value.id.value(),
-            Err(error) => {
-                return workflow_failure_result(error, |code| {
-                    set_allocation_rule_error(code).into()
-                });
-            }
-        };
+    let rule_id = match ctx
+        .data::<std::sync::Arc<dyn SetAllocationRuleHandler>>()?
+        .handle(command)
+        .await
+    {
+        Ok(value) => value.id.value(),
+        Err(error) => {
+            return workflow_failure_result(error, |code| set_allocation_rule_error(code).into());
+        }
+    };
     let projection = match cross_pool_queries::load_allocation_rule_projection(
         ctx.data::<PgPool>()?,
         actor.0,
@@ -520,7 +517,9 @@ pub async fn set_funding_schedule(
         starts_on: FundingScheduleDate::new(input.starts_on.0),
         ends_on: input.ends_on.map(|value| FundingScheduleDate::new(value.0)),
     };
-    match postgres_funding_schedule::persist_set_funding_schedule(ctx.data::<PgPool>()?, command)
+    match ctx
+        .data::<std::sync::Arc<dyn SetFundingScheduleHandler>>()?
+        .handle(command)
         .await
     {
         Ok(value) => Ok(Box::new(SetFundingScheduleSuccess {
@@ -596,7 +595,7 @@ pub(crate) fn map_allocation_rule_projection(
 }
 
 pub(crate) fn map_funding_schedule_projection(
-    value: postgres_funding_schedule::PersistedFundingSchedule,
+    value: policy_application::set_funding_schedule::PersistedFundingSchedule,
 ) -> Result<FundingScheduleObject> {
     Ok(FundingScheduleObject {
         id: encode_node_id("FundingSchedule", &value.id)?,

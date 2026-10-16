@@ -16,6 +16,34 @@ use crate::{PgPool, schema::public};
 
 pub type PersistedAllocationRule = SetAllocationRuleResult;
 
+pub struct PostgresSetAllocationRuleHandler {
+    pool: PgPool,
+}
+
+impl PostgresSetAllocationRuleHandler {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl policy_application::set_allocation_rule::SetAllocationRuleHandler
+    for PostgresSetAllocationRuleHandler
+{
+    fn handle<'a>(
+        &'a self,
+        command: SetAllocationRuleCommand,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<SetAllocationRuleResult, policy_application::WorkflowFailure>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move { persist_set_allocation_rule(&self.pool, command).await })
+    }
+}
+
 #[derive(Debug)]
 pub enum SetAllocationRulePersistenceError {
     Pool(String),

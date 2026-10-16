@@ -13,18 +13,34 @@ use uuid::Uuid;
 
 use crate::{PgPool, schema::public};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PersistedFundingSchedule {
-    pub id: String,
-    pub household_id: String,
-    pub member_id: String,
-    pub pool_id: String,
-    pub amount_yen: i64,
-    pub cadence: String,
-    pub starts_on: String,
-    pub ends_on: Option<String>,
-    pub active: bool,
-    pub created_at: DateTime<Utc>,
+pub use policy_application::set_funding_schedule::PersistedFundingSchedule;
+
+pub struct PostgresSetFundingScheduleHandler {
+    pool: PgPool,
+}
+
+impl PostgresSetFundingScheduleHandler {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl policy_application::set_funding_schedule::SetFundingScheduleHandler
+    for PostgresSetFundingScheduleHandler
+{
+    fn handle<'a>(
+        &'a self,
+        command: SetFundingScheduleCommand,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<PersistedFundingSchedule, policy_application::WorkflowFailure>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move { persist_set_funding_schedule(&self.pool, command).await })
+    }
 }
 
 #[derive(Debug)]

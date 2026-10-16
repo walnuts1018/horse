@@ -1,6 +1,8 @@
 use async_graphql::{Context, Error, ID, Result, SimpleObject, Union};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bookkeeping_postgres::account_balance_analysis as postgres_query;
+use bookkeeping_application::account_balance_analysis_query::{
+    AccountBalanceAnalysisQuery, AccountBalanceAnalysisQueryError,
+};
 use chrono::NaiveDate;
 use horse_postgres_common::PgPool;
 use uuid::Uuid;
@@ -103,17 +105,18 @@ pub async fn resolve_account_balance_analysis(
     {
         return Err(Error::new("not found"));
     }
-    let analysis = postgres_query::account_balance_analysis_for_period(
-        pool,
-        household_id,
-        account_id,
-        start,
-        end,
-        after_id,
-        usize::try_from(first).map_err(crate::internal_error)?,
-    )
-    .await
-    .map_err(map_query_error)?;
+    let analysis = ctx
+        .data::<std::sync::Arc<dyn AccountBalanceAnalysisQuery>>()?
+        .query(
+            household_id,
+            account_id,
+            start,
+            end,
+            after_id,
+            usize::try_from(first).map_err(crate::internal_error)?,
+        )
+        .await
+        .map_err(map_query_error)?;
 
     let mut edges = Vec::with_capacity(analysis.changes.len());
     for change in analysis.changes {
@@ -303,12 +306,12 @@ fn account_kind(value: &str) -> Result<crate::account_mutations::AccountKind> {
     }
 }
 
-fn map_query_error(error: postgres_query::AccountBalanceAnalysisError) -> Error {
-    use postgres_query::AccountBalanceAnalysisError as E;
+fn map_query_error(error: AccountBalanceAnalysisQueryError) -> Error {
+    use AccountBalanceAnalysisQueryError as E;
     match error {
         E::AccountNotFound => Error::new("not found"),
-        E::InvalidPeriod | E::InvalidPageSize | E::CursorNotFound => Error::new("bad input"),
+        E::InvalidInput => Error::new("bad input"),
         E::BalanceOverflow => Error::new("account balance exceeds int64"),
-        other => crate::internal_error(other),
+        E::Infrastructure(error) => crate::internal_error(error),
     }
 }

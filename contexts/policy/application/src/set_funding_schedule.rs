@@ -1,9 +1,38 @@
+use chrono::{DateTime, Utc};
 use horse_household_change::UiChangeDescriptor;
 pub use policy_domain::{
     ActiveFundingSchedule, ActorId, FundingScheduleAmount, FundingScheduleCadence,
     FundingScheduleDate, FundingScheduleId, FundingScheduleUpdate, HouseholdId, MemberId, PoolId,
     SetFundingScheduleCommand, SetFundingScheduleDecision, SetFundingScheduleError,
 };
+use std::{future::Future, pin::Pin};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersistedFundingSchedule {
+    pub id: String,
+    pub household_id: String,
+    pub member_id: String,
+    pub pool_id: String,
+    pub amount_yen: i64,
+    pub cadence: String,
+    pub starts_on: String,
+    pub ends_on: Option<String>,
+    pub active: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+pub trait SetFundingScheduleHandler: Send + Sync {
+    fn handle<'a>(
+        &'a self,
+        command: SetFundingScheduleCommand,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<PersistedFundingSchedule, super::WorkflowFailure>>
+                + Send
+                + 'a,
+        >,
+    >;
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetFundingScheduleWorkflowError<E> {
