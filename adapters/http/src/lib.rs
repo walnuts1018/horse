@@ -367,6 +367,29 @@ fn is_supported_extraction_model(model: &str) -> bool {
     )
 }
 
+#[cfg(test)]
+mod extraction_model_tests {
+    use super::is_supported_extraction_model;
+
+    #[test]
+    fn accepts_import_models_and_legacy_aliases_but_rejects_unknown_ids() {
+        for model in [
+            "gemini-3.8-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.1-pro-preview",
+            "gemini-4-argon",
+            "free",
+            "pro",
+            "flash",
+            "flash-lite",
+        ] {
+            assert!(is_supported_extraction_model(model), "{model}");
+        }
+        assert!(!is_supported_extraction_model("gemini-unknown-model"));
+    }
+}
+
 async fn upload_document(
     State(state): State<ApiState>,
     headers: HeaderMap,
