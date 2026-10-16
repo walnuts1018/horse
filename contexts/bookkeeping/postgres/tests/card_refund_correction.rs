@@ -642,19 +642,20 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
         Some(Uuid::parse_str(&refund.correction_id).unwrap())
     );
     assert_eq!(linked.3["statement"]["amount"], -60);
-    let balanced = public::journal_entries::table
+    let entries = public::journal_entries::table
         .filter(public::journal_entries::household_id.eq(household_id))
         .filter(
             public::journal_entries::journal_id.eq(Uuid::parse_str(&refund.journal_id).unwrap()),
         )
         .select((
-            diesel::dsl::sum(public::journal_entries::debit_yen),
-            diesel::dsl::sum(public::journal_entries::credit_yen),
+            public::journal_entries::debit_yen,
+            public::journal_entries::credit_yen,
         ))
-        .first::<(Option<i64>, Option<i64>)>(&mut *conn)
+        .load::<(i64, i64)>(&mut *conn)
         .await
         .unwrap();
-    assert_eq!(balanced, (Some(60), Some(60)));
+    assert_eq!(entries.iter().map(|entry| entry.0).sum::<i64>(), 60);
+    assert_eq!(entries.iter().map(|entry| entry.1).sum::<i64>(), 60);
 }
 
 fn refund_request(
