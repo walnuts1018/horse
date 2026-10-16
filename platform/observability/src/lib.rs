@@ -31,8 +31,13 @@ impl Telemetry {
         let mut tracer_builder = SdkTracerProvider::builder().with_resource(resource.clone());
         match signal_exporter("TRACES")? {
             Exporter::Otlp => {
-                tracer_builder = tracer_builder
-                    .with_batch_exporter(opentelemetry_otlp::SpanExporter::builder().build()?);
+                let exporter = opentelemetry_otlp::SpanExporter::builder().build()?;
+                let processor = opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor::builder(
+                    exporter,
+                    opentelemetry_sdk::runtime::Tokio,
+                )
+                .build();
+                tracer_builder = tracer_builder.with_span_processor(processor);
             }
             Exporter::Console => {
                 tracer_builder = tracer_builder
