@@ -47,7 +47,7 @@ pub(crate) async fn delete_expired_unconfirmed(
 ) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
     use public::{
         bank_statement_imports, evidence_links, extraction_jobs, source_confirmations,
-        source_document_attachments, source_documents,
+        source_documents,
     };
     use source_documents::dsl as documents;
 
@@ -67,13 +67,6 @@ pub(crate) async fn delete_expired_unconfirmed(
                 source_confirmations::table
                     .filter(source_confirmations::household_id.eq(documents::household_id))
                     .filter(source_confirmations::source_document_id.eq(documents::id)),
-            )))
-            .filter(dsl::not(dsl::exists(
-                source_document_attachments::table.filter(
-                    source_document_attachments::parent_document_id
-                        .eq(documents::id)
-                        .or(source_document_attachments::child_document_id.eq(documents::id)),
-                ),
             )))
             .filter(dsl::not(dsl::exists(
                 bank_statement_imports::table
@@ -130,7 +123,7 @@ async fn delete_one(
 ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
     use public::{
         bank_statement_imports, evidence_links, extraction_jobs, source_confirmations,
-        source_document_attachments, source_documents,
+        source_documents,
     };
 
     let mut connection = pool.get().await?;
@@ -179,15 +172,6 @@ async fn delete_one(
             ))
             .get_result::<bool>(conn)
             .await?;
-            let has_attachment = dsl::select(dsl::exists(
-                source_document_attachments::table.filter(
-                    source_document_attachments::parent_document_id
-                        .eq(document_id)
-                        .or(source_document_attachments::child_document_id.eq(document_id)),
-                ),
-            ))
-            .get_result::<bool>(conn)
-            .await?;
             let has_statement_import = dsl::select(dsl::exists(
                 bank_statement_imports::table
                     .filter(bank_statement_imports::household_id.eq(household_id))
@@ -195,7 +179,7 @@ async fn delete_one(
             ))
             .get_result::<bool>(conn)
             .await?;
-            if has_evidence || has_confirmation || has_attachment || has_statement_import {
+            if has_evidence || has_confirmation || has_statement_import {
                 return Ok(None);
             }
 
@@ -261,15 +245,6 @@ async fn delete_one(
             ))
             .get_result::<bool>(conn)
             .await?;
-            let has_attachment = dsl::select(dsl::exists(
-                source_document_attachments::table.filter(
-                    source_document_attachments::parent_document_id
-                        .eq(keys.id)
-                        .or(source_document_attachments::child_document_id.eq(keys.id)),
-                ),
-            ))
-            .get_result::<bool>(conn)
-            .await?;
             let has_statement_import = dsl::select(dsl::exists(
                 bank_statement_imports::table
                     .filter(bank_statement_imports::household_id.eq(keys.household_id))
@@ -277,7 +252,7 @@ async fn delete_one(
             ))
             .get_result::<bool>(conn)
             .await?;
-            if has_evidence || has_confirmation || has_attachment || has_statement_import {
+            if has_evidence || has_confirmation || has_statement_import {
                 clear_deletion_pending(conn, keys.id, &mut metadata).await?;
                 return Ok(false);
             }
@@ -498,5 +473,190 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(retained_confirmation, 1);
+    }
+
+    #[tokio::test]
+    async fn expires_email_attachment_documents_and_cascades_attachment_rows() {
+        use public::{
+            household_members, households, members, purchases, source_confirmations,
+            source_document_attachments, source_documents,
+        };
+
+        let postgres = TestPostgres::start().await.unwrap();
+        apply_migrations(postgres.connection_url()).unwrap();
+        let pool = connect(postgres.connection_url()).await.unwrap();
+        let now = chrono::Utc::now();
+        let old_created_at = now - Duration::days(91);
+        let household_id = uuid::Uuid::now_v7();
+        let member_id = uuid::Uuid::now_v7();
+        let purchase_id = uuid::Uuid::now_v7();
+        let expired_parent_id = uuid::Uuid::now_v7();
+        let confirmed_child_id = uuid::Uuid::now_v7();
+        let expired_parent_with_child_id = uuid::Uuid::now_v7();
+        let expired_child_id = uuid::Uuid::now_v7();
+
+        {
+            let mut conn = pool.get().await.unwrap();
+            insert_into(households::table)
+                .values((
+                    households::id.eq(household_id),
+                    households::name.eq("Retention attachment test"),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+            insert_into(members::table)
+                .values((
+                    members::id.eq(member_id),
+                    members::oidc_subject.eq("retention-attachment-test"),
+                    members::display_name.eq("Retention attachment test"),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+            insert_into(household_members::table)
+                .values((
+                    household_members::household_id.eq(household_id),
+                    household_members::member_id.eq(member_id),
+                    household_members::role.eq("OWNER"),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+            for (id, index, source_kind, mime_type, object_key) in [
+                (
+                    expired_parent_id,
+                    0,
+                    "email",
+                    "message/rfc822",
+                    "retention/expired-email".to_owned(),
+                ),
+                (
+                    confirmed_child_id,
+                    1,
+                    "receipt",
+                    "image/jpeg",
+                    "retention/confirmed-child".to_owned(),
+                ),
+                (
+                    expired_parent_with_child_id,
+                    2,
+                    "email",
+                    "message/rfc822",
+                    "retention/expired-email-with-child".to_owned(),
+                ),
+                (
+                    expired_child_id,
+                    3,
+                    "receipt",
+                    "image/jpeg",
+                    "retention/expired-child".to_owned(),
+                ),
+            ] {
+                insert_into(source_documents::table)
+                    .values((
+                        source_documents::id.eq(id),
+                        source_documents::household_id.eq(household_id),
+                        source_documents::sha256.eq(format!("{index:064x}")),
+                        source_documents::object_key.eq(object_key),
+                        source_documents::mime_type.eq(mime_type),
+                        source_documents::source_kind.eq(source_kind),
+                        source_documents::original_filename.eq("attachment"),
+                        source_documents::created_by.eq(member_id),
+                        source_documents::created_at.eq(old_created_at),
+                    ))
+                    .execute(&mut *conn)
+                    .await
+                    .unwrap();
+            }
+            insert_into(purchases::table)
+                .values((
+                    purchases::id.eq(purchase_id),
+                    purchases::household_id.eq(household_id),
+                    purchases::occurred_at.eq(old_created_at),
+                    purchases::created_by.eq(member_id),
+                    purchases::allocation_rule_version.eq(0),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+            insert_into(source_confirmations::table)
+                .values((
+                    source_confirmations::id.eq(uuid::Uuid::now_v7()),
+                    source_confirmations::household_id.eq(household_id),
+                    source_confirmations::source_document_id.eq(confirmed_child_id),
+                    source_confirmations::source_reference.eq("receipt"),
+                    source_confirmations::entity_kind.eq("purchase"),
+                    source_confirmations::entity_id.eq(purchase_id),
+                    source_confirmations::status.eq("confirmed"),
+                    source_confirmations::idempotency_key.eq("confirmed-attachment-test"),
+                    source_confirmations::changed_by.eq(member_id),
+                    source_confirmations::changed_at.eq(now),
+                ))
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+            for (parent_id, child_id, index, filename, mime_type) in [
+                (
+                    expired_parent_id,
+                    confirmed_child_id,
+                    0,
+                    "confirmed.jpg",
+                    "image/jpeg",
+                ),
+                (
+                    expired_parent_with_child_id,
+                    expired_child_id,
+                    0,
+                    "expired.jpg",
+                    "image/jpeg",
+                ),
+            ] {
+                insert_into(source_document_attachments::table)
+                    .values((
+                        source_document_attachments::household_id.eq(household_id),
+                        source_document_attachments::parent_document_id.eq(parent_id),
+                        source_document_attachments::child_document_id.eq(child_id),
+                        source_document_attachments::attachment_index.eq(index),
+                        source_document_attachments::filename.eq(filename),
+                        source_document_attachments::mime_type.eq(mime_type),
+                    ))
+                    .execute(&mut *conn)
+                    .await
+                    .unwrap();
+            }
+        }
+
+        let deleted_objects = DeletedObjects::default();
+        let deleted = delete_expired_unconfirmed(&pool, &deleted_objects, now)
+            .await
+            .unwrap();
+        assert_eq!(deleted, 3);
+        let mut deleted_keys = deleted_objects.0.lock().unwrap().clone();
+        deleted_keys.sort();
+        assert_eq!(
+            deleted_keys,
+            vec![
+                "retention/expired-child".to_owned(),
+                "retention/expired-email".to_owned(),
+                "retention/expired-email-with-child".to_owned(),
+            ]
+        );
+
+        let mut conn = pool.get().await.unwrap();
+        let remaining_ids = source_documents::table
+            .filter(source_documents::household_id.eq(household_id))
+            .select(source_documents::id)
+            .load::<uuid::Uuid>(&mut *conn)
+            .await
+            .unwrap();
+        assert_eq!(remaining_ids, vec![confirmed_child_id]);
+        let remaining_attachments = source_document_attachments::table
+            .filter(source_document_attachments::household_id.eq(household_id))
+            .select(count_star())
+            .first::<i64>(&mut *conn)
+            .await
+            .unwrap();
+        assert_eq!(remaining_attachments, 0);
     }
 }
