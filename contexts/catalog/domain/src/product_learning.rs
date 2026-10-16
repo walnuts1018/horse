@@ -121,6 +121,8 @@ pub struct ProductLearningDecision {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProductLearningError {
     InvalidVariantName,
+    InvalidMerchant,
+    InvalidAlias,
     MerchantRequired,
 }
 
@@ -154,7 +156,14 @@ pub fn decide_product_learning(
         if merchant_key.is_empty() {
             return Err(ProductLearningError::MerchantRequired);
         }
-        Some((command.raw_name.clone(), normalize(&command.raw_name)))
+        if merchant_key.chars().count() > 240 {
+            return Err(ProductLearningError::InvalidMerchant);
+        }
+        let alias_text = command.raw_name.trim();
+        if alias_text.is_empty() || alias_text.chars().count() > 240 {
+            return Err(ProductLearningError::InvalidAlias);
+        }
+        Some((alias_text.to_owned(), normalize(alias_text)))
     } else {
         None
     };
@@ -206,5 +215,34 @@ mod tests {
         .expect("240文字の名称は有効");
 
         assert!(decision.is_some());
+    }
+
+    #[test]
+    fn rejects_invalid_merchant_alias_before_persistence() {
+        let command = |merchant: String, raw_name: String| ProductLearningCommand {
+            household_id: Uuid::nil().into(),
+            actor_id: Uuid::nil().into(),
+            purchase_id: Uuid::nil().into(),
+            item_id: Uuid::nil().into(),
+            raw_name,
+            previous_variant_id: None,
+            variant_id: Some(Uuid::nil().into()),
+            variant_changed: false,
+            merchant,
+            learning: Some(ProductLearningKind::MerchantAlias),
+        };
+
+        assert_eq!(
+            decide_product_learning(command("店舗".to_owned(), "  ".to_owned())),
+            Err(ProductLearningError::InvalidAlias)
+        );
+        assert_eq!(
+            decide_product_learning(command("店舗".to_owned(), "商品".repeat(241))),
+            Err(ProductLearningError::InvalidAlias)
+        );
+        assert_eq!(
+            decide_product_learning(command("店".repeat(241), "商品".to_owned())),
+            Err(ProductLearningError::InvalidMerchant)
+        );
     }
 }
