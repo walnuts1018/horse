@@ -87,6 +87,8 @@ pub enum RecordFundingError {
     CardAccount,
     DestinationPoolMismatch,
     PersonalFundingOwnerMismatch,
+    NonPersonalFundingSource,
+    FundingSourceAndDestinationPoolSame,
     SameAccounts,
     AmountOverflow,
 }
@@ -124,6 +126,14 @@ pub fn decide_record_funding(
         && source.personal_owner_id.as_deref() != Some(command.member_id.as_str())
     {
         return Err(RecordFundingError::PersonalFundingOwnerMismatch);
+    }
+    if let Some(source) = &command.source_account {
+        if source.pool_id.as_deref() == Some(command.pool_id.as_str()) {
+            return Err(RecordFundingError::FundingSourceAndDestinationPoolSame);
+        }
+        if source.pool_id.is_some() && source.pool_kind != Some(FundingPoolKind::Personal) {
+            return Err(RecordFundingError::NonPersonalFundingSource);
+        }
     }
     if command
         .source_account
@@ -198,4 +208,64 @@ pub fn decide_record_funding(
             changed_fields: &["amountYen"],
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{OpenAccountingPeriod, YearMonth};
+
+    fn command(source_account: Option<FundingAccount>) -> RecordFundingCommand {
+        RecordFundingCommand {
+            actor_id: "actor".into(),
+            member_id: "member-a".into(),
+            pool_id: "shared-pool".into(),
+            amount_yen: 1_000,
+            accounting_period: OpenAccountingPeriod::new(YearMonth::new(2026, 10).unwrap(), 1)
+                .unwrap(),
+            source_account,
+            destination_account: None,
+        }
+    }
+
+    fn account(pool_id: Option<&str>, pool_kind: Option<FundingPoolKind>) -> FundingAccount {
+        FundingAccount {
+            id: "source-account".into(),
+            pool_id: pool_id.map(str::to_owned),
+            kind: FundingAccountKind::Bank,
+            pool_kind,
+            personal_owner_id: (pool_kind == Some(FundingPoolKind::Personal))
+                .then(|| "member-a".into()),
+        }
+    }
+
+    #[test]
+    fn funding_rejects_shared_and_same_pool_sources() {
+        assert_eq!(
+            decide_record_funding(command(Some(account(
+                Some("another-shared-pool"),
+                Some(FundingPoolKind::Shared),
+            )))),
+            Err(RecordFundingError::NonPersonalFundingSource)
+        );
+        assert_eq!(
+            decide_record_funding(command(Some(account(
+                Some("shared-pool"),
+                Some(FundingPoolKind::Personal),
+            )))),
+            Err(RecordFundingError::FundingSourceAndDestinationPoolSame)
+        );
+    }
+
+    #[test]
+    fn funding_accepts_member_owned_personal_and_external_sources() {
+        assert!(
+            decide_record_funding(command(Some(account(
+                Some("personal-pool"),
+                Some(FundingPoolKind::Personal),
+            ))))
+            .is_ok()
+        );
+        assert!(decide_record_funding(command(Some(account(None, None)))).is_ok());
+    }
 }
