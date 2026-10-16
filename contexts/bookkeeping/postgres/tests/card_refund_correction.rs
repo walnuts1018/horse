@@ -21,10 +21,13 @@ struct TestEvidence {
     fail_after_confirmation_insert: bool,
 }
 
-struct EmptyPolicy;
+struct PersonalPoolPolicy {
+    member_id: Uuid,
+    pool_id: Uuid,
+}
 
 #[async_trait::async_trait]
-impl PolicySettlementData for EmptyPolicy {
+impl PolicySettlementData for PersonalPoolPolicy {
     async fn household_members_for_settlement(
         &mut self,
         _: &mut AsyncPgConnection,
@@ -76,19 +79,22 @@ impl PolicySettlementData for EmptyPolicy {
         &mut self,
         _: &mut AsyncPgConnection,
         _: Uuid,
-        _: &[Uuid],
-        _: &[i32],
+        pool_ids: &[Uuid],
+        versions: &[i32],
     ) -> Result<Vec<FundingRuleRow>, diesel::result::Error> {
-        Ok(Vec::new())
+        Ok((pool_ids.contains(&self.pool_id) && versions.contains(&1))
+            .then_some((self.pool_id, 1, Some(self.member_id), None))
+            .into_iter()
+            .collect())
     }
     async fn rule_owner(
         &mut self,
         _: &mut AsyncPgConnection,
         _: Uuid,
-        _: Uuid,
+        pool_id: Uuid,
         _: i32,
     ) -> Result<Option<Uuid>, diesel::result::Error> {
-        Ok(None)
+        Ok((pool_id == self.pool_id).then_some(self.member_id))
     }
 }
 
@@ -289,6 +295,7 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
     let household_id = Uuid::now_v7();
     let member_id = Uuid::now_v7();
     let pool_id = Uuid::now_v7();
+    let account_id = Uuid::now_v7();
     let purchase_id = Uuid::now_v7();
     let item_id = Uuid::now_v7();
     let document_id = Uuid::now_v7();
@@ -313,8 +320,8 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
     let statement_occurred_at = now.to_rfc3339();
     let mut conn = pool.get().await.unwrap();
     use public::{
-        household_members, households, members, pools, purchase_allocations, purchase_items,
-        purchases,
+        accounts, household_members, households, members, pool_funding_rules, pools,
+        purchase_allocations, purchase_items, purchase_payments, purchases,
     };
     insert_into(households::table)
         .values((
@@ -365,6 +372,34 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
         .execute(&mut *conn)
         .await
         .unwrap();
+    insert_into(pool_funding_rules::table)
+        .values((
+            pool_funding_rules::household_id.eq(household_id),
+            pool_funding_rules::pool_id.eq(pool_id),
+            pool_funding_rules::version.eq(1_i32),
+            pool_funding_rules::owner_member_id.eq(Some(member_id)),
+            pool_funding_rules::settlement_policy.eq(None::<String>),
+            pool_funding_rules::created_by.eq(member_id),
+        ))
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    diesel::update(pools::table.filter(pools::id.eq(pool_id)))
+        .set(pools::current_funding_version.eq(Some(1)))
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    insert_into(accounts::table)
+        .values((
+            accounts::id.eq(account_id),
+            accounts::household_id.eq(household_id),
+            accounts::pool_id.eq(Some(pool_id)),
+            accounts::name.eq("Personal card"),
+            accounts::kind.eq("CARD"),
+        ))
+        .execute(&mut *conn)
+        .await
+        .unwrap();
     insert_into(purchases::table)
         .values((
             purchases::id.eq(purchase_id),
@@ -400,6 +435,49 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
             purchase_allocations::weight.eq(1_i64),
             purchase_allocations::rule_version.eq(1_i64),
             purchase_allocations::rule_id.eq(None::<Uuid>),
+        ))
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    insert_into(purchase_payments::table)
+        .values((
+            purchase_payments::household_id.eq(household_id),
+            purchase_payments::purchase_id.eq(purchase_id),
+            purchase_payments::line_no.eq(1_i32),
+            purchase_payments::account_id.eq(account_id),
+            purchase_payments::amount_yen.eq(100_i64),
+        ))
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    insert_into(public::purchase_member_burdens::table)
+        .values((
+            public::purchase_member_burdens::household_id.eq(household_id),
+            public::purchase_member_burdens::purchase_id.eq(purchase_id),
+            public::purchase_member_burdens::item_id.eq(item_id),
+            public::purchase_member_burdens::pool_id.eq(pool_id),
+            public::purchase_member_burdens::member_id.eq(member_id),
+            public::purchase_member_burdens::amount_yen.eq(100_i64),
+            public::purchase_member_burdens::funding_rule_version.eq(1_i32),
+            public::purchase_member_burdens::funding_weight.eq(1_i64),
+            public::purchase_member_burdens::settlement_policy.eq(None::<String>),
+            public::purchase_member_burdens::snapshot_source.eq("POSTED"),
+        ))
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    insert_into(public::purchase_payment_funding_snapshots::table)
+        .values((
+            public::purchase_payment_funding_snapshots::household_id.eq(household_id),
+            public::purchase_payment_funding_snapshots::purchase_id.eq(purchase_id),
+            public::purchase_payment_funding_snapshots::payment_line_no.eq(1_i32),
+            public::purchase_payment_funding_snapshots::account_id.eq(account_id),
+            public::purchase_payment_funding_snapshots::pool_id.eq(pool_id),
+            public::purchase_payment_funding_snapshots::member_id.eq(member_id),
+            public::purchase_payment_funding_snapshots::funding_rule_version.eq(1_i32),
+            public::purchase_payment_funding_snapshots::funding_weight.eq(1_i64),
+            public::purchase_payment_funding_snapshots::settlement_policy.eq(None::<String>),
+            public::purchase_payment_funding_snapshots::snapshot_source.eq("POSTED"),
         ))
         .execute(&mut *conn)
         .await
@@ -454,6 +532,7 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
     }
     drop(conn);
 
+    let mut policy = PersonalPoolPolicy { member_id, pool_id };
     let fail_after_confirmation = correct_purchase(
         &pool,
         refund_request(
@@ -471,7 +550,7 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
         &TestEvidence {
             fail_after_confirmation_insert: true,
         },
-        &mut EmptyPolicy,
+        &mut policy,
     )
     .await;
     assert!(fail_after_confirmation.is_err());
@@ -533,7 +612,7 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
         &TestEvidence {
             fail_after_confirmation_insert: false,
         },
-        &mut EmptyPolicy,
+        &mut policy,
     )
     .await
     .unwrap();
@@ -554,7 +633,7 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
         &TestEvidence {
             fail_after_confirmation_insert: false,
         },
-        &mut EmptyPolicy,
+        &mut policy,
     )
     .await
     .unwrap();
@@ -577,7 +656,7 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
         &TestEvidence {
             fail_after_confirmation_insert: false,
         },
-        &mut EmptyPolicy,
+        &mut policy,
     )
     .await;
     assert!(duplicate_source.is_err());
@@ -599,7 +678,7 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
         &TestEvidence {
             fail_after_confirmation_insert: false,
         },
-        &mut EmptyPolicy,
+        &mut policy,
     )
     .await;
     assert!(over_refund.is_err());
