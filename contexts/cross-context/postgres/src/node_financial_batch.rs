@@ -39,11 +39,13 @@ impl NodeFinancialBatchQuery for PostgresNodeFinancialBatchQuery {
             .map_err(|error| format!("{error:?}"))?;
 
         if !input.funding_schedule_ids.is_empty() {
-            let schedules = policy_postgres::settlement_data::PostgresSettlementDataRead::new(
-                self.pool.clone(),
-            )
-            .schedules_by_ids(&input.household_ids, &input.funding_schedule_ids)
-            .await?;
+            let schedules = policy_postgres::settlement_data::PostgresSettlementDataRead::new()
+                .schedules_by_ids(
+                    &mut *conn,
+                    &input.household_ids,
+                    &input.funding_schedule_ids,
+                )
+                .await?;
             result.funding_schedules = schedules
                 .into_iter()
                 .map(|schedule| FundingScheduleProjection {

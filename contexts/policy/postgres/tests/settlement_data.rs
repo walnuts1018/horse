@@ -122,19 +122,26 @@ async fn settlement_data_reads_policy_owned_schedules_and_funding_rules() {
             .unwrap();
     }
 
-    let reader = PostgresSettlementDataRead::new(pool);
+    let reader = PostgresSettlementDataRead::new();
+    let mut conn = pool.get().await.unwrap();
     let schedules = reader
-        .schedules_for_period(household_id, start, end)
+        .schedules_for_period(&mut *conn, household_id, start, end)
         .await
         .unwrap();
     assert_eq!(schedules.len(), 1);
     assert_eq!(schedules[0].id, schedule_id);
     assert_eq!(schedules[0].amount_yen, 12000);
     assert_eq!(
-        reader.earliest_schedule_start(household_id).await.unwrap(),
+        reader
+            .earliest_schedule_start(&mut *conn, household_id)
+            .await
+            .unwrap(),
         Some(start)
     );
-    let policy = reader.rules_and_shares(household_id).await.unwrap();
+    let policy = reader
+        .rules_and_shares(&mut *conn, household_id)
+        .await
+        .unwrap();
     assert_eq!(policy.rules[0].owner_member_id, None);
     assert_eq!(
         policy.rules[0].settlement_policy.as_deref(),
@@ -143,26 +150,26 @@ async fn settlement_data_reads_policy_owned_schedules_and_funding_rules() {
     assert_eq!(policy.shares[0].weight, 3);
     assert_eq!(
         reader
-            .pool_funding_owner(household_id, pool_id, 2)
+            .pool_funding_owner(&mut *conn, household_id, pool_id, 2)
             .await
             .unwrap(),
         Some(owner_id)
     );
     assert_eq!(
         reader
-            .active_funding_schedule(household_id, member_id, pool_id)
+            .active_funding_schedule(&mut *conn, household_id, member_id, pool_id)
             .await
             .unwrap(),
         Some(schedule_id)
     );
     let overlap = reader
-        .schedules_overlapping(&household_ids, start, end)
+        .schedules_overlapping(&mut *conn, &household_ids, start, end)
         .await
         .unwrap();
     assert_eq!(overlap[0].household_id, household_id);
     assert_eq!(
         reader
-            .historical_rules(household_id, &[pool_id], &[1, 2])
+            .historical_rules(&mut *conn, household_id, &[pool_id], &[1, 2])
             .await
             .unwrap()
             .len(),

@@ -38,9 +38,10 @@ pub struct FundingRulesAndShares {
 }
 
 #[allow(async_fn_in_trait)]
-pub trait SettlementDataRead: Send + Sync {
+pub trait SettlementDataRead<Connection: Send>: Send + Sync {
     async fn schedules_for_period(
         &self,
+        conn: &mut Connection,
         household_id: Uuid,
         start: NaiveDate,
         end: NaiveDate,
@@ -48,12 +49,14 @@ pub trait SettlementDataRead: Send + Sync {
 
     async fn schedules_by_ids(
         &self,
+        conn: &mut Connection,
         household_ids: &[Uuid],
         schedule_ids: &[Uuid],
     ) -> Result<Vec<FundingSchedule>, String>;
 
     async fn schedules_overlapping(
         &self,
+        conn: &mut Connection,
         household_ids: &[Uuid],
         start: NaiveDate,
         end: NaiveDate,
@@ -61,13 +64,19 @@ pub trait SettlementDataRead: Send + Sync {
 
     async fn earliest_schedule_start(
         &self,
+        conn: &mut Connection,
         household_id: Uuid,
     ) -> Result<Option<NaiveDate>, String>;
 
-    async fn rules_and_shares(&self, household_id: Uuid) -> Result<FundingRulesAndShares, String>;
+    async fn rules_and_shares(
+        &self,
+        conn: &mut Connection,
+        household_id: Uuid,
+    ) -> Result<FundingRulesAndShares, String>;
 
     async fn historical_rules(
         &self,
+        conn: &mut Connection,
         household_id: Uuid,
         pool_ids: &[Uuid],
         versions: &[i32],
@@ -75,6 +84,7 @@ pub trait SettlementDataRead: Send + Sync {
 
     async fn pool_funding_owner(
         &self,
+        conn: &mut Connection,
         household_id: Uuid,
         pool_id: Uuid,
         version: i32,
@@ -82,6 +92,7 @@ pub trait SettlementDataRead: Send + Sync {
 
     async fn active_funding_schedule(
         &self,
+        conn: &mut Connection,
         household_id: Uuid,
         member_id: Uuid,
         pool_id: Uuid,
@@ -89,6 +100,7 @@ pub trait SettlementDataRead: Send + Sync {
 
     async fn rule_owner(
         &self,
+        conn: &mut Connection,
         household_id: Uuid,
         pool_id: Uuid,
         version: i32,

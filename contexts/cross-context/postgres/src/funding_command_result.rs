@@ -109,7 +109,7 @@ pub async fn load_funding_ledger_entry_result(
     let member_id = member_id.ok_or(FundingCommandResultError::MissingFundingMember)?;
     let pool_id = pool_id.ok_or(FundingCommandResultError::MissingFundingPool)?;
     let member = load_member(&mut conn, household_id, member_id).await?;
-    let pool = load_pool(pool, &mut conn, household_id, pool_id).await?;
+    let pool = load_pool(&mut conn, household_id, pool_id).await?;
 
     Ok(FundingLedgerEntryResult {
         id,
@@ -240,14 +240,13 @@ pub async fn load_funding_ledger_entry_results(
         .map(|(household_id, pool_id, weight)| ((household_id, pool_id), weight))
         .collect::<HashMap<_, _>>();
 
-    let policy_reader =
-        policy_postgres::settlement_data::PostgresSettlementDataRead::new(pool.clone());
+    let policy_reader = policy_postgres::settlement_data::PostgresSettlementDataRead::new();
     let mut rules = HashMap::new();
     let mut raw_shares_by_rule = HashMap::<(Uuid, Uuid, i32), Vec<(Uuid, i64)>>::new();
     let mut share_member_ids = Vec::new();
     for household_id in household_ids {
         let policy = policy_reader
-            .rules_and_shares(*household_id)
+            .rules_and_shares(&mut *conn, *household_id)
             .await
             .map_err(FundingCommandResultError::Pool)?;
         for rule in policy.rules {
@@ -417,7 +416,6 @@ async fn load_member(
 }
 
 async fn load_pool(
-    pool: &PgPool,
     conn: &mut diesel_async::AsyncPgConnection,
     household_id: Uuid,
     pool_id: Uuid,
@@ -459,11 +457,10 @@ async fn load_pool(
     let mut settlement_policy = None;
     let mut funding_shares = Vec::new();
     if let Some(version) = funding_rule_version {
-        let policy =
-            policy_postgres::settlement_data::PostgresSettlementDataRead::new(pool.clone())
-                .rules_and_shares(household_id)
-                .await
-                .map_err(FundingCommandResultError::Pool)?;
+        let policy = policy_postgres::settlement_data::PostgresSettlementDataRead::new()
+            .rules_and_shares(conn, household_id)
+            .await
+            .map_err(FundingCommandResultError::Pool)?;
         if let Some(rule) = policy
             .rules
             .into_iter()

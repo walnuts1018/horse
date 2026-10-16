@@ -10,9 +10,9 @@ pub struct PolicyQueries {
 }
 
 impl PolicyQueries {
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new() -> Self {
         Self {
-            reader: policy_postgres::settlement_data::PostgresSettlementDataRead::new(pool),
+            reader: policy_postgres::settlement_data::PostgresSettlementDataRead::new(),
         }
     }
 }
@@ -21,26 +21,26 @@ impl PolicyQueries {
 impl PolicyData for PolicyQueries {
     async fn pool_funding_owner(
         &mut self,
-        _conn: &mut AsyncPgConnection,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
         pool_id: Uuid,
         version: i32,
     ) -> Result<Option<Uuid>, diesel::result::Error> {
         self.reader
-            .pool_funding_owner(household_id, pool_id, version)
+            .pool_funding_owner(conn, household_id, pool_id, version)
             .await
             .map_err(policy_read_error)
     }
 
     async fn active_funding_schedule(
         &mut self,
-        _conn: &mut AsyncPgConnection,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
         member_id: Uuid,
         pool_id: Uuid,
     ) -> Result<Option<Uuid>, diesel::result::Error> {
         self.reader
-            .active_funding_schedule(household_id, member_id, pool_id)
+            .active_funding_schedule(conn, household_id, member_id, pool_id)
             .await
             .map_err(policy_read_error)
     }
@@ -63,7 +63,7 @@ pub async fn record_funding_workflow(
     bookkeeping_postgres::funding_record::record_funding_workflow(
         pool,
         command,
-        PolicyQueries::new(pool.clone()),
+        PolicyQueries::new(),
     )
     .await
 }
@@ -92,7 +92,7 @@ pub async fn load_transfer_command_context(
             destination_account_id,
             occurred_at,
         },
-        &mut PolicyQueries::new(pool.clone()),
+        &mut PolicyQueries::new(),
     )
     .await
 }
@@ -104,7 +104,7 @@ pub async fn load_repayment_command_context(
     bookkeeping_postgres::financial_command_context::load_repayment_command_context(
         pool,
         input,
-        &mut PolicyQueries::new(pool.clone()),
+        &mut PolicyQueries::new(),
     )
     .await
 }

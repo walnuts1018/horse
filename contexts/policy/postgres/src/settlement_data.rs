@@ -1,12 +1,12 @@
 use chrono::NaiveDate;
 use diesel::{BoolExpressionMethods, ExpressionMethods, OptionalExtension, QueryDsl, dsl::min};
-use diesel_async::RunQueryDsl;
+use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use policy_application::settlement_data::{
     FundingRule, FundingRulesAndShares, FundingSchedule, FundingShare, SettlementDataRead,
 };
 use uuid::Uuid;
 
-use crate::{PgPool, schema::public};
+use crate::schema::public;
 
 type FundingScheduleRow = (
     Uuid,
@@ -23,25 +23,23 @@ type FundingScheduleRow = (
 type FundingRuleRow = (Uuid, i32, Option<Uuid>, Option<String>);
 type FundingShareRow = (Uuid, i32, Uuid, i64);
 
-pub struct PostgresSettlementDataRead {
-    pool: PgPool,
-}
+pub struct PostgresSettlementDataRead;
 
 impl PostgresSettlementDataRead {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub const fn new() -> Self {
+        Self
     }
 }
 
-impl SettlementDataRead for PostgresSettlementDataRead {
+impl SettlementDataRead<AsyncPgConnection> for PostgresSettlementDataRead {
     async fn schedules_for_period(
         &self,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
         start: NaiveDate,
         end: NaiveDate,
     ) -> Result<Vec<FundingSchedule>, String> {
         use public::funding_schedules as schedules;
-        let mut conn = self.pool.get().await.map_err(|error| error.to_string())?;
         schedules::table
             .filter(schedules::household_id.eq(household_id))
             .filter(schedules::starts_on.lt(end))
@@ -82,6 +80,7 @@ impl SettlementDataRead for PostgresSettlementDataRead {
 
     async fn schedules_by_ids(
         &self,
+        conn: &mut AsyncPgConnection,
         household_ids: &[Uuid],
         schedule_ids: &[Uuid],
     ) -> Result<Vec<FundingSchedule>, String> {
@@ -89,7 +88,6 @@ impl SettlementDataRead for PostgresSettlementDataRead {
         if household_ids.is_empty() || schedule_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let mut conn = self.pool.get().await.map_err(|error| error.to_string())?;
         schedules::table
             .filter(schedules::household_id.eq_any(household_ids))
             .filter(schedules::id.eq_any(schedule_ids))
@@ -113,12 +111,12 @@ impl SettlementDataRead for PostgresSettlementDataRead {
 
     async fn schedules_overlapping(
         &self,
+        conn: &mut AsyncPgConnection,
         household_ids: &[Uuid],
         start: NaiveDate,
         end: NaiveDate,
     ) -> Result<Vec<FundingSchedule>, String> {
         use public::funding_schedules as schedules;
-        let mut conn = self.pool.get().await.map_err(|error| error.to_string())?;
         schedules::table
             .filter(schedules::household_id.eq_any(household_ids))
             .filter(schedules::starts_on.lt(end))
@@ -152,10 +150,10 @@ impl SettlementDataRead for PostgresSettlementDataRead {
 
     async fn earliest_schedule_start(
         &self,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
     ) -> Result<Option<NaiveDate>, String> {
         use public::funding_schedules as schedules;
-        let mut conn = self.pool.get().await.map_err(|error| error.to_string())?;
         schedules::table
             .filter(schedules::household_id.eq(household_id))
             .select(min(schedules::starts_on))
@@ -164,9 +162,12 @@ impl SettlementDataRead for PostgresSettlementDataRead {
             .map_err(|error| error.to_string())
     }
 
-    async fn rules_and_shares(&self, household_id: Uuid) -> Result<FundingRulesAndShares, String> {
+    async fn rules_and_shares(
+        &self,
+        conn: &mut AsyncPgConnection,
+        household_id: Uuid,
+    ) -> Result<FundingRulesAndShares, String> {
         use public::{pool_funding_rules as rules, pool_funding_shares as shares};
-        let mut conn = self.pool.get().await.map_err(|error| error.to_string())?;
         let rule_rows = rules::table
             .filter(rules::household_id.eq(household_id))
             .select((
@@ -204,12 +205,12 @@ impl SettlementDataRead for PostgresSettlementDataRead {
 
     async fn historical_rules(
         &self,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
         pool_ids: &[Uuid],
         versions: &[i32],
     ) -> Result<Vec<FundingRule>, String> {
         use public::pool_funding_rules as rules;
-        let mut conn = self.pool.get().await.map_err(|error| error.to_string())?;
         rules::table
             .filter(rules::household_id.eq(household_id))
             .filter(rules::pool_id.eq_any(pool_ids))
@@ -228,12 +229,12 @@ impl SettlementDataRead for PostgresSettlementDataRead {
 
     async fn pool_funding_owner(
         &self,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
         pool_id: Uuid,
         version: i32,
     ) -> Result<Option<Uuid>, String> {
         use public::pool_funding_rules as rules;
-        let mut conn = self.pool.get().await.map_err(|error| error.to_string())?;
         rules::table
             .filter(rules::household_id.eq(household_id))
             .filter(rules::pool_id.eq(pool_id))
@@ -248,12 +249,12 @@ impl SettlementDataRead for PostgresSettlementDataRead {
 
     async fn active_funding_schedule(
         &self,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
         member_id: Uuid,
         pool_id: Uuid,
     ) -> Result<Option<Uuid>, String> {
         use public::funding_schedules as schedules;
-        let mut conn = self.pool.get().await.map_err(|error| error.to_string())?;
         schedules::table
             .filter(schedules::household_id.eq(household_id))
             .filter(schedules::member_id.eq(member_id))
@@ -269,12 +270,12 @@ impl SettlementDataRead for PostgresSettlementDataRead {
 
     async fn rule_owner(
         &self,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
         pool_id: Uuid,
         version: i32,
     ) -> Result<Option<Uuid>, String> {
         use public::pool_funding_rules as rules;
-        let mut conn = self.pool.get().await.map_err(|error| error.to_string())?;
         rules::table
             .filter(rules::household_id.eq(household_id))
             .filter(rules::pool_id.eq(pool_id))

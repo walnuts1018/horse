@@ -22,9 +22,9 @@ pub struct PolicySettlementReferences {
 }
 
 impl PolicySettlementReferences {
-    pub fn new(pool: horse_postgres_common::PgPool) -> Self {
+    pub fn new() -> Self {
         Self {
-            reader: policy_postgres::settlement_data::PostgresSettlementDataRead::new(pool),
+            reader: policy_postgres::settlement_data::PostgresSettlementDataRead::new(),
         }
     }
 }
@@ -48,7 +48,7 @@ pub async fn close_period(
         actor_id,
         period,
         expected_revision,
-        &mut PolicySettlementReferences::new(pool.clone()),
+        &mut PolicySettlementReferences::new(),
     )
     .await
 }
@@ -63,7 +63,7 @@ pub async fn get_many(
     bookkeeping_postgres::settlement_query::get_many(
         pool,
         queries,
-        &mut PolicySettlementReferences::new(pool.clone()),
+        &mut PolicySettlementReferences::new(),
     )
     .await
 }
@@ -80,7 +80,7 @@ pub async fn calculate_preview(
         pool,
         household_id,
         period,
-        &mut PolicySettlementReferences::new(pool.clone()),
+        &mut PolicySettlementReferences::new(),
     )
     .await
 }
@@ -107,13 +107,13 @@ impl bookkeeping_postgres::settlement_preview::PolicySettlementData for PolicySe
 
     async fn schedules_for_period(
         &mut self,
-        _conn: &mut AsyncPgConnection,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
         start: NaiveDate,
         end: NaiveDate,
     ) -> Result<Vec<FundingScheduleRow>, diesel::result::Error> {
         self.reader
-            .schedules_for_period(household_id, start, end)
+            .schedules_for_period(conn, household_id, start, end)
             .await
             .map(|rows| rows.into_iter().map(schedule_row).collect())
             .map_err(policy_read_error)
@@ -121,7 +121,7 @@ impl bookkeeping_postgres::settlement_preview::PolicySettlementData for PolicySe
 
     async fn schedules_overlapping(
         &mut self,
-        _conn: &mut AsyncPgConnection,
+        conn: &mut AsyncPgConnection,
         household_ids: &[Uuid],
         start: NaiveDate,
         end: NaiveDate,
@@ -130,7 +130,7 @@ impl bookkeeping_postgres::settlement_preview::PolicySettlementData for PolicySe
         diesel::result::Error,
     > {
         self.reader
-            .schedules_overlapping(household_ids, start, end)
+            .schedules_overlapping(conn, household_ids, start, end)
             .await
             .map(|rows| {
                 rows.into_iter()
@@ -154,22 +154,22 @@ impl bookkeeping_postgres::settlement_preview::PolicySettlementData for PolicySe
 
     async fn earliest_schedule_start(
         &mut self,
-        _conn: &mut AsyncPgConnection,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
     ) -> Result<Option<NaiveDate>, diesel::result::Error> {
         self.reader
-            .earliest_schedule_start(household_id)
+            .earliest_schedule_start(conn, household_id)
             .await
             .map_err(policy_read_error)
     }
 
     async fn rules_and_shares(
         &mut self,
-        _conn: &mut AsyncPgConnection,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
     ) -> Result<(Vec<FundingRuleRow>, Vec<FundingShareRow>), diesel::result::Error> {
         self.reader
-            .rules_and_shares(household_id)
+            .rules_and_shares(conn, household_id)
             .await
             .map(|value| {
                 (
@@ -197,13 +197,13 @@ impl bookkeeping_postgres::settlement_preview::PolicySettlementData for PolicySe
 
     async fn historical_rules(
         &mut self,
-        _conn: &mut AsyncPgConnection,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
         pool_ids: &[Uuid],
         versions: &[i32],
     ) -> Result<Vec<FundingRuleRow>, diesel::result::Error> {
         self.reader
-            .historical_rules(household_id, pool_ids, versions)
+            .historical_rules(conn, household_id, pool_ids, versions)
             .await
             .map(|rows| {
                 rows.into_iter()
@@ -222,13 +222,13 @@ impl bookkeeping_postgres::settlement_preview::PolicySettlementData for PolicySe
 
     async fn rule_owner(
         &mut self,
-        _conn: &mut AsyncPgConnection,
+        conn: &mut AsyncPgConnection,
         household_id: Uuid,
         pool_id: Uuid,
         version: i32,
     ) -> Result<Option<Uuid>, diesel::result::Error> {
         self.reader
-            .rule_owner(household_id, pool_id, version)
+            .rule_owner(conn, household_id, pool_id, version)
             .await
             .map_err(policy_read_error)
     }
