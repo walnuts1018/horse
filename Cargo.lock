@@ -2896,6 +2896,7 @@ name = "horse-graphql-api"
 version = "0.1.0"
 dependencies = [
  "async-graphql",
+ "async-trait",
  "base64 0.23.1",
  "bookkeeping-application",
  "bookkeeping-domain",

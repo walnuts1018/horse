@@ -169,7 +169,8 @@ button {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 3px solid rgb(35 115 95 / 0.22);
   outline-offset: 2px;
 }

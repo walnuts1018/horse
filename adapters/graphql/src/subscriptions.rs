@@ -257,16 +257,6 @@ impl SubscriptionHub {
                     (watch.key == household && watch.cursor < cursor).then_some(*id)
                 })
                 .collect();
-            for watch in self
-                .purchases
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .values_mut()
-            {
-                if watch.key != household && watch.cursor < cursor {
-                    watch.cursor = cursor;
-                }
-            }
             for id in targets {
                 let Some((kind, entity_kind, changed_fields)) = mapped.clone() else {
                     self.advance_purchase(id, cursor);
@@ -363,6 +353,100 @@ impl SubscriptionHub {
             }
         }
         Ok(delivered)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cross_context_application::subscriptions::{PurchaseSnapshot, SubscriptionQuery};
+
+    struct EventQuery {
+        event: PurchaseEvent,
+    }
+
+    #[async_trait::async_trait]
+    impl SubscriptionQuery for EventQuery {
+        async fn session_is_valid(
+            &self,
+            _: Uuid,
+            _: [u8; 32],
+        ) -> std::result::Result<bool, String> {
+            Ok(true)
+        }
+
+        async fn household_access(&self, _: Uuid, _: Uuid) -> std::result::Result<bool, String> {
+            Ok(true)
+        }
+
+        async fn latest_purchase_cursor(&self, _: Uuid) -> std::result::Result<i64, String> {
+            Ok(0)
+        }
+
+        async fn purchase_events(
+            &self,
+            _: Vec<(Uuid, i64)>,
+        ) -> std::result::Result<Vec<PurchaseEvent>, String> {
+            Ok(vec![self.event.clone()])
+        }
+
+        async fn purchase_id_for_item(&self, _: Uuid) -> std::result::Result<Option<Uuid>, String> {
+            Ok(None)
+        }
+
+        async fn purchase_snapshot(
+            &self,
+            _: Uuid,
+            _: Uuid,
+        ) -> std::result::Result<Option<PurchaseSnapshot>, String> {
+            Ok(None)
+        }
+
+        async fn shared_draft_revision(
+            &self,
+            _: Uuid,
+            _: i64,
+        ) -> std::result::Result<Option<i64>, String> {
+            Ok(None)
+        }
+
+        async fn shared_draft_is_accessible(
+            &self,
+            _: Uuid,
+            _: Uuid,
+        ) -> std::result::Result<bool, String> {
+            Ok(true)
+        }
+    }
+
+    #[tokio::test]
+    async fn polling_one_household_does_not_advance_another_households_cursor() {
+        let household_a = Uuid::now_v7();
+        let household_b = Uuid::now_v7();
+        let hub = SubscriptionHub::default();
+        let (tx_a, _rx_a) = mpsc::channel(1);
+        let (tx_b, _rx_b) = mpsc::channel(1);
+        let watch_a = hub.register_purchase(household_a, 0, tx_a);
+        let watch_b = hub.register_purchase(household_b, 0, tx_b);
+        let query = EventQuery {
+            event: PurchaseEvent {
+                cursor: 5,
+                household_id: household_a,
+                event_type: "unrelated.event".to_owned(),
+                entity_kind: "purchase".to_owned(),
+                entity_id: Uuid::now_v7(),
+                revision: 1,
+                changed_fields: Vec::new(),
+                created_at: chrono::Utc::now(),
+                payload: serde_json::json!({}),
+            },
+        };
+
+        hub.poll_purchases(&query).await.unwrap();
+
+        let watches = hub.purchases.lock().unwrap();
+        assert_eq!(watches[&watch_a].cursor, 5);
+        assert_eq!(watches[&watch_b].cursor, 0);
     }
 }
 

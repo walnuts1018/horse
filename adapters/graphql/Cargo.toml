@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 async-graphql = { version = "7", features = ["chrono"] }
+async-trait = "0.1"
 base64 = { workspace = true }
 bookkeeping-domain = { path = "../../contexts/bookkeeping/domain" }
 bookkeeping-application = { path = "../../contexts/bookkeeping/application" }
