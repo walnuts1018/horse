@@ -33,7 +33,6 @@ const sorted = <T,>(values: T[], compare: (left: T, right: T) => number): T[] =>
 };
 export function AnalysisPage({ household }: { household: Household }) {
   const period = useAnalysisPeriod();
-  const ledger = useHouseholdLedger(household.id, 100);
   const {
     annual,
     setAnnual,
@@ -48,6 +47,29 @@ export function AnalysisPage({ household }: { household: Household }) {
     setPeriodLength,
     months,
   } = period;
+  const ledger = useHouseholdLedger(household.id, 100);
+  const {
+    entries: ledgerEntries,
+    hasNextPage: hasMoreLedgerEntries,
+    loadingMore: loadingMoreLedgerEntries,
+    moreError: ledgerError,
+    loadMore: loadMoreLedgerEntries,
+  } = ledger;
+  const hasOlderLedgerEntry = ledgerEntries.some(
+    (entry) => entry.occurredAt.slice(0, 7) < months[0],
+  );
+  const ledgerHistoryComplete = hasOlderLedgerEntry || !hasMoreLedgerEntries;
+  useEffect(() => {
+    if (hasMoreLedgerEntries && !loadingMoreLedgerEntries && !ledgerError && !hasOlderLedgerEntry) {
+      loadMoreLedgerEntries();
+    }
+  }, [
+    hasOlderLedgerEntry,
+    hasMoreLedgerEntries,
+    ledgerError,
+    loadingMoreLedgerEntries,
+    loadMoreLedgerEntries,
+  ]);
   const finalMonth = months[months.length - 1];
   const {
     purchaseAnalytics,
@@ -224,7 +246,12 @@ export function AnalysisPage({ household }: { household: Household }) {
         expenses={activeRecurringExpenses}
         monthlyAmount={recurringMonthlyAmount}
       />
-      <AnalysisLedgerPanel entries={ledger.entries} months={months} />
+      <AnalysisLedgerPanel
+        entries={ledgerEntries}
+        months={months}
+        complete={ledgerHistoryComplete}
+        error={ledgerError}
+      />
       {aggregateReady && (
         <AnalysisBreakdown
           dimension={dimension}

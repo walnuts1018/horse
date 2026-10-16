@@ -43,7 +43,7 @@ const meta = {
       </div>
     ),
   ],
-  args: { entries, months: ["2026-06"] },
+  args: { entries, months: ["2026-06"], complete: true, error: "" },
 } satisfies Meta<typeof AnalysisLedgerPanel>;
 
 export default meta;
@@ -51,4 +51,10 @@ type Story = StoryObj<typeof meta>;
 
 export const RecentActivity: Story = {};
 
-export const Empty: Story = { args: { entries: [], months: ["2026-06"] } };
+export const Empty: Story = {
+  args: { entries: [], months: ["2026-06"], complete: true, error: "" },
+};
+
+export const Loading: Story = {
+  args: { entries: [], months: ["2026-06"], complete: false, error: "" },
+};

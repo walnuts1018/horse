@@ -14,9 +14,13 @@ const ledgerKindLabels: Partial<Record<string, string>> = {
 export function AnalysisLedgerPanel({
   entries,
   months,
+  complete,
+  error,
 }: {
   entries: LedgerEntry[];
   months: string[];
+  complete: boolean;
+  error: string;
 }) {
   const firstMonth = months[0];
   const lastMonth = months[months.length - 1];
@@ -36,7 +40,11 @@ export function AnalysisLedgerPanel({
         <h2>立て替え・入金・精算</h2>
         <span>{firstMonth === lastMonth ? firstMonth : `${firstMonth}〜${lastMonth}`}</span>
       </div>
-      {history.length === 0 ? (
+      {error ? (
+        <p className="analysis-ledger-empty">履歴を最後まで取得できませんでした</p>
+      ) : !complete ? (
+        <p className="analysis-ledger-empty">履歴を取得中</p>
+      ) : history.length === 0 ? (
         <p className="analysis-ledger-empty">この期間の記録はありません</p>
       ) : (
         <ul className="analysis-ledger-list">
