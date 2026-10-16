@@ -271,4 +271,42 @@ mod tests {
             Err(SetPoolFundingRuleError::InvalidConfiguration)
         );
     }
+
+    #[test]
+    fn shared_funding_rule_rejects_weight_totals_that_overflow() {
+        let (actor_id, household_id, pool_id, first_member_id, second_member_id) = ids();
+        let command = SetPoolFundingRuleCommand {
+            actor_id,
+            household_id,
+            pool_id,
+            expected_version: 0,
+            configuration: PoolFundingConfiguration::Shared {
+                funding_shares: vec![
+                    PoolFundingShareInput {
+                        member_id: FundingRuleMemberId::new(first_member_id),
+                        weight: i64::MAX,
+                    },
+                    PoolFundingShareInput {
+                        member_id: FundingRuleMemberId::new(second_member_id),
+                        weight: 1,
+                    },
+                ],
+                settlement_policy: SharedSettlementPolicy::BalanceToStandard,
+            },
+        };
+        let context = PoolFundingRuleContext {
+            kind: PoolFundingKind::Shared,
+            current_version: 0,
+            active_member_ids: [
+                FundingRuleMemberId::new(first_member_id),
+                FundingRuleMemberId::new(second_member_id),
+            ]
+            .into(),
+        };
+
+        assert_eq!(
+            decide_set_pool_funding_rule(command, context),
+            Err(SetPoolFundingRuleError::InvalidConfiguration)
+        );
+    }
 }
