@@ -240,6 +240,8 @@ async fn persist_create_account_inner(
                         journals::household_id.eq(household_id),
                         journals::source_kind.eq("ACCOUNT_OPENING_BALANCE"),
                         journals::source_id.eq(account_id),
+                        journals::idempotency_key
+                            .eq(format!("account-opening-balance:{account_id}")),
                         journals::occurred_at.eq(occurred_at),
                         journals::created_by.eq(actor_id),
                     ))
