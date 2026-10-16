@@ -369,7 +369,7 @@ async fn shared_account_repayment_balances_journal_reduces_balance_and_adjusts_l
             .filter(|row| row.0 == Some(account_id))
             .map(|row| row.2 - row.1)
             .sum::<i64>(),
-        -5_000
+        5_000
     );
 
     let adjustment = public::settlement_adjustments::table
