@@ -432,8 +432,10 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
             household_id,
             member_id,
             purchase_id,
-            document_id,
-            1,
+            RefundSource {
+                document_id,
+                row: 1,
+            },
             -60,
             "card-refund",
             [4; 32],
@@ -492,8 +494,10 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
             household_id,
             member_id,
             purchase_id,
-            document_id,
-            1,
+            RefundSource {
+                document_id,
+                row: 1,
+            },
             -60,
             "card-refund",
             [4; 32],
@@ -511,8 +515,10 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
             household_id,
             member_id,
             purchase_id,
-            document_id,
-            1,
+            RefundSource {
+                document_id,
+                row: 1,
+            },
             -60,
             "card-refund",
             [4; 32],
@@ -532,8 +538,10 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
             household_id,
             member_id,
             purchase_id,
-            document_id,
-            1,
+            RefundSource {
+                document_id,
+                row: 1,
+            },
             -60,
             "duplicate-source",
             [6; 32],
@@ -552,8 +560,10 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
             household_id,
             member_id,
             purchase_id,
-            over_refund_document_id,
-            2,
+            RefundSource {
+                document_id: over_refund_document_id,
+                row: 2,
+            },
             -41,
             "over-refund",
             [5; 32],
@@ -658,12 +668,16 @@ async fn card_refund_correction_is_atomic_idempotent_and_bounded_by_remaining_am
     assert_eq!(entries.iter().map(|entry| entry.1).sum::<i64>(), 60);
 }
 
+struct RefundSource {
+    document_id: Uuid,
+    row: i64,
+}
+
 fn refund_request(
     household_id: Uuid,
     member_id: Uuid,
     purchase_id: Uuid,
-    document_id: Uuid,
-    row: i64,
+    source: RefundSource,
     amount_delta_yen: i64,
     key: &str,
     fingerprint: [u8; 32],
@@ -679,7 +693,7 @@ fn refund_request(
         payments: Vec::new(),
         idempotency_key: key.into(),
         request_fingerprint: fingerprint,
-        source_document_id: Some(document_id.to_string()),
-        source_reference: Some(format!("row:{row}")),
+        source_document_id: Some(source.document_id.to_string()),
+        source_reference: Some(format!("row:{}", source.row)),
     }
 }
