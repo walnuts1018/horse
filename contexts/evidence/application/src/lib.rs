@@ -1,6 +1,7 @@
 #![allow(async_fn_in_trait)]
 
 pub mod ingestion_job;
+pub mod observation_node_batch_query;
 
 use horse_household_change::UiChangeDescriptor;
 use serde_json::Value;

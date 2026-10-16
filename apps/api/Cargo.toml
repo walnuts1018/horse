@@ -8,12 +8,14 @@ axum = "0.8.9"
 bookkeeping-postgres = { path = "../../contexts/bookkeeping/postgres" }
 horse-auth = { path = "../../adapters/identity" }
 catalog-postgres = { path = "../../contexts/catalog/postgres" }
+evidence-postgres = { path = "../../contexts/evidence/postgres" }
 horse-observability = { path = "../../platform/observability" }
 horse-extraction-queue = { path = "../../adapters/extraction-queue" }
 horse-graphql-api = { path = "../../adapters/graphql" }
 horse-http-api = { path = "../../adapters/http" }
 horse-object-storage = { path = "../../adapters/object-storage" }
 horse-postgres-common = { path = "../../platform/postgres-common" }
+household-postgres = { path = "../../contexts/household/postgres" }
 policy-postgres = { path = "../../contexts/policy/postgres" }
 tokio = { version = "1.53.3", features = ["macros", "net", "rt-multi-thread", "signal"] }
 tracing = { workspace = true }

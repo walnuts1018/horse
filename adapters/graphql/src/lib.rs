@@ -80,6 +80,20 @@ pub struct Ports {
         std::sync::Arc<dyn bookkeeping_application::monthly_spending_query::MonthlySpendingQuery>,
     pub purchase_defaults_query:
         std::sync::Arc<dyn bookkeeping_application::purchase_defaults_query::PurchaseDefaultsQuery>,
+    pub ledger_entry_batch_query: std::sync::Arc<
+        dyn bookkeeping_application::ledger_entry_batch_query::LedgerEntryBatchQuery,
+    >,
+    pub purchase_node_batch_query: std::sync::Arc<
+        dyn bookkeeping_application::purchase_node_batch_query::PurchaseNodeBatchQuery,
+    >,
+    pub observation_node_batch_query: std::sync::Arc<
+        dyn evidence_application::observation_node_batch_query::ObservationNodeBatchQuery,
+    >,
+    pub household_query: std::sync::Arc<dyn household_application::household_query::HouseholdQuery>,
+    pub allocation_rules_query:
+        std::sync::Arc<dyn policy_application::pool_queries::AllocationRulesQuery>,
+    pub funding_schedules_query:
+        std::sync::Arc<dyn policy_application::pool_queries::FundingSchedulesQuery>,
     pub set_allocation_rule:
         std::sync::Arc<dyn policy_application::set_allocation_rule::SetAllocationRuleHandler>,
     pub set_funding_schedule:
@@ -101,6 +115,12 @@ pub fn schema(pool: PgPool, config: Config, ports: Ports) -> Schema {
         .data(ports.account_history_query)
         .data(ports.monthly_spending_query)
         .data(ports.purchase_defaults_query)
+        .data(ports.ledger_entry_batch_query)
+        .data(ports.purchase_node_batch_query)
+        .data(ports.observation_node_batch_query)
+        .data(ports.household_query)
+        .data(ports.allocation_rules_query)
+        .data(ports.funding_schedules_query)
         .data(ports.set_allocation_rule)
         .data(ports.set_funding_schedule)
         .data(ports.tag_query)

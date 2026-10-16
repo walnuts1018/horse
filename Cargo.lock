@@ -2803,6 +2803,7 @@ dependencies = [
  "axum",
  "bookkeeping-postgres",
  "catalog-postgres",
+ "evidence-postgres",
  "horse-auth",
  "horse-extraction-queue",
  "horse-graphql-api",
@@ -2810,6 +2811,7 @@ dependencies = [
  "horse-object-storage",
  "horse-observability",
  "horse-postgres-common",
+ "household-postgres",
  "policy-postgres",
  "tokio",
  "tracing",
@@ -2872,6 +2874,7 @@ dependencies = [
  "cross-context-postgres",
  "diesel",
  "diesel-async",
+ "evidence-application",
  "futures-channel",
  "futures-util",
  "horse-postgres-common",
@@ -4506,6 +4509,7 @@ dependencies = [
  "chrono",
  "horse-household-change",
  "policy-domain",
+ "uuid",
 ]
 
 [[package]]

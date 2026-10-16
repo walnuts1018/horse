@@ -1,7 +1,9 @@
 use async_graphql::{Context, Error, ID, Result, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use horse_postgres_common::PgPool;
-use policy_postgres::funding_schedule_query as postgres_query;
+use policy_application::pool_queries::{
+    FundingSchedulesQuery, PoolRulesQuery, PoolRulesQueryFailure,
+};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{pagination::PageInfo, pool_mutations::FundingScheduleObject};
@@ -40,9 +42,9 @@ pub async fn graphql_funding_schedules(
     if !(1..=100).contains(&page_size) {
         return Err(Error::new("page size must be between 1 and 100"));
     }
-    let page = postgres_query::funding_schedules(
-        ctx.data::<PgPool>()?,
-        postgres_query::FundingSchedulesQuery {
+    let page = ctx
+        .data::<Arc<dyn FundingSchedulesQuery>>()?
+        .query(PoolRulesQuery {
             actor_id: actor.0,
             household_id,
             active,
@@ -50,16 +52,28 @@ pub async fn graphql_funding_schedules(
             before_id,
             page_size: page_size as usize,
             backward,
-        },
-    )
-    .await
-    .map_err(map_query_error)?;
+        })
+        .await
+        .map_err(map_query_error)?;
     let edges = page
         .rows
         .into_iter()
         .map(|projection| {
             let cursor = encode_cursor(&projection.id);
-            let node = crate::pool_mutations::map_funding_schedule_projection(projection)?;
+            let node = crate::pool_mutations::map_funding_schedule_projection(
+                policy_application::set_funding_schedule::PersistedFundingSchedule {
+                    id: projection.id,
+                    household_id: projection.household_id,
+                    member_id: projection.member_id,
+                    pool_id: projection.pool_id,
+                    amount_yen: projection.amount_yen,
+                    cadence: projection.cadence,
+                    starts_on: projection.starts_on,
+                    ends_on: projection.ends_on,
+                    active: projection.active,
+                    created_at: projection.created_at,
+                },
+            )?;
             Ok(FundingScheduleEdge { cursor, node })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -96,11 +110,10 @@ fn encode_cursor(id: &str) -> String {
     URL_SAFE_NO_PAD.encode(format!("FundingSchedule:{id}"))
 }
 
-fn map_query_error(error: postgres_query::FundingSchedulesQueryError) -> Error {
-    use postgres_query::FundingSchedulesQueryError as E;
+fn map_query_error(error: PoolRulesQueryFailure) -> Error {
     match error {
-        E::HouseholdNotFound | E::CursorNotFound => Error::new("not found"),
-        E::MemberNotFound => Error::new("household access denied"),
-        error @ (E::Pool(_) | E::Database(_)) => crate::internal_error(error),
+        PoolRulesQueryFailure::NotFound => Error::new("not found"),
+        PoolRulesQueryFailure::AccessDenied => Error::new("household access denied"),
+        PoolRulesQueryFailure::Infrastructure(error) => crate::internal_error(error),
     }
 }

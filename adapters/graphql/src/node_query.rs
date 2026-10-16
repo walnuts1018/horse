@@ -540,9 +540,13 @@ pub async fn graphql_nodes(
     }
     let household_ids_requested = requested_ids(&household_node_ids, "Household");
     if !household_ids_requested.is_empty() {
-        for household in
-            crate::household_query::load_households_for_actor(ctx.data::<PgPool>()?, actor.0)
-                .await?
+        for household in crate::household_query::load_households_for_actor(
+            ctx.data::<std::sync::Arc<dyn household_application::household_query::HouseholdQuery>>(
+            )?
+            .as_ref(),
+            actor.0,
+        )
+        .await?
         {
             let Ok(id) = decode_global_node_id(&household.id, "Household") else {
                 continue;

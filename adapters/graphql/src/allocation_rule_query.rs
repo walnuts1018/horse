@@ -1,7 +1,10 @@
 use async_graphql::{Context, Error, ID, Result, SimpleObject};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use horse_postgres_common::PgPool;
-use policy_postgres::allocation_rule_query as postgres_query;
+use policy_application::pool_queries::{
+    AllocationRule, AllocationRuleTarget, AllocationRulesQuery, PoolRulesQuery,
+    PoolRulesQueryFailure,
+};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{pagination::PageInfo, pool_mutations::AllocationRuleObject};
@@ -39,23 +42,25 @@ pub async fn graphql_allocation_rules(
     if !(1..=100).contains(&page_size) {
         return Err(Error::new("page size must be between 1 and 100"));
     }
-    let page = postgres_query::allocation_rules(
-        ctx.data::<PgPool>()?,
-        actor.0,
-        household_id,
-        after_id,
-        before_id,
-        page_size as usize,
-        backward,
-    )
-    .await
-    .map_err(map_query_error)?;
+    let page = ctx
+        .data::<Arc<dyn AllocationRulesQuery>>()?
+        .query(PoolRulesQuery {
+            actor_id: actor.0,
+            household_id,
+            active: None,
+            after_id,
+            before_id,
+            page_size: page_size as usize,
+            backward,
+        })
+        .await
+        .map_err(map_query_error)?;
     let edges = page
         .rows
         .into_iter()
         .map(|projection| {
             let cursor = encode_cursor(projection.id);
-            let node = crate::pool_mutations::map_allocation_rule_projection(projection)?;
+            let node = map_allocation_rule(projection)?;
             Ok(AllocationRuleEdge { cursor, node })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -92,11 +97,113 @@ fn encode_cursor(id: Uuid) -> String {
     URL_SAFE_NO_PAD.encode(format!("AllocationRule:{id}"))
 }
 
-fn map_query_error(error: postgres_query::AllocationRulesQueryError) -> Error {
-    use postgres_query::AllocationRulesQueryError as E;
+fn map_query_error(error: PoolRulesQueryFailure) -> Error {
     match error {
-        E::HouseholdNotFound | E::CursorNotFound => Error::new("not found"),
-        E::MemberNotFound => Error::new("household access denied"),
-        error @ (E::Pool(_) | E::Database(_) | E::Projection(_)) => crate::internal_error(error),
+        PoolRulesQueryFailure::NotFound => Error::new("not found"),
+        PoolRulesQueryFailure::AccessDenied => Error::new("household access denied"),
+        PoolRulesQueryFailure::Infrastructure(error) => crate::internal_error(error),
+    }
+}
+
+fn map_allocation_rule(value: AllocationRule) -> Result<AllocationRuleObject> {
+    let target = crate::catalog_mutations::allocation_rule_target_from_projection(match value.target {
+        AllocationRuleTarget::Category {
+            id,
+            household_id,
+            parent_id,
+            name,
+            archived,
+        } => cross_context_postgres::pool_mutations::AllocationRuleTargetProjection::Category {
+            id,
+            household_id,
+            parent_id,
+            name,
+            archived,
+        },
+        AllocationRuleTarget::Merchant { name } => {
+            cross_context_postgres::pool_mutations::AllocationRuleTargetProjection::Merchant { name }
+        }
+        AllocationRuleTarget::ProductConcept(value) => {
+            cross_context_postgres::pool_mutations::AllocationRuleTargetProjection::ProductConcept(
+                cross_context_postgres::pool_mutations::ProductConceptProjection {
+                    id: value.id,
+                    household_id: value.household_id,
+                    name: value.name,
+                    normalized_name: value.normalized_name,
+                    category_id: value.category_id,
+                    archived: value.archived,
+                    revision: value.revision,
+                    variants: value
+                        .variants
+                        .into_iter()
+                        .map(map_product_variant)
+                        .collect(),
+                },
+            )
+        }
+        AllocationRuleTarget::ProductVariant(value) => {
+            cross_context_postgres::pool_mutations::AllocationRuleTargetProjection::ProductVariant(
+                map_product_variant(value),
+            )
+        }
+    })
+    .map_err(crate::internal_error)?;
+    Ok(AllocationRuleObject {
+        id: crate::catalog_mutations::encode_node_id("AllocationRule", &value.id.to_string())
+            .map_err(crate::internal_error)?,
+        household_id: crate::catalog_mutations::encode_node_id(
+            "Household",
+            &value.household_id.to_string(),
+        )
+        .map_err(crate::internal_error)?,
+        target,
+        revision: i32::try_from(value.revision).map_err(crate::internal_error)?,
+        allocations: value
+            .allocations
+            .into_iter()
+            .map(|allocation| {
+                Ok(crate::pool_mutations::AllocationObject {
+                    pool_id: crate::catalog_mutations::encode_node_id(
+                        "Pool",
+                        &allocation.pool_id.to_string(),
+                    )
+                    .map_err(crate::internal_error)?,
+                    pool_name: allocation.pool_name,
+                    weight: crate::Long(allocation.weight),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+fn map_product_variant(
+    value: policy_application::pool_queries::ProductVariant,
+) -> cross_context_postgres::pool_mutations::ProductVariantProjection {
+    cross_context_postgres::pool_mutations::ProductVariantProjection {
+        id: value.id,
+        household_id: value.household_id,
+        concept_id: value.concept_id,
+        name: value.name,
+        normalized_name: value.normalized_name,
+        brand: value.brand,
+        package_size: value.package_size,
+        barcode: value.barcode,
+        archived: value.archived,
+        revision: value.revision,
+        aliases: value
+            .aliases
+            .into_iter()
+            .map(
+                |alias| cross_context_postgres::pool_mutations::ProductAliasProjection {
+                    id: alias.id,
+                    household_id: alias.household_id,
+                    variant_id: alias.variant_id,
+                    merchant_key: alias.merchant_key,
+                    alias: alias.alias,
+                    normalized_alias: alias.normalized_alias,
+                    revision: alias.revision,
+                },
+            )
+            .collect(),
     }
 }

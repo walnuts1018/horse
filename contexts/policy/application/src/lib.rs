@@ -2,6 +2,7 @@
 
 pub mod budget;
 pub mod create_pool;
+pub mod pool_queries;
 pub mod recurring_expense;
 pub mod set_allocation_rule;
 pub mod set_funding_schedule;

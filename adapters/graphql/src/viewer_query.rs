@@ -33,7 +33,8 @@ pub async fn graphql_viewer(ctx: &Context<'_>) -> Result<Viewer> {
         ));
     }
     let households = household_query::load_households_for_actor(
-        ctx.data::<horse_postgres_common::PgPool>()?,
+        ctx.data::<std::sync::Arc<dyn household_application::household_query::HouseholdQuery>>()?
+            .as_ref(),
         actor.0,
     )
     .await?;

@@ -80,6 +80,30 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
                     pool.clone(),
                 ),
             ),
+            ledger_entry_batch_query: Arc::new(
+                bookkeeping_postgres::ledger_entry_batch_query::PostgresLedgerEntryBatchQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            purchase_node_batch_query: Arc::new(
+                bookkeeping_postgres::purchase_node_batch_query::PostgresPurchaseNodeBatchQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            observation_node_batch_query: Arc::new(
+                evidence_postgres::observation_node_batch_query::PostgresObservationNodeBatchQuery::new(
+                    pool.clone(),
+                ),
+            ),
+            household_query: Arc::new(
+                household_postgres::household_query::PostgresHouseholdQuery::new(pool.clone()),
+            ),
+            allocation_rules_query: Arc::new(
+                policy_postgres::pool_queries::PostgresAllocationRulesQuery::new(pool.clone()),
+            ),
+            funding_schedules_query: Arc::new(
+                policy_postgres::pool_queries::PostgresFundingSchedulesQuery::new(pool.clone()),
+            ),
             monthly_spending_query: Arc::new(
                 bookkeeping_postgres::monthly_spending_query::PostgresMonthlySpendingQuery::new(
                     pool.clone(),

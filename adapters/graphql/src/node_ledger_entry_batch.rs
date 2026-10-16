@@ -1,9 +1,5 @@
 use async_graphql::{Context, Error, Result};
-use diesel::{
-    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl,
-};
-use diesel_async::RunQueryDsl;
-use horse_postgres_common::{PgPool, schema::public};
+use bookkeeping_application::ledger_entry_batch_query::LedgerEntryBatchQuery;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -19,65 +15,31 @@ pub(crate) async fn load(
         return Ok(HashMap::new());
     }
 
-    use public::{ledger_entries as ledgers, purchase_corrections as corrections};
-    let pool = ctx.data::<PgPool>()?;
-    let mut conn = pool.get().await.map_err(crate::internal_error)?;
-    let rows = ledgers::table
-        .left_join(
-            corrections::table.on(corrections::id
-                .eq(ledgers::source_id)
-                .and(corrections::household_id.eq(ledgers::household_id))
-                .and(ledgers::source_kind.eq_any(["CORRECTION", "correction"]))),
-        )
-        .filter(ledgers::household_id.eq_any(household_ids))
-        .filter(ledgers::id.eq_any(ids))
-        .select((
-            ledgers::id,
-            ledgers::household_id,
-            ledgers::source_kind,
-            ledgers::source_id,
-            corrections::purchase_id.nullable(),
-            ledgers::occurred_at,
-            ledgers::description,
-            ledgers::amount_yen,
-            ledgers::created_at,
-        ))
-        .load::<(
-            Uuid,
-            Uuid,
-            String,
-            Uuid,
-            Option<Uuid>,
-            chrono::DateTime<chrono::Utc>,
-            String,
-            i64,
-            chrono::DateTime<chrono::Utc>,
-        )>(&mut conn)
+    let rows = ctx
+        .data::<std::sync::Arc<dyn LedgerEntryBatchQuery>>()?
+        .query(household_ids, ids)
         .await
         .map_err(crate::internal_error)?;
-    drop(conn);
 
     let purchase_ids = rows
         .iter()
-        .filter_map(
-            |(_, _, source_kind, source_id, correction_purchase_id, ..)| match source_kind.as_str()
-            {
-                "PURCHASE" | "purchase" => Some(*source_id),
-                "CORRECTION" | "correction" => *correction_purchase_id,
-                _ => None,
-            },
-        )
+        .filter_map(|row| match row.source_kind.as_str() {
+            "PURCHASE" | "purchase" => Some(row.source_id),
+            "CORRECTION" | "correction" => row.correction_purchase_id,
+            _ => None,
+        })
         .collect::<std::collections::HashSet<_>>();
     let purchase_requests = purchase_ids
         .into_iter()
         .map(|id| ("Purchase".to_owned(), id))
         .collect::<Vec<_>>();
+    let pool = ctx.data::<horse_postgres_common::PgPool>()?;
     let purchase_nodes =
         crate::node_purchase_batch::load(ctx, household_ids, &purchase_requests).await?;
     let funding_ids = rows
         .iter()
-        .filter(|row| matches!(row.2.as_str(), "FUNDING" | "funding"))
-        .map(|row| row.0)
+        .filter(|row| matches!(row.source_kind.as_str(), "FUNDING" | "funding"))
+        .map(|row| row.id)
         .collect::<Vec<_>>();
     let funding_by_id = if funding_ids.is_empty() {
         HashMap::new()
@@ -92,8 +54,8 @@ pub(crate) async fn load(
     };
     let transfer_ids = rows
         .iter()
-        .filter(|row| matches!(row.2.as_str(), "TRANSFER" | "transfer"))
-        .map(|row| row.0)
+        .filter(|row| matches!(row.source_kind.as_str(), "TRANSFER" | "transfer"))
+        .map(|row| row.id)
         .collect::<Vec<_>>();
     let transfer_by_id = if transfer_ids.is_empty() {
         HashMap::new()
@@ -108,18 +70,15 @@ pub(crate) async fn load(
     };
 
     let mut loaded = HashMap::with_capacity(rows.len());
-    for (
-        id,
-        _household_id,
-        source_kind,
-        source_id,
-        correction_purchase_id,
-        occurred_at,
-        description,
-        amount_yen,
-        created_at,
-    ) in rows
-    {
+    for row in rows {
+        let id = row.id;
+        let source_kind = row.source_kind;
+        let source_id = row.source_id;
+        let correction_purchase_id = row.correction_purchase_id;
+        let occurred_at = row.occurred_at;
+        let description = row.description;
+        let amount_yen = row.amount_yen;
+        let created_at = row.created_at;
         let currency = "JPY".to_owned();
         let entry = match source_kind.as_str() {
             "PURCHASE" | "purchase" => {
