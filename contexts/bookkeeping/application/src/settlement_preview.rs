@@ -129,10 +129,13 @@ pub fn calculate_settlement_preview(
     let mut totals = vec![Totals::default(); input.members.len()];
     let mut active = BTreeSet::new();
     for (index, member) in input.members.iter().enumerate() {
-        if member
+        let participates_in_period = member
             .left_at_micros
-            .is_none_or(|left| left > period_start as i64 * MICROS_PER_DAY - JST_OFFSET_MICROS)
-        {
+            .is_none_or(|left| left > period_start as i64 * MICROS_PER_DAY - JST_OFFSET_MICROS);
+        let has_unsettled_balance = previous_due_by_member
+            .get(&member.id)
+            .is_some_and(|amount| *amount != 0);
+        if participates_in_period || has_unsettled_balance {
             active.insert(index);
         }
     }
