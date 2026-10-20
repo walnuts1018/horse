@@ -60,7 +60,7 @@
     "oxlint": "^1.88.0",
     "oxlint-tsgolint": "^7.0.2004",
     "relay-compiler": "^21.0.1",
-    "steiger": "^0.7.0",
+    "steiger": "^0.8.0",
     "storybook": "10.6.2",
     "stylelint": "^17.16.0",
     "stylelint-browser-compat": "1.0.0-beta.200",
