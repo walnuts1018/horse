@@ -44,7 +44,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install tools
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
 
       - name: Install Rust components
         run: rustup component add --toolchain 1.99.1 rustfmt clippy
@@ -139,7 +139,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install tools
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
 
       - name: Install Rust components
         run: rustup component add --toolchain 1.99.1 rustfmt clippy
