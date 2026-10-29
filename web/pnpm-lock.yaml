@@ -49,8 +49,8 @@ importers:
         version: 4.6.7
     devDependencies:
       '@feature-sliced/steiger-plugin':
-        specifier: ^0.8.0
-        version: 0.8.0(typescript@6.0.3)
+        specifier: ^0.8.1
+        version: 0.8.1(typescript@6.0.3)
       '@markuplint/jsx-parser':
         specifier: ^5.2.0
         version: 5.2.0(supports-color@10.2.2)(typescript@6.0.3)
@@ -513,6 +513,9 @@ packages:
 
   '@feature-sliced/steiger-plugin@0.8.0':
     resolution: {integrity: sha512-wACwEYLVxs6bziUDaZXlp6k43dantdU5MSBtO48MwonwrupdzYcLhs6+Ps9YoWDINccaAlqiMxlHmgLJubK5Ow==}
+
+  '@feature-sliced/steiger-plugin@0.8.1':
+    resolution: {integrity: sha512-hnRmnpGT7HoOv3Hy+et1xFq1IsCogp0SEfLlEC73kI74nlm0zQl8q1QN78iG0PEXyLZUAsqJIfG8rZHvva5vEg==}
 
   '@floating-ui/core@1.8.0':
     resolution: {integrity: sha512-0CIZ5itps/8x7BG8dEIhs53BvCUH2PCoogtakwRTut+Arm58sJooJ0AuZhLw2HJYIR5cMLNPBSS728sPho2khQ==}
@@ -4498,6 +4501,16 @@ snapshots:
       '@feature-sliced/filesystem': 3.1.1
       fastest-levenshtein: 1.0.16
       lodash-es: 4.18.1
+      pluralize: 8.0.0
+      tsconfck: 3.1.6(typescript@6.0.3)
+      web-tree-sitter: 0.26.13
+    transitivePeerDependencies:
+      - typescript
+
+  '@feature-sliced/steiger-plugin@0.8.1(typescript@6.0.3)':
+    dependencies:
+      '@feature-sliced/filesystem': 3.1.1
+      fastest-levenshtein: 1.0.16
       pluralize: 8.0.0
       tsconfck: 3.1.6(typescript@6.0.3)
       web-tree-sitter: 0.26.13
