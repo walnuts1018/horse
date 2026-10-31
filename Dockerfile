@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
 FROM --platform=$BUILDPLATFORM node:24.22.0-slim AS web-deps
 
@@ -21,7 +21,7 @@ COPY web/ ./
 COPY graphql/ /src/graphql/
 RUN pnpm build
 
-FROM rust:1.99.1-bookworm AS rust-chef
+FROM rust:1.99.1-bookworm@sha256:9181b56c2a21ab1d5e73cffe04fc762426d30aa7fac3c91141dd033f49a7fc8b AS rust-chef
 
 RUN cargo install --locked --version 0.1.78 cargo-chef
 
@@ -69,13 +69,13 @@ RUN --mount=type=cache,id=horse-cargo-registry,target=/usr/local/cargo/registry,
     && cp "${CARGO_TARGET_DIR}/release/horse-api" /out/api \
     && cp "${CARGO_TARGET_DIR}/release/horse-worker" /out/worker
 
-FROM docker.io/arigaio/atlas:1.3.4-distroless AS atlas
+FROM docker.io/arigaio/atlas:1.3.4-distroless@sha256:3cd6883d5ec2703741f750fd5f9efed3a61f8e164b9dcea93ab7a7be429a1b5b AS atlas
 
-FROM debian:bookworm-slim AS rust-runtime-base
+FROM debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3 AS rust-runtime-base
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libpq5 && rm -rf /var/lib/apt/lists/*
 
-FROM gcr.io/distroless/nodejs24-debian13:nonroot AS web-runtime
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:a6c34457f6da4295807e051411c7783739c65b997a324fed14e4fa292615ae91 AS web-runtime
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
