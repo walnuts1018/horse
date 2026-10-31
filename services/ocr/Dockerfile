@@ -2,7 +2,7 @@
 
 FROM ghcr.io/astral-sh/uv:0.13.1 AS uv
 
-FROM python:3.13-slim AS runtime-base
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913 AS runtime-base
 
 RUN rm -f /etc/apt/apt.conf.d/docker-clean \
     && printf '%s\n' 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
