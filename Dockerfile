@@ -69,7 +69,7 @@ RUN --mount=type=cache,id=horse-cargo-registry,target=/usr/local/cargo/registry,
     && cp "${CARGO_TARGET_DIR}/release/horse-api" /out/api \
     && cp "${CARGO_TARGET_DIR}/release/horse-worker" /out/worker
 
-FROM docker.io/arigaio/atlas:1.3.4-distroless AS atlas
+FROM docker.io/arigaio/atlas:1.3.10-distroless@sha256:971adc207bd2ac243b3152d8b99190d206aa8f1660b4228a1d889a262568d670 AS atlas
 
 FROM debian:bookworm-slim AS rust-runtime-base
 
