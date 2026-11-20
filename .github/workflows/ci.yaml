@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        image: postgres:19.0@sha256:bb6e70add742cd868fb62cb3b2f67d1dd2bdd2b65a521e778420748753687c60
         env:
           POSTGRES_USER: horse_test
           POSTGRES_PASSWORD: horse_test_ci_only
@@ -115,7 +115,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        image: postgres:19.0@sha256:bb6e70add742cd868fb62cb3b2f67d1dd2bdd2b65a521e778420748753687c60
         env:
           POSTGRES_USER: horse_test
           POSTGRES_PASSWORD: horse_test_ci_only
