@@ -624,7 +624,7 @@ dependencies = [
  "lru",
  "percent-encoding",
  "regex-lite",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "tracing",
  "url",
 ]
@@ -724,7 +724,7 @@ dependencies = [
  "http 1.5.0",
  "p256",
  "percent-encoding",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "subtle",
  "time",
  "tracing",
@@ -759,7 +759,7 @@ dependencies = [
  "md-5",
  "pin-project-lite",
  "sha1 0.11.0",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "tracing",
 ]
 
@@ -1257,7 +1257,7 @@ dependencies = [
  "horse-test-infra",
  "household-postgres",
  "serde_json",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "tokio",
  "uuid",
 ]
@@ -1331,7 +1331,7 @@ dependencies = [
  "horse-household-change",
  "horse-postgres-common",
  "serde_json",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "uuid",
 ]
 
@@ -2846,7 +2846,7 @@ dependencies = [
  "diesel-async",
  "horse-postgres-common",
  "openidconnect",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "subtle",
  "tracing",
  "url",
@@ -2865,7 +2865,7 @@ dependencies = [
  "diesel",
  "diesel-async",
  "horse-postgres-common",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "tokio",
  "uuid",
 ]
@@ -2918,7 +2918,7 @@ dependencies = [
  "policy-postgres",
  "serde",
  "serde_json",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "tokio",
  "tracing",
  "uuid",
@@ -2956,7 +2956,7 @@ dependencies = [
  "reqwest 0.13.5",
  "serde",
  "serde_json",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "tokio",
  "tracing",
  "url",
@@ -2975,7 +2975,7 @@ dependencies = [
  "hex",
  "hmac 0.13.0",
  "reqwest 0.13.5",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "uuid",
 ]
 
@@ -3054,7 +3054,7 @@ dependencies = [
  "reqwest 0.13.5",
  "serde",
  "serde_json",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "tokio",
  "tokio-rustls 0.26.6",
  "tracing",
@@ -3095,7 +3095,7 @@ dependencies = [
  "horse-test-infra",
  "household-application",
  "household-domain",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "tokio",
  "uuid",
 ]
@@ -4629,7 +4629,7 @@ dependencies = [
  "md-5",
  "memchr",
  "rand 0.10.3",
- "sha2 0.11.1",
+ "sha2 0.11.2",
  "stringprep",
 ]
 
@@ -5593,9 +5593,9 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.11.1"
+version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47d7069beb7d6ac7b9acd1039986e73443f24234f41074da099d6f994ac9ad19"
+checksum = "5b0e5c7d67bc53f435386b2130fdc900488c5703770f6d8a4633060e34288a27"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.3.1",
@@ -5926,7 +5926,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
