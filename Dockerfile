@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM node:24.22.0-slim AS web-deps
+FROM --platform=$BUILDPLATFORM node:26.13.1-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5 AS web-deps
 
 WORKDIR /src/web
 
@@ -10,7 +10,7 @@ COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=horse-pnpm,target=/pnpm/store,sharing=locked \
     pnpm install --frozen-lockfile --store-dir=/pnpm/store
 
-FROM --platform=$BUILDPLATFORM node:24.22.0-slim AS web-build
+FROM --platform=$BUILDPLATFORM node:26.13.1-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5 AS web-build
 
 WORKDIR /src/web
 
