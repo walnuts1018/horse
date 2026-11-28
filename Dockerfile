@@ -21,7 +21,7 @@ COPY web/ ./
 COPY graphql/ /src/graphql/
 RUN pnpm build
 
-FROM rust:1.99.1-bookworm AS rust-chef
+FROM rust:1.100.0-bookworm@sha256:75d26c23c24cc6ea1cdabf0714a6bff8fd7bf3248716043fd7ae86dac7f41b94 AS rust-chef
 
 RUN cargo install --locked --version 0.1.78 cargo-chef
 
