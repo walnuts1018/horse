@@ -69,13 +69,13 @@ RUN --mount=type=cache,id=horse-cargo-registry,target=/usr/local/cargo/registry,
     && cp "${CARGO_TARGET_DIR}/release/horse-api" /out/api \
     && cp "${CARGO_TARGET_DIR}/release/horse-worker" /out/worker
 
-FROM docker.io/arigaio/atlas:1.3.4-distroless AS atlas
+FROM docker.io/arigaio/atlas:1.3.4-distroless@sha256:3cd6883d5ec2703741f750fd5f9efed3a61f8e164b9dcea93ab7a7be429a1b5b AS atlas
 
-FROM debian:bookworm-slim AS rust-runtime-base
+FROM debian:bookworm-slim@sha256:e67eeead736ff7bbe258ef088bff683635c561b1fcfefad0806c1df4ab49ce0e AS rust-runtime-base
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libpq5 && rm -rf /var/lib/apt/lists/*
 
-FROM gcr.io/distroless/nodejs24-debian13:nonroot AS web-runtime
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:675c532423b908f9e56f9d60a4e62309b63cd2a3175acb90a46b96f7ee68e121 AS web-runtime
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
